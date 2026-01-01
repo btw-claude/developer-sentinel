@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from sentinel.executor import ExecutionResult, ExecutionStatus
+from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class JiraTagClientError(Exception):

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 import time
 from pathlib import Path
@@ -11,12 +10,13 @@ from typing import Any
 
 from sentinel.config import Config, load_config
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
+from sentinel.logging import get_logger, setup_logging
 from sentinel.orchestration import Orchestration, load_orchestrations
 from sentinel.poller import JiraClient, JiraPoller
 from sentinel.router import Router
 from sentinel.tag_manager import JiraTagClient, TagManager
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Sentinel:
@@ -131,20 +131,6 @@ class Sentinel:
                     time.sleep(1)
 
         logger.info("Sentinel shutdown complete")
-
-
-def setup_logging(level: str) -> None:
-    """Configure logging for the application.
-
-    Args:
-        level: Log level string (DEBUG, INFO, WARNING, ERROR).
-    """
-    numeric_level = getattr(logging, level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=numeric_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
