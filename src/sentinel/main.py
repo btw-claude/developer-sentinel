@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 import time
 from dataclasses import replace
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 from sentinel.config import Config, load_config
@@ -109,6 +111,16 @@ class Sentinel:
 
     def run(self) -> None:
         """Run the main polling loop until shutdown is requested."""
+
+        # Register signal handlers for graceful shutdown
+        def handle_shutdown(signum: int, frame: FrameType | None) -> None:
+            signal_name = signal.Signals(signum).name
+            logger.info(f"Received {signal_name}, initiating graceful shutdown...")
+            self._shutdown_requested = True
+
+        signal.signal(signal.SIGINT, handle_shutdown)
+        signal.signal(signal.SIGTERM, handle_shutdown)
+
         logger.info(
             f"Starting Sentinel with {len(self.orchestrations)} orchestrations, "
             f"polling every {self.config.poll_interval}s"

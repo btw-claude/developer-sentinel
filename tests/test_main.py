@@ -1,9 +1,10 @@
 """Tests for main entry point module."""
 
 import logging
+import signal
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from sentinel.config import Config
 from sentinel.executor import AgentClient
@@ -313,3 +314,129 @@ class TestSentinelRun:
         sentinel.request_shutdown()
         # Should not raise despite the error
         sentinel.run()
+
+
+class TestSentinelSignalHandling:
+    """Tests for Sentinel signal handling."""
+
+    def test_registers_signal_handlers(self) -> None:
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(poll_interval=1)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        registered_handlers: dict[int, Any] = {}
+
+        def mock_signal(signum: int, handler: Any) -> Any:
+            registered_handlers[signum] = handler
+            return None
+
+        with patch("signal.signal", side_effect=mock_signal):
+            # Request shutdown immediately so run() exits quickly
+            sentinel.request_shutdown()
+            sentinel.run()
+
+        # Verify both handlers were registered
+        assert signal.SIGINT in registered_handlers
+        assert signal.SIGTERM in registered_handlers
+
+    def test_sigint_triggers_shutdown(self) -> None:
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(poll_interval=1)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        captured_handler: Any = None
+
+        def capture_sigint_handler(signum: int, handler: Any) -> Any:
+            nonlocal captured_handler
+            if signum == signal.SIGINT:
+                captured_handler = handler
+            return None
+
+        with patch("signal.signal", side_effect=capture_sigint_handler):
+            # Start run in a thread that will be stopped by the signal
+            import threading
+
+            def run_sentinel() -> None:
+                sentinel.run()
+
+            thread = threading.Thread(target=run_sentinel)
+            thread.start()
+
+            # Give it a moment to register handlers
+            import time
+
+            time.sleep(0.05)
+
+            # Simulate SIGINT by calling the captured handler
+            if captured_handler:
+                captured_handler(signal.SIGINT, None)
+
+            thread.join(timeout=2)
+            assert not thread.is_alive(), "Thread should have stopped"
+            assert sentinel._shutdown_requested is True
+
+    def test_sigterm_triggers_shutdown(self) -> None:
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(poll_interval=1)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        captured_handler: Any = None
+
+        def capture_sigterm_handler(signum: int, handler: Any) -> Any:
+            nonlocal captured_handler
+            if signum == signal.SIGTERM:
+                captured_handler = handler
+            return None
+
+        with patch("signal.signal", side_effect=capture_sigterm_handler):
+            # Start run in a thread that will be stopped by the signal
+            import threading
+
+            def run_sentinel() -> None:
+                sentinel.run()
+
+            thread = threading.Thread(target=run_sentinel)
+            thread.start()
+
+            # Give it a moment to register handlers
+            import time
+
+            time.sleep(0.05)
+
+            # Simulate SIGTERM by calling the captured handler
+            if captured_handler:
+                captured_handler(signal.SIGTERM, None)
+
+            thread.join(timeout=2)
+            assert not thread.is_alive(), "Thread should have stopped"
+            assert sentinel._shutdown_requested is True
