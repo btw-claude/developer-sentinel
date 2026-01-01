@@ -288,6 +288,91 @@ class TestLogAgentSummary:
         # Newlines should be replaced with spaces
         assert "Line 1 Line 2 Line 3" in caplog.text
 
+    def test_logs_success_at_info_level(self, caplog: pytest.LogCaptureFixture) -> None:
+        logger = get_logger("test.level.success")
+
+        with caplog.at_level(logging.DEBUG):
+            log_agent_summary(
+                logger=logger,
+                issue_key="TEST-200",
+                orchestration="test",
+                status="SUCCESS",
+                response="Done",
+                attempt=1,
+                max_attempts=1,
+            )
+
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelno == logging.INFO
+
+    def test_logs_failure_at_error_level(self, caplog: pytest.LogCaptureFixture) -> None:
+        logger = get_logger("test.level.failure")
+
+        with caplog.at_level(logging.DEBUG):
+            log_agent_summary(
+                logger=logger,
+                issue_key="TEST-201",
+                orchestration="test",
+                status="FAILURE",
+                response="Failed",
+                attempt=1,
+                max_attempts=1,
+            )
+
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelno == logging.ERROR
+
+    def test_logs_error_at_error_level(self, caplog: pytest.LogCaptureFixture) -> None:
+        logger = get_logger("test.level.error")
+
+        with caplog.at_level(logging.DEBUG):
+            log_agent_summary(
+                logger=logger,
+                issue_key="TEST-202",
+                orchestration="test",
+                status="ERROR",
+                response="Error occurred",
+                attempt=1,
+                max_attempts=1,
+            )
+
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelno == logging.ERROR
+
+    def test_logs_timeout_at_warning_level(self, caplog: pytest.LogCaptureFixture) -> None:
+        logger = get_logger("test.level.timeout")
+
+        with caplog.at_level(logging.DEBUG):
+            log_agent_summary(
+                logger=logger,
+                issue_key="TEST-203",
+                orchestration="test",
+                status="TIMEOUT",
+                response="Timed out",
+                attempt=1,
+                max_attempts=1,
+            )
+
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelno == logging.WARNING
+
+    def test_logs_unknown_status_at_warning_level(self, caplog: pytest.LogCaptureFixture) -> None:
+        logger = get_logger("test.level.unknown")
+
+        with caplog.at_level(logging.DEBUG):
+            log_agent_summary(
+                logger=logger,
+                issue_key="TEST-204",
+                orchestration="test",
+                status="UNKNOWN",
+                response="Unknown status",
+                attempt=1,
+                max_attempts=1,
+            )
+
+        assert len(caplog.records) == 1
+        assert caplog.records[0].levelno == logging.WARNING
+
 
 class TestLoggingIntegration:
     """Integration tests for logging functionality."""
