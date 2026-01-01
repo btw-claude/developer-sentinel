@@ -86,9 +86,7 @@ class Router:
         for orchestration in self.orchestrations:
             if self._matches_trigger(issue, orchestration):
                 matching.append(orchestration)
-                logger.debug(
-                    f"Issue {issue.key} matched orchestration '{orchestration.name}'"
-                )
+                logger.debug(f"Issue {issue.key} matched orchestration '{orchestration.name}'")
 
         if matching:
             logger.info(

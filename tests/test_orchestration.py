@@ -7,6 +7,7 @@ import pytest
 from sentinel.orchestration import (
     AgentConfig,
     OnCompleteConfig,
+    OnFailureConfig,
     OrchestrationError,
     RetryConfig,
     TriggerConfig,
@@ -46,6 +47,11 @@ class TestDataclasses:
         assert on_complete.remove_tag == ""
         assert on_complete.add_tag == ""
 
+    def test_on_failure_config_defaults(self) -> None:
+        """OnFailureConfig should have sensible defaults."""
+        on_failure = OnFailureConfig()
+        assert on_failure.add_tag == ""
+
 
 class TestLoadOrchestrationFile:
     """Tests for load_orchestration_file function."""
@@ -69,6 +75,8 @@ orchestrations:
     on_complete:
       remove_tag: "test-tag"
       add_tag: "processed"
+    on_failure:
+      add_tag: "agent-failed"
 """
         file_path = tmp_path / "test.yaml"
         file_path.write_text(yaml_content)
@@ -85,6 +93,7 @@ orchestrations:
         assert orch.retry.max_attempts == 5
         assert orch.on_complete.remove_tag == "test-tag"
         assert orch.on_complete.add_tag == "processed"
+        assert orch.on_failure.add_tag == "agent-failed"
 
     def test_load_file_with_github_context(self, tmp_path: Path) -> None:
         """Should load orchestration with GitHub context."""
