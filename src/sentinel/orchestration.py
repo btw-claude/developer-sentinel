@@ -57,6 +57,13 @@ class OnCompleteConfig:
 
 
 @dataclass
+class OnFailureConfig:
+    """Actions to take after failed orchestration (all retries exhausted)."""
+
+    add_tag: str = ""
+
+
+@dataclass
 class Orchestration:
     """A single orchestration configuration."""
 
@@ -65,6 +72,7 @@ class Orchestration:
     agent: AgentConfig
     retry: RetryConfig = field(default_factory=RetryConfig)
     on_complete: OnCompleteConfig = field(default_factory=OnCompleteConfig)
+    on_failure: OnFailureConfig = field(default_factory=OnFailureConfig)
 
 
 class OrchestrationError(Exception):
@@ -124,6 +132,15 @@ def _parse_on_complete(data: dict[str, Any] | None) -> OnCompleteConfig:
     )
 
 
+def _parse_on_failure(data: dict[str, Any] | None) -> OnFailureConfig:
+    """Parse on_failure configuration from dict."""
+    if not data:
+        return OnFailureConfig()
+    return OnFailureConfig(
+        add_tag=data.get("add_tag", ""),
+    )
+
+
 def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
     """Parse a single orchestration from dict."""
     name = data.get("name")
@@ -144,6 +161,7 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
         agent=_parse_agent(agent_data),
         retry=_parse_retry(data.get("retry")),
         on_complete=_parse_on_complete(data.get("on_complete")),
+        on_failure=_parse_on_failure(data.get("on_failure")),
     )
 
 
