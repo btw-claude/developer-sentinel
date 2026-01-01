@@ -95,6 +95,46 @@ class TestTagUpdateResult:
         )
         assert result.success is False
 
+    def test_partial_success_when_errors_and_added_tags(self) -> None:
+        result = TagUpdateResult(
+            issue_key="TEST-1",
+            added_tags=["processed"],
+            removed_tags=[],
+            errors=["Failed to remove tag"],
+        )
+        assert result.partial_success is True
+        assert result.success is False
+
+    def test_partial_success_when_errors_and_removed_tags(self) -> None:
+        result = TagUpdateResult(
+            issue_key="TEST-1",
+            added_tags=[],
+            removed_tags=["needs-review"],
+            errors=["Failed to add tag"],
+        )
+        assert result.partial_success is True
+        assert result.success is False
+
+    def test_not_partial_success_when_complete_success(self) -> None:
+        result = TagUpdateResult(
+            issue_key="TEST-1",
+            added_tags=["processed"],
+            removed_tags=["needs-review"],
+            errors=[],
+        )
+        assert result.partial_success is False
+        assert result.success is True
+
+    def test_not_partial_success_when_complete_failure(self) -> None:
+        result = TagUpdateResult(
+            issue_key="TEST-1",
+            added_tags=[],
+            removed_tags=[],
+            errors=["All operations failed"],
+        )
+        assert result.partial_success is False
+        assert result.success is False
+
 
 class TestTagManagerUpdateTagsSuccess:
     """Tests for TagManager.update_tags on successful execution."""
