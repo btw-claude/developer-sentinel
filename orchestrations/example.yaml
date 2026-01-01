@@ -1,14 +1,25 @@
 # Example Orchestration Configuration
 # ====================================
 #
-# This file demonstrates the orchestration configuration schema.
+# This file demonstrates the complete orchestration configuration schema.
 # Copy and modify this file to create your own orchestrations.
 #
 # Each orchestration defines:
+#   - name: Unique identifier for the orchestration
 #   - trigger: What Jira issues to watch for
 #   - agent: How the Claude agent should process them
-#   - retry: How to handle failures
+#   - retry: How to handle failures and determine success
 #   - on_complete: What to do after successful processing
+#   - on_failure: What to do when all retries are exhausted
+#
+# Tag-based Workflow:
+# -------------------
+# Sentinel uses a stateless, tag-based workflow:
+#   1. Issues with trigger tags are picked up for processing
+#   2. On success: trigger tags are removed, completion tags are added
+#   3. On failure: failure tags are added (trigger tags remain for investigation)
+#
+# This ensures issues are processed exactly once and failure states are visible.
 
 orchestrations:
   # Code Review Orchestration
@@ -83,6 +94,12 @@ orchestrations:
       remove_tag: "needs-code-review"   # Remove trigger tag
       add_tag: "code-reviewed"          # Add completion tag
 
+    # On failure actions
+    # What to do when all retry attempts are exhausted
+    on_failure:
+      add_tag: "review-failed"          # Add failure tag for investigation
+      # Note: trigger tags are NOT removed on failure, allowing for manual retry
+
   # Documentation Orchestration
   # ---------------------------
   # Example of a documentation-focused orchestration
@@ -119,3 +136,6 @@ orchestrations:
     on_complete:
       remove_tag: "needs-docs"
       add_tag: "docs-updated"
+
+    on_failure:
+      add_tag: "docs-update-failed"
