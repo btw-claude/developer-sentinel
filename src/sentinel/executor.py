@@ -45,6 +45,12 @@ class AgentClientError(Exception):
     pass
 
 
+class AgentTimeoutError(AgentClientError):
+    """Raised when an agent execution times out."""
+
+    pass
+
+
 class AgentClient(ABC):
     """Abstract interface for Claude Agent SDK operations.
 
@@ -59,6 +65,7 @@ class AgentClient(ABC):
         prompt: str,
         tools: list[str],
         context: dict[str, Any] | None = None,
+        timeout_seconds: int | None = None,
     ) -> str:
         """Run a Claude agent with the given prompt and tools.
 
@@ -66,12 +73,14 @@ class AgentClient(ABC):
             prompt: The prompt to send to the agent.
             tools: List of tool names the agent can use.
             context: Optional context dict (e.g., GitHub repo info).
+            timeout_seconds: Optional timeout in seconds. If None, no timeout is applied.
 
         Returns:
             The agent's response text.
 
         Raises:
             AgentClientError: If the agent execution fails.
+            AgentTimeoutError: If the agent execution times out.
         """
         pass
 
@@ -224,6 +233,7 @@ class AgentExecutor:
         retry_config = orchestration.retry
         max_attempts = retry_config.max_attempts
         tools = orchestration.agent.tools
+        timeout_seconds = orchestration.agent.timeout_seconds
 
         # Build context for the agent
         context: dict[str, Any] = {}
@@ -251,7 +261,7 @@ class AgentExecutor:
             )
 
             try:
-                response = self.client.run_agent(prompt, tools, context)
+                response = self.client.run_agent(prompt, tools, context, timeout_seconds)
                 last_response = response
                 status = self._determine_status(response, retry_config)
                 last_status = status
@@ -286,6 +296,28 @@ class AgentExecutor:
                         },
                     )
 
+            except AgentTimeoutError as e:
+                last_response = f"Timeout: {e}"
+                last_status = ExecutionStatus.ERROR
+                log_agent_summary(
+                    logger=logger,
+                    issue_key=issue.key,
+                    orchestration=orchestration.name,
+                    status="TIMEOUT",
+                    response=str(e),
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                )
+                if attempt < max_attempts:
+                    logger.warning(
+                        f"Agent timed out for {issue.key} on attempt {attempt}, retrying...",
+                        extra={
+                            "issue_key": issue.key,
+                            "orchestration": orchestration.name,
+                            "attempt": attempt,
+                            "timeout_seconds": timeout_seconds,
+                        },
+                    )
             except AgentClientError as e:
                 last_response = str(e)
                 last_status = ExecutionStatus.ERROR

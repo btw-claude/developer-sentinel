@@ -30,11 +30,20 @@ class GitHubContext:
 
 @dataclass
 class AgentConfig:
-    """Configuration for the Claude agent."""
+    """Configuration for the Claude agent.
+
+    Attributes:
+        prompt: The prompt template for the agent.
+        tools: List of tool names the agent can use.
+        github: Optional GitHub repository context.
+        timeout_seconds: Optional timeout in seconds for agent execution.
+            If None, no timeout is applied.
+    """
 
     prompt: str = ""
     tools: list[str] = field(default_factory=list)
     github: GitHubContext | None = None
+    timeout_seconds: int | None = None
 
 
 @dataclass
@@ -113,10 +122,15 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
 
 def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     """Parse agent configuration from dict."""
+    timeout = data.get("timeout_seconds")
+    if timeout is not None and (not isinstance(timeout, int) or timeout <= 0):
+        raise OrchestrationError(f"Invalid timeout_seconds '{timeout}': must be a positive integer")
+
     return AgentConfig(
         prompt=data.get("prompt", ""),
         tools=data.get("tools", []),
         github=_parse_github_context(data.get("github")),
+        timeout_seconds=timeout,
     )
 
 

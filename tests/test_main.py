@@ -31,15 +31,16 @@ class MockAgentClient(AgentClient):
     def __init__(self, responses: list[str] | None = None) -> None:
         self.responses = responses or ["SUCCESS: Done"]
         self.call_count = 0
-        self.calls: list[tuple[str, list[str], dict[str, Any] | None]] = []
+        self.calls: list[tuple[str, list[str], dict[str, Any] | None, int | None]] = []
 
     def run_agent(
         self,
         prompt: str,
         tools: list[str],
         context: dict[str, Any] | None = None,
+        timeout_seconds: int | None = None,
     ) -> str:
-        self.calls.append((prompt, tools, context))
+        self.calls.append((prompt, tools, context, timeout_seconds))
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
         return response
