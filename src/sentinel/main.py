@@ -223,7 +223,7 @@ def main(args: list[str] | None = None) -> int:
         config = replace(config, **overrides)
 
     # Setup logging
-    setup_logging(config.log_level)
+    setup_logging(config.log_level, json_format=config.log_json)
 
     # Load orchestrations
     logger.info(f"Loading orchestrations from {config.orchestrations_dir}")
