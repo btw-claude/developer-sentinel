@@ -203,7 +203,7 @@ def log_agent_summary(
         logger: Logger to use.
         issue_key: The Jira issue key.
         orchestration: The orchestration name.
-        status: Execution status (SUCCESS, FAILURE, ERROR).
+        status: Execution status (SUCCESS, FAILURE, ERROR, TIMEOUT).
         response: The agent's response text.
         attempt: Current attempt number.
         max_attempts: Maximum attempts configured.
@@ -212,7 +212,16 @@ def log_agent_summary(
     response_summary = response[:200] + "..." if len(response) > 200 else response
     response_summary = response_summary.replace("\n", " ")
 
-    logger.info(
+    # Select appropriate log level based on status
+    if status in ("ERROR", "FAILURE"):
+        log_method = logger.error
+    elif status == "SUCCESS":
+        log_method = logger.info
+    else:
+        # TIMEOUT and other statuses use warning
+        log_method = logger.warning
+
+    log_method(
         f"Agent execution {status} for {issue_key} "
         f"(attempt {attempt}/{max_attempts}): {response_summary}",
         extra={
