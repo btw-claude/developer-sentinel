@@ -63,9 +63,6 @@ class MockTagClient(JiraTagClient):
     def remove_label(self, issue_key: str, label: str) -> None:
         self.remove_calls.append((issue_key, label))
 
-    def get_labels(self, issue_key: str) -> list[str]:
-        return self.labels.get(issue_key, [])
-
 
 def make_config(
     poll_interval: int = 60,
