@@ -67,6 +67,13 @@ class TagUpdateResult:
         """Return True if all tag operations succeeded."""
         return len(self.errors) == 0
 
+    @property
+    def partial_success(self) -> bool:
+        """Return True if some operations succeeded but there were also errors."""
+        has_errors = len(self.errors) > 0
+        has_successes = len(self.added_tags) > 0 or len(self.removed_tags) > 0
+        return has_errors and has_successes
+
 
 class TagManager:
     """Manages post-processing tag updates for Jira issues.
