@@ -23,10 +23,8 @@ class MockJiraTagClient(JiraTagClient):
         self.labels: dict[str, list[str]] = {}
         self.add_calls: list[tuple[str, str]] = []
         self.remove_calls: list[tuple[str, str]] = []
-        self.get_calls: list[str] = []
         self.should_fail_add = False
         self.should_fail_remove = False
-        self.should_fail_get = False
 
     def add_label(self, issue_key: str, label: str) -> None:
         self.add_calls.append((issue_key, label))
@@ -43,12 +41,6 @@ class MockJiraTagClient(JiraTagClient):
             raise JiraTagClientError("Mock remove error")
         if issue_key in self.labels and label in self.labels[issue_key]:
             self.labels[issue_key].remove(label)
-
-    def get_labels(self, issue_key: str) -> list[str]:
-        self.get_calls.append(issue_key)
-        if self.should_fail_get:
-            raise JiraTagClientError("Mock get error")
-        return self.labels.get(issue_key, [])
 
 
 def make_result(

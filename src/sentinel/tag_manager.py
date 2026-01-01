@@ -52,21 +52,6 @@ class JiraTagClient(ABC):
         """
         pass
 
-    @abstractmethod
-    def get_labels(self, issue_key: str) -> list[str]:
-        """Get all labels for a Jira issue.
-
-        Args:
-            issue_key: The Jira issue key (e.g., "PROJ-123").
-
-        Returns:
-            List of label names.
-
-        Raises:
-            JiraTagClientError: If the operation fails.
-        """
-        pass
-
 
 @dataclass
 class TagUpdateResult:
