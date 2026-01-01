@@ -1,10 +1,18 @@
 """Tests for configuration module."""
 
+import logging
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
-from sentinel.config import Config, load_config
+from sentinel.config import (
+    VALID_LOG_LEVELS,
+    Config,
+    _parse_positive_int,
+    _validate_log_level,
+    load_config,
+)
 
 
 class TestConfig:
@@ -31,6 +39,80 @@ class TestConfig:
         assert config.max_issues_per_poll == 100
         assert config.jira_url == "https://jira.example.com"
         assert config.log_level == "DEBUG"
+
+    def test_frozen_immutable(self) -> None:
+        """Config should be immutable after creation."""
+        config = Config()
+        with pytest.raises(FrozenInstanceError):
+            config.poll_interval = 120  # type: ignore[misc]
+
+    def test_frozen_jira_url_immutable(self) -> None:
+        """All fields should be immutable."""
+        config = Config(jira_url="https://jira.example.com")
+        with pytest.raises(FrozenInstanceError):
+            config.jira_url = "https://other.com"  # type: ignore[misc]
+
+
+class TestParsePositiveInt:
+    """Tests for _parse_positive_int helper function."""
+
+    def test_valid_positive_integer(self) -> None:
+        assert _parse_positive_int("42", "TEST_VAR", 10) == 42
+        assert _parse_positive_int("1", "TEST_VAR", 10) == 1
+        assert _parse_positive_int("1000", "TEST_VAR", 10) == 1000
+
+    def test_invalid_non_numeric(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _parse_positive_int("abc", "TEST_VAR", 10)
+        assert result == 10
+        assert "Invalid TEST_VAR: 'abc' is not a valid integer" in caplog.text
+
+    def test_invalid_zero(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _parse_positive_int("0", "TEST_VAR", 10)
+        assert result == 10
+        assert "Invalid TEST_VAR: 0 is not positive" in caplog.text
+
+    def test_invalid_negative(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _parse_positive_int("-5", "TEST_VAR", 10)
+        assert result == 10
+        assert "Invalid TEST_VAR: -5 is not positive" in caplog.text
+
+    def test_invalid_float_string(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _parse_positive_int("3.14", "TEST_VAR", 10)
+        assert result == 10
+        assert "Invalid TEST_VAR: '3.14' is not a valid integer" in caplog.text
+
+    def test_invalid_empty_string(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _parse_positive_int("", "TEST_VAR", 10)
+        assert result == 10
+
+
+class TestValidateLogLevel:
+    """Tests for _validate_log_level helper function."""
+
+    def test_valid_log_levels(self) -> None:
+        for level in VALID_LOG_LEVELS:
+            assert _validate_log_level(level) == level
+
+    def test_case_insensitive(self) -> None:
+        assert _validate_log_level("debug") == "DEBUG"
+        assert _validate_log_level("Info") == "INFO"
+        assert _validate_log_level("WARNING") == "WARNING"
+
+    def test_invalid_log_level(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _validate_log_level("INVALID")
+        assert result == "INFO"
+        assert "Invalid SENTINEL_LOG_LEVEL: 'INVALID' is not valid" in caplog.text
+
+    def test_invalid_with_custom_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _validate_log_level("INVALID", default="WARNING")
+        assert result == "WARNING"
 
 
 class TestLoadConfig:
@@ -80,3 +162,54 @@ class TestLoadConfig:
 
         assert config.poll_interval == 45
         assert config.log_level == "WARNING"
+
+    def test_invalid_poll_interval_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("SENTINEL_POLL_INTERVAL", "not-a-number")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.poll_interval == 60
+        assert "Invalid SENTINEL_POLL_INTERVAL" in caplog.text
+
+    def test_negative_poll_interval_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("SENTINEL_POLL_INTERVAL", "-10")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.poll_interval == 60
+        assert "not positive" in caplog.text
+
+    def test_zero_max_issues_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("SENTINEL_MAX_ISSUES", "0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.max_issues_per_poll == 50
+        assert "not positive" in caplog.text
+
+    def test_invalid_log_level_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("SENTINEL_LOG_LEVEL", "TRACE")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.log_level == "INFO"
+        assert "Invalid SENTINEL_LOG_LEVEL" in caplog.text
+
+    def test_log_level_normalized_to_uppercase(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SENTINEL_LOG_LEVEL", "debug")
+
+        config = load_config()
+
+        assert config.log_level == "DEBUG"
