@@ -33,6 +33,7 @@ class TestDataclasses:
         assert agent.prompt == ""
         assert agent.tools == []
         assert agent.github is None
+        assert agent.timeout_seconds is None
 
     def test_retry_config_defaults(self) -> None:
         """RetryConfig should have sensible defaults."""
@@ -124,6 +125,61 @@ orchestrations:
         assert orch.agent.github.host == "github.com"
         assert orch.agent.github.org == "test-org"
         assert orch.agent.github.repo == "test-repo"
+
+    def test_load_file_with_timeout_seconds(self, tmp_path: Path) -> None:
+        """Should load orchestration with timeout_seconds."""
+        yaml_content = """
+orchestrations:
+  - name: "timeout-orch"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      timeout_seconds: 300
+"""
+        file_path = tmp_path / "timeout.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.timeout_seconds == 300
+
+    def test_invalid_timeout_seconds_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for invalid timeout_seconds."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-timeout"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      timeout_seconds: -5
+"""
+        file_path = tmp_path / "invalid_timeout.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid timeout_seconds"):
+            load_orchestration_file(file_path)
+
+    def test_zero_timeout_seconds_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for zero timeout_seconds."""
+        yaml_content = """
+orchestrations:
+  - name: "zero-timeout"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      timeout_seconds: 0
+"""
+        file_path = tmp_path / "zero_timeout.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid timeout_seconds"):
+            load_orchestration_file(file_path)
 
     def test_load_empty_file(self, tmp_path: Path) -> None:
         """Should return empty list for empty file."""

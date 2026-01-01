@@ -6,6 +6,7 @@ from sentinel.executor import (
     AgentClient,
     AgentClientError,
     AgentExecutor,
+    AgentTimeoutError,
     ExecutionResult,
     ExecutionStatus,
 )
@@ -25,18 +26,26 @@ class MockAgentClient(AgentClient):
     def __init__(self, responses: list[str] | None = None) -> None:
         self.responses = responses or ["SUCCESS: Task completed"]
         self.call_count = 0
-        self.calls: list[tuple[str, list[str], dict[str, Any] | None]] = []
+        self.calls: list[tuple[str, list[str], dict[str, Any] | None, int | None]] = []
         self.should_error = False
         self.error_count = 0
         self.max_errors = 0
+        self.should_timeout = False
+        self.timeout_count = 0
+        self.max_timeouts = 0
 
     def run_agent(
         self,
         prompt: str,
         tools: list[str],
         context: dict[str, Any] | None = None,
+        timeout_seconds: int | None = None,
     ) -> str:
-        self.calls.append((prompt, tools, context))
+        self.calls.append((prompt, tools, context, timeout_seconds))
+
+        if self.should_timeout and self.timeout_count < self.max_timeouts:
+            self.timeout_count += 1
+            raise AgentTimeoutError(f"Agent timed out after {timeout_seconds}s")
 
         if self.should_error and self.error_count < self.max_errors:
             self.error_count += 1
@@ -487,3 +496,51 @@ class TestAgentExecutorExecute:
         result = executor.execute(issue, orch)
 
         assert result.orchestration_name == "code-review"
+
+    def test_passes_timeout_to_client(self) -> None:
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = make_orchestration()
+        orch.agent.timeout_seconds = 300
+
+        executor.execute(issue, orch)
+
+        assert client.calls[0][3] == 300
+
+    def test_handles_timeout_error(self) -> None:
+        client = MockAgentClient()
+        client.should_timeout = True
+        client.max_timeouts = 10
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = make_orchestration(max_attempts=2)
+
+        result = executor.execute(issue, orch)
+
+        assert result.succeeded is False
+        assert result.status == ExecutionStatus.ERROR
+        assert result.attempts == 2
+
+    def test_retries_on_timeout_then_succeeds(self) -> None:
+        client = MockAgentClient(responses=["SUCCESS: Done"])
+        client.should_timeout = True
+        client.max_timeouts = 1  # Timeout once, then succeed
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = make_orchestration(max_attempts=3)
+
+        result = executor.execute(issue, orch)
+
+        assert result.succeeded is True
+        assert result.attempts == 2
+
+    def test_timeout_none_by_default(self) -> None:
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = make_orchestration()
+
+        executor.execute(issue, orch)
+
+        assert client.calls[0][3] is None
