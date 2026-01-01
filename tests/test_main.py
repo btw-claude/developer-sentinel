@@ -1,8 +1,9 @@
 """Tests for main entry point module."""
 
+import logging
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from sentinel.config import Config
 from sentinel.executor import AgentClient
@@ -141,21 +142,17 @@ class TestParseArgs:
 
 
 class TestSetupLogging:
-    """Tests for setup_logging function."""
+    """Tests for setup_logging function (re-exported from sentinel.logging)."""
 
     def test_sets_log_level(self) -> None:
-        with patch("logging.basicConfig") as mock_config:
-            setup_logging("DEBUG")
-            mock_config.assert_called_once()
-            call_kwargs = mock_config.call_args[1]
-            assert call_kwargs["level"] == 10  # logging.DEBUG
+        setup_logging("DEBUG")
+        root = logging.getLogger()
+        assert root.level == logging.DEBUG
 
     def test_handles_invalid_level(self) -> None:
-        with patch("logging.basicConfig") as mock_config:
-            setup_logging("INVALID")
-            mock_config.assert_called_once()
-            call_kwargs = mock_config.call_args[1]
-            assert call_kwargs["level"] == 20  # logging.INFO (default)
+        setup_logging("INVALID")
+        root = logging.getLogger()
+        assert root.level == logging.INFO  # default
 
 
 class TestSentinelRunOnce:

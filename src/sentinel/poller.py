@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from sentinel.logging import get_logger
 from sentinel.orchestration import TriggerConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

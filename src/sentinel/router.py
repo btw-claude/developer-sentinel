@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 
+from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraIssue
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from sentinel.logging import get_logger, log_agent_summary
 from sentinel.orchestration import Orchestration, RetryConfig
 from sentinel.poller import JiraIssue
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ExecutionStatus(Enum):
@@ -232,7 +232,12 @@ class AgentExecutor:
         for attempt in range(1, max_attempts + 1):
             logger.info(
                 f"Executing agent for {issue.key} with orchestration "
-                f"'{orchestration.name}' (attempt {attempt}/{max_attempts})"
+                f"'{orchestration.name}' (attempt {attempt}/{max_attempts})",
+                extra={
+                    "issue_key": issue.key,
+                    "orchestration": orchestration.name,
+                    "attempt": attempt,
+                },
             )
 
             try:
@@ -241,8 +246,18 @@ class AgentExecutor:
                 status = self._determine_status(response, retry_config)
                 last_status = status
 
+                # Log agent summary
+                log_agent_summary(
+                    logger=logger,
+                    issue_key=issue.key,
+                    orchestration=orchestration.name,
+                    status=status.value.upper(),
+                    response=response,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                )
+
                 if status == ExecutionStatus.SUCCESS:
-                    logger.info(f"Agent execution succeeded for {issue.key} on attempt {attempt}")
                     return ExecutionResult(
                         status=ExecutionStatus.SUCCESS,
                         response=response,
@@ -251,27 +266,37 @@ class AgentExecutor:
                         orchestration_name=orchestration.name,
                     )
 
-                if status == ExecutionStatus.FAILURE:
-                    if attempt < max_attempts:
-                        logger.warning(
-                            f"Agent execution failed for {issue.key} on attempt {attempt}, "
-                            f"retrying..."
-                        )
-                    else:
-                        logger.error(
-                            f"Agent execution failed for {issue.key} after {attempt} attempts"
-                        )
+                if status == ExecutionStatus.FAILURE and attempt < max_attempts:
+                    logger.warning(
+                        f"Agent execution failed for {issue.key} on attempt {attempt}, retrying...",
+                        extra={
+                            "issue_key": issue.key,
+                            "orchestration": orchestration.name,
+                            "attempt": attempt,
+                        },
+                    )
 
             except AgentClientError as e:
                 last_response = str(e)
                 last_status = ExecutionStatus.ERROR
+                log_agent_summary(
+                    logger=logger,
+                    issue_key=issue.key,
+                    orchestration=orchestration.name,
+                    status="ERROR",
+                    response=str(e),
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                )
                 if attempt < max_attempts:
                     logger.warning(
-                        f"Agent client error for {issue.key} on attempt {attempt}: {e}, retrying..."
-                    )
-                else:
-                    logger.error(
-                        f"Agent client error for {issue.key} after {attempt} attempts: {e}"
+                        f"Agent client error for {issue.key} on attempt {attempt}: {e}, "
+                        f"retrying...",
+                        extra={
+                            "issue_key": issue.key,
+                            "orchestration": orchestration.name,
+                            "attempt": attempt,
+                        },
                     )
 
         # All attempts exhausted
