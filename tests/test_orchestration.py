@@ -40,6 +40,12 @@ class TestDataclasses:
         assert retry.max_attempts == 3
         assert "SUCCESS" in retry.success_patterns
         assert "FAILURE" in retry.failure_patterns
+        assert retry.default_status == "success"
+
+    def test_retry_config_default_status_failure(self) -> None:
+        """RetryConfig can be configured with default_status='failure'."""
+        retry = RetryConfig(default_status="failure")
+        assert retry.default_status == "failure"
 
     def test_on_complete_config_defaults(self) -> None:
         """OnCompleteConfig should have sensible defaults."""
@@ -200,6 +206,48 @@ orchestrations:
         file_path.write_text("{ invalid yaml: [")
 
         with pytest.raises(OrchestrationError, match="Invalid YAML"):
+            load_orchestration_file(file_path)
+
+    def test_load_with_default_status_failure(self, tmp_path: Path) -> None:
+        """Should load orchestration with default_status='failure'."""
+        yaml_content = """
+orchestrations:
+  - name: "strict-orch"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["review"]
+    agent:
+      prompt: "Review carefully"
+    retry:
+      max_attempts: 3
+      default_status: failure
+"""
+        file_path = tmp_path / "strict.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].retry.default_status == "failure"
+
+    def test_invalid_default_status_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for invalid default_status value."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-orch"
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test"
+    retry:
+      default_status: maybe
+"""
+        file_path = tmp_path / "invalid_status.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid default_status"):
             load_orchestration_file(file_path)
 
 
