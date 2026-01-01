@@ -174,7 +174,9 @@ class AgentExecutor:
                     return True
         return False
 
-    def _determine_status(self, response: str, retry_config: RetryConfig) -> ExecutionStatus:
+    def _determine_status(
+        self, response: str, retry_config: RetryConfig
+    ) -> ExecutionStatus:
         """Determine the execution status from the agent response.
 
         Args:
@@ -194,7 +196,9 @@ class AgentExecutor:
 
         # Default to success if no patterns matched
         # (assumes agent completed without explicit failure)
-        logger.warning("Response did not match success or failure patterns, defaulting to SUCCESS")
+        logger.warning(
+            "Response did not match success or failure patterns, defaulting to SUCCESS"
+        )
         return ExecutionStatus.SUCCESS
 
     def execute(
@@ -242,7 +246,9 @@ class AgentExecutor:
                 last_status = status
 
                 if status == ExecutionStatus.SUCCESS:
-                    logger.info(f"Agent execution succeeded for {issue.key} on attempt {attempt}")
+                    logger.info(
+                        f"Agent execution succeeded for {issue.key} on attempt {attempt}"
+                    )
                     return ExecutionResult(
                         status=ExecutionStatus.SUCCESS,
                         response=response,
@@ -267,7 +273,8 @@ class AgentExecutor:
                 last_status = ExecutionStatus.ERROR
                 if attempt < max_attempts:
                     logger.warning(
-                        f"Agent client error for {issue.key} on attempt {attempt}: {e}, retrying..."
+                        f"Agent client error for {issue.key} on attempt {attempt}: {e}, "
+                        f"retrying..."
                     )
                 else:
                     logger.error(
