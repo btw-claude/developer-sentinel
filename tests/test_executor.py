@@ -221,9 +221,7 @@ class TestAgentExecutorBuildPrompt:
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue()
-        orch = make_orchestration(
-            github=GitHubContext(org="myorg", repo="myrepo")
-        )
+        orch = make_orchestration(github=GitHubContext(org="myorg", repo="myrepo"))
 
         prompt = executor.build_prompt(issue, orch)
 
@@ -385,9 +383,7 @@ class TestAgentExecutorExecute:
         assert client.call_count == 3
 
     def test_stops_retrying_after_success(self) -> None:
-        client = MockAgentClient(
-            responses=["FAILURE: First", "SUCCESS: Done", "Should not reach"]
-        )
+        client = MockAgentClient(responses=["FAILURE: First", "SUCCESS: Done", "Should not reach"])
         executor = AgentExecutor(client)
         issue = make_issue()
         orch = make_orchestration(max_attempts=3)
