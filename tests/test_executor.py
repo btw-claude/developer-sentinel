@@ -266,11 +266,44 @@ class TestAgentExecutorMatchesPattern:
 
         assert executor._matches_pattern("Done!", ["SUCCESS", "DONE"]) is True
 
-    def test_matches_regex_pattern(self) -> None:
+    def test_matches_regex_pattern_with_prefix(self) -> None:
+        """Regex patterns require explicit 'regex:' prefix."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
 
-        assert executor._matches_pattern("error code 123", ["error.*\\d+"]) is True
+        # With regex: prefix, pattern is treated as regex
+        assert executor._matches_pattern("error code 123", ["regex:error.*\\d+"]) is True
+
+    def test_regex_pattern_anchors(self) -> None:
+        """Test regex patterns with anchors."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+
+        # Start anchor
+        assert executor._matches_pattern("Task completed", ["regex:^Task"]) is True
+        assert executor._matches_pattern("My Task completed", ["regex:^Task"]) is False
+
+        # End anchor
+        assert executor._matches_pattern("Task completed", ["regex:completed$"]) is True
+        assert executor._matches_pattern("Task completed!", ["regex:completed$"]) is False
+
+    def test_pattern_without_prefix_is_substring(self) -> None:
+        """Patterns without 'regex:' prefix are treated as substrings."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+
+        # Without prefix, '*' is matched literally as a substring
+        assert executor._matches_pattern("rating: 5*", ["5*"]) is True
+        # This would NOT match as regex since there's no 'regex:' prefix
+        assert executor._matches_pattern("555", ["5*"]) is False
+
+    def test_invalid_regex_falls_back_to_substring(self) -> None:
+        """Invalid regex patterns fall back to substring matching."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+
+        # Invalid regex (unbalanced bracket) falls back to substring
+        assert executor._matches_pattern("error [unclosed", ["regex:[unclosed"]) is True
 
 
 class TestAgentExecutorDetermineStatus:

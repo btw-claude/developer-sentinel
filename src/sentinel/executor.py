@@ -149,27 +149,34 @@ class AgentExecutor:
     def _matches_pattern(self, response: str, patterns: list[str]) -> bool:
         """Check if the response matches any of the patterns.
 
+        Patterns can be:
+        - Simple substring matches (default): "SUCCESS", "error"
+        - Regex patterns (with prefix): "regex:error.*\\d+", "regex:^Task completed"
+
+        The "regex:" prefix explicitly indicates a regex pattern. Without
+        the prefix, patterns are matched as case-insensitive substrings.
+
         Args:
             response: The agent's response text.
-            patterns: List of patterns to match (case-insensitive).
+            patterns: List of patterns to match. Use "regex:" prefix for regex.
 
         Returns:
             True if any pattern matches.
         """
         response_lower = response.lower()
         for pattern in patterns:
-            # Support simple patterns and basic regex
-            if pattern.startswith("^") or pattern.endswith("$") or "*" in pattern:
-                # Treat as regex
+            if pattern.startswith("regex:"):
+                # Explicit regex pattern
+                regex_pattern = pattern[6:]  # Strip "regex:" prefix
                 try:
-                    if re.search(pattern, response, re.IGNORECASE):
+                    if re.search(regex_pattern, response, re.IGNORECASE):
                         return True
                 except re.error:
                     # If invalid regex, fall back to substring match
-                    if pattern.lower() in response_lower:
+                    if regex_pattern.lower() in response_lower:
                         return True
             else:
-                # Simple substring match
+                # Simple substring match (case-insensitive)
                 if pattern.lower() in response_lower:
                     return True
         return False
