@@ -186,7 +186,7 @@ class AgentExecutor:
 
         Args:
             response: The agent's response text.
-            retry_config: Retry configuration with success/failure patterns.
+            retry_config: Retry configuration with success/failure patterns and default_status.
 
         Returns:
             The determined execution status.
@@ -199,10 +199,13 @@ class AgentExecutor:
         if self._matches_pattern(response, retry_config.failure_patterns):
             return ExecutionStatus.FAILURE
 
-        # Default to success if no patterns matched
-        # (assumes agent completed without explicit failure)
-        logger.warning("Response did not match success or failure patterns, defaulting to SUCCESS")
-        return ExecutionStatus.SUCCESS
+        # Use configured default status when no patterns match
+        default = retry_config.default_status.upper()
+        logger.warning(
+            "Response did not match success or failure patterns, using default_status: %s",
+            default,
+        )
+        return ExecutionStatus.SUCCESS if default == "SUCCESS" else ExecutionStatus.FAILURE
 
     def execute(
         self,

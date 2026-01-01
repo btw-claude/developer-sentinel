@@ -39,13 +39,22 @@ class AgentConfig:
 
 @dataclass
 class RetryConfig:
-    """Configuration for retry logic based on agent response patterns."""
+    """Configuration for retry logic based on agent response patterns.
+
+    Attributes:
+        max_attempts: Maximum number of retry attempts.
+        success_patterns: Patterns indicating success (substring or "regex:..." prefix).
+        failure_patterns: Patterns indicating failure (substring or "regex:..." prefix).
+        default_status: Status to use when no patterns match ("success" or "failure").
+            Defaults to "success" for backwards compatibility.
+    """
 
     max_attempts: int = 3
     success_patterns: list[str] = field(
         default_factory=lambda: ["SUCCESS", "completed successfully"]
     )
     failure_patterns: list[str] = field(default_factory=lambda: ["FAILURE", "failed", "error"])
+    default_status: Literal["success", "failure"] = "success"
 
 
 @dataclass
@@ -115,10 +124,19 @@ def _parse_retry(data: dict[str, Any] | None) -> RetryConfig:
     """Parse retry configuration from dict."""
     if not data:
         return RetryConfig()
+
+    # Validate default_status if provided
+    default_status = data.get("default_status", "success")
+    if default_status not in ("success", "failure"):
+        raise OrchestrationError(
+            f"Invalid default_status '{default_status}': must be 'success' or 'failure'"
+        )
+
     return RetryConfig(
         max_attempts=data.get("max_attempts", 3),
         success_patterns=data.get("success_patterns", ["SUCCESS", "completed successfully"]),
         failure_patterns=data.get("failure_patterns", ["FAILURE", "failed", "error"]),
+        default_status=default_status,
     )
 
 

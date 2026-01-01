@@ -347,6 +347,7 @@ class TestAgentExecutorDetermineStatus:
         assert status == ExecutionStatus.SUCCESS
 
     def test_defaults_to_success_when_no_match(self) -> None:
+        """Default behavior: returns SUCCESS when no patterns match."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         retry_config = RetryConfig(
@@ -355,6 +356,49 @@ class TestAgentExecutorDetermineStatus:
         )
 
         status = executor._determine_status("Task done", retry_config)
+
+        assert status == ExecutionStatus.SUCCESS
+
+    def test_default_status_success_explicit(self) -> None:
+        """Explicitly configured default_status='success' returns SUCCESS."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(
+            success_patterns=["SUCCESS"],
+            failure_patterns=["FAILURE"],
+            default_status="success",
+        )
+
+        status = executor._determine_status("Task done", retry_config)
+
+        assert status == ExecutionStatus.SUCCESS
+
+    def test_default_status_failure(self) -> None:
+        """Configured default_status='failure' returns FAILURE when no patterns match."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(
+            success_patterns=["SUCCESS"],
+            failure_patterns=["FAILURE"],
+            default_status="failure",
+        )
+
+        status = executor._determine_status("Task done", retry_config)
+
+        assert status == ExecutionStatus.FAILURE
+
+    def test_default_status_only_used_when_no_match(self) -> None:
+        """default_status is ignored when patterns actually match."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        # Even with default_status='failure', explicit success pattern wins
+        retry_config = RetryConfig(
+            success_patterns=["SUCCESS"],
+            failure_patterns=["FAILURE"],
+            default_status="failure",
+        )
+
+        status = executor._determine_status("Task SUCCESS", retry_config)
 
         assert status == ExecutionStatus.SUCCESS
 
