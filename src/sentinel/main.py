@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -198,13 +199,16 @@ def main(args: list[str] | None = None) -> int:
     # Load configuration
     config = load_config(parsed.env_file)
 
-    # Apply CLI overrides
+    # Apply CLI overrides (Config is frozen, so we use replace())
+    overrides: dict[str, Any] = {}
     if parsed.config_dir:
-        config.orchestrations_dir = parsed.config_dir
+        overrides["orchestrations_dir"] = parsed.config_dir
     if parsed.interval:
-        config.poll_interval = parsed.interval
+        overrides["poll_interval"] = parsed.interval
     if parsed.log_level:
-        config.log_level = parsed.log_level
+        overrides["log_level"] = parsed.log_level
+    if overrides:
+        config = replace(config, **overrides)
 
     # Setup logging
     setup_logging(config.log_level)
