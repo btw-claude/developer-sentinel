@@ -160,7 +160,7 @@ def load_orchestration_file(file_path: Path) -> list[Orchestration]:
         OrchestrationError: If the file is invalid.
     """
     try:
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as e:
         raise OrchestrationError(f"Invalid YAML in {file_path}: {e}") from e
