@@ -14,6 +14,7 @@ from typing import Any
 from sentinel.config import Config, load_config
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
 from sentinel.logging import get_logger, setup_logging
+from sentinel.mcp_clients import ClaudeMcpAgentClient, JiraMcpClient, JiraMcpTagClient
 from sentinel.orchestration import Orchestration, load_orchestrations
 from sentinel.poller import JiraClient, JiraPoller
 from sentinel.router import Router
@@ -243,12 +244,29 @@ def main(args: list[str] | None = None) -> int:
 
     logger.info(f"Loaded {len(orchestrations)} orchestrations")
 
-    # For now, we don't have real client implementations
-    # This will be addressed in future tickets (DS-11)
-    logger.error(
-        "Real client implementations not yet available. Use --help to see available options."
+    # Initialize MCP-based clients
+    jira_client = JiraMcpClient()
+    agent_client = ClaudeMcpAgentClient()
+    tag_client = JiraMcpTagClient()
+
+    # Create and run Sentinel
+    sentinel = Sentinel(
+        config=config,
+        orchestrations=orchestrations,
+        jira_client=jira_client,
+        agent_client=agent_client,
+        tag_client=tag_client,
     )
-    return 1
+
+    if parsed.once:
+        logger.info("Running single polling cycle (--once mode)")
+        results = sentinel.run_once()
+        success_count = sum(1 for r in results if r.succeeded)
+        logger.info(f"Completed: {success_count}/{len(results)} successful")
+        return 0 if success_count == len(results) or not results else 1
+
+    sentinel.run()
+    return 0
 
 
 if __name__ == "__main__":
