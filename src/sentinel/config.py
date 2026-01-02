@@ -25,10 +25,6 @@ class Config:
     poll_interval: int = 60  # seconds
     max_issues_per_poll: int = 50
 
-    # Jira configuration
-    jira_url: str = ""
-    jira_api_token: str = ""
-
     # Logging
     log_level: str = "INFO"
     log_json: bool = False
@@ -151,8 +147,6 @@ def load_config(env_file: Path | None = None) -> Config:
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
-        jira_url=os.getenv("JIRA_URL", ""),
-        jira_api_token=os.getenv("JIRA_API_TOKEN", ""),
         log_level=log_level,
         log_json=log_json,
         orchestrations_dir=Path(os.getenv("SENTINEL_ORCHESTRATIONS_DIR", "./orchestrations")),

@@ -23,8 +23,6 @@ class TestConfig:
         config = Config()
         assert config.poll_interval == 60
         assert config.max_issues_per_poll == 50
-        assert config.jira_url == ""
-        assert config.jira_api_token == ""
         assert config.log_level == "INFO"
         assert config.log_json is False
         assert config.orchestrations_dir == Path("./orchestrations")
@@ -33,12 +31,10 @@ class TestConfig:
         config = Config(
             poll_interval=120,
             max_issues_per_poll=100,
-            jira_url="https://jira.example.com",
             log_level="DEBUG",
         )
         assert config.poll_interval == 120
         assert config.max_issues_per_poll == 100
-        assert config.jira_url == "https://jira.example.com"
         assert config.log_level == "DEBUG"
 
     def test_frozen_immutable(self) -> None:
@@ -46,12 +42,6 @@ class TestConfig:
         config = Config()
         with pytest.raises(FrozenInstanceError):
             config.poll_interval = 120  # type: ignore[misc]
-
-    def test_frozen_jira_url_immutable(self) -> None:
-        """All fields should be immutable."""
-        config = Config(jira_url="https://jira.example.com")
-        with pytest.raises(FrozenInstanceError):
-            config.jira_url = "https://other.com"  # type: ignore[misc]
 
 
 class TestParsePositiveInt:
@@ -123,7 +113,6 @@ class TestLoadConfig:
         # Clear any existing env vars
         monkeypatch.delenv("SENTINEL_POLL_INTERVAL", raising=False)
         monkeypatch.delenv("SENTINEL_MAX_ISSUES", raising=False)
-        monkeypatch.delenv("JIRA_URL", raising=False)
         monkeypatch.delenv("SENTINEL_LOG_LEVEL", raising=False)
 
         config = load_config()
@@ -135,8 +124,6 @@ class TestLoadConfig:
     def test_loads_from_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SENTINEL_POLL_INTERVAL", "30")
         monkeypatch.setenv("SENTINEL_MAX_ISSUES", "25")
-        monkeypatch.setenv("JIRA_URL", "https://jira.test.com")
-        monkeypatch.setenv("JIRA_API_TOKEN", "secret123")
         monkeypatch.setenv("SENTINEL_LOG_LEVEL", "DEBUG")
         monkeypatch.setenv("SENTINEL_ORCHESTRATIONS_DIR", "/custom/path")
 
@@ -144,8 +131,6 @@ class TestLoadConfig:
 
         assert config.poll_interval == 30
         assert config.max_issues_per_poll == 25
-        assert config.jira_url == "https://jira.test.com"
-        assert config.jira_api_token == "secret123"
         assert config.log_level == "DEBUG"
         assert config.orchestrations_dir == Path("/custom/path")
 
