@@ -13,12 +13,6 @@ from dotenv import load_dotenv
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
 
-class ConfigurationError(Exception):
-    """Raised when configuration validation fails."""
-
-    pass
-
-
 @dataclass(frozen=True)
 class Config:
     """Application configuration loaded from environment.
