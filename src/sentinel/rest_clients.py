@@ -2,11 +2,18 @@
 
 These clients use direct HTTP calls to the Jira REST API for fast,
 cost-effective polling and label operations without Claude invocations.
+
+Implements exponential backoff with jitter for rate limiting per:
+https://developer.atlassian.com/cloud/jira/platform/rate-limiting/
 """
 
 from __future__ import annotations
 
-from typing import Any
+import random
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, TypeVar
 
 import httpx
 
@@ -19,6 +26,154 @@ logger = get_logger(__name__)
 # Default timeout for HTTP requests (connect, read, write, pool)
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, read=30.0)
 
+# Type variable for generic retry function
+T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class RetryConfig:
+    """Configuration for retry behavior with exponential backoff.
+
+    Attributes:
+        max_retries: Maximum number of retry attempts (default: 4).
+        initial_delay: Initial delay in seconds before first retry (default: 1.0).
+        max_delay: Maximum delay in seconds between retries (default: 30.0).
+        jitter_min: Minimum jitter multiplier (default: 0.7).
+        jitter_max: Maximum jitter multiplier (default: 1.3).
+    """
+
+    max_retries: int = 4
+    initial_delay: float = 1.0
+    max_delay: float = 30.0
+    jitter_min: float = 0.7
+    jitter_max: float = 1.3
+
+
+# Default retry configuration per Atlassian recommendations
+DEFAULT_RETRY_CONFIG = RetryConfig()
+
+
+class RateLimitError(Exception):
+    """Raised when rate limit is exceeded and all retries are exhausted."""
+
+    pass
+
+
+def _calculate_backoff_delay(
+    attempt: int,
+    config: RetryConfig,
+    retry_after: float | None = None,
+) -> float:
+    """Calculate the delay before the next retry attempt.
+
+    Args:
+        attempt: Current retry attempt number (0-indexed).
+        config: Retry configuration.
+        retry_after: Optional Retry-After header value in seconds.
+
+    Returns:
+        Delay in seconds before next retry.
+    """
+    # Use Retry-After header if provided
+    if retry_after is not None:
+        base_delay = retry_after
+    else:
+        # Exponential backoff: initial_delay * 2^attempt
+        base_delay = min(config.initial_delay * (2**attempt), config.max_delay)
+
+    # Apply jitter
+    jitter = random.uniform(config.jitter_min, config.jitter_max)
+    return base_delay * jitter
+
+
+def _check_rate_limit_warning(response: httpx.Response) -> None:
+    """Log a warning if rate limit is near exhaustion.
+
+    Args:
+        response: HTTP response to check for rate limit headers.
+    """
+    near_limit = response.headers.get("X-RateLimit-NearLimit", "").lower()
+    if near_limit == "true":
+        remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
+        reset_time = response.headers.get("X-RateLimit-Reset", "unknown")
+        logger.warning(
+            f"Jira rate limit near exhaustion. Remaining: {remaining}, Reset: {reset_time}"
+        )
+
+
+def _get_retry_after(response: httpx.Response) -> float | None:
+    """Extract Retry-After value from response headers.
+
+    Args:
+        response: HTTP response to check.
+
+    Returns:
+        Retry-After value in seconds, or None if not present.
+    """
+    retry_after = response.headers.get("Retry-After")
+    if retry_after is not None:
+        try:
+            return float(retry_after)
+        except ValueError:
+            logger.warning(f"Invalid Retry-After header value: {retry_after}")
+    return None
+
+
+def _execute_with_retry(
+    operation: Callable[[], T],
+    config: RetryConfig = DEFAULT_RETRY_CONFIG,
+    error_class: type[Exception] = Exception,
+) -> T:
+    """Execute an operation with retry logic for rate limiting.
+
+    Args:
+        operation: Callable that performs the HTTP operation and returns a result.
+                  Should raise httpx.HTTPStatusError on 429 responses.
+        config: Retry configuration.
+        error_class: Exception class to raise on final failure.
+
+    Returns:
+        Result from the operation.
+
+    Raises:
+        error_class: If all retries are exhausted or a non-retryable error occurs.
+    """
+    last_exception: Exception | None = None
+
+    for attempt in range(config.max_retries + 1):
+        try:
+            return operation()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code != 429:
+                # Not a rate limit error, don't retry
+                raise
+
+            last_exception = e
+
+            if attempt >= config.max_retries:
+                # All retries exhausted
+                reason = e.response.headers.get("RateLimit-Reason", "unknown")
+                raise error_class(
+                    f"Rate limit exceeded after {config.max_retries} retries. Reason: {reason}"
+                ) from e
+
+            # Calculate delay and wait
+            retry_after = _get_retry_after(e.response)
+            delay = _calculate_backoff_delay(attempt, config, retry_after)
+
+            reason = e.response.headers.get("RateLimit-Reason", "unknown")
+            logger.warning(
+                f"Rate limited (attempt {attempt + 1}/{config.max_retries + 1}). "
+                f"Reason: {reason}. Retrying in {delay:.2f}s"
+            )
+
+            time.sleep(delay)
+
+    # Should not reach here, but satisfy type checker
+    if last_exception:
+        raise error_class(f"Retry failed: {last_exception}") from last_exception
+    raise error_class("Retry failed with no exception")
+
 
 class JiraRestClient(JiraClient):
     """Jira client that uses direct REST API calls for searching issues."""
@@ -29,6 +184,7 @@ class JiraRestClient(JiraClient):
         email: str,
         api_token: str,
         timeout: httpx.Timeout | None = None,
+        retry_config: RetryConfig | None = None,
     ) -> None:
         """Initialize the Jira REST client.
 
@@ -37,10 +193,12 @@ class JiraRestClient(JiraClient):
             email: User email for authentication.
             api_token: API token for authentication.
             timeout: Optional custom timeout configuration.
+            retry_config: Optional retry configuration for rate limiting.
         """
         self.base_url = base_url.rstrip("/")
         self.auth = (email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
+        self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
 
     def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
         """Search for issues using JQL via REST API.
@@ -53,9 +211,11 @@ class JiraRestClient(JiraClient):
             List of raw issue data from Jira API.
 
         Raises:
-            JiraClientError: If the search fails.
+            JiraClientError: If the search fails or rate limit is exhausted.
         """
-        url = f"{self.base_url}/rest/api/3/search"
+        # Use the new /search/jql endpoint (the old /search was deprecated Aug 2025)
+        # See: https://developer.atlassian.com/changelog/#CHANGE-2046
+        url = f"{self.base_url}/rest/api/3/search/jql"
         params: dict[str, str | int] = {
             "jql": jql,
             "maxResults": max_results,
@@ -64,15 +224,18 @@ class JiraRestClient(JiraClient):
 
         logger.debug(f"Searching Jira: {jql}")
 
-        try:
+        def do_search() -> list[dict[str, Any]]:
             with httpx.Client(auth=self.auth, timeout=self.timeout) as client:
                 response = client.get(url, params=params)
+                _check_rate_limit_warning(response)
                 response.raise_for_status()
                 data: dict[str, Any] = response.json()
                 issues: list[dict[str, Any]] = data.get("issues", [])
                 logger.info(f"JQL search returned {len(issues)} issues")
                 return issues
 
+        try:
+            return _execute_with_retry(do_search, self.retry_config, JiraClientError)
         except httpx.TimeoutException as e:
             raise JiraClientError(f"Jira search timed out: {e}") from e
         except httpx.HTTPStatusError as e:
@@ -97,6 +260,7 @@ class JiraRestTagClient(JiraTagClient):
         email: str,
         api_token: str,
         timeout: httpx.Timeout | None = None,
+        retry_config: RetryConfig | None = None,
     ) -> None:
         """Initialize the Jira REST tag client.
 
@@ -105,10 +269,12 @@ class JiraRestTagClient(JiraTagClient):
             email: User email for authentication.
             api_token: API token for authentication.
             timeout: Optional custom timeout configuration.
+            retry_config: Optional retry configuration for rate limiting.
         """
         self.base_url = base_url.rstrip("/")
         self.auth = (email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
+        self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
 
     def _get_current_labels(self, issue_key: str) -> list[str]:
         """Get current labels for an issue.
@@ -125,14 +291,17 @@ class JiraRestTagClient(JiraTagClient):
         url = f"{self.base_url}/rest/api/3/issue/{issue_key}"
         params = {"fields": "labels"}
 
-        try:
+        def do_get() -> list[str]:
             with httpx.Client(auth=self.auth, timeout=self.timeout) as client:
                 response = client.get(url, params=params)
+                _check_rate_limit_warning(response)
                 response.raise_for_status()
                 data: dict[str, Any] = response.json()
                 labels: list[str] = data.get("fields", {}).get("labels", [])
                 return labels
 
+        try:
+            return _execute_with_retry(do_get, self.retry_config, JiraTagClientError)
         except httpx.TimeoutException as e:
             raise JiraTagClientError(f"Get labels timed out: {e}") from e
         except httpx.HTTPStatusError as e:
@@ -155,11 +324,14 @@ class JiraRestTagClient(JiraTagClient):
         url = f"{self.base_url}/rest/api/3/issue/{issue_key}"
         payload = {"fields": {"labels": labels}}
 
-        try:
+        def do_update() -> None:
             with httpx.Client(auth=self.auth, timeout=self.timeout) as client:
                 response = client.put(url, json=payload)
+                _check_rate_limit_warning(response)
                 response.raise_for_status()
 
+        try:
+            _execute_with_retry(do_update, self.retry_config, JiraTagClientError)
         except httpx.TimeoutException as e:
             raise JiraTagClientError(f"Update labels timed out: {e}") from e
         except httpx.HTTPStatusError as e:

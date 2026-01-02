@@ -63,6 +63,8 @@ Configure these for direct REST API access, which is faster than MCP-based polli
 
 *All three Jira variables must be set together. If not configured, falls back to MCP-based Jira access via Claude Code CLI.
 
+**Rate Limiting**: The Jira REST client automatically handles rate limiting with exponential backoff and jitter per [Atlassian's recommendations](https://developer.atlassian.com/cloud/jira/platform/rate-limiting/). When a 429 (Too Many Requests) response is received, the client retries up to 4 times with increasing delays (max 30 seconds).
+
 #### Sentinel Configuration
 
 | Variable | Required | Default | Description |
