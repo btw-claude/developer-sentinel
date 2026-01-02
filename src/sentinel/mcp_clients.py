@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,35 @@ from sentinel.tag_manager import JiraTagClient, JiraTagClientError
 
 logger = get_logger(__name__)
 
+# Module-level shutdown event for interrupting Claude subprocesses
+_shutdown_event = threading.Event()
+
+
+def request_shutdown() -> None:
+    """Request shutdown of any running Claude subprocesses.
+
+    This sets a flag that causes _run_claude to terminate its subprocess
+    and raise an exception.
+    """
+    logger.debug("Shutdown requested for Claude subprocesses")
+    _shutdown_event.set()
+
+
+def reset_shutdown() -> None:
+    """Reset the shutdown flag. Used for testing."""
+    _shutdown_event.clear()
+
+
+def is_shutdown_requested() -> bool:
+    """Check if shutdown has been requested."""
+    return _shutdown_event.is_set()
+
+
+class ClaudeProcessInterruptedError(Exception):
+    """Raised when a Claude subprocess is interrupted by shutdown request."""
+
+    pass
+
 
 def _run_claude(
     prompt: str,
@@ -28,6 +59,8 @@ def _run_claude(
     model: str | None = None,
 ) -> str:
     """Run a prompt through Claude Code CLI.
+
+    Uses Popen with polling to allow for graceful shutdown on Ctrl-C.
 
     Args:
         prompt: The prompt to send to Claude.
@@ -42,6 +75,7 @@ def _run_claude(
     Raises:
         subprocess.TimeoutExpired: If the command times out.
         subprocess.CalledProcessError: If the command fails.
+        ClaudeProcessInterruptedError: If shutdown was requested during execution.
     """
     cmd = ["claude", "--print", "--output-format", "text"]
 
@@ -57,16 +91,72 @@ def _run_claude(
 
     logger.debug(f"Running claude command with prompt length {len(prompt)}, cwd={cwd}")
 
-    result = subprocess.run(
+    # Use Popen with start_new_session to isolate from parent's signals
+    # This prevents Ctrl-C from being sent directly to the subprocess
+    process = subprocess.Popen(
         cmd,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=timeout_seconds,
-        check=True,
         cwd=cwd,
+        start_new_session=True,
     )
 
-    return result.stdout.strip()
+    start_time = time.time()
+    poll_interval = 0.5  # Check for shutdown every 500ms
+
+    try:
+        while True:
+            # Check if shutdown was requested
+            if _shutdown_event.is_set():
+                logger.info("Shutdown requested, terminating Claude subprocess")
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logger.warning("Claude subprocess did not terminate, killing")
+                    process.kill()
+                    process.wait()
+                raise ClaudeProcessInterruptedError(
+                    "Claude subprocess interrupted by shutdown request"
+                )
+
+            # Check if process completed
+            return_code = process.poll()
+            if return_code is not None:
+                stdout, stderr = process.communicate()
+                if return_code != 0:
+                    raise subprocess.CalledProcessError(return_code, cmd, stdout, stderr)
+                return stdout.strip()
+
+            # Check for timeout
+            if timeout_seconds is not None:
+                elapsed = time.time() - start_time
+                if elapsed >= timeout_seconds:
+                    logger.warning(f"Claude subprocess timed out after {timeout_seconds}s")
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    raise subprocess.TimeoutExpired(cmd, timeout_seconds)
+
+            # Wait before polling again
+            time.sleep(poll_interval)
+
+    except ClaudeProcessInterruptedError:
+        raise
+    except Exception:
+        # Ensure process is cleaned up on any error
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        raise
 
 
 class JiraMcpClient(JiraClient):
@@ -121,6 +211,8 @@ Do not include any explanation, just the JSON array."""
             logger.info(f"JQL search returned {len(issues)} issues")
             return issues
 
+        except ClaudeProcessInterruptedError:
+            raise  # Let shutdown interruption propagate
         except subprocess.TimeoutExpired as e:
             raise JiraClientError(f"Jira search timed out: {e}") from e
         except subprocess.CalledProcessError as e:
@@ -163,6 +255,8 @@ If there's an error, respond with: ERROR: <description>"""
 
             logger.info(f"Added label '{label}' to {issue_key}")
 
+        except ClaudeProcessInterruptedError:
+            raise  # Let shutdown interruption propagate
         except subprocess.TimeoutExpired as e:
             raise JiraTagClientError(f"Add label timed out: {e}") from e
         except subprocess.CalledProcessError as e:
@@ -201,6 +295,8 @@ If there's an error, respond with: ERROR: <description>"""
 
             logger.info(f"Removed label '{label}' from {issue_key}")
 
+        except ClaudeProcessInterruptedError:
+            raise  # Let shutdown interruption propagate
         except subprocess.TimeoutExpired as e:
             raise JiraTagClientError(f"Remove label timed out: {e}") from e
         except subprocess.CalledProcessError as e:
@@ -313,6 +409,8 @@ class ClaudeMcpAgentClient(AgentClient):
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
 
+        except ClaudeProcessInterruptedError:
+            raise  # Let shutdown interruption propagate
         except subprocess.TimeoutExpired as e:
             raise AgentTimeoutError(f"Agent execution timed out after {timeout_seconds}s") from e
         except subprocess.CalledProcessError as e:

@@ -266,6 +266,69 @@ class TagManager:
 
         return update_result
 
+    def apply_failure_tags(
+        self,
+        issue_key: str,
+        orchestration: Orchestration,
+    ) -> TagUpdateResult:
+        """Apply failure tags to an issue when processing is interrupted.
+
+        This is used when a process is terminated (e.g., by Ctrl-C) and we need
+        to mark the issue as failed. Removes in-progress tag and adds failure tag.
+
+        Args:
+            issue_key: The Jira issue key (e.g., "PROJ-123").
+            orchestration: The orchestration configuration.
+
+        Returns:
+            TagUpdateResult with details of what was changed.
+        """
+        added_tags: list[str] = []
+        removed_tags: list[str] = []
+        errors: list[str] = []
+
+        # Remove in-progress tag if configured
+        on_start = orchestration.on_start
+        if on_start.add_tag:
+            try:
+                self.client.remove_label(issue_key, on_start.add_tag)
+                removed_tags.append(on_start.add_tag)
+                logger.info(f"Removed in-progress tag '{on_start.add_tag}' from {issue_key}")
+            except JiraTagClientError as e:
+                error_msg = (
+                    f"Failed to remove in-progress tag '{on_start.add_tag}' from {issue_key}: {e}"
+                )
+                errors.append(error_msg)
+                logger.error(error_msg)
+
+        # Add failure tag if configured
+        on_failure = orchestration.on_failure
+        if on_failure.add_tag:
+            try:
+                self.client.add_label(issue_key, on_failure.add_tag)
+                added_tags.append(on_failure.add_tag)
+                logger.info(f"Added failure tag '{on_failure.add_tag}' to {issue_key}")
+            except JiraTagClientError as e:
+                error_msg = f"Failed to add failure tag '{on_failure.add_tag}' to {issue_key}: {e}"
+                errors.append(error_msg)
+                logger.error(error_msg)
+
+        result = TagUpdateResult(
+            issue_key=issue_key,
+            added_tags=added_tags,
+            removed_tags=removed_tags,
+            errors=errors,
+        )
+
+        if result.success:
+            logger.info(
+                f"Failure tags applied for {issue_key}: added={added_tags}, removed={removed_tags}"
+            )
+        else:
+            logger.warning(f"Failure tag update had errors for {issue_key}: {errors}")
+
+        return result
+
     def update_tags_batch(
         self,
         results: list[tuple[ExecutionResult, Orchestration]],

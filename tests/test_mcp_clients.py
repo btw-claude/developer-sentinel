@@ -12,12 +12,31 @@ import pytest
 from sentinel.executor import AgentClientError, AgentTimeoutError
 from sentinel.mcp_clients import (
     ClaudeMcpAgentClient,
+    ClaudeProcessInterruptedError,
     JiraMcpClient,
     JiraMcpTagClient,
     _run_claude,
+    request_shutdown,
+    reset_shutdown,
 )
 from sentinel.poller import JiraClientError
 from sentinel.tag_manager import JiraTagClientError
+
+
+@pytest.fixture(autouse=True)
+def reset_shutdown_state() -> None:
+    """Reset the shutdown state before each test."""
+    reset_shutdown()
+
+
+def create_mock_process(stdout: str = "output", returncode: int = 0) -> MagicMock:
+    """Create a mock Popen process."""
+    mock_process = MagicMock()
+    mock_process.poll.return_value = returncode  # Process completed
+    mock_process.communicate.return_value = (stdout, "")
+    mock_process.stdout = stdout
+    mock_process.stderr = ""
+    return mock_process
 
 
 class TestRunClaude:
@@ -25,96 +44,110 @@ class TestRunClaude:
 
     def test_runs_claude_command(self) -> None:
         """Should run claude CLI with correct arguments."""
-        mock_result = MagicMock()
-        mock_result.stdout = "test output"
+        mock_process = create_mock_process("test output")
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("subprocess.Popen", return_value=mock_process) as mock_popen:
             result = _run_claude("test prompt")
 
-        mock_run.assert_called_once_with(
-            ["claude", "--print", "--output-format", "text", "-p", "test prompt"],
-            capture_output=True,
-            text=True,
-            timeout=None,
-            check=True,
-            cwd=None,
-        )
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args
+        cmd = call_args[0][0]
+        assert cmd == ["claude", "--print", "--output-format", "text", "-p", "test prompt"]
+        assert call_args[1]["start_new_session"] is True
         assert result == "test output"
 
     def test_strips_whitespace(self) -> None:
         """Should strip whitespace from output."""
-        mock_result = MagicMock()
-        mock_result.stdout = "  output with spaces  \n"
+        mock_process = create_mock_process("  output with spaces  \n")
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.Popen", return_value=mock_process):
             result = _run_claude("test")
 
         assert result == "output with spaces"
 
     def test_respects_timeout(self) -> None:
-        """Should pass timeout to subprocess."""
-        mock_result = MagicMock()
-        mock_result.stdout = "output"
+        """Should handle timeout correctly."""
+        mock_process = create_mock_process("output")
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            _run_claude("test", timeout_seconds=120)
+        with patch("subprocess.Popen", return_value=mock_process):
+            result = _run_claude("test", timeout_seconds=120)
 
-        call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["timeout"] == 120
+        assert result == "output"
 
     def test_raises_on_timeout(self) -> None:
-        """Should raise TimeoutExpired on timeout."""
+        """Should raise TimeoutExpired when process exceeds timeout."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None  # Process still running
+        mock_process.terminate.return_value = None
+        mock_process.wait.return_value = None
+
         with (
-            patch("subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 60)),
+            patch("subprocess.Popen", return_value=mock_process),
+            patch("time.time", side_effect=[0, 0, 61]),  # Start, first check, timeout
+            patch("time.sleep"),
             pytest.raises(subprocess.TimeoutExpired),
         ):
             _run_claude("test", timeout_seconds=60)
 
     def test_raises_on_error(self) -> None:
         """Should raise CalledProcessError on command failure."""
+        mock_process = create_mock_process("", returncode=1)
+
         with (
-            patch(
-                "subprocess.run",
-                side_effect=subprocess.CalledProcessError(1, "cmd", stderr="error"),
-            ),
+            patch("subprocess.Popen", return_value=mock_process),
             pytest.raises(subprocess.CalledProcessError),
         ):
             _run_claude("test")
 
     def test_includes_allowed_tools(self) -> None:
         """Should include --allowedTools flag when tools specified."""
-        mock_result = MagicMock()
-        mock_result.stdout = "output"
+        mock_process = create_mock_process("output")
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("subprocess.Popen", return_value=mock_process) as mock_popen:
             _run_claude("test", allowed_tools=["mcp__jira-agent__search_issues"])
 
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         assert "--allowedTools" in cmd
         assert "mcp__jira-agent__search_issues" in cmd
 
     def test_multiple_allowed_tools_joined(self) -> None:
         """Should join multiple allowed tools with comma."""
-        mock_result = MagicMock()
-        mock_result.stdout = "output"
+        mock_process = create_mock_process("output")
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("subprocess.Popen", return_value=mock_process) as mock_popen:
             _run_claude("test", allowed_tools=["tool1", "tool2", "tool3"])
 
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         idx = cmd.index("--allowedTools")
         assert cmd[idx + 1] == "tool1,tool2,tool3"
 
     def test_passes_cwd(self) -> None:
         """Should pass cwd to subprocess."""
-        mock_result = MagicMock()
-        mock_result.stdout = "output"
+        mock_process = create_mock_process("output")
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("subprocess.Popen", return_value=mock_process) as mock_popen:
             _run_claude("test", cwd="/path/to/workdir")
 
-        call_kwargs = mock_run.call_args[1]
+        call_kwargs = mock_popen.call_args[1]
         assert call_kwargs["cwd"] == "/path/to/workdir"
+
+    def test_shutdown_interrupts_process(self) -> None:
+        """Should terminate process when shutdown is requested."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None  # Process still running
+        mock_process.terminate.return_value = None
+        mock_process.wait.return_value = None
+
+        # Set shutdown before calling
+        request_shutdown()
+
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            pytest.raises(ClaudeProcessInterruptedError),
+        ):
+            _run_claude("test")
+
+        mock_process.terminate.assert_called_once()
 
 
 class TestJiraMcpClient:

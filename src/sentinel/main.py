@@ -15,7 +15,15 @@ from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config, load_config
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
 from sentinel.logging import get_logger, setup_logging
-from sentinel.mcp_clients import ClaudeMcpAgentClient, JiraMcpClient, JiraMcpTagClient
+from sentinel.mcp_clients import (
+    ClaudeMcpAgentClient,
+    ClaudeProcessInterruptedError,
+    JiraMcpClient,
+    JiraMcpTagClient,
+)
+from sentinel.mcp_clients import (
+    request_shutdown as request_claude_shutdown,
+)
 from sentinel.orchestration import Orchestration, load_orchestrations
 from sentinel.poller import JiraClient, JiraPoller
 from sentinel.router import Router
@@ -110,6 +118,14 @@ class Sentinel:
                         # Handle post-processing tag updates
                         self.tag_manager.update_tags(result, matched_orch)
 
+                    except ClaudeProcessInterruptedError:
+                        logger.info("Claude process interrupted by shutdown request")
+                        # Apply failure tags for interrupted process
+                        try:
+                            self.tag_manager.apply_failure_tags(issue_key, matched_orch)
+                        except Exception as tag_error:
+                            logger.error(f"Failed to apply failure tags: {tag_error}")
+                        return all_results
                     except Exception as e:
                         logger.error(
                             f"Failed to execute '{matched_orch.name}' for {issue_key}: {e}"
@@ -125,6 +141,8 @@ class Sentinel:
             signal_name = signal.Signals(signum).name
             logger.info(f"Received {signal_name}, initiating graceful shutdown...")
             self._shutdown_requested = True
+            # Also signal any running Claude subprocesses to terminate
+            request_claude_shutdown()
 
         signal.signal(signal.SIGINT, handle_shutdown)
         signal.signal(signal.SIGTERM, handle_shutdown)
