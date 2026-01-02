@@ -18,12 +18,17 @@ from sentinel.tag_manager import JiraTagClient, JiraTagClientError
 logger = get_logger(__name__)
 
 
-def _run_claude(prompt: str, timeout_seconds: int | None = None) -> str:
+def _run_claude(
+    prompt: str,
+    timeout_seconds: int | None = None,
+    allowed_tools: list[str] | None = None,
+) -> str:
     """Run a prompt through Claude Code CLI.
 
     Args:
         prompt: The prompt to send to Claude.
         timeout_seconds: Optional timeout in seconds.
+        allowed_tools: Optional list of MCP tool names to pre-authorize.
 
     Returns:
         Claude's response text.
@@ -32,7 +37,13 @@ def _run_claude(prompt: str, timeout_seconds: int | None = None) -> str:
         subprocess.TimeoutExpired: If the command times out.
         subprocess.CalledProcessError: If the command fails.
     """
-    cmd = ["claude", "--print", "--output-format", "text", "-p", prompt]
+    cmd = ["claude", "--print", "--output-format", "text"]
+
+    # Add allowed tools if specified
+    if allowed_tools:
+        cmd.extend(["--allowedTools", ",".join(allowed_tools)])
+
+    cmd.extend(["-p", prompt])
 
     logger.debug(f"Running claude command with prompt length {len(prompt)}")
 
@@ -77,7 +88,11 @@ Return ONLY a valid JSON array of issues. Each issue should have at minimum:
 Do not include any explanation, just the JSON array."""
 
         try:
-            response = _run_claude(prompt, timeout_seconds=120)
+            response = _run_claude(
+                prompt,
+                timeout_seconds=120,
+                allowed_tools=["mcp__jira-agent__search_issues"],
+            )
 
             # Try to parse as JSON
             # Claude might include markdown code blocks, so strip those
@@ -126,7 +141,11 @@ If successful, respond with exactly: SUCCESS
 If there's an error, respond with: ERROR: <description>"""
 
         try:
-            response = _run_claude(prompt, timeout_seconds=60)
+            response = _run_claude(
+                prompt,
+                timeout_seconds=60,
+                allowed_tools=["mcp__jira-agent__update_issue"],
+            )
 
             if "ERROR" in response.upper() and "SUCCESS" not in response.upper():
                 raise JiraTagClientError(f"Failed to add label: {response}")
@@ -160,7 +179,11 @@ If successful, respond with exactly: SUCCESS
 If there's an error, respond with: ERROR: <description>"""
 
         try:
-            response = _run_claude(prompt, timeout_seconds=60)
+            response = _run_claude(
+                prompt,
+                timeout_seconds=60,
+                allowed_tools=["mcp__jira-agent__update_issue"],
+            )
 
             if "ERROR" in response.upper() and "SUCCESS" not in response.upper():
                 raise JiraTagClientError(f"Failed to remove label: {response}")
@@ -209,22 +232,30 @@ class ClaudeMcpAgentClient(AgentClient):
             for key, value in context.items():
                 context_section += f"- {key}: {value}\n"
 
-        # Build tools section
+        # Build tools section and allowed tools list
         tools_section = ""
+        allowed_tools: list[str] = []
         if tools:
             tools_section = "\n\nAvailable tools:\n"
             for tool in tools:
                 if tool == "jira":
                     tools_section += "- Jira: mcp__jira-agent__* tools for issue operations\n"
+                    allowed_tools.append("mcp__jira-agent__*")
                 elif tool == "confluence":
                     tools_section += "- Confluence: mcp__confluence-wiki__* tools for wiki pages\n"
+                    allowed_tools.append("mcp__confluence-wiki__*")
                 elif tool == "github":
                     tools_section += "- GitHub: mcp__github__* tools for repository operations\n"
+                    allowed_tools.append("mcp__github__*")
 
         full_prompt = f"{prompt}{context_section}{tools_section}"
 
         try:
-            response = _run_claude(full_prompt, timeout_seconds=timeout_seconds)
+            response = _run_claude(
+                full_prompt,
+                timeout_seconds=timeout_seconds,
+                allowed_tools=allowed_tools if allowed_tools else None,
+            )
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
 
