@@ -142,112 +142,196 @@ class TestExecutionResult:
 
 
 class TestAgentExecutorBuildPrompt:
-    """Tests for AgentExecutor.build_prompt."""
+    """Tests for AgentExecutor.build_prompt with template variables."""
 
-    def test_includes_base_prompt(self) -> None:
+    def test_returns_prompt_without_variables_unchanged(self) -> None:
+        """Prompt without template variables should be returned as-is."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue()
-        orch = make_orchestration(prompt="Review this code")
+        orch = make_orchestration(prompt="Review this code without any variables")
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "Review this code" in prompt
+        assert prompt == "Review this code without any variables"
 
-    def test_includes_issue_key_and_summary(self) -> None:
+    def test_substitutes_jira_issue_key(self) -> None:
+        """Should substitute {jira_issue_key} with actual issue key."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
-        issue = make_issue(key="PROJ-123", summary="Fix the bug")
-        orch = make_orchestration()
+        issue = make_issue(key="PROJ-123")
+        orch = make_orchestration(prompt="Review issue {jira_issue_key}")
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "PROJ-123" in prompt
-        assert "Fix the bug" in prompt
+        assert prompt == "Review issue PROJ-123"
 
-    def test_includes_description(self) -> None:
+    def test_substitutes_jira_summary(self) -> None:
+        """Should substitute {jira_summary} with issue summary."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(summary="Fix the authentication bug")
+        orch = make_orchestration(prompt="Task: {jira_summary}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Task: Fix the authentication bug"
+
+    def test_substitutes_jira_description(self) -> None:
+        """Should substitute {jira_description} with issue description."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(description="Detailed description here")
-        orch = make_orchestration()
+        orch = make_orchestration(prompt="Description:\n{jira_description}")
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "Detailed description here" in prompt
+        assert prompt == "Description:\nDetailed description here"
 
-    def test_includes_status(self) -> None:
+    def test_substitutes_jira_status(self) -> None:
+        """Should substitute {jira_status} with issue status."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(status="In Progress")
-        orch = make_orchestration()
+        orch = make_orchestration(prompt="Status: {jira_status}")
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "In Progress" in prompt
+        assert prompt == "Status: In Progress"
 
-    def test_includes_assignee(self) -> None:
+    def test_substitutes_jira_assignee(self) -> None:
+        """Should substitute {jira_assignee} with assignee name."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(assignee="John Doe")
-        orch = make_orchestration()
+        orch = make_orchestration(prompt="Assigned to: {jira_assignee}")
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "John Doe" in prompt
+        assert prompt == "Assigned to: John Doe"
 
-    def test_includes_labels(self) -> None:
+    def test_substitutes_jira_labels(self) -> None:
+        """Should substitute {jira_labels} with comma-separated labels."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
-        issue = make_issue(labels=["bug", "urgent"])
-        orch = make_orchestration()
+        issue = make_issue(labels=["bug", "urgent", "security"])
+        orch = make_orchestration(prompt="Labels: {jira_labels}")
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "bug" in prompt
-        assert "urgent" in prompt
+        assert prompt == "Labels: bug, urgent, security"
 
-    def test_includes_comments(self) -> None:
+    def test_substitutes_jira_comments(self) -> None:
+        """Should substitute {jira_comments} with formatted comments."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(comments=["First comment", "Second comment"])
-        orch = make_orchestration()
+        orch = make_orchestration(prompt="Comments:\n{jira_comments}")
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "First comment" in prompt
-        assert "Second comment" in prompt
+        assert "1. First comment" in prompt
+        assert "2. Second comment" in prompt
 
-    def test_includes_links(self) -> None:
+    def test_substitutes_jira_links(self) -> None:
+        """Should substitute {jira_links} with comma-separated linked issues."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(links=["TEST-2", "TEST-3"])
-        orch = make_orchestration()
+        orch = make_orchestration(prompt="Related: {jira_links}")
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "TEST-2" in prompt
-        assert "TEST-3" in prompt
+        assert prompt == "Related: TEST-2, TEST-3"
 
-    def test_includes_github_context(self) -> None:
+    def test_substitutes_github_variables(self) -> None:
+        """Should substitute GitHub context variables."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue()
-        orch = make_orchestration(github=GitHubContext(org="myorg", repo="myrepo"))
+        orch = make_orchestration(
+            prompt="Repo: {github_org}/{github_repo} on {github_host}",
+            github=GitHubContext(host="github.example.com", org="myorg", repo="myrepo"),
+        )
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "myorg/myrepo" in prompt
+        assert prompt == "Repo: myorg/myrepo on github.example.com"
 
-    def test_includes_response_format_instructions(self) -> None:
+    def test_substitutes_multiple_variables(self) -> None:
+        """Should substitute multiple variables in one prompt."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
-        issue = make_issue()
-        orch = make_orchestration()
+        issue = make_issue(key="DS-456", summary="Update docs", status="Open")
+        orch = make_orchestration(
+            prompt="Review {jira_issue_key}: {jira_summary} (Status: {jira_status})"
+        )
 
         prompt = executor.build_prompt(issue, orch)
 
-        assert "SUCCESS" in prompt
-        assert "FAILURE" in prompt
+        assert prompt == "Review DS-456: Update docs (Status: Open)"
+
+    def test_empty_values_substituted_as_empty_string(self) -> None:
+        """Missing optional values should be substituted as empty strings."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(description="", assignee=None)
+        orch = make_orchestration(prompt="Desc: [{jira_description}] Assignee: [{jira_assignee}]")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Desc: [] Assignee: []"
+
+    def test_preserves_unknown_variables(self) -> None:
+        """Unknown variables should be preserved as-is."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="TEST-1")
+        orch = make_orchestration(prompt="Issue {jira_issue_key} with {unknown_var}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Issue TEST-1 with {unknown_var}"
+
+    def test_handles_literal_braces(self) -> None:
+        """Should handle text that looks like variables but isn't."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="TEST-1")
+        orch = make_orchestration(prompt='Use JSON format: {"key": "value"}')
+
+        prompt = executor.build_prompt(issue, orch)
+
+        # JSON-like braces are preserved since they don't match {word} pattern
+        assert '{"key": "value"}' in prompt
+
+    def test_truncates_long_comments(self) -> None:
+        """Should truncate comments longer than 500 characters."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        long_comment = "x" * 600
+        issue = make_issue(comments=[long_comment])
+        orch = make_orchestration(prompt="{jira_comments}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert len(prompt) < 600
+        assert "..." in prompt
+
+    def test_limits_to_last_three_comments(self) -> None:
+        """Should only include last 3 comments."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(comments=["First", "Second", "Third", "Fourth", "Fifth"])
+        orch = make_orchestration(prompt="{jira_comments}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert "First" not in prompt
+        assert "Second" not in prompt
+        assert "Third" in prompt
+        assert "Fourth" in prompt
+        assert "Fifth" in prompt
 
 
 class TestAgentExecutorMatchesPattern:
