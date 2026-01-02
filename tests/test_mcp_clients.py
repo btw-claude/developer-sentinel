@@ -79,6 +79,30 @@ class TestRunClaude:
         ):
             _run_claude("test")
 
+    def test_includes_allowed_tools(self) -> None:
+        """Should include --allowedTools flag when tools specified."""
+        mock_result = MagicMock()
+        mock_result.stdout = "output"
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _run_claude("test", allowed_tools=["mcp__jira-agent__search_issues"])
+
+        cmd = mock_run.call_args[0][0]
+        assert "--allowedTools" in cmd
+        assert "mcp__jira-agent__search_issues" in cmd
+
+    def test_multiple_allowed_tools_joined(self) -> None:
+        """Should join multiple allowed tools with comma."""
+        mock_result = MagicMock()
+        mock_result.stdout = "output"
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _run_claude("test", allowed_tools=["tool1", "tool2", "tool3"])
+
+        cmd = mock_run.call_args[0][0]
+        idx = cmd.index("--allowedTools")
+        assert cmd[idx + 1] == "tool1,tool2,tool3"
+
 
 class TestJiraMcpClient:
     """Tests for JiraMcpClient."""

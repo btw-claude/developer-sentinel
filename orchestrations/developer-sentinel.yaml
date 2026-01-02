@@ -1,0 +1,150 @@
+# Example Orchestration Configuration
+# ====================================
+#
+# This file demonstrates the complete orchestration configuration schema.
+# Copy and modify this file to create your own orchestrations.
+#
+# Each orchestration defines:
+#   - name: Unique identifier for the orchestration
+#   - trigger: What Jira issues to watch for
+#   - agent: How the Claude agent should process them
+#   - retry: How to handle failures and determine success
+#   - on_start: What to do when processing begins (prevents duplicate processing)
+#   - on_complete: What to do after successful processing
+#   - on_failure: What to do when all retries are exhausted
+#
+# Tag-based Workflow:
+# -------------------
+# Sentinel uses a stateless, tag-based workflow:
+#   1. Issues with trigger tags are picked up for processing
+#   2. Trigger tag is removed and in-progress tag is added (prevents duplicate processing)
+#   3. On success: in-progress tag is removed, completion tag is added
+#   4. On failure: in-progress tag is removed, failure tag is added
+#
+# This ensures issues are processed exactly once and failure states are visible.
+
+orchestrations:
+  # Code Review Orchestration
+  # -------------------------
+  # Watches for Jira issues tagged with "needs-code-review" and
+  # sends them to a Claude agent for code review.
+  - name: "code-review"
+
+    # Trigger configuration
+    # Defines which Jira issues activate this orchestration
+    trigger:
+      source: jira              # Only "jira" is supported initially
+      project: "DS"           # Jira project key to watch
+      jql_filter: "status != Closed"  # Additional JQL filter (optional)
+      tags:                     # Labels that trigger this orchestration
+        - "needs-code-review"
+
+    # Agent configuration
+    # Defines the Claude agent's behavior
+    agent:
+      # The prompt/instructions for the agent
+      # The agent will receive the Jira issue context along with this prompt
+      prompt: |
+        You are a code review assistant. Review the code changes referenced
+        in this Jira issue and provide feedback.
+
+        Focus on:
+        - Code correctness and potential bugs
+        - Security vulnerabilities
+        - Performance considerations
+        - Code style and best practices
+
+        After reviewing, post your findings as a comment on the Jira issue.
+        If there's a linked GitHub PR, also post a review there.
+
+        End your response with SUCCESS if the review was completed, or
+        FAILURE if you encountered issues.
+
+      # Tools available to the agent
+      # Options: jira, confluence, github
+      tools:
+        - jira
+        - github
+
+      # GitHub context (required if github tool is enabled)
+      github:
+        host: "github.com"
+        org: "btw-claude"
+        repo: "developer-sentinel"
+
+    # Retry configuration
+    # Defines how to handle agent failures
+    retry:
+      max_attempts: 3           # Maximum retry attempts
+
+      # Patterns in agent response that indicate success
+      success_patterns:
+        - "SUCCESS"
+        - "completed successfully"
+        - "review complete"
+
+      # Patterns in agent response that indicate failure
+      failure_patterns:
+        - "FAILURE"
+        - "failed"
+        - "error"
+        - "could not"
+
+    # On start actions
+    # What to do immediately when an issue is picked up
+    # This prevents duplicate processing if poll interval < processing time
+    on_start:
+      add_tag: "code-review-in-progress"  # Automatically removed after processing
+
+    # On complete actions
+    # What to do after successful processing
+    # Note: trigger tag is already removed when processing starts
+    on_complete:
+      add_tag: "code-reviewed"          # Add completion tag
+
+    # On failure actions
+    # What to do when all retry attempts are exhausted
+    on_failure:
+      add_tag: "human-intervention-required"          # Add failure tag for investigation
+
+  # Documentation Orchestration
+  # ---------------------------
+  # Example of a documentation-focused orchestration
+  - name: "update-docs"
+
+    trigger:
+      source: jira
+      project: "PROJ"
+      tags:
+        - "needs-docs"
+
+    agent:
+      prompt: |
+        You are a documentation assistant. Based on the Jira issue,
+        update the relevant Confluence documentation.
+
+        After updating, post a summary as a comment on the Jira issue.
+
+        End your response with SUCCESS or FAILURE.
+
+      tools:
+        - jira
+        - confluence
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+        - "documentation updated"
+      failure_patterns:
+        - "FAILURE"
+        - "could not update"
+
+    on_start:
+      add_tag: "sentinel-processing"
+
+    on_complete:
+      add_tag: "docs-updated"
+
+    on_failure:
+      add_tag: "docs-update-failed"
