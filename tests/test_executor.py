@@ -26,7 +26,7 @@ class MockAgentClient(AgentClient):
     def __init__(self, responses: list[str] | None = None) -> None:
         self.responses = responses or ["SUCCESS: Task completed"]
         self.call_count = 0
-        self.calls: list[tuple[str, list[str], dict[str, Any] | None, int | None]] = []
+        self.calls: list[tuple[str, list[str], dict[str, Any] | None, int | None, str | None]] = []
         self.should_error = False
         self.error_count = 0
         self.max_errors = 0
@@ -40,8 +40,9 @@ class MockAgentClient(AgentClient):
         tools: list[str],
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
+        issue_key: str | None = None,
     ) -> str:
-        self.calls.append((prompt, tools, context, timeout_seconds))
+        self.calls.append((prompt, tools, context, timeout_seconds, issue_key))
 
         if self.should_timeout and self.timeout_count < self.max_timeouts:
             self.timeout_count += 1

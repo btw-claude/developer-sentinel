@@ -246,7 +246,7 @@ def main(args: list[str] | None = None) -> int:
 
     # Initialize MCP-based clients
     jira_client = JiraMcpClient()
-    agent_client = ClaudeMcpAgentClient()
+    agent_client = ClaudeMcpAgentClient(base_workdir=config.agent_workdir)
     tag_client = JiraMcpTagClient()
 
     # Create and run Sentinel

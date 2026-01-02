@@ -66,6 +66,7 @@ class AgentClient(ABC):
         tools: list[str],
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
+        issue_key: str | None = None,
     ) -> str:
         """Run a Claude agent with the given prompt and tools.
 
@@ -74,6 +75,7 @@ class AgentClient(ABC):
             tools: List of tool names the agent can use.
             context: Optional context dict (e.g., GitHub repo info).
             timeout_seconds: Optional timeout in seconds. If None, no timeout is applied.
+            issue_key: Optional issue key for creating a unique working directory.
 
         Returns:
             The agent's response text.
@@ -261,7 +263,9 @@ class AgentExecutor:
             )
 
             try:
-                response = self.client.run_agent(prompt, tools, context, timeout_seconds)
+                response = self.client.run_agent(
+                    prompt, tools, context, timeout_seconds, issue_key=issue.key
+                )
                 last_response = response
                 status = self._determine_status(response, retry_config)
                 last_status = status

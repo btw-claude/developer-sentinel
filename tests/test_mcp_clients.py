@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -36,6 +37,7 @@ class TestRunClaude:
             text=True,
             timeout=None,
             check=True,
+            cwd=None,
         )
         assert result == "test output"
 
@@ -102,6 +104,17 @@ class TestRunClaude:
         cmd = mock_run.call_args[0][0]
         idx = cmd.index("--allowedTools")
         assert cmd[idx + 1] == "tool1,tool2,tool3"
+
+    def test_passes_cwd(self) -> None:
+        """Should pass cwd to subprocess."""
+        mock_result = MagicMock()
+        mock_result.stdout = "output"
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _run_claude("test", cwd="/path/to/workdir")
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["cwd"] == "/path/to/workdir"
 
 
 class TestJiraMcpClient:
@@ -345,3 +358,67 @@ class TestClaudeMcpAgentClient:
             client = ClaudeMcpAgentClient()
             with pytest.raises(AgentClientError, match="unexpected error"):
                 client.run_agent("Do something", [])
+
+    def test_constructor_accepts_base_workdir(self, tmp_path: Path) -> None:
+        """Should accept base_workdir in constructor."""
+        client = ClaudeMcpAgentClient(base_workdir=tmp_path)
+        assert client.base_workdir == tmp_path
+
+    def test_constructor_defaults_to_no_workdir(self) -> None:
+        """Should default to no base_workdir."""
+        client = ClaudeMcpAgentClient()
+        assert client.base_workdir is None
+
+    def test_create_workdir_creates_unique_directory(self, tmp_path: Path) -> None:
+        """Should create unique directory with issue key and timestamp."""
+        client = ClaudeMcpAgentClient(base_workdir=tmp_path)
+        workdir = client._create_workdir("DS-123")
+
+        assert workdir.parent == tmp_path
+        assert workdir.name.startswith("DS-123_")
+        assert workdir.exists()
+        assert workdir.is_dir()
+
+    def test_create_workdir_creates_base_if_missing(self, tmp_path: Path) -> None:
+        """Should create base directory if it doesn't exist."""
+        base_path = tmp_path / "nonexistent" / "base"
+        client = ClaudeMcpAgentClient(base_workdir=base_path)
+        workdir = client._create_workdir("DS-456")
+
+        assert base_path.exists()
+        assert workdir.exists()
+
+    def test_create_workdir_raises_without_base_workdir(self) -> None:
+        """Should raise AgentClientError if base_workdir not configured."""
+        client = ClaudeMcpAgentClient()
+        with pytest.raises(AgentClientError, match="base_workdir not configured"):
+            client._create_workdir("DS-789")
+
+    def test_run_agent_creates_workdir_when_configured(self, tmp_path: Path) -> None:
+        """Should create workdir and pass cwd when base_workdir and issue_key provided."""
+        with patch("sentinel.mcp_clients._run_claude", return_value="done") as mock:
+            client = ClaudeMcpAgentClient(base_workdir=tmp_path)
+            client.run_agent("Do something", [], issue_key="DS-100")
+
+        # Check that cwd was passed
+        call_kwargs = mock.call_args[1]
+        assert call_kwargs["cwd"] is not None
+        assert "DS-100_" in call_kwargs["cwd"]
+
+    def test_run_agent_no_workdir_without_base(self) -> None:
+        """Should not create workdir when base_workdir not configured."""
+        with patch("sentinel.mcp_clients._run_claude", return_value="done") as mock:
+            client = ClaudeMcpAgentClient()
+            client.run_agent("Do something", [], issue_key="DS-200")
+
+        call_kwargs = mock.call_args[1]
+        assert call_kwargs["cwd"] is None
+
+    def test_run_agent_no_workdir_without_issue_key(self, tmp_path: Path) -> None:
+        """Should not create workdir when issue_key not provided."""
+        with patch("sentinel.mcp_clients._run_claude", return_value="done") as mock:
+            client = ClaudeMcpAgentClient(base_workdir=tmp_path)
+            client.run_agent("Do something", [])
+
+        call_kwargs = mock.call_args[1]
+        assert call_kwargs["cwd"] is None

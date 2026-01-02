@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from sentinel.executor import AgentClient, AgentClientError, AgentTimeoutError
@@ -22,6 +24,7 @@ def _run_claude(
     prompt: str,
     timeout_seconds: int | None = None,
     allowed_tools: list[str] | None = None,
+    cwd: str | None = None,
 ) -> str:
     """Run a prompt through Claude Code CLI.
 
@@ -29,6 +32,7 @@ def _run_claude(
         prompt: The prompt to send to Claude.
         timeout_seconds: Optional timeout in seconds.
         allowed_tools: Optional list of MCP tool names to pre-authorize.
+        cwd: Optional working directory for the subprocess.
 
     Returns:
         Claude's response text.
@@ -45,7 +49,7 @@ def _run_claude(
 
     cmd.extend(["-p", prompt])
 
-    logger.debug(f"Running claude command with prompt length {len(prompt)}")
+    logger.debug(f"Running claude command with prompt length {len(prompt)}, cwd={cwd}")
 
     result = subprocess.run(
         cmd,
@@ -53,6 +57,7 @@ def _run_claude(
         text=True,
         timeout=timeout_seconds,
         check=True,
+        cwd=cwd,
     )
 
     return result.stdout.strip()
@@ -203,12 +208,45 @@ If there's an error, respond with: ERROR: <description>"""
 class ClaudeMcpAgentClient(AgentClient):
     """Agent client that uses Claude Code CLI with MCP tools."""
 
+    def __init__(self, base_workdir: Path | None = None) -> None:
+        """Initialize the agent client.
+
+        Args:
+            base_workdir: Base directory for creating agent working directories.
+                         If None, agents run in the current directory.
+        """
+        self.base_workdir = base_workdir
+
+    def _create_workdir(self, issue_key: str) -> Path:
+        """Create a unique working directory for an agent execution.
+
+        Args:
+            issue_key: The Jira issue key (e.g., "DS-123").
+
+        Returns:
+            Path to the created directory.
+        """
+        if self.base_workdir is None:
+            raise AgentClientError("base_workdir not configured")
+
+        # Create base directory if it doesn't exist
+        self.base_workdir.mkdir(parents=True, exist_ok=True)
+
+        # Create unique directory: {issue_key}_{timestamp}
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        workdir = self.base_workdir / f"{issue_key}_{timestamp}"
+        workdir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Created agent working directory: {workdir}")
+        return workdir
+
     def run_agent(
         self,
         prompt: str,
         tools: list[str],
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
+        issue_key: str | None = None,
     ) -> str:
         """Run a Claude agent with the given prompt and tools via Claude Code CLI.
 
@@ -217,6 +255,7 @@ class ClaudeMcpAgentClient(AgentClient):
             tools: List of tool names the agent can use (e.g., ["jira", "github"]).
             context: Optional context dict (e.g., GitHub repo info).
             timeout_seconds: Optional timeout in seconds.
+            issue_key: Optional issue key for creating a unique working directory.
 
         Returns:
             The agent's response text.
@@ -225,6 +264,11 @@ class ClaudeMcpAgentClient(AgentClient):
             AgentClientError: If the agent execution fails.
             AgentTimeoutError: If the agent execution times out.
         """
+        # Create working directory if base_workdir is configured and issue_key provided
+        workdir: str | None = None
+        if self.base_workdir is not None and issue_key is not None:
+            workdir = str(self._create_workdir(issue_key))
+
         # Build context section if provided
         context_section = ""
         if context:
@@ -255,6 +299,7 @@ class ClaudeMcpAgentClient(AgentClient):
                 full_prompt,
                 timeout_seconds=timeout_seconds,
                 allowed_tools=allowed_tools if allowed_tools else None,
+                cwd=workdir,
             )
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
