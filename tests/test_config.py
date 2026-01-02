@@ -9,6 +9,7 @@ import pytest
 from sentinel.config import (
     VALID_LOG_LEVELS,
     Config,
+    _parse_bool,
     _parse_positive_int,
     _validate_log_level,
     load_config,
@@ -26,6 +27,7 @@ class TestConfig:
         assert config.jira_user == ""
         assert config.jira_api_token == ""
         assert config.log_level == "INFO"
+        assert config.log_json is False
         assert config.orchestrations_dir == Path("./orchestrations")
 
     def test_custom_values(self) -> None:
@@ -213,3 +215,67 @@ class TestLoadConfig:
         config = load_config()
 
         assert config.log_level == "DEBUG"
+
+    def test_log_json_default_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Clear any existing env var
+        monkeypatch.delenv("SENTINEL_LOG_JSON", raising=False)
+
+        config = load_config()
+
+        assert config.log_json is False
+
+    def test_log_json_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SENTINEL_LOG_JSON", "true")
+
+        config = load_config()
+
+        assert config.log_json is True
+
+    def test_log_json_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SENTINEL_LOG_JSON", "1")
+
+        config = load_config()
+
+        assert config.log_json is True
+
+    def test_log_json_yes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SENTINEL_LOG_JSON", "yes")
+
+        config = load_config()
+
+        assert config.log_json is True
+
+    def test_log_json_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SENTINEL_LOG_JSON", "TRUE")
+
+        config = load_config()
+
+        assert config.log_json is True
+
+    def test_log_json_false_for_other_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SENTINEL_LOG_JSON", "false")
+
+        config = load_config()
+
+        assert config.log_json is False
+
+
+class TestParseBool:
+    """Tests for _parse_bool helper function."""
+
+    def test_true_values(self) -> None:
+        assert _parse_bool("true") is True
+        assert _parse_bool("True") is True
+        assert _parse_bool("TRUE") is True
+        assert _parse_bool("1") is True
+        assert _parse_bool("yes") is True
+        assert _parse_bool("Yes") is True
+        assert _parse_bool("YES") is True
+
+    def test_false_values(self) -> None:
+        assert _parse_bool("false") is False
+        assert _parse_bool("False") is False
+        assert _parse_bool("0") is False
+        assert _parse_bool("no") is False
+        assert _parse_bool("") is False
+        assert _parse_bool("anything") is False

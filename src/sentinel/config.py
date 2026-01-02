@@ -38,6 +38,7 @@ class Config:
 
     # Logging
     log_level: str = "INFO"
+    log_json: bool = False
 
     # Paths
     orchestrations_dir: Path = Path("./orchestrations")
@@ -101,6 +102,18 @@ def _validate_log_level(value: str, default: str = "INFO") -> str:
     return normalized
 
 
+def _parse_bool(value: str) -> bool:
+    """Parse a string as a boolean.
+
+    Args:
+        value: The string value to parse.
+
+    Returns:
+        True if value is "true", "1", or "yes" (case-insensitive), False otherwise.
+    """
+    return value.lower() in ("true", "1", "yes")
+
+
 def load_config(env_file: Path | None = None) -> Config:
     """Load configuration from environment variables.
 
@@ -139,6 +152,9 @@ def load_config(env_file: Path | None = None) -> Config:
         os.getenv("SENTINEL_LOG_LEVEL", "INFO"),
     )
 
+    # Parse log JSON format option
+    log_json = _parse_bool(os.getenv("SENTINEL_LOG_JSON", ""))
+
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
@@ -146,5 +162,6 @@ def load_config(env_file: Path | None = None) -> Config:
         jira_user=os.getenv("JIRA_USER", ""),
         jira_api_token=os.getenv("JIRA_API_TOKEN", ""),
         log_level=log_level,
+        log_json=log_json,
         orchestrations_dir=Path(os.getenv("SENTINEL_ORCHESTRATIONS_DIR", "./orchestrations")),
     )
