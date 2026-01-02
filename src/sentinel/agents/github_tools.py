@@ -19,6 +19,9 @@ from sentinel.agents.base import (
     ToolResult,
     ToolSchema,
 )
+from sentinel.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class GitHubToolClient(ABC):
@@ -100,6 +103,7 @@ class GetIssueTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -107,8 +111,12 @@ class GetIssueTool(Tool):
         issue_number = kwargs["issue_number"]
         try:
             result = self.client.get_issue(issue_number)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to get issue #{issue_number}: {e}", "GITHUB_ERROR")
 
 
@@ -139,6 +147,7 @@ class GetPullRequestTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -146,8 +155,12 @@ class GetPullRequestTool(Tool):
         pr_number = kwargs["pr_number"]
         try:
             result = self.client.get_pull_request(pr_number)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to get PR #{pr_number}: {e}", "GITHUB_ERROR")
 
 
@@ -178,6 +191,7 @@ class ListPRFilesTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -185,8 +199,12 @@ class ListPRFilesTool(Tool):
         pr_number = kwargs["pr_number"]
         try:
             files = self.client.list_pr_files(pr_number)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok({"files": files, "count": len(files)})
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to list files for PR #{pr_number}: {e}", "GITHUB_ERROR")
 
 
@@ -223,6 +241,7 @@ class GetFileContentsTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -231,8 +250,12 @@ class GetFileContentsTool(Tool):
         ref = kwargs.get("ref")
         try:
             result = self.client.get_file_contents(path, ref)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to get file contents for {path}: {e}", "GITHUB_ERROR")
 
 
@@ -269,6 +292,7 @@ class CreateCommentTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -277,8 +301,12 @@ class CreateCommentTool(Tool):
         body = kwargs["body"]
         try:
             result = self.client.create_issue_comment(issue_number, body)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(
                 f"Failed to create comment on #{issue_number}: {e}", "GITHUB_ERROR"
             )
@@ -324,6 +352,7 @@ class CreatePRReviewTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -333,8 +362,12 @@ class CreatePRReviewTool(Tool):
         event = kwargs["event"]
         try:
             result = self.client.create_pr_review(pr_number, body, event)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(
                 f"Failed to create review on PR #{pr_number}: {e}", "GITHUB_ERROR"
             )
@@ -367,6 +400,7 @@ class ListPRCommentsTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -374,8 +408,12 @@ class ListPRCommentsTool(Tool):
         pr_number = kwargs["pr_number"]
         try:
             comments = self.client.list_pr_comments(pr_number)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok({"comments": comments, "count": len(comments)})
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(
                 f"Failed to list comments for PR #{pr_number}: {e}", "GITHUB_ERROR"
             )

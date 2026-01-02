@@ -21,6 +21,9 @@ from sentinel.agents.base import (
     ToolResult,
     ToolSchema,
 )
+from sentinel.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class JiraToolClient(ABC):
@@ -105,6 +108,7 @@ class GetIssueTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -112,8 +116,12 @@ class GetIssueTool(Tool):
         issue_key = kwargs["issue_key"]
         try:
             result = self.client.get_issue(issue_key)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to get issue {issue_key}: {e}", "JIRA_ERROR")
 
 
@@ -162,6 +170,7 @@ class UpdateIssueTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -174,8 +183,12 @@ class UpdateIssueTool(Tool):
                 description=kwargs.get("description"),
                 priority=kwargs.get("priority"),
             )
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to update issue {issue_key}: {e}", "JIRA_ERROR")
 
 
@@ -209,6 +222,7 @@ class AddCommentTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -217,8 +231,12 @@ class AddCommentTool(Tool):
         body = kwargs["body"]
         try:
             result = self.client.add_comment(issue_key, body)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to add comment to {issue_key}: {e}", "JIRA_ERROR")
 
 
@@ -255,6 +273,7 @@ class TransitionIssueTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -263,8 +282,12 @@ class TransitionIssueTool(Tool):
         transition_id = kwargs["transition_id"]
         try:
             result = self.client.transition_issue(issue_key, transition_id)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to transition issue {issue_key}: {e}", "JIRA_ERROR")
 
 
@@ -295,6 +318,7 @@ class GetTransitionsTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -302,8 +326,12 @@ class GetTransitionsTool(Tool):
         issue_key = kwargs["issue_key"]
         try:
             result = self.client.get_transitions(issue_key)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to get transitions for {issue_key}: {e}", "JIRA_ERROR")
 
 
@@ -337,6 +365,7 @@ class AddLabelTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -345,8 +374,12 @@ class AddLabelTool(Tool):
         label = kwargs["label"]
         try:
             result = self.client.add_label(issue_key, label)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to add label to {issue_key}: {e}", "JIRA_ERROR")
 
 
@@ -380,6 +413,7 @@ class RemoveLabelTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -388,8 +422,12 @@ class RemoveLabelTool(Tool):
         label = kwargs["label"]
         try:
             result = self.client.remove_label(issue_key, label)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to remove label from {issue_key}: {e}", "JIRA_ERROR")
 
 
@@ -427,6 +465,7 @@ class SearchIssuesTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -435,8 +474,12 @@ class SearchIssuesTool(Tool):
         max_results = kwargs.get("max_results", 50)
         try:
             results = self.client.search_issues(jql, max_results)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok({"issues": results, "count": len(results)})
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to search issues: {e}", "JIRA_ERROR")
 
 
