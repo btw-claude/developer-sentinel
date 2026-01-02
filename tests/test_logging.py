@@ -228,6 +228,45 @@ class TestSetupLogging:
         root = logging.getLogger()
         assert root.level == logging.INFO
 
+    def test_replace_handlers_true_removes_existing(self) -> None:
+        """Default behavior removes existing handlers."""
+        root = logging.getLogger()
+
+        # Add a custom handler
+        existing_handler = logging.StreamHandler(StringIO())
+        root.addHandler(existing_handler)
+
+        # Setup with default replace_handlers=True
+        setup_logging(level="INFO")
+
+        # Existing handler should be removed
+        assert existing_handler not in root.handlers
+        # Should have exactly one handler (our new one)
+        assert len(root.handlers) == 1
+
+    def test_replace_handlers_false_preserves_existing(self) -> None:
+        """replace_handlers=False preserves existing handlers."""
+        root = logging.getLogger()
+
+        # First, clear and setup with replace_handlers=True
+        setup_logging(level="INFO", replace_handlers=True)
+        initial_handler_count = len(root.handlers)
+
+        # Add a custom handler
+        existing_handler = logging.StreamHandler(StringIO())
+        root.addHandler(existing_handler)
+
+        # Setup with replace_handlers=False
+        setup_logging(level="DEBUG", replace_handlers=False)
+
+        # Existing handler should be preserved
+        assert existing_handler in root.handlers
+        # Should have initial handlers + existing + new one
+        assert len(root.handlers) == initial_handler_count + 2
+
+        # Clean up
+        root.removeHandler(existing_handler)
+
 
 class TestLogAgentSummary:
     """Tests for log_agent_summary function."""

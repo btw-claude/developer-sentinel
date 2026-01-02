@@ -155,12 +155,15 @@ def get_logger(name: str) -> SentinelLogger:
 def setup_logging(
     level: str = "INFO",
     json_format: bool = False,
+    replace_handlers: bool = True,
 ) -> None:
     """Configure logging for the application.
 
     Args:
         level: Log level string (DEBUG, INFO, WARNING, ERROR).
         json_format: If True, output JSON-formatted logs.
+        replace_handlers: If True, remove existing handlers before adding new ones.
+            Set to False to preserve existing handlers (e.g., from third-party libraries).
     """
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
@@ -168,9 +171,10 @@ def setup_logging(
     root_logger = logging.getLogger()
     root_logger.setLevel(numeric_level)
 
-    # Remove existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
+    # Remove existing handlers only if requested
+    if replace_handlers:
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
 
     # Create console handler
     handler = logging.StreamHandler(sys.stderr)
