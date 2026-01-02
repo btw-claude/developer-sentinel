@@ -25,6 +25,7 @@ def _run_claude(
     timeout_seconds: int | None = None,
     allowed_tools: list[str] | None = None,
     cwd: str | None = None,
+    model: str | None = None,
 ) -> str:
     """Run a prompt through Claude Code CLI.
 
@@ -33,6 +34,7 @@ def _run_claude(
         timeout_seconds: Optional timeout in seconds.
         allowed_tools: Optional list of MCP tool names to pre-authorize.
         cwd: Optional working directory for the subprocess.
+        model: Optional model identifier (e.g., "claude-opus-4-5-20251101").
 
     Returns:
         Claude's response text.
@@ -42,6 +44,10 @@ def _run_claude(
         subprocess.CalledProcessError: If the command fails.
     """
     cmd = ["claude", "--print", "--output-format", "text"]
+
+    # Add model if specified
+    if model:
+        cmd.extend(["--model", model])
 
     # Add allowed tools if specified
     if allowed_tools:
@@ -247,6 +253,7 @@ class ClaudeMcpAgentClient(AgentClient):
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
+        model: str | None = None,
     ) -> str:
         """Run a Claude agent with the given prompt and tools via Claude Code CLI.
 
@@ -256,6 +263,7 @@ class ClaudeMcpAgentClient(AgentClient):
             context: Optional context dict (e.g., GitHub repo info).
             timeout_seconds: Optional timeout in seconds.
             issue_key: Optional issue key for creating a unique working directory.
+            model: Optional model identifier. If None, uses the CLI's default model.
 
         Returns:
             The agent's response text.
@@ -300,6 +308,7 @@ class ClaudeMcpAgentClient(AgentClient):
                 timeout_seconds=timeout_seconds,
                 allowed_tools=allowed_tools if allowed_tools else None,
                 cwd=workdir,
+                model=model,
             )
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response

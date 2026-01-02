@@ -82,6 +82,7 @@ class AgentClient(ABC):
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
+        model: str | None = None,
     ) -> str:
         """Run a Claude agent with the given prompt and tools.
 
@@ -91,6 +92,7 @@ class AgentClient(ABC):
             context: Optional context dict (e.g., GitHub repo info).
             timeout_seconds: Optional timeout in seconds. If None, no timeout is applied.
             issue_key: Optional issue key for creating a unique working directory.
+            model: Optional model identifier. If None, uses the CLI's default model.
 
         Returns:
             The agent's response text.
@@ -378,6 +380,7 @@ class AgentExecutor:
         max_attempts = retry_config.max_attempts
         tools = orchestration.agent.tools
         timeout_seconds = orchestration.agent.timeout_seconds
+        model = orchestration.agent.model
 
         # Build context for the agent
         context: dict[str, Any] = {}
@@ -411,7 +414,7 @@ class AgentExecutor:
 
             try:
                 response = self.client.run_agent(
-                    prompt, tools, context, timeout_seconds, issue_key=issue.key
+                    prompt, tools, context, timeout_seconds, issue_key=issue.key, model=model
                 )
                 last_response = response
                 status, matched_outcome = self._determine_status(response, retry_config, outcomes)

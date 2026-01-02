@@ -70,6 +70,12 @@ orchestrations:
     # Agent configuration
     # Defines the Claude agent's behavior
     agent:
+      # Optional: Specify which Claude model to use
+      # If not specified, uses the Claude CLI's default model
+      # Full identifiers: claude-opus-4-5-20251101, claude-sonnet-4-20250514, claude-haiku-3-5-20241022
+      # Shorthand (latest): opus, sonnet, haiku
+      # model: "sonnet"
+
       # The prompt/instructions for the agent
       # Use template variables like {jira_issue_key} to include issue context
       prompt: |

@@ -274,6 +274,64 @@ orchestrations:
         with pytest.raises(OrchestrationError, match="Invalid timeout_seconds"):
             load_orchestration_file(file_path)
 
+    def test_load_file_with_model(self, tmp_path: Path) -> None:
+        """Should load orchestration with model specified."""
+        yaml_content = """
+orchestrations:
+  - name: "model-orch"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      model: "claude-opus-4-5-20251101"
+"""
+        file_path = tmp_path / "model.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.model == "claude-opus-4-5-20251101"
+
+    def test_load_file_without_model_uses_none(self, tmp_path: Path) -> None:
+        """Should default to None when model is not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "no-model-orch"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "no_model.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.model is None
+
+    def test_invalid_model_type_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when model is not a string."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-model"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      model: 123
+"""
+        file_path = tmp_path / "invalid_model.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid model"):
+            load_orchestration_file(file_path)
+
     def test_load_empty_file(self, tmp_path: Path) -> None:
         """Should return empty list for empty file."""
         file_path = tmp_path / "empty.yaml"
