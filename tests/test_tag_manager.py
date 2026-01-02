@@ -5,6 +5,7 @@ from sentinel.orchestration import (
     AgentConfig,
     OnCompleteConfig,
     OnFailureConfig,
+    OnStartConfig,
     Orchestration,
     TriggerConfig,
 )
@@ -63,12 +64,15 @@ def make_orchestration(
     remove_tag: str = "",
     add_tag: str = "",
     failure_tag: str = "",
+    trigger_tags: list[str] | None = None,
+    on_start_tag: str = "",
 ) -> Orchestration:
     """Helper to create an Orchestration for testing."""
     return Orchestration(
         name=name,
-        trigger=TriggerConfig(),
+        trigger=TriggerConfig(tags=trigger_tags or []),
         agent=AgentConfig(prompt="Test prompt"),
+        on_start=OnStartConfig(add_tag=on_start_tag),
         on_complete=OnCompleteConfig(remove_tag=remove_tag, add_tag=add_tag),
         on_failure=OnFailureConfig(add_tag=failure_tag),
     )
@@ -367,3 +371,161 @@ class TestTagManagerBatch:
 
         assert update_results[0].success is False
         assert update_results[1].success is True
+
+
+class TestTagManagerStartProcessing:
+    """Tests for TagManager.start_processing method."""
+
+    def test_removes_trigger_tags(self) -> None:
+        client = MockJiraTagClient()
+        client.labels["TEST-1"] = ["needs-review", "urgent", "bug"]
+        manager = TagManager(client)
+
+        orch = make_orchestration(trigger_tags=["needs-review", "urgent"])
+
+        result = manager.start_processing("TEST-1", orch)
+
+        assert result.success is True
+        assert "needs-review" in result.removed_tags
+        assert "urgent" in result.removed_tags
+        assert ("TEST-1", "needs-review") in client.remove_calls
+        assert ("TEST-1", "urgent") in client.remove_calls
+        assert "needs-review" not in client.labels["TEST-1"]
+        assert "urgent" not in client.labels["TEST-1"]
+        assert "bug" in client.labels["TEST-1"]  # Other tags preserved
+
+    def test_adds_in_progress_tag(self) -> None:
+        client = MockJiraTagClient()
+        manager = TagManager(client)
+
+        orch = make_orchestration(on_start_tag="sentinel-processing")
+
+        result = manager.start_processing("TEST-1", orch)
+
+        assert result.success is True
+        assert "sentinel-processing" in result.added_tags
+        assert ("TEST-1", "sentinel-processing") in client.add_calls
+        assert "sentinel-processing" in client.labels["TEST-1"]
+
+    def test_removes_trigger_and_adds_in_progress(self) -> None:
+        client = MockJiraTagClient()
+        client.labels["TEST-1"] = ["needs-review"]
+        manager = TagManager(client)
+
+        orch = make_orchestration(
+            trigger_tags=["needs-review"],
+            on_start_tag="sentinel-processing",
+        )
+
+        result = manager.start_processing("TEST-1", orch)
+
+        assert result.success is True
+        assert "needs-review" in result.removed_tags
+        assert "sentinel-processing" in result.added_tags
+        assert "needs-review" not in client.labels["TEST-1"]
+        assert "sentinel-processing" in client.labels["TEST-1"]
+
+    def test_no_changes_when_no_tags_configured(self) -> None:
+        client = MockJiraTagClient()
+        manager = TagManager(client)
+
+        orch = make_orchestration()  # No trigger tags or on_start tag
+
+        result = manager.start_processing("TEST-1", orch)
+
+        assert result.success is True
+        assert result.added_tags == []
+        assert result.removed_tags == []
+        assert len(client.add_calls) == 0
+        assert len(client.remove_calls) == 0
+
+    def test_records_error_when_remove_fails(self) -> None:
+        client = MockJiraTagClient()
+        client.should_fail_remove = True
+        manager = TagManager(client)
+
+        orch = make_orchestration(trigger_tags=["needs-review"])
+
+        result = manager.start_processing("TEST-1", orch)
+
+        assert result.success is False
+        assert len(result.errors) == 1
+        assert "needs-review" in result.errors[0]
+
+    def test_records_error_when_add_fails(self) -> None:
+        client = MockJiraTagClient()
+        client.should_fail_add = True
+        manager = TagManager(client)
+
+        orch = make_orchestration(on_start_tag="sentinel-processing")
+
+        result = manager.start_processing("TEST-1", orch)
+
+        assert result.success is False
+        assert len(result.errors) == 1
+        assert "sentinel-processing" in result.errors[0]
+
+
+class TestTagManagerRemovesInProgressTag:
+    """Tests for TagManager.update_tags removing in-progress tag."""
+
+    def test_removes_in_progress_tag_on_success(self) -> None:
+        client = MockJiraTagClient()
+        client.labels["TEST-1"] = ["sentinel-processing"]
+        manager = TagManager(client)
+
+        result = make_result(status=ExecutionStatus.SUCCESS, issue_key="TEST-1")
+        orch = make_orchestration(on_start_tag="sentinel-processing", add_tag="reviewed")
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "sentinel-processing" in update_result.removed_tags
+        assert "reviewed" in update_result.added_tags
+        assert "sentinel-processing" not in client.labels["TEST-1"]
+        assert "reviewed" in client.labels["TEST-1"]
+
+    def test_removes_in_progress_tag_on_failure(self) -> None:
+        client = MockJiraTagClient()
+        client.labels["TEST-1"] = ["sentinel-processing"]
+        manager = TagManager(client)
+
+        result = make_result(status=ExecutionStatus.FAILURE, issue_key="TEST-1")
+        orch = make_orchestration(on_start_tag="sentinel-processing", failure_tag="review-failed")
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "sentinel-processing" in update_result.removed_tags
+        assert "review-failed" in update_result.added_tags
+        assert "sentinel-processing" not in client.labels["TEST-1"]
+        assert "review-failed" in client.labels["TEST-1"]
+
+    def test_removes_in_progress_tag_on_error(self) -> None:
+        client = MockJiraTagClient()
+        client.labels["TEST-1"] = ["sentinel-processing"]
+        manager = TagManager(client)
+
+        result = make_result(status=ExecutionStatus.ERROR, issue_key="TEST-1")
+        orch = make_orchestration(on_start_tag="sentinel-processing")
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "sentinel-processing" in update_result.removed_tags
+        assert "sentinel-processing" not in client.labels["TEST-1"]
+
+    def test_no_in_progress_tag_removal_when_not_configured(self) -> None:
+        client = MockJiraTagClient()
+        manager = TagManager(client)
+
+        result = make_result(status=ExecutionStatus.SUCCESS, issue_key="TEST-1")
+        orch = make_orchestration(add_tag="reviewed")  # No on_start_tag
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        # Only the completion tag should be in removed_tags, not any in-progress tag
+        assert "reviewed" in update_result.added_tags
+        # No in-progress tag removal attempted
+        assert not any("processing" in tag for tag in update_result.removed_tags)
