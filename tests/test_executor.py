@@ -581,8 +581,8 @@ class TestAgentExecutorDetermineStatusWithOutcomes:
         assert status == ExecutionStatus.SUCCESS
         assert outcome == "approved"
 
-    def test_falls_back_to_first_outcome_when_no_default(self) -> None:
-        """Should fall back to first outcome when no patterns match and no default."""
+    def test_returns_failure_when_no_match_and_no_default(self) -> None:
+        """Should return FAILURE when no patterns match and no default_outcome."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         retry_config = RetryConfig(failure_patterns=["ERROR"])
@@ -593,8 +593,51 @@ class TestAgentExecutorDetermineStatusWithOutcomes:
 
         status, outcome = executor._determine_status("Review complete", retry_config, outcomes)
 
-        assert status == ExecutionStatus.SUCCESS
-        assert outcome == "approved"
+        # No match and no default = failure (triggers retry/on_failure)
+        assert status == ExecutionStatus.FAILURE
+        assert outcome is None
+
+    def test_default_outcome_failure_keyword(self) -> None:
+        """Should return FAILURE when default_outcome is 'failure'."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["ERROR"], default_outcome="failure")
+        outcomes = [
+            Outcome(name="approved", patterns=["APPROVED"]),
+        ]
+
+        status, outcome = executor._determine_status("Review complete", retry_config, outcomes)
+
+        assert status == ExecutionStatus.FAILURE
+        assert outcome is None
+
+    def test_default_outcome_failure_case_insensitive(self) -> None:
+        """Should handle 'FAILURE' keyword case-insensitively."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["ERROR"], default_outcome="FAILURE")
+        outcomes = [
+            Outcome(name="approved", patterns=["APPROVED"]),
+        ]
+
+        status, outcome = executor._determine_status("Review complete", retry_config, outcomes)
+
+        assert status == ExecutionStatus.FAILURE
+        assert outcome is None
+
+    def test_invalid_default_outcome_returns_failure(self) -> None:
+        """Should return FAILURE when default_outcome doesn't exist in outcomes."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["ERROR"], default_outcome="nonexistent")
+        outcomes = [
+            Outcome(name="approved", patterns=["APPROVED"]),
+        ]
+
+        status, outcome = executor._determine_status("Review complete", retry_config, outcomes)
+
+        assert status == ExecutionStatus.FAILURE
+        assert outcome is None
 
     def test_outcome_with_regex_pattern(self) -> None:
         """Should match regex patterns in outcomes."""

@@ -208,18 +208,63 @@ retry:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `max_attempts` | int | `3` | Maximum execution attempts |
-| `success_patterns` | list | `["SUCCESS", "completed successfully"]` | Patterns indicating success |
-| `failure_patterns` | list | `["FAILURE", "failed", "error"]` | Patterns indicating failure |
-| `default_status` | string | `"success"` | Status when no patterns match (`"success"` or `"failure"`) |
+| `success_patterns` | list | `["SUCCESS", "completed successfully"]` | Patterns indicating success (legacy mode) |
+| `failure_patterns` | list | `["FAILURE", "failed", "error"]` | Patterns indicating failure/retry |
+| `default_status` | string | `"success"` | Status when no patterns match (legacy mode) |
+| `default_outcome` | string | `""` | Outcome when no outcome patterns match (see Outcomes) |
 
 #### Pattern Matching
 
 Patterns are matched case-insensitively against the agent's response:
 
 - **Simple strings**: Matched as substrings (e.g., `"SUCCESS"` matches `"Task SUCCESS"`)
-- **Regex patterns**: Patterns starting with `^`, ending with `$`, or containing `*` are treated as regex
+- **Regex patterns**: Use `"regex:"` prefix for explicit regex (e.g., `"regex:^APPROVED"`)
 
-If the response matches a success pattern, execution is considered successful. If it matches a failure pattern (and no success pattern), the execution is retried. If neither pattern matches, the `default_status` setting determines the outcome (defaults to `"success"`).
+**Legacy mode** (no outcomes configured): Uses `success_patterns` and `failure_patterns`. If neither matches, `default_status` determines the result.
+
+**Outcomes mode** (outcomes configured): Uses `failure_patterns` for retry triggers and outcome patterns for success types. See Outcomes Configuration below.
+
+### Outcomes Configuration
+
+Outcomes allow different success patterns to add different tags. Useful for code reviews with "approved" vs "changes requested" results.
+
+```yaml
+outcomes:
+  - name: approved
+    patterns:
+      - "APPROVED"
+      - "LGTM"
+    add_tag: "code-reviewed"
+
+  - name: changes-requested
+    patterns:
+      - "CHANGES REQUESTED"
+    add_tag: "changes-requested"
+
+retry:
+  failure_patterns:
+    - "ERROR"
+    - "could not access"
+  default_outcome: "approved"  # Optional: outcome when no patterns match
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique identifier for the outcome |
+| `patterns` | list | Yes | Patterns that indicate this outcome |
+| `add_tag` | string | No | Tag to add when this outcome matches |
+
+#### default_outcome Behavior
+
+When outcomes are configured and the response doesn't match any outcome patterns:
+
+| `default_outcome` value | Behavior |
+|-------------------------|----------|
+| Not specified | Triggers failure/retry mechanism, then `on_failure` |
+| `"failure"` | Explicitly triggers failure/retry mechanism |
+| `"approved"` (outcome name) | Uses that outcome as success |
+
+This ensures unrecognized responses fail safely rather than silently succeeding with an arbitrary outcome.
 
 ### On Start Configuration
 
