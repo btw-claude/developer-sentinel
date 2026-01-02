@@ -83,6 +83,7 @@ class AgentClient(ABC):
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
         model: str | None = None,
+        orchestration_name: str | None = None,
     ) -> str:
         """Run a Claude agent with the given prompt and tools.
 
@@ -93,6 +94,7 @@ class AgentClient(ABC):
             timeout_seconds: Optional timeout in seconds. If None, no timeout is applied.
             issue_key: Optional issue key for creating a unique working directory.
             model: Optional model identifier. If None, uses the CLI's default model.
+            orchestration_name: Optional orchestration name for streaming log files.
 
         Returns:
             The agent's response text.
@@ -424,7 +426,13 @@ class AgentExecutor:
 
             try:
                 response = self.client.run_agent(
-                    prompt, tools, context, timeout_seconds, issue_key=issue.key, model=model
+                    prompt,
+                    tools,
+                    context,
+                    timeout_seconds,
+                    issue_key=issue.key,
+                    model=model,
+                    orchestration_name=orchestration.name,
                 )
                 last_response = response
                 status, matched_outcome = self._determine_status(response, retry_config, outcomes)

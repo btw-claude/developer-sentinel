@@ -6,20 +6,26 @@ for Jira and other operations, avoiding the need for separate API configuration.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from sentinel.agent_logger import StreamingLogWriter
 from sentinel.executor import AgentClient, AgentClientError, AgentTimeoutError
 from sentinel.logging import get_logger
 from sentinel.poller import JiraClient, JiraClientError
 from sentinel.tag_manager import JiraTagClient, JiraTagClientError
 
 logger = get_logger(__name__)
+
+# Type alias for output callback function
+OutputCallback = Callable[[str], None]
 
 # Module-level shutdown event for interrupting Claude subprocesses
 _shutdown_event = threading.Event()
@@ -51,16 +57,48 @@ class ClaudeProcessInterruptedError(Exception):
     pass
 
 
+def _stream_reader(
+    stream: Any,
+    output_lines: list[str],
+    callback: OutputCallback | None,
+    prefix: str = "",
+) -> None:
+    """Read lines from a stream and optionally call a callback.
+
+    This function runs in a separate thread to avoid blocking.
+
+    Args:
+        stream: The stream to read from (stdout or stderr).
+        output_lines: List to accumulate output lines.
+        callback: Optional callback to call with each line.
+        prefix: Optional prefix to add to lines (e.g., "[stderr] ").
+    """
+    try:
+        for line in iter(stream.readline, ""):
+            if not line:
+                break
+            output_lines.append(line)
+            if callback:
+                callback(f"{prefix}{line}" if prefix else line)
+    except Exception:
+        pass  # Stream closed or error, just exit
+    finally:
+        with contextlib.suppress(Exception):
+            stream.close()
+
+
 def _run_claude(
     prompt: str,
     timeout_seconds: int | None = None,
     allowed_tools: list[str] | None = None,
     cwd: str | None = None,
     model: str | None = None,
+    output_callback: OutputCallback | None = None,
 ) -> str:
     """Run a prompt through Claude Code CLI.
 
     Uses Popen with polling to allow for graceful shutdown on Ctrl-C.
+    Optionally streams output to a callback function in real-time.
 
     Args:
         prompt: The prompt to send to Claude.
@@ -68,6 +106,8 @@ def _run_claude(
         allowed_tools: Optional list of MCP tool names to pre-authorize.
         cwd: Optional working directory for the subprocess.
         model: Optional model identifier (e.g., "claude-opus-4-5-20251101").
+        output_callback: Optional callback function called with each line of output.
+            Use this to stream output to a log file in real-time.
 
     Returns:
         Claude's response text.
@@ -105,6 +145,24 @@ def _run_claude(
     start_time = time.time()
     poll_interval = 0.5  # Check for shutdown every 500ms
 
+    # Collect output from both streams
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    # Start reader threads for streaming output
+    stdout_thread = threading.Thread(
+        target=_stream_reader,
+        args=(process.stdout, stdout_lines, output_callback, ""),
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=_stream_reader,
+        args=(process.stderr, stderr_lines, output_callback, "[stderr] "),
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+
     try:
         while True:
             # Check if shutdown was requested
@@ -117,6 +175,9 @@ def _run_claude(
                     logger.warning("Claude subprocess did not terminate, killing")
                     process.kill()
                     process.wait()
+                # Wait for reader threads to finish
+                stdout_thread.join(timeout=1)
+                stderr_thread.join(timeout=1)
                 raise ClaudeProcessInterruptedError(
                     "Claude subprocess interrupted by shutdown request"
                 )
@@ -124,7 +185,13 @@ def _run_claude(
             # Check if process completed
             return_code = process.poll()
             if return_code is not None:
-                stdout, stderr = process.communicate()
+                # Wait for reader threads to finish collecting output
+                stdout_thread.join(timeout=5)
+                stderr_thread.join(timeout=5)
+
+                stdout = "".join(stdout_lines)
+                stderr = "".join(stderr_lines)
+
                 if return_code != 0:
                     raise subprocess.CalledProcessError(return_code, cmd, stdout, stderr)
                 return stdout.strip()
@@ -140,6 +207,9 @@ def _run_claude(
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
+                    # Wait for reader threads to finish
+                    stdout_thread.join(timeout=1)
+                    stderr_thread.join(timeout=1)
                     raise subprocess.TimeoutExpired(cmd, timeout_seconds)
 
             # Wait before polling again
@@ -156,6 +226,9 @@ def _run_claude(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+        # Wait for reader threads
+        stdout_thread.join(timeout=1)
+        stderr_thread.join(timeout=1)
         raise
 
 
@@ -310,14 +383,21 @@ If there's an error, respond with: ERROR: <description>"""
 class ClaudeMcpAgentClient(AgentClient):
     """Agent client that uses Claude Code CLI with MCP tools."""
 
-    def __init__(self, base_workdir: Path | None = None) -> None:
+    def __init__(
+        self,
+        base_workdir: Path | None = None,
+        log_base_dir: Path | None = None,
+    ) -> None:
         """Initialize the agent client.
 
         Args:
             base_workdir: Base directory for creating agent working directories.
                          If None, agents run in the current directory.
+            log_base_dir: Base directory for streaming log files.
+                         If None, no streaming logs are created.
         """
         self.base_workdir = base_workdir
+        self.log_base_dir = log_base_dir
 
     def _create_workdir(self, issue_key: str) -> Path:
         """Create a unique working directory for an agent execution.
@@ -350,6 +430,7 @@ class ClaudeMcpAgentClient(AgentClient):
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
         model: str | None = None,
+        orchestration_name: str | None = None,
     ) -> str:
         """Run a Claude agent with the given prompt and tools via Claude Code CLI.
 
@@ -360,6 +441,7 @@ class ClaudeMcpAgentClient(AgentClient):
             timeout_seconds: Optional timeout in seconds.
             issue_key: Optional issue key for creating a unique working directory.
             model: Optional model identifier. If None, uses the CLI's default model.
+            orchestration_name: Optional orchestration name for streaming log files.
 
         Returns:
             The agent's response text.
@@ -398,11 +480,46 @@ class ClaudeMcpAgentClient(AgentClient):
 
         full_prompt = f"{prompt}{context_section}{tools_section}"
 
+        # Determine if we should use streaming logs
+        use_streaming = (
+            self.log_base_dir is not None
+            and issue_key is not None
+            and orchestration_name is not None
+        )
+
+        if use_streaming:
+            return self._run_with_streaming_log(
+                full_prompt=full_prompt,
+                timeout_seconds=timeout_seconds,
+                allowed_tools=allowed_tools if allowed_tools else None,
+                workdir=workdir,
+                model=model,
+                issue_key=issue_key,  # type: ignore[arg-type]
+                orchestration_name=orchestration_name,  # type: ignore[arg-type]
+            )
+        else:
+            return self._run_without_streaming(
+                full_prompt=full_prompt,
+                timeout_seconds=timeout_seconds,
+                allowed_tools=allowed_tools if allowed_tools else None,
+                workdir=workdir,
+                model=model,
+            )
+
+    def _run_without_streaming(
+        self,
+        full_prompt: str,
+        timeout_seconds: int | None,
+        allowed_tools: list[str] | None,
+        workdir: str | None,
+        model: str | None,
+    ) -> str:
+        """Run agent without streaming logs."""
         try:
             response = _run_claude(
                 full_prompt,
                 timeout_seconds=timeout_seconds,
-                allowed_tools=allowed_tools if allowed_tools else None,
+                allowed_tools=allowed_tools,
                 cwd=workdir,
                 model=model,
             )
@@ -417,3 +534,59 @@ class ClaudeMcpAgentClient(AgentClient):
             raise AgentClientError(f"Agent execution failed: {e.stderr}") from e
         except Exception as e:
             raise AgentClientError(f"Agent execution failed: {e}") from e
+
+    def _run_with_streaming_log(
+        self,
+        full_prompt: str,
+        timeout_seconds: int | None,
+        allowed_tools: list[str] | None,
+        workdir: str | None,
+        model: str | None,
+        issue_key: str,
+        orchestration_name: str,
+    ) -> str:
+        """Run agent with streaming logs to a file."""
+        assert self.log_base_dir is not None  # Caller ensures this
+
+        with StreamingLogWriter(
+            base_dir=self.log_base_dir,
+            orchestration_name=orchestration_name,
+            issue_key=issue_key,
+            prompt=full_prompt,
+        ) as log_writer:
+            status = "ERROR"
+            try:
+                response = _run_claude(
+                    full_prompt,
+                    timeout_seconds=timeout_seconds,
+                    allowed_tools=allowed_tools,
+                    cwd=workdir,
+                    model=model,
+                    output_callback=log_writer.write,
+                )
+                status = "COMPLETED"
+                logger.info(f"Agent execution completed, response length: {len(response)}")
+                log_writer.finalize(status)
+                return response
+
+            except ClaudeProcessInterruptedError:
+                status = "INTERRUPTED"
+                log_writer.finalize(status)
+                raise  # Let shutdown interruption propagate
+            except subprocess.TimeoutExpired as e:
+                status = "TIMEOUT"
+                log_writer.finalize(status)
+                raise AgentTimeoutError(
+                    f"Agent execution timed out after {timeout_seconds}s"
+                ) from e
+            except subprocess.CalledProcessError as e:
+                status = "FAILED"
+                log_writer.write(f"\n[Error] Process exited with code {e.returncode}\n")
+                if e.stderr:
+                    log_writer.write(f"[stderr] {e.stderr}\n")
+                log_writer.finalize(status)
+                raise AgentClientError(f"Agent execution failed: {e.stderr}") from e
+            except Exception as e:
+                log_writer.write(f"\n[Error] {e}\n")
+                log_writer.finalize(status)
+                raise AgentClientError(f"Agent execution failed: {e}") from e

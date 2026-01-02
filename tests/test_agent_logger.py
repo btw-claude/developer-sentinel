@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from pathlib import Path
 
-from sentinel.agent_logger import AgentLogger
+from sentinel.agent_logger import AgentLogger, StreamingLogWriter
 from sentinel.executor import ExecutionStatus
 
 
@@ -198,3 +199,233 @@ class TestAgentLogger:
 
         content = log_path.read_text()
         assert "Status:         ERROR" in content
+
+
+class TestStreamingLogWriter:
+    """Tests for StreamingLogWriter."""
+
+    def test_creates_log_file_on_enter(self, tmp_path: Path) -> None:
+        """Should create log file immediately when entering context."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test-orch",
+            issue_key="DS-123",
+            prompt="Test prompt",
+        ) as writer:
+            assert writer.log_path is not None
+            assert writer.log_path.exists()
+
+    def test_creates_orchestration_directory(self, tmp_path: Path) -> None:
+        """Should create orchestration-specific directory."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="my-orchestration",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            assert (tmp_path / "my-orchestration").exists()
+            assert writer.log_path is not None
+            assert writer.log_path.parent.name == "my-orchestration"
+
+    def test_log_path_has_timestamp_filename(self, tmp_path: Path) -> None:
+        """Should create log file with timestamp-based filename."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            assert writer.log_path is not None
+            assert writer.log_path.suffix == ".log"
+            # Filename should match YYYYMMDD_HHMMSS.log pattern
+            name = writer.log_path.stem
+            assert len(name) == 15  # 8 + 1 + 6
+            assert name[8] == "_"
+
+    def test_header_contains_metadata(self, tmp_path: Path) -> None:
+        """Should write header with metadata when entering context."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="code-review",
+            issue_key="DS-456",
+            prompt="Review this code",
+        ) as writer:
+            assert writer.log_path is not None
+            content = writer.log_path.read_text()
+            assert "Issue Key:      DS-456" in content
+            assert "Orchestration:  code-review" in content
+            assert "PROMPT" in content
+            assert "Review this code" in content
+
+    def test_write_line_appends_to_file(self, tmp_path: Path) -> None:
+        """Should append lines to log file immediately."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            writer.write_line("First output line")
+            writer.write_line("Second output line")
+
+            assert writer.log_path is not None
+            content = writer.log_path.read_text()
+            assert "First output line" in content
+            assert "Second output line" in content
+
+    def test_write_line_adds_newline_if_missing(self, tmp_path: Path) -> None:
+        """Should add newline if not present in the line."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            writer.write_line("Line without newline")
+
+            assert writer.log_path is not None
+            content = writer.log_path.read_text()
+            # Should end with newline
+            lines = content.split("\n")
+            assert any("Line without newline" in line for line in lines)
+
+    def test_write_appends_without_newline(self, tmp_path: Path) -> None:
+        """Should append text without adding newline."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            writer.write("partial")
+            writer.write(" text")
+
+            assert writer.log_path is not None
+            content = writer.log_path.read_text()
+            assert "partial text" in content
+
+    def test_get_response_returns_accumulated_output(self, tmp_path: Path) -> None:
+        """Should return all accumulated output from write/write_line calls."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            writer.write_line("Line 1")
+            writer.write("partial")
+            writer.write_line("Line 2")
+
+            response = writer.get_response()
+            assert "Line 1\n" in response
+            assert "partial" in response
+            assert "Line 2\n" in response
+
+    def test_finalize_writes_summary(self, tmp_path: Path) -> None:
+        """Should write execution summary when finalized."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            writer.write_line("Some output")
+            writer.finalize(status="COMPLETED", attempts=1)
+
+            assert writer.log_path is not None
+            content = writer.log_path.read_text()
+            assert "EXECUTION SUMMARY" in content
+            assert "Status:         COMPLETED" in content
+            assert "Attempts:       1" in content
+            assert "Duration:" in content
+            assert "END OF LOG" in content
+
+    def test_finalize_with_multiple_attempts(self, tmp_path: Path) -> None:
+        """Should record attempt count in summary."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            writer.finalize(status="FAILED", attempts=3)
+
+            assert writer.log_path is not None
+            content = writer.log_path.read_text()
+            assert "Status:         FAILED" in content
+            assert "Attempts:       3" in content
+
+    def test_duration_calculation(self, tmp_path: Path) -> None:
+        """Should calculate duration between start and finalize."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            # Sleep a bit to ensure measurable duration
+            time.sleep(0.1)
+            writer.finalize(status="COMPLETED", attempts=1)
+
+            assert writer.log_path is not None
+            content = writer.log_path.read_text()
+            # Duration should be at least 0.1 seconds
+            assert "Duration:" in content
+
+    def test_context_manager_closes_file(self, tmp_path: Path) -> None:
+        """Should close file when exiting context."""
+        writer = StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        )
+
+        with writer:
+            writer.write_line("Output")
+            assert writer._file is not None
+
+        # File should be closed after exit
+        assert writer._file is None
+
+    def test_write_after_exit_is_noop(self, tmp_path: Path) -> None:
+        """Should ignore writes after context is exited."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            writer.write_line("Before exit")
+            log_path = writer.log_path
+
+        # This should not raise or write
+        writer.write_line("After exit")
+        writer.write("More after exit")
+
+        assert log_path is not None
+        content = log_path.read_text()
+        assert "Before exit" in content
+        assert "After exit" not in content
+
+    def test_streaming_header_label(self, tmp_path: Path) -> None:
+        """Should indicate streaming in header."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            assert writer.log_path is not None
+            content = writer.log_path.read_text()
+            assert "STREAMING" in content or "streaming" in content
+
+    def test_log_path_none_before_enter(self, tmp_path: Path) -> None:
+        """log_path should be None before entering context."""
+        writer = StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        )
+        assert writer.log_path is None

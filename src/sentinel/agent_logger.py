@@ -6,7 +6,7 @@ Logs agent executions to structured directories:
 Each log file contains:
 - Execution metadata (issue key, orchestration, timestamps)
 - Agent prompt
-- Agent response
+- Agent response (streamed in real-time when using StreamingLogWriter)
 - Execution status
 """
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import IO, TYPE_CHECKING
 
 from sentinel.logging import get_logger
 
@@ -22,6 +22,161 @@ if TYPE_CHECKING:
     from sentinel.executor import ExecutionStatus
 
 logger = get_logger(__name__)
+
+
+class StreamingLogWriter:
+    """Writes agent execution output to a log file in real-time.
+
+    Usage:
+        with StreamingLogWriter(base_dir, orchestration_name, issue_key, prompt) as writer:
+            # Stream output lines as they arrive
+            writer.write_line("Agent output line...")
+            writer.write_line("Another line...")
+
+        # After context exit, writer.log_path contains the log file path
+    """
+
+    def __init__(
+        self,
+        base_dir: Path,
+        orchestration_name: str,
+        issue_key: str,
+        prompt: str,
+    ) -> None:
+        """Initialize the streaming log writer.
+
+        Args:
+            base_dir: Base directory for logs (e.g., ./logs).
+            orchestration_name: Name of the orchestration.
+            issue_key: The Jira issue key.
+            prompt: The prompt sent to the agent.
+        """
+        self.base_dir = base_dir
+        self.orchestration_name = orchestration_name
+        self.issue_key = issue_key
+        self.prompt = prompt
+        self.start_time = datetime.now()
+        self._file: IO[str] | None = None
+        self._log_path: Path | None = None
+        self._response_lines: list[str] = []
+
+    @property
+    def log_path(self) -> Path | None:
+        """Return the log file path, or None if not yet created."""
+        return self._log_path
+
+    def _get_log_path(self) -> Path:
+        """Get the log file path for this execution."""
+        orch_dir = self.base_dir / self.orchestration_name
+        orch_dir.mkdir(parents=True, exist_ok=True)
+        filename = self.start_time.strftime("%Y%m%d_%H%M%S") + ".log"
+        return orch_dir / filename
+
+    def __enter__(self) -> StreamingLogWriter:
+        """Open the log file and write the header."""
+        self._log_path = self._get_log_path()
+        self._file = open(self._log_path, "w", encoding="utf-8")
+
+        separator = "=" * 80
+        header = f"""{separator}
+AGENT EXECUTION LOG (STREAMING)
+{separator}
+
+Issue Key:      {self.issue_key}
+Orchestration:  {self.orchestration_name}
+Start Time:     {self.start_time.isoformat()}
+
+{separator}
+PROMPT
+{separator}
+
+{self.prompt}
+
+{separator}
+AGENT OUTPUT (streaming)
+{separator}
+
+"""
+        self._file.write(header)
+        self._file.flush()
+
+        logger.info(f"Streaming log started: {self._log_path}")
+        return self
+
+    def write_line(self, line: str) -> None:
+        """Write a line of output to the log file.
+
+        Args:
+            line: The line to write (newline will be added if not present).
+        """
+        if self._file is None:
+            return
+
+        if not line.endswith("\n"):
+            line = line + "\n"
+
+        self._file.write(line)
+        self._file.flush()
+        self._response_lines.append(line)
+
+    def write(self, text: str) -> None:
+        """Write text to the log file without adding newline.
+
+        Args:
+            text: The text to write.
+        """
+        if self._file is None:
+            return
+
+        self._file.write(text)
+        self._file.flush()
+        self._response_lines.append(text)
+
+    def get_response(self) -> str:
+        """Get the accumulated response text."""
+        return "".join(self._response_lines)
+
+    def finalize(
+        self,
+        status: str,
+        attempts: int = 1,
+    ) -> None:
+        """Write the final metadata to the log file.
+
+        Args:
+            status: The execution status (e.g., "SUCCESS", "FAILURE", "ERROR").
+            attempts: Number of attempts made.
+        """
+        if self._file is None:
+            return
+
+        end_time = datetime.now()
+        duration = (end_time - self.start_time).total_seconds()
+        separator = "=" * 80
+
+        footer = f"""
+{separator}
+EXECUTION SUMMARY
+{separator}
+
+Status:         {status}
+Attempts:       {attempts}
+End Time:       {end_time.isoformat()}
+Duration:       {duration:.2f}s
+
+{separator}
+END OF LOG
+{separator}
+"""
+        self._file.write(footer)
+        self._file.flush()
+
+    def __exit__(self, exc_type: type | None, exc_val: Exception | None, exc_tb: object) -> None:
+        """Close the log file."""
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+            logger.info(f"Streaming log completed: {self._log_path}")
 
 
 class AgentLogger:
