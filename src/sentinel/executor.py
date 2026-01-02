@@ -119,64 +119,87 @@ class AgentExecutor:
         self.client = client
         self.agent_logger = agent_logger
 
-    def build_prompt(self, issue: JiraIssue, orchestration: Orchestration) -> str:
-        """Build the agent prompt from issue and orchestration config.
+    def _build_template_variables(
+        self, issue: JiraIssue, orchestration: Orchestration
+    ) -> dict[str, str]:
+        """Build the dictionary of template variables for prompt substitution.
 
         Args:
             issue: The Jira issue to process.
             orchestration: The orchestration configuration.
 
         Returns:
-            The complete prompt for the agent.
+            Dictionary mapping variable names to their values.
         """
-        # Start with the orchestration's base prompt
-        prompt_parts = [orchestration.agent.prompt]
-
-        # Add issue context
-        prompt_parts.append("\n\n## Issue Context\n")
-        prompt_parts.append(f"**Issue Key:** {issue.key}\n")
-        prompt_parts.append(f"**Summary:** {issue.summary}\n")
-
-        if issue.description:
-            prompt_parts.append(f"\n**Description:**\n{issue.description}\n")
-
-        if issue.status:
-            prompt_parts.append(f"\n**Status:** {issue.status}\n")
-
-        if issue.assignee:
-            prompt_parts.append(f"**Assignee:** {issue.assignee}\n")
-
-        if issue.labels:
-            prompt_parts.append(f"**Labels:** {', '.join(issue.labels)}\n")
-
+        # Format comments - last 3 comments, each truncated to 500 chars
+        comments_text = ""
         if issue.comments:
-            prompt_parts.append("\n**Recent Comments:**\n")
-            for i, comment in enumerate(issue.comments[-3:], 1):  # Last 3 comments
-                if len(comment) > 200:
-                    prompt_parts.append(f"{i}. {comment[:200]}...\n")
+            comment_parts = []
+            for i, comment in enumerate(issue.comments[-3:], 1):
+                if len(comment) > 500:
+                    comment_parts.append(f"{i}. {comment[:500]}...")
                 else:
-                    prompt_parts.append(f"{i}. {comment}\n")
+                    comment_parts.append(f"{i}. {comment}")
+            comments_text = "\n".join(comment_parts)
 
-        if issue.links:
-            prompt_parts.append(f"\n**Linked Issues:** {', '.join(issue.links)}\n")
-
-        # Add GitHub context if available
+        # Get GitHub context
         github = orchestration.agent.github
-        if github and github.org and github.repo:
-            prompt_parts.append("\n## GitHub Context\n")
-            prompt_parts.append(f"**Repository:** {github.org}/{github.repo}\n")
-            if github.host != "github.com":
-                prompt_parts.append(f"**Host:** {github.host}\n")
 
-        # Add success/failure pattern instructions
-        prompt_parts.append("\n## Response Format\n")
-        prompt_parts.append(
-            "When you complete the task, include 'SUCCESS' in your response. "
-            "If you encounter an error or cannot complete the task, include 'FAILURE' "
-            "followed by a brief explanation.\n"
-        )
+        return {
+            # Jira context
+            "jira_issue_key": issue.key,
+            "jira_summary": issue.summary,
+            "jira_description": issue.description or "",
+            "jira_status": issue.status or "",
+            "jira_assignee": issue.assignee or "",
+            "jira_labels": ", ".join(issue.labels) if issue.labels else "",
+            "jira_comments": comments_text,
+            "jira_links": ", ".join(issue.links) if issue.links else "",
+            # GitHub context
+            "github_host": github.host if github else "",
+            "github_org": github.org if github else "",
+            "github_repo": github.repo if github else "",
+        }
 
-        return "".join(prompt_parts)
+    def build_prompt(self, issue: JiraIssue, orchestration: Orchestration) -> str:
+        """Build the agent prompt by substituting template variables.
+
+        Template variables available in the prompt:
+        - {jira_issue_key}: The Jira issue key (e.g., "DS-123")
+        - {jira_summary}: Issue summary/title
+        - {jira_description}: Full issue description
+        - {jira_status}: Current issue status
+        - {jira_assignee}: Assignee display name
+        - {jira_labels}: Comma-separated list of labels
+        - {jira_comments}: Recent comments (last 3)
+        - {jira_links}: Comma-separated list of linked issue keys
+        - {github_host}: GitHub host (e.g., "github.com")
+        - {github_org}: GitHub organization
+        - {github_repo}: GitHub repository name
+
+        Args:
+            issue: The Jira issue to process.
+            orchestration: The orchestration configuration.
+
+        Returns:
+            The prompt with all template variables substituted.
+        """
+        template = orchestration.agent.prompt
+        variables = self._build_template_variables(issue, orchestration)
+
+        # Use a custom substitution to handle missing/unknown variables gracefully
+        # This preserves any {unknown_var} that isn't in our variables dict
+        def replace_var(match: re.Match[str]) -> str:
+            var_name = match.group(1)
+            if var_name in variables:
+                return variables[var_name]
+            # Keep unknown variables as-is (user might have literal braces)
+            return match.group(0)
+
+        # Match {variable_name} patterns
+        prompt = re.sub(r"\{(\w+)\}", replace_var, template)
+
+        return prompt
 
     def _matches_pattern(self, response: str, patterns: list[str]) -> bool:
         """Check if the response matches any of the patterns.

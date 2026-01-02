@@ -13,6 +13,27 @@
 #   - on_complete: What to do after successful processing
 #   - on_failure: What to do when all retries are exhausted
 #
+# Template Variables:
+# -------------------
+# The agent prompt supports template variables that are substituted with
+# actual values from the Jira issue and GitHub context. Use these to give
+# the agent exactly the context it needs:
+#
+# Jira Variables:
+#   {jira_issue_key}    - Issue key (e.g., "PROJ-123")
+#   {jira_summary}      - Issue title/summary
+#   {jira_description}  - Full issue description
+#   {jira_status}       - Current status (e.g., "In Progress")
+#   {jira_assignee}     - Assignee display name
+#   {jira_labels}       - Comma-separated labels
+#   {jira_comments}     - Recent comments (last 3, formatted)
+#   {jira_links}        - Comma-separated linked issue keys
+#
+# GitHub Variables:
+#   {github_host}       - GitHub host (e.g., "github.com")
+#   {github_org}        - Organization name
+#   {github_repo}       - Repository name
+#
 # Tag-based Workflow:
 # -------------------
 # Sentinel uses a stateless, tag-based workflow:
@@ -50,18 +71,28 @@ orchestrations:
     # Defines the Claude agent's behavior
     agent:
       # The prompt/instructions for the agent
-      # The agent will receive the Jira issue context along with this prompt
+      # Use template variables like {jira_issue_key} to include issue context
       prompt: |
-        You are a code review assistant. Review the code changes referenced
-        in this Jira issue and provide feedback.
+        You are a code review assistant. Review issue {jira_issue_key}.
 
-        Focus on:
+        ## Issue Details
+        **Summary:** {jira_summary}
+        **Status:** {jira_status}
+        **Assignee:** {jira_assignee}
+
+        **Description:**
+        {jira_description}
+
+        **Repository:** {github_org}/{github_repo}
+
+        ## Your Task
+        Review the code changes and provide feedback. Focus on:
         - Code correctness and potential bugs
         - Security vulnerabilities
         - Performance considerations
         - Code style and best practices
 
-        After reviewing, post your findings as a comment on the Jira issue.
+        Post your findings as a comment on the Jira issue.
         If there's a linked GitHub PR, also post a review there.
 
         End your response with SUCCESS if the review was completed, or
@@ -127,9 +158,16 @@ orchestrations:
 
     agent:
       prompt: |
-        You are a documentation assistant. Based on the Jira issue,
-        update the relevant Confluence documentation.
+        You are a documentation assistant. Update documentation for {jira_issue_key}.
 
+        ## Issue Details
+        **Summary:** {jira_summary}
+
+        **Description:**
+        {jira_description}
+
+        ## Your Task
+        Based on the Jira issue above, update the relevant Confluence documentation.
         After updating, post a summary as a comment on the Jira issue.
 
         End your response with SUCCESS or FAILURE.
@@ -170,8 +208,16 @@ orchestrations:
 
     agent:
       prompt: |
-        You are a code review assistant. Review the code changes in the
-        linked GitHub PR and provide feedback.
+        You are a code review assistant. Review {jira_issue_key}: {jira_summary}
+
+        ## Issue Description
+        {jira_description}
+
+        ## Repository
+        {github_org}/{github_repo}
+
+        ## Your Task
+        Review the code changes in the linked GitHub PR and provide feedback.
 
         After reviewing:
         - If the code looks good, end with "APPROVED: [brief summary]"
