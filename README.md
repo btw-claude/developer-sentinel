@@ -73,21 +73,30 @@ sentinel --interval 30 --log-level DEBUG --config-dir ./my-orchestrations
 Define orchestrations in YAML files under the `orchestrations/` directory:
 
 ```yaml
-name: code-review
-description: Automated code review agent
-version: "1.0"
+orchestrations:
+  - name: "code-review"
+    trigger:
+      source: jira
+      project: "DEV"
+      tags:
+        - "needs-review"
+    agent:
+      prompt: |
+        You are a code review assistant. Review issue {jira_issue_key}.
 
-trigger:
-  tag: "@code-review"
-  project_filter: "project = DEV"
+        Summary: {jira_summary}
+        Description: {jira_description}
 
-agent:
-  model: claude-sonnet-4-20250514
-  system_prompt: |
-    You are a code review assistant...
-  tools:
-    - jira
-    - github
+        Respond with SUCCESS when complete.
+      tools:
+        - jira
+        - github
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+    on_complete:
+      add_tag: "reviewed"
 ```
 
 See `orchestrations/README.md` for full configuration reference.

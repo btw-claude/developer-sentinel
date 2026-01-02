@@ -27,7 +27,9 @@ class MockAgentClient(AgentClient):
     def __init__(self, responses: list[str] | None = None) -> None:
         self.responses = responses or ["SUCCESS: Task completed"]
         self.call_count = 0
-        self.calls: list[tuple[str, list[str], dict[str, Any] | None, int | None, str | None]] = []
+        self.calls: list[
+            tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None]
+        ] = []
         self.should_error = False
         self.error_count = 0
         self.max_errors = 0
@@ -42,8 +44,9 @@ class MockAgentClient(AgentClient):
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
+        model: str | None = None,
     ) -> str:
-        self.calls.append((prompt, tools, context, timeout_seconds, issue_key))
+        self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model))
 
         if self.should_timeout and self.timeout_count < self.max_timeouts:
             self.timeout_count += 1
@@ -803,6 +806,31 @@ class TestAgentExecutorExecute:
         executor.execute(issue, orch)
 
         assert client.calls[0][3] is None
+
+    def test_passes_model_to_client(self) -> None:
+        """Model from orchestration should be passed to client."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = make_orchestration()
+        orch.agent.model = "claude-opus-4-5-20251101"
+
+        executor.execute(issue, orch)
+
+        # Index 5 is model in the calls tuple
+        assert client.calls[0][5] == "claude-opus-4-5-20251101"
+
+    def test_model_none_by_default(self) -> None:
+        """Model should be None when not specified in orchestration."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = make_orchestration()
+
+        executor.execute(issue, orch)
+
+        # Index 5 is model in the calls tuple
+        assert client.calls[0][5] is None
 
 
 class TestAgentExecutorExecuteWithOutcomes:

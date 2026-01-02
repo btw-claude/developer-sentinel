@@ -38,12 +38,16 @@ class AgentConfig:
         github: Optional GitHub repository context.
         timeout_seconds: Optional timeout in seconds for agent execution.
             If None, no timeout is applied.
+        model: Optional model identifier to use for this agent.
+            If None, uses the Claude CLI's default model.
+            Examples: "claude-opus-4-5-20251101", "claude-sonnet-4-20250514"
     """
 
     prompt: str = ""
     tools: list[str] = field(default_factory=list)
     github: GitHubContext | None = None
     timeout_seconds: int | None = None
+    model: str | None = None
 
 
 @dataclass
@@ -175,11 +179,16 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     if timeout is not None and (not isinstance(timeout, int) or timeout <= 0):
         raise OrchestrationError(f"Invalid timeout_seconds '{timeout}': must be a positive integer")
 
+    model = data.get("model")
+    if model is not None and not isinstance(model, str):
+        raise OrchestrationError(f"Invalid model '{model}': must be a string")
+
     return AgentConfig(
         prompt=data.get("prompt", ""),
         tools=data.get("tools", []),
         github=_parse_github_context(data.get("github")),
         timeout_seconds=timeout,
+        model=model,
     )
 
 

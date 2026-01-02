@@ -67,7 +67,14 @@ trigger:
 ```yaml
 agent:
   prompt: |
-    You are an assistant. Process this issue and respond with SUCCESS or FAILURE.
+    You are an assistant. Review issue {jira_issue_key}: {jira_summary}
+
+    Description:
+    {jira_description}
+
+    Repository: {github_org}/{github_repo}
+
+    Respond with SUCCESS or FAILURE when complete.
   tools:
     - jira
     - github
@@ -79,10 +86,70 @@ agent:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `prompt` | string | Yes | Instructions for the Claude agent |
+| `prompt` | string | Yes | Instructions for the Claude agent (supports template variables) |
+| `model` | string | No | Model to use (e.g., `claude-opus-4-5-20251101`). Uses CLI default if not specified. |
 | `tools` | list | No | Tools available to the agent |
 | `github` | object | No | GitHub repository context |
 | `timeout_seconds` | int | No | Optional timeout in seconds for agent execution |
+
+#### Template Variables
+
+The prompt supports template variables that are substituted with actual values from the Jira issue and GitHub context. Use `{variable_name}` syntax in your prompt:
+
+**Jira Variables:**
+
+| Variable | Description | Example Value |
+|----------|-------------|---------------|
+| `{jira_issue_key}` | Issue key | `"DS-123"` |
+| `{jira_summary}` | Issue title/summary | `"Fix login bug"` |
+| `{jira_description}` | Full issue description | `"Users cannot log in..."` |
+| `{jira_status}` | Current status | `"In Progress"` |
+| `{jira_assignee}` | Assignee display name | `"John Smith"` |
+| `{jira_labels}` | Comma-separated labels | `"bug, high-priority"` |
+| `{jira_comments}` | Recent comments (last 3, truncated to 500 chars each) | `"1. Comment text..."` |
+| `{jira_links}` | Comma-separated linked issue keys | `"DS-100, DS-101"` |
+
+**GitHub Variables:**
+
+| Variable | Description | Example Value |
+|----------|-------------|---------------|
+| `{github_host}` | GitHub host | `"github.com"` |
+| `{github_org}` | Organization name | `"your-org"` |
+| `{github_repo}` | Repository name | `"your-repo"` |
+
+**Example prompt with template variables:**
+
+```yaml
+prompt: |
+  You are a code review assistant. Review issue {jira_issue_key}.
+
+  ## Issue Details
+  **Summary:** {jira_summary}
+  **Status:** {jira_status}
+  **Assignee:** {jira_assignee}
+  **Labels:** {jira_labels}
+
+  **Description:**
+  {jira_description}
+
+  **Recent Comments:**
+  {jira_comments}
+
+  **Related Issues:** {jira_links}
+
+  **Repository:** {github_org}/{github_repo}
+
+  ## Your Task
+  Review the code changes and provide feedback. Post your findings as a
+  comment on the Jira issue.
+
+  End your response with SUCCESS or FAILURE.
+```
+
+**Notes:**
+- Unknown variables (not in the list above) are preserved as-is, allowing literal braces in prompts
+- Empty values are substituted with empty strings
+- GitHub variables require the `github` section to be configured
 
 #### Available Tools
 
@@ -102,6 +169,25 @@ github:
   org: "your-org"         # Organization or user name
   repo: "your-repo"       # Repository name
 ```
+
+#### Model Selection
+
+Optionally specify which Claude model to use for this orchestration:
+
+```yaml
+agent:
+  model: "claude-opus-4-5-20251101"
+  prompt: |
+    ...
+```
+
+| Model | Identifier |
+|-------|------------|
+| Opus 4.5 | `claude-opus-4-5-20251101` |
+| Sonnet 4 | `claude-sonnet-4-20250514` |
+| Haiku 3.5 | `claude-haiku-3-5-20241022` |
+
+If not specified, the agent uses the Claude CLI's default model (typically your configured default).
 
 ### Retry Configuration
 

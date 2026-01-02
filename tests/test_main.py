@@ -32,7 +32,9 @@ class MockAgentClient(AgentClient):
     def __init__(self, responses: list[str] | None = None) -> None:
         self.responses = responses or ["SUCCESS: Done"]
         self.call_count = 0
-        self.calls: list[tuple[str, list[str], dict[str, Any] | None, int | None, str | None]] = []
+        self.calls: list[
+            tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None]
+        ] = []
 
     def run_agent(
         self,
@@ -41,8 +43,9 @@ class MockAgentClient(AgentClient):
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
+        model: str | None = None,
     ) -> str:
-        self.calls.append((prompt, tools, context, timeout_seconds, issue_key))
+        self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model))
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
         return response
