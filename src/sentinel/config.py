@@ -34,6 +34,16 @@ class Config:
     agent_workdir: Path = Path("./workdir")  # Base directory for agent working directories
     agent_logs_dir: Path = Path("./logs")  # Base directory for agent execution logs
 
+    # Jira REST API configuration
+    jira_base_url: str = ""  # e.g., "https://yoursite.atlassian.net"
+    jira_email: str = ""  # User email for authentication
+    jira_api_token: str = ""  # API token for authentication
+
+    @property
+    def jira_configured(self) -> bool:
+        """Check if Jira REST API is configured."""
+        return bool(self.jira_base_url and self.jira_email and self.jira_api_token)
+
 
 def _parse_positive_int(value: str, name: str, default: int) -> int:
     """Parse a string as a positive integer with validation.
@@ -154,4 +164,7 @@ def load_config(env_file: Path | None = None) -> Config:
         orchestrations_dir=Path(os.getenv("SENTINEL_ORCHESTRATIONS_DIR", "./orchestrations")),
         agent_workdir=Path(os.getenv("SENTINEL_AGENT_WORKDIR", "./workdir")),
         agent_logs_dir=Path(os.getenv("SENTINEL_AGENT_LOGS_DIR", "./logs")),
+        jira_base_url=os.getenv("JIRA_BASE_URL", ""),
+        jira_email=os.getenv("JIRA_EMAIL", ""),
+        jira_api_token=os.getenv("JIRA_API_TOKEN", ""),
     )

@@ -26,6 +26,7 @@ from sentinel.mcp_clients import (
 )
 from sentinel.orchestration import Orchestration, load_orchestrations
 from sentinel.poller import JiraClient, JiraPoller
+from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.router import Router
 from sentinel.tag_manager import JiraTagClient, TagManager
 
@@ -265,10 +266,35 @@ def main(args: list[str] | None = None) -> int:
 
     logger.info(f"Loaded {len(orchestrations)} orchestrations")
 
-    # Initialize MCP-based clients
-    jira_client = JiraMcpClient()
+    # Initialize clients
+    # Use REST clients for Jira when configured (faster, no Claude invocations)
+    # Fall back to MCP clients if Jira REST is not configured
+    jira_client: JiraClient
+    tag_client: JiraTagClient
+
+    if config.jira_configured:
+        logger.info("Using Jira REST API clients (direct HTTP)")
+        jira_client = JiraRestClient(
+            base_url=config.jira_base_url,
+            email=config.jira_email,
+            api_token=config.jira_api_token,
+        )
+        tag_client = JiraRestTagClient(
+            base_url=config.jira_base_url,
+            email=config.jira_email,
+            api_token=config.jira_api_token,
+        )
+    else:
+        logger.info("Using Jira MCP clients (via Claude Code CLI)")
+        logger.warning(
+            "Jira REST API not configured. Set JIRA_BASE_URL, JIRA_EMAIL, "
+            "and JIRA_API_TOKEN for faster polling."
+        )
+        jira_client = JiraMcpClient()
+        tag_client = JiraMcpTagClient()
+
+    # Agent client always uses Claude MCP (that's the whole point)
     agent_client = ClaudeMcpAgentClient(base_workdir=config.agent_workdir)
-    tag_client = JiraMcpTagClient()
     agent_logger = AgentLogger(base_dir=config.agent_logs_dir)
 
     # Create and run Sentinel
