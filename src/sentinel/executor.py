@@ -319,9 +319,17 @@ class AgentExecutor:
             if matched_outcome:
                 return ExecutionStatus.SUCCESS, matched_outcome.name
 
-            # No outcome matched - use default_outcome if configured
+            # No outcome matched - check default_outcome
             if retry_config.default_outcome:
-                # Find the default outcome
+                # Special "failure" keyword triggers failure mechanism
+                if retry_config.default_outcome.lower() == "failure":
+                    logger.warning(
+                        "Response did not match any outcome patterns, "
+                        "using default_outcome 'failure' - triggering failure mechanism"
+                    )
+                    return ExecutionStatus.FAILURE, None
+
+                # Find the named default outcome
                 for outcome in outcomes:
                     if outcome.name == retry_config.default_outcome:
                         logger.warning(
@@ -330,19 +338,21 @@ class AgentExecutor:
                             retry_config.default_outcome,
                         )
                         return ExecutionStatus.SUCCESS, outcome.name
-                # Default outcome name not found in outcomes
+
+                # Default outcome name not found in outcomes - treat as failure
                 logger.warning(
-                    "default_outcome '%s' not found in outcomes, using first outcome",
+                    "default_outcome '%s' not found in outcomes, treating as failure",
                     retry_config.default_outcome,
                 )
+                return ExecutionStatus.FAILURE, None
 
-            # Fall back to first outcome
-            if outcomes:
-                logger.warning(
-                    "Response did not match any outcome patterns, using first outcome: %s",
-                    outcomes[0].name,
-                )
-                return ExecutionStatus.SUCCESS, outcomes[0].name
+            # No default_outcome configured - treat as failure
+            # This is safer than silently succeeding with an arbitrary outcome
+            logger.warning(
+                "Response did not match any outcome patterns and no default_outcome "
+                "configured, treating as failure"
+            )
+            return ExecutionStatus.FAILURE, None
 
         # Legacy logic when outcomes are not configured
         # Check success patterns first

@@ -253,6 +253,8 @@ orchestrations:
         - "API failed"
         - "connection timeout"
       # default_outcome is used when no outcome patterns match (optional)
+      # If not specified or set to "failure", triggers the failure/retry mechanism
+      # If set to an outcome name (e.g., "approved"), uses that outcome on no match
       default_outcome: "approved"
 
     # Outcomes define different success types with different tags
