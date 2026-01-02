@@ -181,11 +181,13 @@ agent:
     ...
 ```
 
-| Model | Identifier |
-|-------|------------|
-| Opus 4.5 | `claude-opus-4-5-20251101` |
-| Sonnet 4 | `claude-sonnet-4-20250514` |
-| Haiku 3.5 | `claude-haiku-3-5-20241022` |
+| Model | Identifier | Shorthand |
+|-------|------------|-----------|
+| Opus 4.5 | `claude-opus-4-5-20251101` | `opus` |
+| Sonnet 4 | `claude-sonnet-4-20250514` | `sonnet` |
+| Haiku 3.5 | `claude-haiku-3-5-20241022` | `haiku` |
+
+You can use either the full identifier or the shorthand (which always points to the latest version).
 
 If not specified, the agent uses the Claude CLI's default model (typically your configured default).
 
