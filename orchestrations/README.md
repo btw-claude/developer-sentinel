@@ -81,6 +81,7 @@ agent:
 | `prompt` | string | Yes | Instructions for the Claude agent |
 | `tools` | list | No | Tools available to the agent |
 | `github` | object | No | GitHub repository context |
+| `timeout_seconds` | int | No | Optional timeout in seconds for agent execution |
 
 #### Available Tools
 
@@ -120,6 +121,7 @@ retry:
 | `max_attempts` | int | `3` | Maximum execution attempts |
 | `success_patterns` | list | `["SUCCESS", "completed successfully"]` | Patterns indicating success |
 | `failure_patterns` | list | `["FAILURE", "failed", "error"]` | Patterns indicating failure |
+| `default_status` | string | `"success"` | Status when no patterns match (`"success"` or `"failure"`) |
 
 #### Pattern Matching
 
@@ -128,7 +130,7 @@ Patterns are matched case-insensitively against the agent's response:
 - **Simple strings**: Matched as substrings (e.g., `"SUCCESS"` matches `"Task SUCCESS"`)
 - **Regex patterns**: Patterns starting with `^`, ending with `$`, or containing `*` are treated as regex
 
-If the response matches a success pattern, execution is considered successful. If it matches a failure pattern (and no success pattern), the execution is retried. If neither pattern matches, execution defaults to success.
+If the response matches a success pattern, execution is considered successful. If it matches a failure pattern (and no success pattern), the execution is retried. If neither pattern matches, the `default_status` setting determines the outcome (defaults to `"success"`).
 
 ### On Complete Configuration
 
