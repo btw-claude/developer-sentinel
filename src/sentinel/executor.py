@@ -10,7 +10,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from sentinel.logging import get_logger, log_agent_summary
-from sentinel.orchestration import Orchestration, RetryConfig
+from sentinel.orchestration import Orchestration, Outcome, RetryConfig
 from sentinel.poller import JiraIssue
 
 if TYPE_CHECKING:
@@ -29,13 +29,24 @@ class ExecutionStatus(Enum):
 
 @dataclass
 class ExecutionResult:
-    """Result of executing an agent on an issue."""
+    """Result of executing an agent on an issue.
+
+    Attributes:
+        status: The execution status (SUCCESS, FAILURE, or ERROR).
+        response: The agent's response text.
+        attempts: Number of attempts made.
+        issue_key: The Jira issue key.
+        orchestration_name: Name of the orchestration.
+        matched_outcome: Name of the matched outcome (if outcomes are configured).
+            None if no outcomes matched or outcomes are not configured.
+    """
 
     status: ExecutionStatus
     response: str
     attempts: int
     issue_key: str
     orchestration_name: str
+    matched_outcome: str | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -241,23 +252,81 @@ class AgentExecutor:
             # Log but don't fail the execution due to logging errors
             logger.warning(f"Failed to write agent execution log: {e}")
 
-    def _determine_status(self, response: str, retry_config: RetryConfig) -> ExecutionStatus:
-        """Determine the execution status from the agent response.
+    def _determine_outcome(self, response: str, outcomes: list[Outcome]) -> Outcome | None:
+        """Determine which outcome matches the response.
+
+        Args:
+            response: The agent's response text.
+            outcomes: List of outcome configurations.
+
+        Returns:
+            The matched Outcome, or None if no outcome patterns match.
+        """
+        for outcome in outcomes:
+            if self._matches_pattern(response, outcome.patterns):
+                return outcome
+        return None
+
+    def _determine_status(
+        self,
+        response: str,
+        retry_config: RetryConfig,
+        outcomes: list[Outcome] | None = None,
+    ) -> tuple[ExecutionStatus, str | None]:
+        """Determine the execution status and matched outcome from the agent response.
 
         Args:
             response: The agent's response text.
             retry_config: Retry configuration with success/failure patterns and default_status.
+            outcomes: Optional list of outcome configurations.
 
         Returns:
-            The determined execution status.
+            Tuple of (ExecutionStatus, matched_outcome_name or None).
         """
+        # If outcomes are configured, use outcome-based logic
+        if outcomes:
+            # First check failure patterns (these trigger retries)
+            if self._matches_pattern(response, retry_config.failure_patterns):
+                return ExecutionStatus.FAILURE, None
+
+            # Check each outcome's patterns
+            matched_outcome = self._determine_outcome(response, outcomes)
+            if matched_outcome:
+                return ExecutionStatus.SUCCESS, matched_outcome.name
+
+            # No outcome matched - use default_outcome if configured
+            if retry_config.default_outcome:
+                # Find the default outcome
+                for outcome in outcomes:
+                    if outcome.name == retry_config.default_outcome:
+                        logger.warning(
+                            "Response did not match any outcome patterns, "
+                            "using default_outcome: %s",
+                            retry_config.default_outcome,
+                        )
+                        return ExecutionStatus.SUCCESS, outcome.name
+                # Default outcome name not found in outcomes
+                logger.warning(
+                    "default_outcome '%s' not found in outcomes, using first outcome",
+                    retry_config.default_outcome,
+                )
+
+            # Fall back to first outcome
+            if outcomes:
+                logger.warning(
+                    "Response did not match any outcome patterns, using first outcome: %s",
+                    outcomes[0].name,
+                )
+                return ExecutionStatus.SUCCESS, outcomes[0].name
+
+        # Legacy logic when outcomes are not configured
         # Check success patterns first
         if self._matches_pattern(response, retry_config.success_patterns):
-            return ExecutionStatus.SUCCESS
+            return ExecutionStatus.SUCCESS, None
 
         # Check failure patterns
         if self._matches_pattern(response, retry_config.failure_patterns):
-            return ExecutionStatus.FAILURE
+            return ExecutionStatus.FAILURE, None
 
         # Use configured default status when no patterns match
         default = retry_config.default_status.upper()
@@ -265,7 +334,8 @@ class AgentExecutor:
             "Response did not match success or failure patterns, using default_status: %s",
             default,
         )
-        return ExecutionStatus.SUCCESS if default == "SUCCESS" else ExecutionStatus.FAILURE
+        status = ExecutionStatus.SUCCESS if default == "SUCCESS" else ExecutionStatus.FAILURE
+        return status, None
 
     def execute(
         self,
@@ -299,7 +369,11 @@ class AgentExecutor:
         prompt = self.build_prompt(issue, orchestration)
         last_response = ""
         last_status = ExecutionStatus.ERROR
+        last_matched_outcome: str | None = None
         start_time = datetime.now()
+
+        # Get outcomes if configured
+        outcomes = orchestration.outcomes if orchestration.outcomes else None
 
         for attempt in range(1, max_attempts + 1):
             logger.info(
@@ -317,8 +391,9 @@ class AgentExecutor:
                     prompt, tools, context, timeout_seconds, issue_key=issue.key
                 )
                 last_response = response
-                status = self._determine_status(response, retry_config)
+                status, matched_outcome = self._determine_status(response, retry_config, outcomes)
                 last_status = status
+                last_matched_outcome = matched_outcome
 
                 # Log agent summary
                 log_agent_summary(
@@ -338,6 +413,7 @@ class AgentExecutor:
                         attempts=attempt,
                         issue_key=issue.key,
                         orchestration_name=orchestration.name,
+                        matched_outcome=matched_outcome,
                     )
                     self._log_execution(
                         issue.key,
@@ -412,6 +488,7 @@ class AgentExecutor:
             attempts=max_attempts,
             issue_key=issue.key,
             orchestration_name=orchestration.name,
+            matched_outcome=last_matched_outcome,
         )
         self._log_execution(
             issue.key,

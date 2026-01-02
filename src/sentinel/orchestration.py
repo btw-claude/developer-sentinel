@@ -47,15 +47,38 @@ class AgentConfig:
 
 
 @dataclass
+class Outcome:
+    """Configuration for a specific execution outcome.
+
+    Outcomes allow different success patterns to trigger different tags.
+    For example, a code review could have "approved" and "changes-requested"
+    outcomes, each adding a different label.
+
+    Attributes:
+        name: Unique name for this outcome (e.g., "approved", "changes-requested").
+        patterns: Patterns that indicate this outcome (substring or "regex:..." prefix).
+        add_tag: Label to add to the Jira issue when this outcome is matched.
+    """
+
+    name: str = ""
+    patterns: list[str] = field(default_factory=list)
+    add_tag: str = ""
+
+
+@dataclass
 class RetryConfig:
     """Configuration for retry logic based on agent response patterns.
 
     Attributes:
         max_attempts: Maximum number of retry attempts.
         success_patterns: Patterns indicating success (substring or "regex:..." prefix).
+            Deprecated: Use outcomes instead for more control.
         failure_patterns: Patterns indicating failure (substring or "regex:..." prefix).
+            These trigger retries - use for actual errors (API failures, etc.).
         default_status: Status to use when no patterns match ("success" or "failure").
             Defaults to "success" for backwards compatibility.
+        default_outcome: Name of outcome to use when no outcome patterns match.
+            Only used when outcomes are configured.
     """
 
     max_attempts: int = 3
@@ -64,6 +87,7 @@ class RetryConfig:
     )
     failure_patterns: list[str] = field(default_factory=lambda: ["FAILURE", "failed", "error"])
     default_status: Literal["success", "failure"] = "success"
+    default_outcome: str = ""
 
 
 @dataclass
@@ -94,12 +118,25 @@ class OnFailureConfig:
 
 @dataclass
 class Orchestration:
-    """A single orchestration configuration."""
+    """A single orchestration configuration.
+
+    Attributes:
+        name: Unique identifier for this orchestration.
+        trigger: Configuration for what triggers this orchestration.
+        agent: Configuration for the Claude agent.
+        retry: Configuration for retry logic.
+        outcomes: Optional list of outcome configurations for different success types.
+            When defined, these replace success_patterns and on_complete for tag handling.
+        on_start: Actions to take when processing starts.
+        on_complete: Actions to take after successful processing (deprecated if outcomes used).
+        on_failure: Actions to take after failed processing.
+    """
 
     name: str
     trigger: TriggerConfig
     agent: AgentConfig
     retry: RetryConfig = field(default_factory=RetryConfig)
+    outcomes: list[Outcome] = field(default_factory=list)
     on_start: OnStartConfig = field(default_factory=OnStartConfig)
     on_complete: OnCompleteConfig = field(default_factory=OnCompleteConfig)
     on_failure: OnFailureConfig = field(default_factory=OnFailureConfig)
@@ -163,7 +200,40 @@ def _parse_retry(data: dict[str, Any] | None) -> RetryConfig:
         success_patterns=data.get("success_patterns", ["SUCCESS", "completed successfully"]),
         failure_patterns=data.get("failure_patterns", ["FAILURE", "failed", "error"]),
         default_status=default_status,
+        default_outcome=data.get("default_outcome", ""),
     )
+
+
+def _parse_outcome(data: dict[str, Any]) -> Outcome:
+    """Parse a single outcome configuration from dict."""
+    name = data.get("name", "")
+    if not name:
+        raise OrchestrationError("Outcome must have a 'name' field")
+
+    patterns = data.get("patterns", [])
+    if not patterns:
+        raise OrchestrationError(f"Outcome '{name}' must have at least one pattern")
+
+    return Outcome(
+        name=name,
+        patterns=patterns,
+        add_tag=data.get("add_tag", ""),
+    )
+
+
+def _parse_outcomes(data: list[dict[str, Any]] | None) -> list[Outcome]:
+    """Parse outcomes configuration from list."""
+    if not data:
+        return []
+
+    outcomes = [_parse_outcome(item) for item in data]
+
+    # Validate unique names
+    names = [o.name for o in outcomes]
+    if len(names) != len(set(names)):
+        raise OrchestrationError("Outcome names must be unique")
+
+    return outcomes
 
 
 def _parse_on_start(data: dict[str, Any] | None) -> OnStartConfig:
@@ -213,6 +283,7 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
         trigger=_parse_trigger(trigger_data),
         agent=_parse_agent(agent_data),
         retry=_parse_retry(data.get("retry")),
+        outcomes=_parse_outcomes(data.get("outcomes")),
         on_start=_parse_on_start(data.get("on_start")),
         on_complete=_parse_on_complete(data.get("on_complete")),
         on_failure=_parse_on_failure(data.get("on_failure")),

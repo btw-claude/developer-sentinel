@@ -190,32 +190,45 @@ class TagManager:
 
         if result.status == ExecutionStatus.SUCCESS:
             # Handle successful execution
-            on_complete = orchestration.on_complete
+            # Determine which tag to add based on matched_outcome or on_complete
+            tag_to_add = ""
 
-            # Remove trigger tag if specified
-            if on_complete.remove_tag:
-                try:
-                    self.client.remove_label(result.issue_key, on_complete.remove_tag)
-                    removed_tags.append(on_complete.remove_tag)
-                    logger.info(f"Removed tag '{on_complete.remove_tag}' from {result.issue_key}")
-                except JiraTagClientError as e:
-                    error_msg = (
-                        f"Failed to remove tag '{on_complete.remove_tag}' "
-                        f"from {result.issue_key}: {e}"
-                    )
-                    errors.append(error_msg)
-                    logger.error(error_msg)
+            if result.matched_outcome and orchestration.outcomes:
+                # Use outcome-based tag
+                for outcome in orchestration.outcomes:
+                    if outcome.name == result.matched_outcome:
+                        tag_to_add = outcome.add_tag
+                        break
+            else:
+                # Fall back to legacy on_complete behavior
+                on_complete = orchestration.on_complete
 
-            # Add completion tag if specified
-            if on_complete.add_tag:
+                # Remove trigger tag if specified (legacy behavior)
+                if on_complete.remove_tag:
+                    try:
+                        self.client.remove_label(result.issue_key, on_complete.remove_tag)
+                        removed_tags.append(on_complete.remove_tag)
+                        logger.info(
+                            f"Removed tag '{on_complete.remove_tag}' from {result.issue_key}"
+                        )
+                    except JiraTagClientError as e:
+                        error_msg = (
+                            f"Failed to remove tag '{on_complete.remove_tag}' "
+                            f"from {result.issue_key}: {e}"
+                        )
+                        errors.append(error_msg)
+                        logger.error(error_msg)
+
+                tag_to_add = on_complete.add_tag
+
+            # Add the determined tag
+            if tag_to_add:
                 try:
-                    self.client.add_label(result.issue_key, on_complete.add_tag)
-                    added_tags.append(on_complete.add_tag)
-                    logger.info(f"Added tag '{on_complete.add_tag}' to {result.issue_key}")
+                    self.client.add_label(result.issue_key, tag_to_add)
+                    added_tags.append(tag_to_add)
+                    logger.info(f"Added tag '{tag_to_add}' to {result.issue_key}")
                 except JiraTagClientError as e:
-                    error_msg = (
-                        f"Failed to add tag '{on_complete.add_tag}' to {result.issue_key}: {e}"
-                    )
+                    error_msg = f"Failed to add tag '{tag_to_add}' to {result.issue_key}: {e}"
                     errors.append(error_msg)
                     logger.error(error_msg)
 

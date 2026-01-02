@@ -22,6 +22,13 @@
 #   4. On failure: in-progress tag is removed, failure tag is added
 #
 # This ensures issues are processed exactly once and failure states are visible.
+#
+# Outcome-based Tags:
+# -------------------
+# For more nuanced workflows, you can define multiple success outcomes with
+# different tags. For example, a code review might result in "approved" or
+# "changes-requested", each adding a different label to the Jira issue.
+# See the "code-review-with-outcomes" example below.
 
 orchestrations:
   # Code Review Orchestration
@@ -148,3 +155,80 @@ orchestrations:
 
     on_failure:
       add_tag: "docs-update-failed"
+
+  # Code Review with Outcomes
+  # -------------------------
+  # This example shows how to use outcomes for different success types.
+  # Instead of a single success tag, different outcomes add different labels.
+  - name: "code-review-with-outcomes"
+
+    trigger:
+      source: jira
+      project: "PROJ"
+      tags:
+        - "needs-code-review"
+
+    agent:
+      prompt: |
+        You are a code review assistant. Review the code changes in the
+        linked GitHub PR and provide feedback.
+
+        After reviewing:
+        - If the code looks good, end with "APPROVED: [brief summary]"
+        - If changes are needed, end with "CHANGES REQUESTED: [what needs to change]"
+
+        Always post your review comments on the GitHub PR.
+
+      tools:
+        - jira
+        - github
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+      # Optional timeout in seconds (5 minutes)
+      timeout_seconds: 300
+
+    # Retry configuration
+    # failure_patterns trigger retries for actual errors (API failures, etc.)
+    retry:
+      max_attempts: 3
+      failure_patterns:
+        - "ERROR"
+        - "could not access"
+        - "API failed"
+        - "connection timeout"
+      # default_outcome is used when no outcome patterns match (optional)
+      default_outcome: "approved"
+
+    # Outcomes define different success types with different tags
+    # Each outcome has:
+    #   - name: identifier for the outcome
+    #   - patterns: strings that indicate this outcome (case-insensitive)
+    #               Use "regex:" prefix for regex patterns
+    #   - add_tag: label to add when this outcome is matched
+    outcomes:
+      - name: approved
+        patterns:
+          - "APPROVED"
+          - "LGTM"
+          - "looks good"
+        add_tag: "code-reviewed"
+
+      - name: changes-requested
+        patterns:
+          - "CHANGES REQUESTED"
+          - "REQUEST CHANGES"
+          - "needs changes"
+        add_tag: "changes-requested"
+
+    on_start:
+      add_tag: "sentinel-processing"
+
+    # on_complete is not needed when using outcomes - the outcome's add_tag
+    # is used instead. on_complete is a fallback for backwards compatibility.
+
+    on_failure:
+      add_tag: "review-failed"
