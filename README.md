@@ -34,9 +34,6 @@ pip install -e ".[dev]"
 Create a `.env` file with your credentials:
 
 ```bash
-# Required - Claude API
-ANTHROPIC_API_KEY=your-anthropic-api-key
-
 # Required - Jira Configuration
 JIRA_URL=https://your-instance.atlassian.net
 JIRA_USER=your-email@example.com
@@ -54,7 +51,6 @@ SENTINEL_ORCHESTRATIONS_DIR=./orchestrations
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | - | Your Anthropic API key for Claude |
 | `JIRA_URL` | Yes | - | Jira instance URL (e.g., `https://company.atlassian.net`) |
 | `JIRA_USER` | Yes | - | Jira username (email) |
 | `JIRA_API_TOKEN` | Yes | - | Jira API token ([create one here](https://id.atlassian.com/manage-profile/security/api-tokens)) |
