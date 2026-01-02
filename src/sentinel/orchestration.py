@@ -67,6 +67,17 @@ class RetryConfig:
 
 
 @dataclass
+class OnStartConfig:
+    """Actions to take when an issue is picked up for processing.
+
+    Use this to add an in-progress tag to prevent duplicate processing
+    if the poll interval is shorter than the processing time.
+    """
+
+    add_tag: str = ""
+
+
+@dataclass
 class OnCompleteConfig:
     """Actions to take after successful orchestration completion."""
 
@@ -89,6 +100,7 @@ class Orchestration:
     trigger: TriggerConfig
     agent: AgentConfig
     retry: RetryConfig = field(default_factory=RetryConfig)
+    on_start: OnStartConfig = field(default_factory=OnStartConfig)
     on_complete: OnCompleteConfig = field(default_factory=OnCompleteConfig)
     on_failure: OnFailureConfig = field(default_factory=OnFailureConfig)
 
@@ -154,6 +166,15 @@ def _parse_retry(data: dict[str, Any] | None) -> RetryConfig:
     )
 
 
+def _parse_on_start(data: dict[str, Any] | None) -> OnStartConfig:
+    """Parse on_start configuration from dict."""
+    if not data:
+        return OnStartConfig()
+    return OnStartConfig(
+        add_tag=data.get("add_tag", ""),
+    )
+
+
 def _parse_on_complete(data: dict[str, Any] | None) -> OnCompleteConfig:
     """Parse on_complete configuration from dict."""
     if not data:
@@ -192,6 +213,7 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
         trigger=_parse_trigger(trigger_data),
         agent=_parse_agent(agent_data),
         retry=_parse_retry(data.get("retry")),
+        on_start=_parse_on_start(data.get("on_start")),
         on_complete=_parse_on_complete(data.get("on_complete")),
         on_failure=_parse_on_failure(data.get("on_failure")),
     )

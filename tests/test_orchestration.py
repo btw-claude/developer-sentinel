@@ -8,6 +8,7 @@ from sentinel.orchestration import (
     AgentConfig,
     OnCompleteConfig,
     OnFailureConfig,
+    OnStartConfig,
     OrchestrationError,
     RetryConfig,
     TriggerConfig,
@@ -58,6 +59,16 @@ class TestDataclasses:
         """OnFailureConfig should have sensible defaults."""
         on_failure = OnFailureConfig()
         assert on_failure.add_tag == ""
+
+    def test_on_start_config_defaults(self) -> None:
+        """OnStartConfig should have sensible defaults."""
+        on_start = OnStartConfig()
+        assert on_start.add_tag == ""
+
+    def test_on_start_config_with_tag(self) -> None:
+        """OnStartConfig can be configured with a tag."""
+        on_start = OnStartConfig(add_tag="processing")
+        assert on_start.add_tag == "processing"
 
 
 class TestLoadOrchestrationFile:
@@ -152,6 +163,48 @@ orchestrations:
         assert len(orchestrations) == 1
         orch = orchestrations[0]
         assert orch.agent.timeout_seconds == 300
+
+    def test_load_file_with_on_start(self, tmp_path: Path) -> None:
+        """Should load orchestration with on_start config."""
+        yaml_content = """
+orchestrations:
+  - name: "on-start-orch"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+    on_start:
+      add_tag: "sentinel-processing"
+"""
+        file_path = tmp_path / "on_start.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.on_start.add_tag == "sentinel-processing"
+
+    def test_load_file_without_on_start_uses_defaults(self, tmp_path: Path) -> None:
+        """Should use default on_start config when not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "no-on-start-orch"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "no_on_start.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.on_start.add_tag == ""
 
     def test_invalid_timeout_seconds_raises_error(self, tmp_path: Path) -> None:
         """Should raise error for invalid timeout_seconds."""
