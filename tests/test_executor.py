@@ -14,6 +14,7 @@ from sentinel.orchestration import (
     AgentConfig,
     GitHubContext,
     Orchestration,
+    Outcome,
     RetryConfig,
     TriggerConfig,
 )
@@ -327,9 +328,10 @@ class TestAgentExecutorDetermineStatus:
             failure_patterns=["FAILURE"],
         )
 
-        status = executor._determine_status("Task SUCCESS", retry_config)
+        status, outcome = executor._determine_status("Task SUCCESS", retry_config)
 
         assert status == ExecutionStatus.SUCCESS
+        assert outcome is None  # No outcomes configured
 
     def test_returns_failure_on_failure_pattern(self) -> None:
         client = MockAgentClient()
@@ -339,9 +341,10 @@ class TestAgentExecutorDetermineStatus:
             failure_patterns=["FAILURE"],
         )
 
-        status = executor._determine_status("Task FAILURE", retry_config)
+        status, outcome = executor._determine_status("Task FAILURE", retry_config)
 
         assert status == ExecutionStatus.FAILURE
+        assert outcome is None
 
     def test_success_takes_precedence(self) -> None:
         client = MockAgentClient()
@@ -352,9 +355,10 @@ class TestAgentExecutorDetermineStatus:
         )
 
         # Response contains both patterns
-        status = executor._determine_status("SUCCESS but had FAILURE", retry_config)
+        status, outcome = executor._determine_status("SUCCESS but had FAILURE", retry_config)
 
         assert status == ExecutionStatus.SUCCESS
+        assert outcome is None
 
     def test_defaults_to_success_when_no_match(self) -> None:
         """Default behavior: returns SUCCESS when no patterns match."""
@@ -365,9 +369,10 @@ class TestAgentExecutorDetermineStatus:
             failure_patterns=["FAILURE"],
         )
 
-        status = executor._determine_status("Task done", retry_config)
+        status, outcome = executor._determine_status("Task done", retry_config)
 
         assert status == ExecutionStatus.SUCCESS
+        assert outcome is None
 
     def test_default_status_success_explicit(self) -> None:
         """Explicitly configured default_status='success' returns SUCCESS."""
@@ -379,9 +384,10 @@ class TestAgentExecutorDetermineStatus:
             default_status="success",
         )
 
-        status = executor._determine_status("Task done", retry_config)
+        status, outcome = executor._determine_status("Task done", retry_config)
 
         assert status == ExecutionStatus.SUCCESS
+        assert outcome is None
 
     def test_default_status_failure(self) -> None:
         """Configured default_status='failure' returns FAILURE when no patterns match."""
@@ -393,9 +399,10 @@ class TestAgentExecutorDetermineStatus:
             default_status="failure",
         )
 
-        status = executor._determine_status("Task done", retry_config)
+        status, outcome = executor._determine_status("Task done", retry_config)
 
         assert status == ExecutionStatus.FAILURE
+        assert outcome is None
 
     def test_default_status_only_used_when_no_match(self) -> None:
         """default_status is ignored when patterns actually match."""
@@ -408,9 +415,132 @@ class TestAgentExecutorDetermineStatus:
             default_status="failure",
         )
 
-        status = executor._determine_status("Task SUCCESS", retry_config)
+        status, outcome = executor._determine_status("Task SUCCESS", retry_config)
 
         assert status == ExecutionStatus.SUCCESS
+        assert outcome is None
+
+
+class TestAgentExecutorDetermineStatusWithOutcomes:
+    """Tests for AgentExecutor._determine_status with outcomes configured."""
+
+    def test_matches_outcome_pattern(self) -> None:
+        """Should match outcome pattern and return outcome name."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["ERROR"])
+        outcomes = [
+            Outcome(name="approved", patterns=["APPROVED", "LGTM"]),
+            Outcome(name="changes-requested", patterns=["CHANGES REQUESTED"]),
+        ]
+
+        status, outcome = executor._determine_status(
+            "Code review: APPROVED", retry_config, outcomes
+        )
+
+        assert status == ExecutionStatus.SUCCESS
+        assert outcome == "approved"
+
+    def test_matches_second_outcome(self) -> None:
+        """Should match second outcome when first doesn't match."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["ERROR"])
+        outcomes = [
+            Outcome(name="approved", patterns=["APPROVED"]),
+            Outcome(name="changes-requested", patterns=["CHANGES REQUESTED"]),
+        ]
+
+        status, outcome = executor._determine_status(
+            "Review: CHANGES REQUESTED", retry_config, outcomes
+        )
+
+        assert status == ExecutionStatus.SUCCESS
+        assert outcome == "changes-requested"
+
+    def test_failure_pattern_takes_precedence_over_outcomes(self) -> None:
+        """Failure patterns should trigger retry even if outcome would match."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["ERROR", "FAILED"])
+        outcomes = [
+            Outcome(name="approved", patterns=["APPROVED"]),
+        ]
+
+        status, outcome = executor._determine_status(
+            "ERROR: Could not access repo, but would have APPROVED", retry_config, outcomes
+        )
+
+        assert status == ExecutionStatus.FAILURE
+        assert outcome is None
+
+    def test_default_outcome_when_no_match(self) -> None:
+        """Should use default_outcome when no outcome patterns match."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(
+            failure_patterns=["ERROR"],
+            default_outcome="approved",
+        )
+        outcomes = [
+            Outcome(name="approved", patterns=["APPROVED"]),
+            Outcome(name="changes-requested", patterns=["CHANGES REQUESTED"]),
+        ]
+
+        status, outcome = executor._determine_status(
+            "Review complete with no issues", retry_config, outcomes
+        )
+
+        assert status == ExecutionStatus.SUCCESS
+        assert outcome == "approved"
+
+    def test_falls_back_to_first_outcome_when_no_default(self) -> None:
+        """Should fall back to first outcome when no patterns match and no default."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["ERROR"])
+        outcomes = [
+            Outcome(name="approved", patterns=["APPROVED"]),
+            Outcome(name="changes-requested", patterns=["CHANGES REQUESTED"]),
+        ]
+
+        status, outcome = executor._determine_status("Review complete", retry_config, outcomes)
+
+        assert status == ExecutionStatus.SUCCESS
+        assert outcome == "approved"
+
+    def test_outcome_with_regex_pattern(self) -> None:
+        """Should match regex patterns in outcomes."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["ERROR"])
+        outcomes = [
+            Outcome(name="approved", patterns=["regex:^APPROVED"]),
+        ]
+
+        status, outcome = executor._determine_status(
+            "APPROVED: Code looks good", retry_config, outcomes
+        )
+
+        assert status == ExecutionStatus.SUCCESS
+        assert outcome == "approved"
+
+    def test_outcome_regex_no_match(self) -> None:
+        """Regex pattern should not match if anchor doesn't align."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["ERROR"], default_outcome="other")
+        outcomes = [
+            Outcome(name="approved", patterns=["regex:^APPROVED"]),
+            Outcome(name="other", patterns=["regex:.*"]),
+        ]
+
+        status, outcome = executor._determine_status("Result: APPROVED", retry_config, outcomes)
+
+        # ^APPROVED won't match because APPROVED is not at start
+        # Falls back to "other" which matches anything
+        assert status == ExecutionStatus.SUCCESS
+        assert outcome == "other"
 
 
 class TestAgentExecutorExecute:
@@ -589,3 +719,88 @@ class TestAgentExecutorExecute:
         executor.execute(issue, orch)
 
         assert client.calls[0][3] is None
+
+
+class TestAgentExecutorExecuteWithOutcomes:
+    """Tests for AgentExecutor.execute with outcomes configured."""
+
+    def test_successful_execution_with_outcome(self) -> None:
+        """Execute should return matched outcome in result."""
+        client = MockAgentClient(responses=["APPROVED: Code looks good"])
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review code", tools=["github"]),
+            retry=RetryConfig(failure_patterns=["ERROR"]),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"], add_tag="code-reviewed"),
+                Outcome(
+                    name="changes-requested",
+                    patterns=["CHANGES REQUESTED"],
+                    add_tag="changes-requested",
+                ),
+            ],
+        )
+
+        result = executor.execute(issue, orch)
+
+        assert result.succeeded is True
+        assert result.matched_outcome == "approved"
+
+    def test_execute_matches_second_outcome(self) -> None:
+        """Execute should match correct outcome from list."""
+        client = MockAgentClient(responses=["CHANGES REQUESTED: Please fix the bug"])
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review code", tools=["github"]),
+            retry=RetryConfig(failure_patterns=["ERROR"]),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"]),
+                Outcome(name="changes-requested", patterns=["CHANGES REQUESTED"]),
+            ],
+        )
+
+        result = executor.execute(issue, orch)
+
+        assert result.succeeded is True
+        assert result.matched_outcome == "changes-requested"
+
+    def test_execute_retries_on_failure_with_outcomes(self) -> None:
+        """Execute should retry on failure patterns even with outcomes configured."""
+        client = MockAgentClient(
+            responses=["ERROR: GitHub API failed", "APPROVED: Code looks good"]
+        )
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review code", tools=["github"]),
+            retry=RetryConfig(failure_patterns=["ERROR"], max_attempts=3),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"]),
+            ],
+        )
+
+        result = executor.execute(issue, orch)
+
+        assert result.succeeded is True
+        assert result.matched_outcome == "approved"
+        assert result.attempts == 2
+
+    def test_execute_no_outcome_without_outcomes_config(self) -> None:
+        """Execute should return None for matched_outcome when outcomes not configured."""
+        client = MockAgentClient(responses=["SUCCESS: Task completed"])
+        executor = AgentExecutor(client)
+        issue = make_issue()
+        orch = make_orchestration()  # No outcomes configured
+
+        result = executor.execute(issue, orch)
+
+        assert result.succeeded is True
+        assert result.matched_outcome is None

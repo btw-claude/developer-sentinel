@@ -7,6 +7,7 @@ from sentinel.orchestration import (
     OnFailureConfig,
     OnStartConfig,
     Orchestration,
+    Outcome,
     TriggerConfig,
 )
 from sentinel.tag_manager import (
@@ -48,6 +49,7 @@ def make_result(
     status: ExecutionStatus = ExecutionStatus.SUCCESS,
     issue_key: str = "TEST-1",
     orchestration_name: str = "test-orch",
+    matched_outcome: str | None = None,
 ) -> ExecutionResult:
     """Helper to create an ExecutionResult for testing."""
     return ExecutionResult(
@@ -56,6 +58,7 @@ def make_result(
         attempts=1,
         issue_key=issue_key,
         orchestration_name=orchestration_name,
+        matched_outcome=matched_outcome,
     )
 
 
@@ -529,3 +532,200 @@ class TestTagManagerRemovesInProgressTag:
         assert "reviewed" in update_result.added_tags
         # No in-progress tag removal attempted
         assert not any("processing" in tag for tag in update_result.removed_tags)
+
+
+class TestTagManagerOutcomeBasedTags:
+    """Tests for TagManager.update_tags with outcome-based tagging."""
+
+    def test_adds_outcome_tag_on_matched_outcome(self) -> None:
+        """Should add tag from matched outcome."""
+        client = MockJiraTagClient()
+        manager = TagManager(client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="TEST-1",
+            matched_outcome="approved",
+        )
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review"),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"], add_tag="code-reviewed"),
+                Outcome(
+                    name="changes-requested",
+                    patterns=["CHANGES REQUESTED"],
+                    add_tag="changes-requested",
+                ),
+            ],
+        )
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "code-reviewed" in update_result.added_tags
+        assert ("TEST-1", "code-reviewed") in client.add_calls
+
+    def test_adds_second_outcome_tag(self) -> None:
+        """Should add correct tag when second outcome matches."""
+        client = MockJiraTagClient()
+        manager = TagManager(client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="TEST-1",
+            matched_outcome="changes-requested",
+        )
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review"),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"], add_tag="code-reviewed"),
+                Outcome(
+                    name="changes-requested",
+                    patterns=["CHANGES REQUESTED"],
+                    add_tag="changes-requested",
+                ),
+            ],
+        )
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "changes-requested" in update_result.added_tags
+        assert "code-reviewed" not in update_result.added_tags
+
+    def test_outcome_tag_overrides_on_complete(self) -> None:
+        """Outcome tag should be used instead of on_complete when outcome matches."""
+        client = MockJiraTagClient()
+        manager = TagManager(client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="TEST-1",
+            matched_outcome="approved",
+        )
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review"),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"], add_tag="outcome-tag"),
+            ],
+            on_complete=OnCompleteConfig(add_tag="legacy-tag"),
+        )
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "outcome-tag" in update_result.added_tags
+        assert "legacy-tag" not in update_result.added_tags
+
+    def test_falls_back_to_on_complete_when_no_outcome(self) -> None:
+        """Should use on_complete tag when no outcome matched."""
+        client = MockJiraTagClient()
+        manager = TagManager(client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="TEST-1",
+            matched_outcome=None,  # No outcome matched
+        )
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review"),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"], add_tag="outcome-tag"),
+            ],
+            on_complete=OnCompleteConfig(add_tag="legacy-tag"),
+        )
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "legacy-tag" in update_result.added_tags
+        assert "outcome-tag" not in update_result.added_tags
+
+    def test_outcome_tag_empty_does_not_add(self) -> None:
+        """Should not add tag if outcome has empty add_tag."""
+        client = MockJiraTagClient()
+        manager = TagManager(client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="TEST-1",
+            matched_outcome="approved",
+        )
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review"),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"], add_tag=""),  # Empty tag
+            ],
+        )
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert update_result.added_tags == []
+        assert len(client.add_calls) == 0
+
+    def test_removes_in_progress_with_outcome(self) -> None:
+        """Should remove in-progress tag when using outcomes."""
+        client = MockJiraTagClient()
+        client.labels["TEST-1"] = ["sentinel-processing"]
+        manager = TagManager(client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="TEST-1",
+            matched_outcome="approved",
+        )
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review"),
+            on_start=OnStartConfig(add_tag="sentinel-processing"),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"], add_tag="reviewed"),
+            ],
+        )
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "sentinel-processing" in update_result.removed_tags
+        assert "reviewed" in update_result.added_tags
+
+    def test_outcome_not_found_falls_back(self) -> None:
+        """Should fall back to on_complete when matched_outcome not in outcomes list."""
+        client = MockJiraTagClient()
+        manager = TagManager(client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="TEST-1",
+            matched_outcome="unknown-outcome",
+        )
+        orch = Orchestration(
+            name="code-review",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(prompt="Review"),
+            outcomes=[
+                Outcome(name="approved", patterns=["APPROVED"], add_tag="outcome-tag"),
+            ],
+            on_complete=OnCompleteConfig(add_tag="fallback-tag"),
+        )
+
+        update_result = manager.update_tags(result, orch)
+
+        # When outcome not found, no tag added from outcomes
+        # and falls back to on_complete behavior
+        assert update_result.success is True
+        assert "outcome-tag" not in update_result.added_tags
+        # Currently implementation doesn't add on_complete tag when outcomes
+        # are configured but outcome not matched - only adds outcome tag

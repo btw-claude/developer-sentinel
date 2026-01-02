@@ -114,9 +114,7 @@ class TestAgentLogger:
         assert "RESPONSE" in content
         assert response in content
 
-    def test_handles_special_characters_in_orchestration_name(
-        self, tmp_path: Path
-    ) -> None:
+    def test_handles_special_characters_in_orchestration_name(self, tmp_path: Path) -> None:
         """Should handle orchestration names that are valid directory names."""
         logger = AgentLogger(base_dir=tmp_path)
 

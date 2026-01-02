@@ -9,7 +9,9 @@ from sentinel.orchestration import (
     OnCompleteConfig,
     OnFailureConfig,
     OnStartConfig,
+    Orchestration,
     OrchestrationError,
+    Outcome,
     RetryConfig,
     TriggerConfig,
     load_orchestration_file,
@@ -69,6 +71,38 @@ class TestDataclasses:
         """OnStartConfig can be configured with a tag."""
         on_start = OnStartConfig(add_tag="processing")
         assert on_start.add_tag == "processing"
+
+    def test_outcome_defaults(self) -> None:
+        """Outcome should have sensible defaults."""
+        outcome = Outcome()
+        assert outcome.name == ""
+        assert outcome.patterns == []
+        assert outcome.add_tag == ""
+
+    def test_outcome_with_values(self) -> None:
+        """Outcome can be configured with values."""
+        outcome = Outcome(
+            name="approved",
+            patterns=["APPROVED", "LGTM"],
+            add_tag="code-reviewed",
+        )
+        assert outcome.name == "approved"
+        assert outcome.patterns == ["APPROVED", "LGTM"]
+        assert outcome.add_tag == "code-reviewed"
+
+    def test_retry_config_default_outcome(self) -> None:
+        """RetryConfig can be configured with default_outcome."""
+        retry = RetryConfig(default_outcome="approved")
+        assert retry.default_outcome == "approved"
+
+    def test_orchestration_outcomes_defaults_to_empty(self) -> None:
+        """Orchestration outcomes should default to empty list."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        assert orch.outcomes == []
 
 
 class TestLoadOrchestrationFile:
@@ -358,6 +392,129 @@ orchestrations:
 
         with pytest.raises(OrchestrationError, match="Invalid default_status"):
             load_orchestration_file(file_path)
+
+    def test_load_file_with_outcomes(self, tmp_path: Path) -> None:
+        """Should load orchestration with outcomes configuration."""
+        yaml_content = """
+orchestrations:
+  - name: "code-review"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["needs-review"]
+    agent:
+      prompt: "Review the code"
+    outcomes:
+      - name: approved
+        patterns: ["APPROVED", "LGTM"]
+        add_tag: code-reviewed
+      - name: changes-requested
+        patterns: ["CHANGES REQUESTED", "REQUEST CHANGES"]
+        add_tag: changes-requested
+    retry:
+      failure_patterns: ["ERROR", "FAILED"]
+      default_outcome: approved
+"""
+        file_path = tmp_path / "outcomes.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert len(orch.outcomes) == 2
+        assert orch.outcomes[0].name == "approved"
+        assert orch.outcomes[0].patterns == ["APPROVED", "LGTM"]
+        assert orch.outcomes[0].add_tag == "code-reviewed"
+        assert orch.outcomes[1].name == "changes-requested"
+        assert orch.retry.default_outcome == "approved"
+
+    def test_outcome_missing_name_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error if outcome has no name."""
+        yaml_content = """
+orchestrations:
+  - name: "test"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+    outcomes:
+      - patterns: ["SUCCESS"]
+        add_tag: done
+"""
+        file_path = tmp_path / "no_name.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="must have a 'name' field"):
+            load_orchestration_file(file_path)
+
+    def test_outcome_missing_patterns_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error if outcome has no patterns."""
+        yaml_content = """
+orchestrations:
+  - name: "test"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+    outcomes:
+      - name: done
+        add_tag: completed
+"""
+        file_path = tmp_path / "no_patterns.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="must have at least one pattern"):
+            load_orchestration_file(file_path)
+
+    def test_duplicate_outcome_names_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error if outcome names are not unique."""
+        yaml_content = """
+orchestrations:
+  - name: "test"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+    outcomes:
+      - name: done
+        patterns: ["SUCCESS"]
+      - name: done
+        patterns: ["COMPLETED"]
+"""
+        file_path = tmp_path / "duplicate_names.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="must be unique"):
+            load_orchestration_file(file_path)
+
+    def test_load_file_with_regex_outcome_patterns(self, tmp_path: Path) -> None:
+        """Should load orchestration with regex patterns in outcomes."""
+        yaml_content = """
+orchestrations:
+  - name: "regex-test"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test"
+    outcomes:
+      - name: approved
+        patterns:
+          - "regex:^APPROVED"
+          - "regex:LGTM.*approved"
+        add_tag: reviewed
+"""
+        file_path = tmp_path / "regex_outcomes.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].outcomes[0].patterns == [
+            "regex:^APPROVED",
+            "regex:LGTM.*approved",
+        ]
 
 
 class TestLoadOrchestrations:
