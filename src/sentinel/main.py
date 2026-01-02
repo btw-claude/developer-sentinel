@@ -11,6 +11,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Any
 
+from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config, load_config
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
 from sentinel.logging import get_logger, setup_logging
@@ -33,6 +34,7 @@ class Sentinel:
         jira_client: JiraClient,
         agent_client: AgentClient,
         tag_client: JiraTagClient,
+        agent_logger: AgentLogger | None = None,
     ) -> None:
         """Initialize the Sentinel orchestrator.
 
@@ -42,12 +44,13 @@ class Sentinel:
             jira_client: Jira client for polling issues.
             agent_client: Agent client for executing agents.
             tag_client: Jira client for tag operations.
+            agent_logger: Optional logger for agent execution logs.
         """
         self.config = config
         self.orchestrations = orchestrations
         self.poller = JiraPoller(jira_client)
         self.router = Router(orchestrations)
-        self.executor = AgentExecutor(agent_client)
+        self.executor = AgentExecutor(agent_client, agent_logger)
         self.tag_manager = TagManager(tag_client)
         self._shutdown_requested = False
 
@@ -248,6 +251,7 @@ def main(args: list[str] | None = None) -> int:
     jira_client = JiraMcpClient()
     agent_client = ClaudeMcpAgentClient(base_workdir=config.agent_workdir)
     tag_client = JiraMcpTagClient()
+    agent_logger = AgentLogger(base_dir=config.agent_logs_dir)
 
     # Create and run Sentinel
     sentinel = Sentinel(
@@ -256,6 +260,7 @@ def main(args: list[str] | None = None) -> int:
         jira_client=jira_client,
         agent_client=agent_client,
         tag_client=tag_client,
+        agent_logger=agent_logger,
     )
 
     if parsed.once:

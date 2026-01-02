@@ -5,12 +5,16 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sentinel.logging import get_logger, log_agent_summary
 from sentinel.orchestration import Orchestration, RetryConfig
 from sentinel.poller import JiraIssue
+
+if TYPE_CHECKING:
+    from sentinel.agent_logger import AgentLogger
 
 logger = get_logger(__name__)
 
@@ -90,13 +94,19 @@ class AgentClient(ABC):
 class AgentExecutor:
     """Executes Claude agents on Jira issues with retry logic."""
 
-    def __init__(self, client: AgentClient) -> None:
+    def __init__(
+        self,
+        client: AgentClient,
+        agent_logger: AgentLogger | None = None,
+    ) -> None:
         """Initialize the executor with an agent client.
 
         Args:
             client: Agent client implementation.
+            agent_logger: Optional logger for writing agent execution logs.
         """
         self.client = client
+        self.agent_logger = agent_logger
 
     def build_prompt(self, issue: JiraIssue, orchestration: Orchestration) -> str:
         """Build the agent prompt from issue and orchestration config.
@@ -192,6 +202,45 @@ class AgentExecutor:
                     return True
         return False
 
+    def _log_execution(
+        self,
+        issue_key: str,
+        orchestration_name: str,
+        prompt: str,
+        response: str,
+        status: ExecutionStatus,
+        attempts: int,
+        start_time: datetime,
+    ) -> None:
+        """Log the agent execution if a logger is configured.
+
+        Args:
+            issue_key: The Jira issue key.
+            orchestration_name: Name of the orchestration.
+            prompt: The prompt sent to the agent.
+            response: The agent's response.
+            status: The execution status.
+            attempts: Number of attempts made.
+            start_time: When execution started.
+        """
+        if self.agent_logger is None:
+            return
+
+        try:
+            self.agent_logger.log_execution(
+                issue_key=issue_key,
+                orchestration_name=orchestration_name,
+                prompt=prompt,
+                response=response,
+                status=status,
+                attempts=attempts,
+                start_time=start_time,
+                end_time=datetime.now(),
+            )
+        except Exception as e:
+            # Log but don't fail the execution due to logging errors
+            logger.warning(f"Failed to write agent execution log: {e}")
+
     def _determine_status(self, response: str, retry_config: RetryConfig) -> ExecutionStatus:
         """Determine the execution status from the agent response.
 
@@ -250,6 +299,7 @@ class AgentExecutor:
         prompt = self.build_prompt(issue, orchestration)
         last_response = ""
         last_status = ExecutionStatus.ERROR
+        start_time = datetime.now()
 
         for attempt in range(1, max_attempts + 1):
             logger.info(
@@ -282,13 +332,23 @@ class AgentExecutor:
                 )
 
                 if status == ExecutionStatus.SUCCESS:
-                    return ExecutionResult(
+                    result = ExecutionResult(
                         status=ExecutionStatus.SUCCESS,
                         response=response,
                         attempts=attempt,
                         issue_key=issue.key,
                         orchestration_name=orchestration.name,
                     )
+                    self._log_execution(
+                        issue.key,
+                        orchestration.name,
+                        prompt,
+                        response,
+                        status,
+                        attempt,
+                        start_time,
+                    )
+                    return result
 
                 if status == ExecutionStatus.FAILURE and attempt < max_attempts:
                     logger.warning(
@@ -346,10 +406,20 @@ class AgentExecutor:
                     )
 
         # All attempts exhausted
-        return ExecutionResult(
+        result = ExecutionResult(
             status=last_status,
             response=last_response,
             attempts=max_attempts,
             issue_key=issue.key,
             orchestration_name=orchestration.name,
         )
+        self._log_execution(
+            issue.key,
+            orchestration.name,
+            prompt,
+            last_response,
+            last_status,
+            max_attempts,
+            start_time,
+        )
+        return result
