@@ -58,3 +58,8 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Orchestrations (user-specific configs, keep only the example)
+orchestrations/*.yaml
+orchestrations/*.yml
+!orchestrations/example.yaml.example
