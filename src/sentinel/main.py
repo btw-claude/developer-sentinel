@@ -294,7 +294,11 @@ def main(args: list[str] | None = None) -> int:
         tag_client = JiraMcpTagClient()
 
     # Agent client always uses Claude MCP (that's the whole point)
-    agent_client = ClaudeMcpAgentClient(base_workdir=config.agent_workdir)
+    # Pass log_base_dir to enable streaming logs during agent execution
+    agent_client = ClaudeMcpAgentClient(
+        base_workdir=config.agent_workdir,
+        log_base_dir=config.agent_logs_dir,
+    )
     agent_logger = AgentLogger(base_dir=config.agent_logs_dir)
 
     # Create and run Sentinel

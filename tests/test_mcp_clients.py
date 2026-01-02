@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 from pathlib import Path
@@ -30,12 +31,22 @@ def reset_shutdown_state() -> None:
 
 
 def create_mock_process(stdout: str = "output", returncode: int = 0) -> MagicMock:
-    """Create a mock Popen process."""
+    """Create a mock Popen process with proper stream mocks.
+
+    The new _run_claude implementation reads from stdout/stderr using
+    threads that iterate via readline(), so we need to provide StringIO
+    objects that support line-by-line reading.
+    """
     mock_process = MagicMock()
     mock_process.poll.return_value = returncode  # Process completed
+
+    # Create proper stream mocks using StringIO
+    # The thread will iterate line-by-line via readline()
+    mock_process.stdout = io.StringIO(stdout)
+    mock_process.stderr = io.StringIO("")
+
+    # communicate() is still called for error cases
     mock_process.communicate.return_value = (stdout, "")
-    mock_process.stdout = stdout
-    mock_process.stderr = ""
     return mock_process
 
 
@@ -455,3 +466,220 @@ class TestClaudeMcpAgentClient:
 
         call_kwargs = mock.call_args[1]
         assert call_kwargs["cwd"] is None
+
+
+class TestClaudeMcpAgentClientStreaming:
+    """Tests for streaming log functionality in ClaudeMcpAgentClient."""
+
+    def test_constructor_accepts_log_base_dir(self, tmp_path: Path) -> None:
+        """Should accept log_base_dir in constructor."""
+        client = ClaudeMcpAgentClient(log_base_dir=tmp_path)
+        assert client.log_base_dir == tmp_path
+
+    def test_constructor_defaults_to_no_log_dir(self) -> None:
+        """Should default to no log_base_dir."""
+        client = ClaudeMcpAgentClient()
+        assert client.log_base_dir is None
+
+    def test_streaming_enabled_when_all_params_provided(self, tmp_path: Path) -> None:
+        """Should use streaming logs when all required params provided."""
+        log_dir = tmp_path / "logs"
+        work_dir = tmp_path / "work"
+
+        with patch("sentinel.mcp_clients._run_claude", return_value="done"):
+            client = ClaudeMcpAgentClient(
+                base_workdir=work_dir,
+                log_base_dir=log_dir,
+            )
+            client.run_agent(
+                "Test prompt",
+                [],
+                issue_key="DS-123",
+                orchestration_name="test-orch",
+            )
+
+        # Log directory should be created
+        assert (log_dir / "test-orch").exists()
+        # Log file should exist
+        log_files = list((log_dir / "test-orch").glob("*.log"))
+        assert len(log_files) == 1
+
+    def test_streaming_log_contains_output(self, tmp_path: Path) -> None:
+        """Should stream output to log file."""
+        log_dir = tmp_path / "logs"
+
+        # Mock _run_claude to output some text
+        with patch("sentinel.mcp_clients._run_claude", return_value="Agent completed task"):
+            client = ClaudeMcpAgentClient(log_base_dir=log_dir)
+            result = client.run_agent(
+                "Test prompt",
+                [],
+                issue_key="DS-123",
+                orchestration_name="test",
+            )
+
+        assert result == "Agent completed task"
+
+        # Check log file content
+        log_files = list((log_dir / "test").glob("*.log"))
+        assert len(log_files) == 1
+        content = log_files[0].read_text()
+        assert "DS-123" in content
+        assert "Test prompt" in content
+
+    def test_streaming_disabled_without_log_base_dir(self, tmp_path: Path) -> None:
+        """Should not create streaming logs when log_base_dir not set."""
+        with patch("sentinel.mcp_clients._run_claude", return_value="done"):
+            client = ClaudeMcpAgentClient()
+            client.run_agent(
+                "Test",
+                [],
+                issue_key="DS-123",
+                orchestration_name="test",
+            )
+
+        # No logs directory should be created in tmp_path
+        assert not (tmp_path / "test").exists()
+
+    def test_streaming_disabled_without_issue_key(self, tmp_path: Path) -> None:
+        """Should not create streaming logs without issue_key."""
+        log_dir = tmp_path / "logs"
+
+        with patch("sentinel.mcp_clients._run_claude", return_value="done"):
+            client = ClaudeMcpAgentClient(log_base_dir=log_dir)
+            client.run_agent(
+                "Test",
+                [],
+                orchestration_name="test",
+            )
+
+        # Logs directory should not be created
+        assert not log_dir.exists()
+
+    def test_streaming_disabled_without_orchestration_name(self, tmp_path: Path) -> None:
+        """Should not create streaming logs without orchestration_name."""
+        log_dir = tmp_path / "logs"
+
+        with patch("sentinel.mcp_clients._run_claude", return_value="done"):
+            client = ClaudeMcpAgentClient(log_base_dir=log_dir)
+            client.run_agent(
+                "Test",
+                [],
+                issue_key="DS-123",
+            )
+
+        # Logs directory should not be created
+        assert not log_dir.exists()
+
+    def test_streaming_log_finalized_on_success(self, tmp_path: Path) -> None:
+        """Should finalize log with COMPLETED status on success."""
+        log_dir = tmp_path / "logs"
+
+        with patch("sentinel.mcp_clients._run_claude", return_value="done"):
+            client = ClaudeMcpAgentClient(log_base_dir=log_dir)
+            client.run_agent(
+                "Test",
+                [],
+                issue_key="DS-123",
+                orchestration_name="test",
+            )
+
+        log_files = list((log_dir / "test").glob("*.log"))
+        content = log_files[0].read_text()
+        assert "Status:         COMPLETED" in content
+        assert "END OF LOG" in content
+
+    def test_streaming_log_finalized_on_timeout(self, tmp_path: Path) -> None:
+        """Should finalize log with TIMEOUT status on timeout."""
+        log_dir = tmp_path / "logs"
+
+        with patch(
+            "sentinel.mcp_clients._run_claude",
+            side_effect=subprocess.TimeoutExpired("cmd", 60),
+        ):
+            client = ClaudeMcpAgentClient(log_base_dir=log_dir)
+            with pytest.raises(AgentTimeoutError):
+                client.run_agent(
+                    "Test",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test",
+                    timeout_seconds=60,
+                )
+
+        log_files = list((log_dir / "test").glob("*.log"))
+        content = log_files[0].read_text()
+        assert "Status:         TIMEOUT" in content
+
+    def test_streaming_log_finalized_on_error(self, tmp_path: Path) -> None:
+        """Should finalize log with FAILED status on process error."""
+        log_dir = tmp_path / "logs"
+
+        with patch(
+            "sentinel.mcp_clients._run_claude",
+            side_effect=subprocess.CalledProcessError(1, "cmd", stderr="error msg"),
+        ):
+            client = ClaudeMcpAgentClient(log_base_dir=log_dir)
+            with pytest.raises(AgentClientError):
+                client.run_agent(
+                    "Test",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test",
+                )
+
+        log_files = list((log_dir / "test").glob("*.log"))
+        content = log_files[0].read_text()
+        assert "Status:         FAILED" in content
+
+
+class TestOutputCallback:
+    """Tests for output_callback parameter in _run_claude."""
+
+    def test_callback_called_with_output(self) -> None:
+        """Should call callback with each line of output."""
+        mock_process = create_mock_process("line1\nline2\nline3\n")
+
+        captured_lines: list[str] = []
+
+        def callback(line: str) -> None:
+            captured_lines.append(line)
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            _run_claude("test", output_callback=callback)
+
+        # Callback should have been called with the lines
+        assert len(captured_lines) == 3
+        assert "line1" in captured_lines[0]
+        assert "line2" in captured_lines[1]
+        assert "line3" in captured_lines[2]
+
+    def test_callback_receives_stderr_with_prefix(self) -> None:
+        """Should prefix stderr lines with [stderr]."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = 0
+        mock_process.stdout = io.StringIO("stdout\n")
+        mock_process.stderr = io.StringIO("error\n")
+        mock_process.communicate.return_value = ("stdout\n", "error\n")
+
+        captured_lines: list[str] = []
+
+        def callback(line: str) -> None:
+            captured_lines.append(line)
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            _run_claude("test", output_callback=callback)
+
+        # Should have both stdout and stderr lines
+        stderr_lines = [line for line in captured_lines if "[stderr]" in line]
+        assert len(stderr_lines) == 1
+        assert "error" in stderr_lines[0]
+
+    def test_no_callback_is_fine(self) -> None:
+        """Should work without callback."""
+        mock_process = create_mock_process("output\n")
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            result = _run_claude("test")
+
+        assert result == "output"

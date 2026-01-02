@@ -63,3 +63,7 @@ Thumbs.db
 orchestrations/*.yaml
 orchestrations/*.yml
 !orchestrations/example.yaml.example
+
+# Agent runtime directories
+logs/
+workdir/
