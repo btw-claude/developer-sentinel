@@ -34,18 +34,35 @@ pip install -e ".[dev]"
 Create a `.env` file with your credentials:
 
 ```bash
-# Jira Configuration
+# Required - Claude API
+ANTHROPIC_API_KEY=your-anthropic-api-key
+
+# Required - Jira Configuration
 JIRA_URL=https://your-instance.atlassian.net
 JIRA_USER=your-email@example.com
 JIRA_API_TOKEN=your-api-token
 
-# Sentinel Configuration
+# Optional - Sentinel Configuration
 SENTINEL_POLL_INTERVAL=60
 SENTINEL_MAX_ISSUES=50
 SENTINEL_LOG_LEVEL=INFO
 SENTINEL_LOG_JSON=false
 SENTINEL_ORCHESTRATIONS_DIR=./orchestrations
 ```
+
+### Environment Variables Reference
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | Yes | - | Your Anthropic API key for Claude |
+| `JIRA_URL` | Yes | - | Jira instance URL (e.g., `https://company.atlassian.net`) |
+| `JIRA_USER` | Yes | - | Jira username (email) |
+| `JIRA_API_TOKEN` | Yes | - | Jira API token ([create one here](https://id.atlassian.com/manage-profile/security/api-tokens)) |
+| `SENTINEL_POLL_INTERVAL` | No | `60` | Seconds between Jira polls |
+| `SENTINEL_MAX_ISSUES` | No | `50` | Maximum issues to process per poll |
+| `SENTINEL_LOG_LEVEL` | No | `INFO` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) |
+| `SENTINEL_LOG_JSON` | No | `false` | Enable JSON log output (`true`, `false`) |
+| `SENTINEL_ORCHESTRATIONS_DIR` | No | `./orchestrations` | Path to orchestration YAML files |
 
 ## Usage
 
