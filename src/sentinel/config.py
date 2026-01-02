@@ -32,6 +32,7 @@ class Config:
     # Paths
     orchestrations_dir: Path = Path("./orchestrations")
     agent_workdir: Path = Path("./workdir")  # Base directory for agent working directories
+    agent_logs_dir: Path = Path("./logs")  # Base directory for agent execution logs
 
 
 def _parse_positive_int(value: str, name: str, default: int) -> int:
@@ -152,4 +153,5 @@ def load_config(env_file: Path | None = None) -> Config:
         log_json=log_json,
         orchestrations_dir=Path(os.getenv("SENTINEL_ORCHESTRATIONS_DIR", "./orchestrations")),
         agent_workdir=Path(os.getenv("SENTINEL_AGENT_WORKDIR", "./workdir")),
+        agent_logs_dir=Path(os.getenv("SENTINEL_AGENT_LOGS_DIR", "./logs")),
     )
