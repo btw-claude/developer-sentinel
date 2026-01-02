@@ -20,6 +20,9 @@ from sentinel.agents.base import (
     ToolResult,
     ToolSchema,
 )
+from sentinel.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ConfluenceToolClient(ABC):
@@ -100,6 +103,7 @@ class GetPageTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -107,8 +111,12 @@ class GetPageTool(Tool):
         page_id = kwargs["page_id"]
         try:
             result = self.client.get_page(page_id)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to get page {page_id}: {e}", "CONFLUENCE_ERROR")
 
 
@@ -145,6 +153,7 @@ class GetPageByTitleTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -153,10 +162,14 @@ class GetPageByTitleTool(Tool):
         title = kwargs["title"]
         try:
             result = self.client.get_page_by_title(space_key, title)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             if result is None:
                 return ToolResult.ok({"found": False, "page": None})
             return ToolResult.ok({"found": True, "page": result})
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(
                 f"Failed to find page '{title}' in space {space_key}: {e}",
                 "CONFLUENCE_ERROR",
@@ -208,6 +221,7 @@ class CreatePageTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -219,8 +233,12 @@ class CreatePageTool(Tool):
                 body=kwargs["body"],
                 parent_id=kwargs.get("parent_id"),
             )
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to create page: {e}", "CONFLUENCE_ERROR")
 
 
@@ -269,6 +287,7 @@ class UpdatePageTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -281,8 +300,12 @@ class UpdatePageTool(Tool):
                 body=kwargs["body"],
                 version=kwargs["version"],
             )
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to update page {page_id}: {e}", "CONFLUENCE_ERROR")
 
 
@@ -320,6 +343,7 @@ class SearchContentTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -328,8 +352,12 @@ class SearchContentTool(Tool):
         limit = kwargs.get("limit", 25)
         try:
             results = self.client.search_content(cql, limit)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok({"results": results, "count": len(results)})
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(f"Failed to search content: {e}", "CONFLUENCE_ERROR")
 
 
@@ -363,6 +391,7 @@ class AddCommentTool(Tool):
         return self._schema
 
     def execute(self, **kwargs: Any) -> ToolResult:
+        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
         validation_error = self.validate_params(**kwargs)
         if validation_error:
             return validation_error
@@ -371,8 +400,12 @@ class AddCommentTool(Tool):
         body = kwargs["body"]
         try:
             result = self.client.add_comment(page_id, body)
+            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
         except Exception as e:
+            logger.error(
+                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+            )
             return ToolResult.fail(
                 f"Failed to add comment to page {page_id}: {e}", "CONFLUENCE_ERROR"
             )
