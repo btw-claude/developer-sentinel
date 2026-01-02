@@ -301,13 +301,34 @@ class TestToolResult:
         result = ToolResult.ok({"id": 123})
         response = result.to_response()
 
-        assert response == {"success": True, "data": {"id": 123}}
+        assert response == {
+            "success": True,
+            "data": {"id": 123},
+            "error": None,
+            "error_code": None,
+        }
 
     def test_to_response_failure(self) -> None:
         result = ToolResult.fail("Error", "ERR")
         response = result.to_response()
 
-        assert response == {"success": False, "error": "Error", "error_code": "ERR"}
+        assert response == {
+            "success": False,
+            "data": None,
+            "error": "Error",
+            "error_code": "ERR",
+        }
+
+    def test_to_response_has_consistent_keys(self) -> None:
+        """Both success and failure responses have the same keys."""
+        success_result = ToolResult.ok({"data": "value"})
+        failure_result = ToolResult.fail("error message")
+
+        success_keys = set(success_result.to_response().keys())
+        failure_keys = set(failure_result.to_response().keys())
+
+        assert success_keys == failure_keys
+        assert success_keys == {"success", "data", "error", "error_code"}
 
 
 # =============================================================================

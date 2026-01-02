@@ -134,14 +134,11 @@ class ToolResult:
 
         Returns:
             Dict representation suitable for agent consumption.
+            Always includes all keys for predictable structure.
         """
-        if self.success:
-            return {
-                "success": True,
-                "data": self.data,
-            }
         return {
-            "success": False,
+            "success": self.success,
+            "data": self.data,
             "error": self.error,
             "error_code": self.error_code,
         }
