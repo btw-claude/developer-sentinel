@@ -38,6 +38,7 @@ orchestrations:
 | `trigger` | object | Yes | Defines which Jira issues activate this orchestration |
 | `agent` | object | Yes | Configures the Claude agent behavior |
 | `retry` | object | No | Retry logic and pattern matching |
+| `on_start` | object | No | Actions when issue is picked up (prevents duplicate processing) |
 | `on_complete` | object | No | Actions after successful processing |
 | `on_failure` | object | No | Actions when all retries are exhausted |
 
@@ -132,20 +133,37 @@ Patterns are matched case-insensitively against the agent's response:
 
 If the response matches a success pattern, execution is considered successful. If it matches a failure pattern (and no success pattern), the execution is retried. If neither pattern matches, the `default_status` setting determines the outcome (defaults to `"success"`).
 
+### On Start Configuration
+
+Actions taken immediately when an issue is picked up for processing. Use this to prevent duplicate processing if your poll interval is shorter than the typical processing time.
+
+```yaml
+on_start:
+  add_tag: "sentinel-processing"  # Mark issue as being processed
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `add_tag` | string | `""` | Tag to add when processing starts (automatically removed after processing) |
+
+**Important:**
+- Configure your trigger to exclude issues with this tag, so the poller will skip issues already being processed
+- The `add_tag` is **automatically removed** after processing completes (on both success and failure)
+
 ### On Complete Configuration
 
 Actions taken after successful execution:
 
 ```yaml
 on_complete:
-  remove_tag: "needs-review"    # Remove this tag from the issue
-  add_tag: "reviewed"           # Add this tag to the issue
+  add_tag: "reviewed"           # Add completion tag to the issue
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `remove_tag` | string | `""` | Tag to remove after success |
 | `add_tag` | string | `""` | Tag to add after success |
+
+**Note:** Trigger tags are already removed when processing starts, so `remove_tag` is typically not needed.
 
 ### On Failure Configuration
 
@@ -160,8 +178,6 @@ on_failure:
 |-------|------|---------|-------------|
 | `add_tag` | string | `""` | Tag to add after failure |
 
-**Note:** Trigger tags are NOT removed on failure, allowing for manual investigation and retry.
-
 ## Tag-Based Workflow
 
 Sentinel uses a stateless, tag-based workflow to track issue processing:
@@ -175,6 +191,8 @@ Sentinel uses a stateless, tag-based workflow to track issue processing:
 │                            │                                     │
 │                            ▼                                     │
 │   2. Sentinel polls and picks up the issue                      │
+│      - Removes trigger tag                                       │
+│      - Adds in-progress tag (e.g., "sentinel-processing")       │
 │                            │                                     │
 │                            ▼                                     │
 │   3. Agent processes the issue                                  │
@@ -183,7 +201,7 @@ Sentinel uses a stateless, tag-based workflow to track issue processing:
 │              │                           │                       │
 │              ▼                           ▼                       │
 │   4a. SUCCESS                  4b. FAILURE (after retries)      │
-│   - Remove trigger tag         - Keep trigger tag                │
+│   - Remove in-progress tag     - Remove in-progress tag         │
 │   - Add completion tag         - Add failure tag                 │
 │   (e.g., "reviewed")          (e.g., "review-failed")           │
 │                                                                  │
@@ -192,9 +210,9 @@ Sentinel uses a stateless, tag-based workflow to track issue processing:
 
 ### Why This Approach?
 
-1. **Idempotent Processing**: Issues without trigger tags won't be reprocessed
-2. **Visible State**: Tag state clearly shows processing status
-3. **Easy Retry**: Keep trigger tags on failure for manual investigation and retry
+1. **Idempotent Processing**: Trigger tags are removed immediately, preventing duplicate processing
+2. **Visible State**: In-progress tag clearly shows which issues are being processed
+3. **No Race Conditions**: Trigger tag removal + in-progress tag addition happens atomically at pickup
 4. **Audit Trail**: Completion/failure tags provide history
 
 ### Example Tag Flow
@@ -202,9 +220,9 @@ Sentinel uses a stateless, tag-based workflow to track issue processing:
 | State | Tags on Issue |
 |-------|---------------|
 | Initial | `needs-review` |
-| Processing | `needs-review` (unchanged) |
+| Processing | `sentinel-processing` |
 | Success | `reviewed` |
-| Failure | `needs-review`, `review-failed` |
+| Failure | `review-failed` |
 
 ## Best Practices
 

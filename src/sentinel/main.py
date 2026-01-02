@@ -93,8 +93,13 @@ class Sentinel:
                         logger.info("Shutdown requested, stopping execution")
                         return all_results
 
-                    logger.info(f"Executing '{matched_orch.name}' for {routing_result.issue.key}")
+                    issue_key = routing_result.issue.key
+                    logger.info(f"Executing '{matched_orch.name}' for {issue_key}")
+
                     try:
+                        # Mark issue as being processed (remove trigger tags, add in-progress tag)
+                        self.tag_manager.start_processing(issue_key, matched_orch)
+
                         result = self.executor.execute(routing_result.issue, matched_orch)
                         all_results.append(result)
 
@@ -103,8 +108,7 @@ class Sentinel:
 
                     except Exception as e:
                         logger.error(
-                            f"Failed to execute '{matched_orch.name}' "
-                            f"for {routing_result.issue.key}: {e}"
+                            f"Failed to execute '{matched_orch.name}' for {issue_key}: {e}"
                         )
 
         return all_results

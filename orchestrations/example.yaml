@@ -9,6 +9,7 @@
 #   - trigger: What Jira issues to watch for
 #   - agent: How the Claude agent should process them
 #   - retry: How to handle failures and determine success
+#   - on_start: What to do when processing begins (prevents duplicate processing)
 #   - on_complete: What to do after successful processing
 #   - on_failure: What to do when all retries are exhausted
 #
@@ -16,8 +17,9 @@
 # -------------------
 # Sentinel uses a stateless, tag-based workflow:
 #   1. Issues with trigger tags are picked up for processing
-#   2. On success: trigger tags are removed, completion tags are added
-#   3. On failure: failure tags are added (trigger tags remain for investigation)
+#   2. Trigger tag is removed and in-progress tag is added (prevents duplicate processing)
+#   3. On success: in-progress tag is removed, completion tag is added
+#   4. On failure: in-progress tag is removed, failure tag is added
 #
 # This ensures issues are processed exactly once and failure states are visible.
 
@@ -88,17 +90,22 @@ orchestrations:
         - "error"
         - "could not"
 
+    # On start actions
+    # What to do immediately when an issue is picked up
+    # This prevents duplicate processing if poll interval < processing time
+    on_start:
+      add_tag: "sentinel-processing"  # Automatically removed after processing
+
     # On complete actions
     # What to do after successful processing
+    # Note: trigger tag is already removed when processing starts
     on_complete:
-      remove_tag: "needs-code-review"   # Remove trigger tag
       add_tag: "code-reviewed"          # Add completion tag
 
     # On failure actions
     # What to do when all retry attempts are exhausted
     on_failure:
       add_tag: "review-failed"          # Add failure tag for investigation
-      # Note: trigger tags are NOT removed on failure, allowing for manual retry
 
   # Documentation Orchestration
   # ---------------------------
@@ -133,8 +140,10 @@ orchestrations:
         - "FAILURE"
         - "could not update"
 
+    on_start:
+      add_tag: "sentinel-processing"
+
     on_complete:
-      remove_tag: "needs-docs"
       add_tag: "docs-updated"
 
     on_failure:

@@ -76,11 +76,11 @@ class TagUpdateResult:
 
 
 class TagManager:
-    """Manages post-processing tag updates for Jira issues.
+    """Manages tag updates for Jira issues throughout the processing lifecycle.
 
-    After agent execution, updates issue tags based on the orchestration config:
-    - On success: removes trigger tags, adds completion tags
-    - On failure: adds failure tags, keeps trigger tags for investigation
+    Handles tags at two points:
+    - On start: removes trigger tags, adds in-progress tag (prevents duplicate processing)
+    - On complete: removes in-progress tag, adds completion/failure tags
     """
 
     def __init__(self, client: JiraTagClient) -> None:
@@ -91,12 +91,76 @@ class TagManager:
         """
         self.client = client
 
+    def start_processing(
+        self,
+        issue_key: str,
+        orchestration: Orchestration,
+    ) -> TagUpdateResult:
+        """Update tags when an issue is picked up for processing.
+
+        Removes trigger tags and adds in-progress tag to prevent duplicate processing.
+
+        Args:
+            issue_key: The Jira issue key (e.g., "PROJ-123").
+            orchestration: The orchestration configuration.
+
+        Returns:
+            TagUpdateResult with details of what was changed.
+        """
+        added_tags: list[str] = []
+        removed_tags: list[str] = []
+        errors: list[str] = []
+
+        # Remove trigger tags
+        for tag in orchestration.trigger.tags:
+            try:
+                self.client.remove_label(issue_key, tag)
+                removed_tags.append(tag)
+                logger.info(f"Removed trigger tag '{tag}' from {issue_key}")
+            except JiraTagClientError as e:
+                error_msg = f"Failed to remove trigger tag '{tag}' from {issue_key}: {e}"
+                errors.append(error_msg)
+                logger.error(error_msg)
+
+        # Add in-progress tag if configured
+        on_start = orchestration.on_start
+        if on_start.add_tag:
+            try:
+                self.client.add_label(issue_key, on_start.add_tag)
+                added_tags.append(on_start.add_tag)
+                logger.info(f"Added in-progress tag '{on_start.add_tag}' to {issue_key}")
+            except JiraTagClientError as e:
+                error_msg = (
+                    f"Failed to add in-progress tag '{on_start.add_tag}' to {issue_key}: {e}"
+                )
+                errors.append(error_msg)
+                logger.error(error_msg)
+
+        result = TagUpdateResult(
+            issue_key=issue_key,
+            added_tags=added_tags,
+            removed_tags=removed_tags,
+            errors=errors,
+        )
+
+        if result.success:
+            logger.info(
+                f"Start processing tags updated for {issue_key}: "
+                f"added={added_tags}, removed={removed_tags}"
+            )
+        else:
+            logger.warning(f"Start processing tag update had errors for {issue_key}: {errors}")
+
+        return result
+
     def update_tags(
         self,
         result: ExecutionResult,
         orchestration: Orchestration,
     ) -> TagUpdateResult:
         """Update tags on a Jira issue based on execution result.
+
+        Removes in-progress tag (if configured) and applies completion/failure tags.
 
         Args:
             result: The result of the agent execution.
@@ -108,6 +172,21 @@ class TagManager:
         added_tags: list[str] = []
         removed_tags: list[str] = []
         errors: list[str] = []
+
+        # Always remove in-progress tag if configured (regardless of success/failure)
+        on_start = orchestration.on_start
+        if on_start.add_tag:
+            try:
+                self.client.remove_label(result.issue_key, on_start.add_tag)
+                removed_tags.append(on_start.add_tag)
+                logger.info(f"Removed in-progress tag '{on_start.add_tag}' from {result.issue_key}")
+            except JiraTagClientError as e:
+                error_msg = (
+                    f"Failed to remove in-progress tag '{on_start.add_tag}' "
+                    f"from {result.issue_key}: {e}"
+                )
+                errors.append(error_msg)
+                logger.error(error_msg)
 
         if result.status == ExecutionStatus.SUCCESS:
             # Handle successful execution
