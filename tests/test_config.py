@@ -24,7 +24,6 @@ class TestConfig:
         assert config.poll_interval == 60
         assert config.max_issues_per_poll == 50
         assert config.jira_url == ""
-        assert config.jira_user == ""
         assert config.jira_api_token == ""
         assert config.log_level == "INFO"
         assert config.log_json is False
@@ -137,7 +136,6 @@ class TestLoadConfig:
         monkeypatch.setenv("SENTINEL_POLL_INTERVAL", "30")
         monkeypatch.setenv("SENTINEL_MAX_ISSUES", "25")
         monkeypatch.setenv("JIRA_URL", "https://jira.test.com")
-        monkeypatch.setenv("JIRA_USER", "testuser")
         monkeypatch.setenv("JIRA_API_TOKEN", "secret123")
         monkeypatch.setenv("SENTINEL_LOG_LEVEL", "DEBUG")
         monkeypatch.setenv("SENTINEL_ORCHESTRATIONS_DIR", "/custom/path")
@@ -147,7 +145,6 @@ class TestLoadConfig:
         assert config.poll_interval == 30
         assert config.max_issues_per_poll == 25
         assert config.jira_url == "https://jira.test.com"
-        assert config.jira_user == "testuser"
         assert config.jira_api_token == "secret123"
         assert config.log_level == "DEBUG"
         assert config.orchestrations_dir == Path("/custom/path")
@@ -155,6 +152,7 @@ class TestLoadConfig:
     def test_loads_from_env_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Clear existing env vars
         monkeypatch.delenv("SENTINEL_POLL_INTERVAL", raising=False)
+        monkeypatch.delenv("SENTINEL_LOG_LEVEL", raising=False)
 
         # Create a test .env file
         env_file = tmp_path / ".env"

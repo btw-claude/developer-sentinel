@@ -36,7 +36,6 @@ Create a `.env` file with your credentials:
 ```bash
 # Required - Jira Configuration
 JIRA_URL=https://your-instance.atlassian.net
-JIRA_USER=your-email@example.com
 JIRA_API_TOKEN=your-api-token
 
 # Optional - Sentinel Configuration
@@ -52,7 +51,6 @@ SENTINEL_ORCHESTRATIONS_DIR=./orchestrations
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `JIRA_URL` | Yes | - | Jira instance URL (e.g., `https://company.atlassian.net`) |
-| `JIRA_USER` | Yes | - | Jira username (email) |
 | `JIRA_API_TOKEN` | Yes | - | Jira API token ([create one here](https://id.atlassian.com/manage-profile/security/api-tokens)) |
 | `SENTINEL_POLL_INTERVAL` | No | `60` | Seconds between Jira polls |
 | `SENTINEL_MAX_ISSUES` | No | `50` | Maximum issues to process per poll |

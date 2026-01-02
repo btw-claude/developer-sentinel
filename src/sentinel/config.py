@@ -27,7 +27,6 @@ class Config:
 
     # Jira configuration
     jira_url: str = ""
-    jira_user: str = ""
     jira_api_token: str = ""
 
     # Logging
@@ -153,7 +152,6 @@ def load_config(env_file: Path | None = None) -> Config:
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
         jira_url=os.getenv("JIRA_URL", ""),
-        jira_user=os.getenv("JIRA_USER", ""),
         jira_api_token=os.getenv("JIRA_API_TOKEN", ""),
         log_level=log_level,
         log_json=log_json,
