@@ -763,6 +763,17 @@ class TestParseStreamJsonLine:
         assert text_delta is None
         assert final_result == "complete response"
 
+    def test_parses_error_result(self) -> None:
+        """Should extract result from error result message."""
+        line = json.dumps(
+            {"type": "result", "subtype": "error", "result": "Error: something failed"}
+        )
+
+        text_delta, final_result = _parse_stream_json_line(line)
+
+        assert text_delta is None
+        assert final_result == "Error: something failed"
+
     def test_ignores_other_event_types(self) -> None:
         """Should return None for non-text events."""
         line = json.dumps({"type": "stream_event", "event": {"type": "other_event"}})

@@ -63,6 +63,7 @@ def _parse_stream_json_line(line: str) -> tuple[str | None, str | None]:
 
     return None, None
 
+
 # Module-level shutdown event for interrupting Claude subprocesses
 _shutdown_event = threading.Event()
 
