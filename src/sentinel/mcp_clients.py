@@ -27,6 +27,43 @@ logger = get_logger(__name__)
 # Type alias for output callback function
 OutputCallback = Callable[[str], None]
 
+
+def _parse_stream_json_line(line: str) -> tuple[str | None, str | None]:
+    """Parse a line of stream-json output from Claude CLI.
+
+    Args:
+        line: A JSON line from the stream-json output.
+
+    Returns:
+        A tuple of (text_delta, final_result):
+        - text_delta: Extracted text if this is a content_block_delta event, else None
+        - final_result: The complete result if this is a result message, else None
+    """
+    if not line.strip():
+        return None, None
+
+    try:
+        data = json.loads(line)
+    except json.JSONDecodeError:
+        return None, None
+
+    msg_type = data.get("type")
+
+    # Handle streaming text deltas
+    if msg_type == "stream_event":
+        event = data.get("event", {})
+        if event.get("type") == "content_block_delta":
+            delta = event.get("delta", {})
+            if delta.get("type") == "text_delta":
+                return delta.get("text"), None
+
+    # Handle final result
+    if msg_type == "result":
+        return None, data.get("result", "")
+
+    return None, None
+
+
 # Module-level shutdown event for interrupting Claude subprocesses
 _shutdown_event = threading.Event()
 
@@ -62,6 +99,8 @@ def _stream_reader(
     output_lines: list[str],
     callback: OutputCallback | None,
     prefix: str = "",
+    parse_json: bool = False,
+    result_holder: list[str] | None = None,
 ) -> None:
     """Read lines from a stream and optionally call a callback.
 
@@ -69,17 +108,31 @@ def _stream_reader(
 
     Args:
         stream: The stream to read from (stdout or stderr).
-        output_lines: List to accumulate output lines.
-        callback: Optional callback to call with each line.
+        output_lines: List to accumulate output lines (raw lines or extracted text).
+        callback: Optional callback to call with each line/text.
         prefix: Optional prefix to add to lines (e.g., "[stderr] ").
+        parse_json: If True, parse stream-json format and extract text deltas.
+        result_holder: If provided, stores the final result from stream-json.
     """
     try:
         for line in iter(stream.readline, ""):
             if not line:
                 break
-            output_lines.append(line)
-            if callback:
-                callback(f"{prefix}{line}" if prefix else line)
+
+            if parse_json:
+                # Parse stream-json format and extract text
+                text_delta, final_result = _parse_stream_json_line(line)
+                if text_delta:
+                    output_lines.append(text_delta)
+                    if callback:
+                        callback(f"{prefix}{text_delta}" if prefix else text_delta)
+                if final_result is not None and result_holder is not None:
+                    result_holder.append(final_result)
+            else:
+                # Raw line mode (for stderr)
+                output_lines.append(line)
+                if callback:
+                    callback(f"{prefix}{line}" if prefix else line)
     except Exception:
         pass  # Stream closed or error, just exit
     finally:
@@ -117,7 +170,14 @@ def _run_claude(
         subprocess.CalledProcessError: If the command fails.
         ClaudeProcessInterruptedError: If shutdown was requested during execution.
     """
-    cmd = ["claude", "--print", "--output-format", "text"]
+    cmd = [
+        "claude",
+        "--print",
+        "--output-format",
+        "stream-json",
+        "--include-partial-messages",
+        "--verbose",
+    ]
 
     # Add model if specified
     if model:
@@ -146,15 +206,19 @@ def _run_claude(
     poll_interval = 0.5  # Check for shutdown every 500ms
 
     # Collect output from both streams
-    stdout_lines: list[str] = []
+    stdout_lines: list[str] = []  # Will contain extracted text deltas
     stderr_lines: list[str] = []
+    result_holder: list[str] = []  # Will contain the final result
 
     # Start reader threads for streaming output
+    # stdout uses JSON parsing to extract text deltas and final result
     stdout_thread = threading.Thread(
         target=_stream_reader,
         args=(process.stdout, stdout_lines, output_callback, ""),
+        kwargs={"parse_json": True, "result_holder": result_holder},
         daemon=True,
     )
+    # stderr is read as raw lines
     stderr_thread = threading.Thread(
         target=_stream_reader,
         args=(process.stderr, stderr_lines, output_callback, "[stderr] "),
@@ -189,12 +253,17 @@ def _run_claude(
                 stdout_thread.join(timeout=5)
                 stderr_thread.join(timeout=5)
 
-                stdout = "".join(stdout_lines)
                 stderr = "".join(stderr_lines)
 
                 if return_code != 0:
+                    # For errors, include streamed text in output
+                    stdout = "".join(stdout_lines)
                     raise subprocess.CalledProcessError(return_code, cmd, stdout, stderr)
-                return stdout.strip()
+
+                # Return the final result from stream-json, or fall back to joined text
+                if result_holder:
+                    return result_holder[-1].strip()
+                return "".join(stdout_lines).strip()
 
             # Check for timeout
             if timeout_seconds is not None:
