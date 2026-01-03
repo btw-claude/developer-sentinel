@@ -177,6 +177,7 @@ def _run_claude(
         "stream-json",
         "--include-partial-messages",
         "--verbose",
+        "--dangerously-skip-permissions",  # Bypass permission prompts for automated execution
     ]
 
     # Add model if specified
