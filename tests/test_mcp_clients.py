@@ -16,7 +16,7 @@ from sentinel.mcp_clients import (
     ClaudeProcessInterruptedError,
     JiraMcpClient,
     JiraMcpTagClient,
-    _parse_stream_json_line,
+    _extract_text_from_stream_json,
     _run_claude,
     request_shutdown,
     reset_shutdown,
@@ -31,51 +31,30 @@ def reset_shutdown_state() -> None:
     reset_shutdown()
 
 
-def make_stream_json_output(text: str) -> str:
-    """Create stream-json formatted output for testing.
-
-    Generates the JSON lines that Claude CLI outputs in stream-json mode:
-    - content_block_delta events for each character/word
-    - A final result message with the complete text
+def create_stream_json_output(result_text: str) -> str:
+    """Create stream-json format output with a result message.
 
     Args:
-        text: The text content to simulate.
+        result_text: The result text to wrap in stream-json format.
 
     Returns:
-        Multi-line string with JSON-formatted stream output.
+        Stream-json formatted string with the result.
     """
-    lines = []
-
-    # Simulate streaming each character (simplified - real output may vary)
-    for char in text:
-        event = {
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {"type": "text_delta", "text": char},
-            },
-        }
-        lines.append(json.dumps(event))
-
-    # Final result message
-    result = {"type": "result", "subtype": "success", "result": text}
-    lines.append(json.dumps(result))
-
-    return "\n".join(lines) + "\n"
+    result_obj = {"type": "result", "result": result_text}
+    return json.dumps(result_obj) + "\n"
 
 
 def create_mock_process(stdout: str = "output", returncode: int = 0) -> MagicMock:
-    """Create a mock Popen process with stream-json formatted output.
+    """Create a mock Popen process with stream-json output.
 
     The _run_claude implementation reads from stdout/stderr using
-    threads that iterate via readline(), parsing JSON stream format.
+    threads that iterate via readline() and parse stream-json.
     """
     mock_process = MagicMock()
     mock_process.poll.return_value = returncode  # Process completed
 
-    # Create proper stream mocks using StringIO with stream-json format
-    stream_json_output = make_stream_json_output(stdout)
+    # Create stream-json output with result message
+    stream_json_output = create_stream_json_output(stdout)
     mock_process.stdout = io.StringIO(stream_json_output)
     mock_process.stderr = io.StringIO("")
 
@@ -97,14 +76,14 @@ class TestRunClaude:
         mock_popen.assert_called_once()
         call_args = mock_popen.call_args
         cmd = call_args[0][0]
-        # Should use stream-json format for real-time streaming
+        # Should use stream-json format with permission bypass
         expected_cmd = [
             "claude",
             "--print",
             "--output-format",
             "stream-json",
-            "--include-partial-messages",
             "--verbose",
+            "--dangerously-skip-permissions",
             "-p",
             "test prompt",
         ]
@@ -204,6 +183,92 @@ class TestRunClaude:
             _run_claude("test")
 
         mock_process.terminate.assert_called_once()
+
+
+class TestExtractTextFromStreamJson:
+    """Tests for _extract_text_from_stream_json helper function."""
+
+    def test_extracts_text_delta_from_stream_event(self) -> None:
+        """Should extract text from stream_event content_block_delta."""
+        line = json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {
+                    "type": "text_delta",
+                    "text": "Hello world"
+                }
+            }
+        })
+        text, result = _extract_text_from_stream_json(line)
+        assert text == "Hello world"
+        assert result is None
+
+    def test_extracts_text_from_assistant_message(self) -> None:
+        """Should extract text from assistant message content."""
+        line = json.dumps({
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "text", "text": "Part 1"},
+                    {"type": "text", "text": " Part 2"}
+                ]
+            }
+        })
+        text, result = _extract_text_from_stream_json(line)
+        assert text == "Part 1 Part 2"
+        assert result is None
+
+    def test_extracts_result_from_result_message(self) -> None:
+        """Should extract result from result message type."""
+        line = json.dumps({
+            "type": "result",
+            "result": "Final response text"
+        })
+        text, result = _extract_text_from_stream_json(line)
+        assert text is None
+        assert result == "Final response text"
+
+    def test_returns_none_for_empty_line(self) -> None:
+        """Should return None for empty line."""
+        text, result = _extract_text_from_stream_json("")
+        assert text is None
+        assert result is None
+
+    def test_returns_none_for_whitespace_line(self) -> None:
+        """Should return None for whitespace-only line."""
+        text, result = _extract_text_from_stream_json("   \n")
+        assert text is None
+        assert result is None
+
+    def test_returns_none_for_invalid_json(self) -> None:
+        """Should return None for invalid JSON."""
+        text, result = _extract_text_from_stream_json("not valid json")
+        assert text is None
+        assert result is None
+
+    def test_returns_none_for_unknown_message_type(self) -> None:
+        """Should return None for unknown message types."""
+        line = json.dumps({"type": "some_other_type", "data": "value"})
+        text, result = _extract_text_from_stream_json(line)
+        assert text is None
+        assert result is None
+
+    def test_returns_none_for_non_text_delta(self) -> None:
+        """Should return None for non-text deltas."""
+        line = json.dumps({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {
+                    "type": "tool_use",
+                    "tool_name": "some_tool"
+                }
+            }
+        })
+        text, result = _extract_text_from_stream_json(line)
+        assert text is None
+        assert result is None
 
 
 class TestJiraMcpClient:
@@ -678,128 +743,3 @@ class TestClaudeMcpAgentClientStreaming:
         assert "Status:         FAILED" in content
 
 
-class TestOutputCallback:
-    """Tests for output_callback parameter in _run_claude."""
-
-    def test_callback_called_with_text_deltas(self) -> None:
-        """Should call callback with extracted text deltas from stream-json."""
-        mock_process = create_mock_process("hello")
-
-        captured_text: list[str] = []
-
-        def callback(text: str) -> None:
-            captured_text.append(text)
-
-        with patch("subprocess.Popen", return_value=mock_process):
-            result = _run_claude("test", output_callback=callback)
-
-        # Callback should have received each character from text deltas
-        combined = "".join(captured_text)
-        assert "hello" in combined
-        assert result == "hello"
-
-    def test_callback_receives_stderr_with_prefix(self) -> None:
-        """Should prefix stderr lines with [stderr]."""
-        mock_process = MagicMock()
-        mock_process.poll.return_value = 0
-        # stdout has stream-json format
-        mock_process.stdout = io.StringIO(make_stream_json_output("output"))
-        # stderr is raw text
-        mock_process.stderr = io.StringIO("error\n")
-        mock_process.communicate.return_value = ("", "error\n")
-
-        captured: list[str] = []
-
-        def callback(text: str) -> None:
-            captured.append(text)
-
-        with patch("subprocess.Popen", return_value=mock_process):
-            _run_claude("test", output_callback=callback)
-
-        # Should have both stdout text deltas and stderr lines
-        stderr_items = [item for item in captured if "[stderr]" in item]
-        assert len(stderr_items) == 1
-        assert "error" in stderr_items[0]
-
-    def test_no_callback_is_fine(self) -> None:
-        """Should work without callback."""
-        mock_process = create_mock_process("output")
-
-        with patch("subprocess.Popen", return_value=mock_process):
-            result = _run_claude("test")
-
-        assert result == "output"
-
-
-class TestParseStreamJsonLine:
-    """Tests for the _parse_stream_json_line helper function."""
-
-    def test_parses_text_delta(self) -> None:
-        """Should extract text from content_block_delta event."""
-        line = json.dumps(
-            {
-                "type": "stream_event",
-                "event": {
-                    "type": "content_block_delta",
-                    "index": 0,
-                    "delta": {"type": "text_delta", "text": "hello"},
-                },
-            }
-        )
-
-        text_delta, final_result = _parse_stream_json_line(line)
-
-        assert text_delta == "hello"
-        assert final_result is None
-
-    def test_parses_result(self) -> None:
-        """Should extract result from result message."""
-        line = json.dumps(
-            {"type": "result", "subtype": "success", "result": "complete response"}
-        )
-
-        text_delta, final_result = _parse_stream_json_line(line)
-
-        assert text_delta is None
-        assert final_result == "complete response"
-
-    def test_parses_error_result(self) -> None:
-        """Should extract result from error result message."""
-        line = json.dumps(
-            {"type": "result", "subtype": "error", "result": "Error: something failed"}
-        )
-
-        text_delta, final_result = _parse_stream_json_line(line)
-
-        assert text_delta is None
-        assert final_result == "Error: something failed"
-
-    def test_ignores_other_event_types(self) -> None:
-        """Should return None for non-text events."""
-        line = json.dumps({"type": "stream_event", "event": {"type": "other_event"}})
-
-        text_delta, final_result = _parse_stream_json_line(line)
-
-        assert text_delta is None
-        assert final_result is None
-
-    def test_handles_invalid_json(self) -> None:
-        """Should return None for invalid JSON."""
-        text_delta, final_result = _parse_stream_json_line("not valid json")
-
-        assert text_delta is None
-        assert final_result is None
-
-    def test_handles_empty_line(self) -> None:
-        """Should return None for empty lines."""
-        text_delta, final_result = _parse_stream_json_line("")
-
-        assert text_delta is None
-        assert final_result is None
-
-    def test_handles_whitespace_only(self) -> None:
-        """Should return None for whitespace-only lines."""
-        text_delta, final_result = _parse_stream_json_line("   \n")
-
-        assert text_delta is None
-        assert final_result is None

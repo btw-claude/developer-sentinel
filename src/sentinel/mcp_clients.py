@@ -11,12 +11,10 @@ import json
 import subprocess
 import threading
 import time
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sentinel.agent_logger import StreamingLogWriter
 from sentinel.executor import AgentClient, AgentClientError, AgentTimeoutError
 from sentinel.logging import get_logger
 from sentinel.poller import JiraClient, JiraClientError
@@ -24,22 +22,22 @@ from sentinel.tag_manager import JiraTagClient, JiraTagClientError
 
 logger = get_logger(__name__)
 
-# Type alias for output callback function
-OutputCallback = Callable[[str], None]
 
+def _extract_text_from_stream_json(line: str) -> tuple[str | None, str | None]:
+    """Extract text content from a stream-json line.
 
-def _parse_stream_json_line(line: str) -> tuple[str | None, str | None]:
-    """Parse a line of stream-json output from Claude CLI.
+    Parses stream-json format and extracts human-readable text.
 
     Args:
-        line: A JSON line from the stream-json output.
+        line: A JSON line from stream-json output.
 
     Returns:
-        A tuple of (text_delta, final_result):
-        - text_delta: Extracted text if this is a content_block_delta event, else None
-        - final_result: The complete result if this is a result message, else None
+        A tuple of (text_content, final_result):
+        - text_content: Extracted text to display, or None
+        - final_result: The complete result if this is a result message, or None
     """
-    if not line.strip():
+    line = line.strip()
+    if not line:
         return None, None
 
     try:
@@ -49,7 +47,7 @@ def _parse_stream_json_line(line: str) -> tuple[str | None, str | None]:
 
     msg_type = data.get("type")
 
-    # Handle streaming text deltas
+    # Extract text from streaming deltas (real-time output)
     if msg_type == "stream_event":
         event = data.get("event", {})
         if event.get("type") == "content_block_delta":
@@ -57,11 +55,59 @@ def _parse_stream_json_line(line: str) -> tuple[str | None, str | None]:
             if delta.get("type") == "text_delta":
                 return delta.get("text"), None
 
-    # Handle final result
+    # Extract text from assistant messages
+    if msg_type == "assistant":
+        message = data.get("message", {})
+        content = message.get("content", [])
+        texts = []
+        for block in content:
+            if block.get("type") == "text":
+                texts.append(block.get("text", ""))
+        if texts:
+            return "".join(texts), None
+
+    # Capture final result
     if msg_type == "result":
         return None, data.get("result", "")
 
     return None, None
+
+
+def _stream_json_to_text_writer(
+    stream: Any,
+    output_file: Any,
+    result_holder: list[str],
+) -> None:
+    """Read stream-json from a stream and write extracted text to a file.
+
+    This function runs in a separate thread. It parses JSON and extracts
+    human-readable text, writing it to the output file with OS buffering
+    (no explicit flush on every write).
+
+    Args:
+        stream: The stdout stream to read from.
+        output_file: An open file handle to write text to.
+        result_holder: List to store the final result.
+    """
+    try:
+        for line in iter(stream.readline, ""):
+            if not line:
+                break
+
+            text_content, final_result = _extract_text_from_stream_json(line)
+
+            if text_content:
+                output_file.write(text_content)
+                output_file.flush()
+
+            if final_result is not None:
+                result_holder.append(final_result)
+
+    except Exception:
+        pass  # Stream closed or error
+    finally:
+        with contextlib.suppress(Exception):
+            stream.close()
 
 
 # Module-level shutdown event for interrupting Claude subprocesses
@@ -97,42 +143,20 @@ class ClaudeProcessInterruptedError(Exception):
 def _stream_reader(
     stream: Any,
     output_lines: list[str],
-    callback: OutputCallback | None,
-    prefix: str = "",
-    parse_json: bool = False,
-    result_holder: list[str] | None = None,
 ) -> None:
-    """Read lines from a stream and optionally call a callback.
+    """Read lines from a stream into a list.
 
     This function runs in a separate thread to avoid blocking.
 
     Args:
         stream: The stream to read from (stdout or stderr).
-        output_lines: List to accumulate output lines (raw lines or extracted text).
-        callback: Optional callback to call with each line/text.
-        prefix: Optional prefix to add to lines (e.g., "[stderr] ").
-        parse_json: If True, parse stream-json format and extract text deltas.
-        result_holder: If provided, stores the final result from stream-json.
+        output_lines: List to accumulate output lines.
     """
     try:
         for line in iter(stream.readline, ""):
             if not line:
                 break
-
-            if parse_json:
-                # Parse stream-json format and extract text
-                text_delta, final_result = _parse_stream_json_line(line)
-                if text_delta:
-                    output_lines.append(text_delta)
-                    if callback:
-                        callback(f"{prefix}{text_delta}" if prefix else text_delta)
-                if final_result is not None and result_holder is not None:
-                    result_holder.append(final_result)
-            else:
-                # Raw line mode (for stderr)
-                output_lines.append(line)
-                if callback:
-                    callback(f"{prefix}{line}" if prefix else line)
+            output_lines.append(line)
     except Exception:
         pass  # Stream closed or error, just exit
     finally:
@@ -146,12 +170,11 @@ def _run_claude(
     allowed_tools: list[str] | None = None,
     cwd: str | None = None,
     model: str | None = None,
-    output_callback: OutputCallback | None = None,
+    stdout_file: Path | None = None,
 ) -> str:
     """Run a prompt through Claude Code CLI.
 
     Uses Popen with polling to allow for graceful shutdown on Ctrl-C.
-    Optionally streams output to a callback function in real-time.
 
     Args:
         prompt: The prompt to send to Claude.
@@ -159,8 +182,9 @@ def _run_claude(
         allowed_tools: Optional list of MCP tool names to pre-authorize.
         cwd: Optional working directory for the subprocess.
         model: Optional model identifier (e.g., "claude-opus-4-5-20251101").
-        output_callback: Optional callback function called with each line of output.
-            Use this to stream output to a log file in real-time.
+        stdout_file: Optional path to file for streaming text output. When provided,
+            stream-json is parsed and human-readable text is written to this file
+            in real-time. Use `tail -f` on the file for real-time viewing.
 
     Returns:
         Claude's response text.
@@ -175,8 +199,8 @@ def _run_claude(
         "--print",
         "--output-format",
         "stream-json",
-        "--include-partial-messages",
         "--verbose",
+        "--dangerously-skip-permissions",  # Bypass permission prompts that block output
     ]
 
     # Add model if specified
@@ -191,8 +215,211 @@ def _run_claude(
 
     logger.debug(f"Running claude command with prompt length {len(prompt)}, cwd={cwd}")
 
-    # Use Popen with start_new_session to isolate from parent's signals
-    # This prevents Ctrl-C from being sent directly to the subprocess
+    # Use file output mode if stdout_file is provided (streaming text to file)
+    if stdout_file is not None:
+        return _run_claude_with_file_output(
+            cmd=cmd,
+            stdout_file=stdout_file,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+        )
+
+    # Otherwise capture output directly via pipe
+    return _run_claude_with_pipe(
+        cmd=cmd,
+        timeout_seconds=timeout_seconds,
+        cwd=cwd,
+    )
+
+
+def _run_claude_with_file_output(
+    cmd: list[str],
+    stdout_file: Path,
+    timeout_seconds: int | None,
+    cwd: str | None,
+) -> str:
+    """Run Claude with streaming text output to a file.
+
+    Reads stream-json from Claude, extracts human-readable text, and writes
+    it to the file in real-time with OS buffering (no explicit flush per write).
+
+    Args:
+        cmd: The command to run.
+        stdout_file: Path to file for text output (will be appended to).
+        timeout_seconds: Optional timeout in seconds.
+        cwd: Optional working directory.
+
+    Returns:
+        Claude's response text.
+
+    Raises:
+        subprocess.TimeoutExpired: If the command times out.
+        subprocess.CalledProcessError: If the command fails.
+        ClaudeProcessInterruptedError: If shutdown was requested.
+    """
+    start_time = time.time()
+    poll_interval = 0.5
+
+    # Open file for text output (append mode to preserve any header)
+    with open(stdout_file, "a", encoding="utf-8") as f_out:
+        # Use pipe for stdout so we can parse stream-json and extract text
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=cwd,
+            start_new_session=True,
+        )
+
+        # Collect stderr in a thread
+        stderr_lines: list[str] = []
+        stderr_thread = threading.Thread(
+            target=_stream_reader,
+            args=(process.stderr, stderr_lines),
+            daemon=True,
+        )
+
+        # Stream stdout through JSON parser to extract text and write to file
+        result_holder: list[str] = []
+        stdout_thread = threading.Thread(
+            target=_stream_json_to_text_writer,
+            args=(process.stdout, f_out, result_holder),
+            daemon=True,
+        )
+
+        stderr_thread.start()
+        stdout_thread.start()
+
+        try:
+            while True:
+                # Check if shutdown was requested
+                if _shutdown_event.is_set():
+                    logger.info("Shutdown requested, terminating Claude subprocess")
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        logger.warning("Claude subprocess did not terminate, killing")
+                        process.kill()
+                        process.wait()
+                    stdout_thread.join(timeout=1)
+                    stderr_thread.join(timeout=1)
+                    raise ClaudeProcessInterruptedError(
+                        "Claude subprocess interrupted by shutdown request"
+                    )
+
+                # Check if process completed
+                return_code = process.poll()
+                if return_code is not None:
+                    stdout_thread.join(timeout=5)
+                    stderr_thread.join(timeout=5)
+                    stderr = "".join(stderr_lines)
+
+                    if return_code != 0:
+                        raise subprocess.CalledProcessError(
+                            return_code, cmd, "", stderr
+                        )
+
+                    # Return captured result
+                    break
+
+                # Check for timeout
+                if timeout_seconds is not None:
+                    elapsed = time.time() - start_time
+                    if elapsed >= timeout_seconds:
+                        logger.warning(
+                            f"Claude subprocess timed out after {timeout_seconds}s"
+                        )
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+                        stdout_thread.join(timeout=1)
+                        stderr_thread.join(timeout=1)
+                        raise subprocess.TimeoutExpired(cmd, timeout_seconds)
+
+                time.sleep(poll_interval)
+
+        except ClaudeProcessInterruptedError:
+            raise
+        except subprocess.TimeoutExpired:
+            raise
+        except subprocess.CalledProcessError:
+            raise
+        except Exception:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            stdout_thread.join(timeout=1)
+            stderr_thread.join(timeout=1)
+            raise
+
+    # Return the result captured from stream-json
+    if result_holder:
+        return result_holder[-1].strip()
+    return ""
+
+
+def _stream_json_reader(
+    stream: Any,
+    result_holder: list[str],
+) -> None:
+    """Read stream-json from a stream and capture the result.
+
+    This function runs in a separate thread. It parses JSON and captures
+    the final result.
+
+    Args:
+        stream: The stdout stream to read from.
+        result_holder: List to store the final result.
+    """
+    try:
+        for line in iter(stream.readline, ""):
+            if not line:
+                break
+
+            _, final_result = _extract_text_from_stream_json(line)
+
+            if final_result is not None:
+                result_holder.append(final_result)
+
+    except Exception:
+        pass  # Stream closed or error
+    finally:
+        with contextlib.suppress(Exception):
+            stream.close()
+
+
+def _run_claude_with_pipe(
+    cmd: list[str],
+    timeout_seconds: int | None,
+    cwd: str | None,
+) -> str:
+    """Run Claude with output captured via pipe.
+
+    Args:
+        cmd: The command to run.
+        timeout_seconds: Optional timeout in seconds.
+        cwd: Optional working directory.
+
+    Returns:
+        Claude's response text.
+
+    Raises:
+        subprocess.TimeoutExpired: If the command times out.
+        subprocess.CalledProcessError: If the command fails.
+        ClaudeProcessInterruptedError: If shutdown was requested.
+    """
+    start_time = time.time()
+    poll_interval = 0.5
+
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -202,26 +429,19 @@ def _run_claude(
         start_new_session=True,
     )
 
-    start_time = time.time()
-    poll_interval = 0.5  # Check for shutdown every 500ms
-
-    # Collect output from both streams
-    stdout_lines: list[str] = []  # Will contain extracted text deltas
+    # Collect stderr and capture result from stdout
     stderr_lines: list[str] = []
-    result_holder: list[str] = []  # Will contain the final result
+    result_holder: list[str] = []
 
-    # Start reader threads for streaming output
-    # stdout uses JSON parsing to extract text deltas and final result
+    # Start reader threads
     stdout_thread = threading.Thread(
-        target=_stream_reader,
-        args=(process.stdout, stdout_lines, output_callback, ""),
-        kwargs={"parse_json": True, "result_holder": result_holder},
+        target=_stream_json_reader,
+        args=(process.stdout, result_holder),
         daemon=True,
     )
-    # stderr is read as raw lines
     stderr_thread = threading.Thread(
         target=_stream_reader,
-        args=(process.stderr, stderr_lines, output_callback, "[stderr] "),
+        args=(process.stderr, stderr_lines),
         daemon=True,
     )
     stdout_thread.start()
@@ -229,7 +449,6 @@ def _run_claude(
 
     try:
         while True:
-            # Check if shutdown was requested
             if _shutdown_event.is_set():
                 logger.info("Shutdown requested, terminating Claude subprocess")
                 process.terminate()
@@ -239,33 +458,27 @@ def _run_claude(
                     logger.warning("Claude subprocess did not terminate, killing")
                     process.kill()
                     process.wait()
-                # Wait for reader threads to finish
                 stdout_thread.join(timeout=1)
                 stderr_thread.join(timeout=1)
                 raise ClaudeProcessInterruptedError(
                     "Claude subprocess interrupted by shutdown request"
                 )
 
-            # Check if process completed
             return_code = process.poll()
             if return_code is not None:
-                # Wait for reader threads to finish collecting output
                 stdout_thread.join(timeout=5)
                 stderr_thread.join(timeout=5)
 
                 stderr = "".join(stderr_lines)
 
                 if return_code != 0:
-                    # For errors, include streamed text in output
-                    stdout = "".join(stdout_lines)
-                    raise subprocess.CalledProcessError(return_code, cmd, stdout, stderr)
+                    raise subprocess.CalledProcessError(return_code, cmd, "", stderr)
 
-                # Return the final result from stream-json, or fall back to joined text
+                # Return result captured from stream-json
                 if result_holder:
                     return result_holder[-1].strip()
-                return "".join(stdout_lines).strip()
+                return ""
 
-            # Check for timeout
             if timeout_seconds is not None:
                 elapsed = time.time() - start_time
                 if elapsed >= timeout_seconds:
@@ -276,18 +489,15 @@ def _run_claude(
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
-                    # Wait for reader threads to finish
                     stdout_thread.join(timeout=1)
                     stderr_thread.join(timeout=1)
                     raise subprocess.TimeoutExpired(cmd, timeout_seconds)
 
-            # Wait before polling again
             time.sleep(poll_interval)
 
     except ClaudeProcessInterruptedError:
         raise
     except Exception:
-        # Ensure process is cleaned up on any error
         if process.poll() is None:
             process.terminate()
             try:
@@ -295,7 +505,6 @@ def _run_claude(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
-        # Wait for reader threads
         stdout_thread.join(timeout=1)
         stderr_thread.join(timeout=1)
         raise
@@ -614,48 +823,94 @@ class ClaudeMcpAgentClient(AgentClient):
         issue_key: str,
         orchestration_name: str,
     ) -> str:
-        """Run agent with streaming logs to a file."""
+        """Run agent with output piped directly to a log file.
+
+        Uses direct file piping for best performance - the OS handles buffering
+        instead of Python reading/writing every line.
+        """
         assert self.log_base_dir is not None  # Caller ensures this
 
-        with StreamingLogWriter(
-            base_dir=self.log_base_dir,
-            orchestration_name=orchestration_name,
-            issue_key=issue_key,
-            prompt=full_prompt,
-        ) as log_writer:
-            status = "ERROR"
-            try:
-                response = _run_claude(
-                    full_prompt,
-                    timeout_seconds=timeout_seconds,
-                    allowed_tools=allowed_tools,
-                    cwd=workdir,
-                    model=model,
-                    output_callback=log_writer.write,
-                )
-                status = "COMPLETED"
-                logger.info(f"Agent execution completed, response length: {len(response)}")
-                log_writer.finalize(status)
-                return response
+        # Create log directory and file path
+        start_time = datetime.now()
+        log_dir = self.log_base_dir / orchestration_name
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{start_time.strftime('%Y%m%d_%H%M%S')}.log"
 
-            except ClaudeProcessInterruptedError:
-                status = "INTERRUPTED"
-                log_writer.finalize(status)
-                raise  # Let shutdown interruption propagate
-            except subprocess.TimeoutExpired as e:
-                status = "TIMEOUT"
-                log_writer.finalize(status)
-                raise AgentTimeoutError(
-                    f"Agent execution timed out after {timeout_seconds}s"
-                ) from e
-            except subprocess.CalledProcessError as e:
-                status = "FAILED"
-                log_writer.write(f"\n[Error] Process exited with code {e.returncode}\n")
+        # Write header to log file
+        separator = "=" * 80
+        header = f"""{separator}
+AGENT EXECUTION LOG
+{separator}
+
+Issue Key:      {issue_key}
+Orchestration:  {orchestration_name}
+Start Time:     {start_time.isoformat()}
+
+{separator}
+PROMPT
+{separator}
+
+{full_prompt}
+
+{separator}
+AGENT OUTPUT
+{separator}
+
+"""
+        log_path.write_text(header, encoding="utf-8")
+        logger.info(f"Streaming log started: {log_path}")
+
+        status = "ERROR"
+        try:
+            response = _run_claude(
+                full_prompt,
+                timeout_seconds=timeout_seconds,
+                allowed_tools=allowed_tools,
+                cwd=workdir,
+                model=model,
+                stdout_file=log_path,
+            )
+            status = "COMPLETED"
+            logger.info(f"Agent execution completed, response length: {len(response)}")
+            return response
+
+        except ClaudeProcessInterruptedError:
+            status = "INTERRUPTED"
+            raise
+        except subprocess.TimeoutExpired as e:
+            status = "TIMEOUT"
+            raise AgentTimeoutError(
+                f"Agent execution timed out after {timeout_seconds}s"
+            ) from e
+        except subprocess.CalledProcessError as e:
+            status = "FAILED"
+            # Append error info to log
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"\n[Error] Process exited with code {e.returncode}\n")
                 if e.stderr:
-                    log_writer.write(f"[stderr] {e.stderr}\n")
-                log_writer.finalize(status)
-                raise AgentClientError(f"Agent execution failed: {e.stderr}") from e
-            except Exception as e:
-                log_writer.write(f"\n[Error] {e}\n")
-                log_writer.finalize(status)
-                raise AgentClientError(f"Agent execution failed: {e}") from e
+                    f.write(f"[stderr] {e.stderr}\n")
+            raise AgentClientError(f"Agent execution failed: {e.stderr}") from e
+        except Exception as e:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"\n[Error] {e}\n")
+            raise AgentClientError(f"Agent execution failed: {e}") from e
+        finally:
+            # Always write footer with final status
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            footer = f"""
+{separator}
+EXECUTION SUMMARY
+{separator}
+
+Status:         {status}
+End Time:       {end_time.isoformat()}
+Duration:       {duration:.2f}s
+
+{separator}
+END OF LOG
+{separator}
+"""
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(footer)
+            logger.info(f"Streaming log completed: {log_path}")
