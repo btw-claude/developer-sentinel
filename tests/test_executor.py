@@ -45,6 +45,7 @@ class MockAgentClient(AgentClient):
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
         model: str | None = None,
+        orchestration_name: str | None = None,
     ) -> str:
         self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model))
 
@@ -545,8 +546,31 @@ class TestAgentExecutorDetermineStatusWithOutcomes:
         assert status == ExecutionStatus.SUCCESS
         assert outcome == "changes-requested"
 
-    def test_failure_pattern_takes_precedence_over_outcomes(self) -> None:
-        """Failure patterns should trigger retry even if outcome would match."""
+    def test_outcome_takes_precedence_over_failure_patterns(self) -> None:
+        """Outcome patterns should take precedence over failure patterns.
+
+        This is important because agents often mention words like 'error' in context
+        (e.g., 'fixed the error', 'Error reference ID') while still succeeding.
+        Explicit outcome keywords like 'SUCCESS' or 'APPROVED' indicate the agent's
+        deliberate signal about the result.
+        """
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        retry_config = RetryConfig(failure_patterns=["error", "failed"])
+        outcomes = [
+            Outcome(name="approved", patterns=["APPROVED", "SUCCESS"]),
+        ]
+
+        # Response mentions "error" in context but ends with explicit SUCCESS
+        status, outcome = executor._determine_status(
+            "Fixed the error in the code. All tests pass. SUCCESS", retry_config, outcomes
+        )
+
+        assert status == ExecutionStatus.SUCCESS
+        assert outcome == "approved"
+
+    def test_failure_patterns_trigger_when_no_outcome_matches(self) -> None:
+        """Failure patterns should trigger when no outcome pattern matches."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         retry_config = RetryConfig(failure_patterns=["ERROR", "FAILED"])
@@ -554,8 +578,9 @@ class TestAgentExecutorDetermineStatusWithOutcomes:
             Outcome(name="approved", patterns=["APPROVED"]),
         ]
 
+        # Response has failure pattern but no outcome pattern
         status, outcome = executor._determine_status(
-            "ERROR: Could not access repo, but would have APPROVED", retry_config, outcomes
+            "ERROR: Could not access repo", retry_config, outcomes
         )
 
         assert status == ExecutionStatus.FAILURE

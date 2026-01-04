@@ -312,16 +312,17 @@ class AgentExecutor:
         """
         # If outcomes are configured, use outcome-based logic
         if outcomes:
-            # First check failure patterns (these trigger retries)
-            if self._matches_pattern(response, retry_config.failure_patterns):
-                return ExecutionStatus.FAILURE, None
-
-            # Check each outcome's patterns
+            # Check outcome patterns FIRST - explicit success markers like "SUCCESS"
+            # take precedence over generic words like "error" in context
             matched_outcome = self._determine_outcome(response, outcomes)
             if matched_outcome:
                 return ExecutionStatus.SUCCESS, matched_outcome.name
 
-            # No outcome matched - check default_outcome
+            # No outcome matched - check failure patterns (these trigger retries)
+            if self._matches_pattern(response, retry_config.failure_patterns):
+                return ExecutionStatus.FAILURE, None
+
+            # No outcome or failure matched - check default_outcome
             if retry_config.default_outcome:
                 # Special "failure" keyword triggers failure mechanism
                 if retry_config.default_outcome.lower() == "failure":
