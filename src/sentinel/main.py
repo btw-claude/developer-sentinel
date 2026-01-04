@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import signal
 import sys
+import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from types import FrameType
@@ -63,10 +65,88 @@ class Sentinel:
         self.tag_manager = TagManager(tag_client)
         self._shutdown_requested = False
 
+        # Thread pool for concurrent execution
+        self._thread_pool: ThreadPoolExecutor | None = None
+        self._active_futures: list[Future[ExecutionResult]] = []
+        self._futures_lock = threading.Lock()
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
         logger.info("Shutdown requested")
         self._shutdown_requested = True
+
+    def _get_available_slots(self) -> int:
+        """Get the number of available execution slots.
+
+        Returns:
+            Number of execution slots available for new work.
+        """
+        with self._futures_lock:
+            # Count active futures without removing them - results must be collected
+            # by _collect_completed_results() to avoid losing execution results
+            active_count = sum(1 for f in self._active_futures if not f.done())
+            return self.config.max_concurrent_executions - active_count
+
+    def _collect_completed_results(self) -> list[ExecutionResult]:
+        """Collect results from completed futures.
+
+        Returns:
+            List of execution results from completed futures.
+        """
+        results: list[ExecutionResult] = []
+        with self._futures_lock:
+            completed = [f for f in self._active_futures if f.done()]
+            for future in completed:
+                try:
+                    result = future.result()
+                    if result is not None:
+                        results.append(result)
+                except Exception as e:
+                    logger.error(f"Error collecting result from future: {e}")
+            self._active_futures = [f for f in self._active_futures if not f.done()]
+        return results
+
+    def _execute_orchestration_task(
+        self,
+        issue: Any,
+        orchestration: Orchestration,
+    ) -> ExecutionResult | None:
+        """Execute a single orchestration in a thread.
+
+        This is the task that runs in the thread pool.
+
+        Args:
+            issue: The Jira issue to process.
+            orchestration: The orchestration to execute.
+
+        Returns:
+            ExecutionResult if execution completed, None if interrupted.
+        """
+        issue_key = issue.key
+        try:
+            if self._shutdown_requested:
+                logger.info(f"Shutdown requested, skipping {issue_key}")
+                self.tag_manager.apply_failure_tags(issue_key, orchestration)
+                return None
+
+            result = self.executor.execute(issue, orchestration)
+            self.tag_manager.update_tags(result, orchestration)
+            return result
+
+        except ClaudeProcessInterruptedError:
+            logger.info(f"Claude process interrupted for {issue_key}")
+            try:
+                self.tag_manager.apply_failure_tags(issue_key, orchestration)
+            except Exception as tag_error:
+                logger.error(f"Failed to apply failure tags: {tag_error}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to execute '{orchestration.name}' for {issue_key}: {e}")
+            try:
+                self.tag_manager.apply_failure_tags(issue_key, orchestration)
+            except Exception as tag_error:
+                logger.error(f"Failed to apply failure tags: {tag_error}")
+            return None
 
     def run_once(self) -> list[ExecutionResult]:
         """Run a single polling cycle.
@@ -74,7 +154,17 @@ class Sentinel:
         Returns:
             List of execution results from this cycle.
         """
-        all_results: list[ExecutionResult] = []
+        # Collect any completed results from previous cycle
+        all_results = self._collect_completed_results()
+
+        # Check how many slots are available
+        available_slots = self._get_available_slots()
+        if available_slots <= 0:
+            logger.debug(
+                f"All {self.config.max_concurrent_executions} execution slots busy, "
+                "skipping polling this cycle"
+            )
+            return all_results
 
         # Collect unique trigger configs to avoid duplicate polling
         seen_triggers: set[str] = set()
@@ -86,8 +176,15 @@ class Sentinel:
                 seen_triggers.add(trigger_key)
                 triggers_to_poll.append((orch, orch.trigger))
 
+        # Track how many tasks we've submitted this cycle
+        submitted_count = 0
+
         # Poll for each unique trigger
         for orch, trigger in triggers_to_poll:
+            if self._shutdown_requested:
+                logger.info("Shutdown requested, stopping polling")
+                return all_results
+
             logger.info(f"Polling for orchestration '{orch.name}'")
             try:
                 issues = self.poller.poll(trigger, self.config.max_issues_per_poll)
@@ -99,40 +196,117 @@ class Sentinel:
             # Route issues to matching orchestrations
             routing_results = self.router.route_matched_only(issues)
 
-            # Execute agents for matched issues
+            # Submit execution tasks for matched issues
             for routing_result in routing_results:
                 for matched_orch in routing_result.orchestrations:
                     if self._shutdown_requested:
                         logger.info("Shutdown requested, stopping execution")
                         return all_results
 
+                    # Check if we have available slots
+                    if self._get_available_slots() <= 0:
+                        logger.debug("No available slots, will process in next cycle")
+                        return all_results
+
                     issue_key = routing_result.issue.key
-                    logger.info(f"Executing '{matched_orch.name}' for {issue_key}")
+                    logger.info(f"Submitting '{matched_orch.name}' for {issue_key}")
 
                     try:
                         # Mark issue as being processed (remove trigger tags, add in-progress tag)
                         self.tag_manager.start_processing(issue_key, matched_orch)
 
-                        result = self.executor.execute(routing_result.issue, matched_orch)
-                        all_results.append(result)
+                        # Submit to thread pool
+                        if self._thread_pool is not None:
+                            future = self._thread_pool.submit(
+                                self._execute_orchestration_task,
+                                routing_result.issue,
+                                matched_orch,
+                            )
+                            with self._futures_lock:
+                                self._active_futures.append(future)
+                            submitted_count += 1
+                        else:
+                            # Fallback: synchronous execution (e.g., run_once without run())
+                            result = self._execute_orchestration_task(
+                                routing_result.issue,
+                                matched_orch,
+                            )
+                            if result is not None:
+                                all_results.append(result)
 
-                        # Handle post-processing tag updates
-                        self.tag_manager.update_tags(result, matched_orch)
-
-                    except ClaudeProcessInterruptedError:
-                        logger.info("Claude process interrupted by shutdown request")
-                        # Apply failure tags for interrupted process
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to submit '{matched_orch.name}' for {issue_key}: {e}"
+                        )
                         try:
                             self.tag_manager.apply_failure_tags(issue_key, matched_orch)
                         except Exception as tag_error:
                             logger.error(f"Failed to apply failure tags: {tag_error}")
-                        return all_results
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to execute '{matched_orch.name}' for {issue_key}: {e}"
-                        )
+
+        if submitted_count > 0:
+            logger.info(f"Submitted {submitted_count} execution tasks")
 
         return all_results
+
+    def run_once_and_wait(self) -> list[ExecutionResult]:
+        """Run a single polling cycle with concurrent execution and wait for completion.
+
+        This method creates a temporary thread pool for --once mode operation,
+        submits all work, and waits for all executions to complete.
+
+        Unlike run() which runs continuously, this method ensures all issues
+        from the initial poll are processed by waiting for slots to free up
+        and re-polling until no new issues are found.
+
+        Returns:
+            List of all execution results.
+        """
+        max_workers = self.config.max_concurrent_executions
+        logger.info(f"Starting single cycle with max {max_workers} concurrent executions")
+
+        self._thread_pool = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="sentinel-exec-",
+        )
+
+        try:
+            all_results: list[ExecutionResult] = []
+
+            # Keep polling and processing until no new work is found
+            while True:
+                # Run a polling cycle to submit work
+                cycle_results = self.run_once()
+                all_results.extend(cycle_results)
+
+                # Check if any work was submitted (active futures)
+                with self._futures_lock:
+                    pending_futures = [f for f in self._active_futures if not f.done()]
+
+                if not pending_futures:
+                    # No pending work, we're done
+                    break
+
+                logger.info(f"Waiting for {len(pending_futures)} execution(s) to complete...")
+
+                # Wait for all current work to complete
+                while True:
+                    with self._futures_lock:
+                        pending = [f for f in self._active_futures if not f.done()]
+                    if not pending:
+                        break
+                    time.sleep(0.1)
+
+                # Collect completed results
+                completed_results = self._collect_completed_results()
+                all_results.extend(completed_results)
+
+            return all_results
+
+        finally:
+            # Shutdown thread pool
+            if self._thread_pool is not None:
+                self._thread_pool.shutdown(wait=True, cancel_futures=False)
+                self._thread_pool = None
 
     def run(self) -> None:
         """Run the main polling loop until shutdown is requested."""
@@ -148,27 +322,60 @@ class Sentinel:
         signal.signal(signal.SIGINT, handle_shutdown)
         signal.signal(signal.SIGTERM, handle_shutdown)
 
+        # Create thread pool for concurrent execution
+        max_workers = self.config.max_concurrent_executions
         logger.info(
             f"Starting Sentinel with {len(self.orchestrations)} orchestrations, "
-            f"polling every {self.config.poll_interval}s"
+            f"polling every {self.config.poll_interval}s, "
+            f"max concurrent executions: {max_workers}"
         )
 
-        while not self._shutdown_requested:
-            try:
-                results = self.run_once()
-                success_count = sum(1 for r in results if r.succeeded)
-                if results:
-                    logger.info(f"Cycle completed: {success_count}/{len(results)} successful")
-            except Exception as e:
-                logger.error(f"Error in polling cycle: {e}")
+        self._thread_pool = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="sentinel-exec-",
+        )
 
-            if not self._shutdown_requested:
-                logger.debug(f"Sleeping for {self.config.poll_interval}s")
-                # Sleep in small increments to allow quick shutdown
-                for _ in range(self.config.poll_interval):
-                    if self._shutdown_requested:
-                        break
-                    time.sleep(1)
+        try:
+            while not self._shutdown_requested:
+                try:
+                    results = self.run_once()
+                    success_count = sum(1 for r in results if r.succeeded)
+                    if results:
+                        logger.info(
+                            f"Cycle completed: {success_count}/{len(results)} successful"
+                        )
+                except Exception as e:
+                    logger.error(f"Error in polling cycle: {e}")
+
+                if not self._shutdown_requested:
+                    logger.debug(f"Sleeping for {self.config.poll_interval}s")
+                    # Sleep in small increments to allow quick shutdown
+                    for _ in range(self.config.poll_interval):
+                        if self._shutdown_requested:
+                            break
+                        time.sleep(1)
+
+            # Wait for active tasks to complete
+            logger.info("Waiting for active executions to complete...")
+            with self._futures_lock:
+                active_count = len([f for f in self._active_futures if not f.done()])
+            if active_count > 0:
+                logger.info(f"Waiting for {active_count} active execution(s)...")
+
+            # Collect final results
+            final_results = self._collect_completed_results()
+            if final_results:
+                success_count = sum(1 for r in final_results if r.succeeded)
+                logger.info(
+                    f"Final batch: {success_count}/{len(final_results)} successful"
+                )
+
+        finally:
+            # Shutdown thread pool
+            if self._thread_pool is not None:
+                logger.info("Shutting down thread pool...")
+                self._thread_pool.shutdown(wait=True, cancel_futures=False)
+                self._thread_pool = None
 
         logger.info("Sentinel shutdown complete")
 
@@ -313,7 +520,7 @@ def main(args: list[str] | None = None) -> int:
 
     if parsed.once:
         logger.info("Running single polling cycle (--once mode)")
-        results = sentinel.run_once()
+        results = sentinel.run_once_and_wait()
         success_count = sum(1 for r in results if r.succeeded)
         logger.info(f"Completed: {success_count}/{len(results)} successful")
         return 0 if success_count == len(results) or not results else 1

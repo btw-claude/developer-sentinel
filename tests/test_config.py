@@ -23,6 +23,7 @@ class TestConfig:
         config = Config()
         assert config.poll_interval == 60
         assert config.max_issues_per_poll == 50
+        assert config.max_concurrent_executions == 1
         assert config.log_level == "INFO"
         assert config.log_json is False
         assert config.orchestrations_dir == Path("./orchestrations")

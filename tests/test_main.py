@@ -17,12 +17,30 @@ from sentinel.tag_manager import JiraTagClient
 class MockJiraClient(JiraClient):
     """Mock Jira client for testing."""
 
-    def __init__(self, issues: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        issues: list[dict[str, Any]] | None = None,
+        tag_client: "MockTagClient | None" = None,
+    ) -> None:
         self.issues = issues or []
         self.search_calls: list[tuple[str, int]] = []
+        self.tag_client = tag_client
 
     def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
         self.search_calls.append((jql, max_results))
+        # If we have a tag client, filter out issues whose trigger tags have been removed
+        if self.tag_client:
+            result = []
+            for issue in self.issues:
+                issue_key = issue.get("key", "")
+                removed = self.tag_client.remove_calls
+                # Check if any label in this issue was removed
+                labels = issue.get("fields", {}).get("labels", [])
+                # If any label was removed for this issue, skip it
+                if any(key == issue_key for key, _ in removed):
+                    continue
+                result.append(issue)
+            return result
         return self.issues
 
 
@@ -33,7 +51,7 @@ class MockAgentClient(AgentClient):
         self.responses = responses or ["SUCCESS: Done"]
         self.call_count = 0
         self.calls: list[
-            tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None]
+            tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None, str | None]
         ] = []
 
     def run_agent(
@@ -44,8 +62,9 @@ class MockAgentClient(AgentClient):
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
         model: str | None = None,
+        orchestration_name: str | None = None,
     ) -> str:
-        self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model))
+        self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model, orchestration_name))
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
         return response
@@ -72,11 +91,13 @@ class MockTagClient(JiraTagClient):
 def make_config(
     poll_interval: int = 60,
     max_issues: int = 50,
+    max_concurrent_executions: int = 1,
 ) -> Config:
     """Helper to create a Config for testing."""
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
+        max_concurrent_executions=max_concurrent_executions,
     )
 
 
@@ -444,3 +465,215 @@ class TestSentinelSignalHandling:
             thread.join(timeout=2)
             assert not thread.is_alive(), "Thread should have stopped"
             assert sentinel._shutdown_requested is True
+
+
+class TestSentinelConcurrentExecution:
+    """Tests for Sentinel concurrent execution."""
+
+    def test_respects_max_concurrent_executions(self) -> None:
+        """Test that max_concurrent_executions limits parallel work."""
+        import threading
+        import time
+
+        execution_count = 0
+        max_concurrent_seen = 0
+        lock = threading.Lock()
+
+        class SlowAgentClient(AgentClient):
+            """Agent client that tracks concurrent executions."""
+
+            def run_agent(
+                self,
+                prompt: str,
+                tools: list[str],
+                context: dict[str, Any] | None = None,
+                timeout_seconds: int | None = None,
+                issue_key: str | None = None,
+                model: str | None = None,
+                orchestration_name: str | None = None,
+            ) -> str:
+                nonlocal execution_count, max_concurrent_seen
+                with lock:
+                    execution_count += 1
+                    if execution_count > max_concurrent_seen:
+                        max_concurrent_seen = execution_count
+
+                # Simulate some work
+                time.sleep(0.1)
+
+                with lock:
+                    execution_count -= 1
+
+                return "SUCCESS: Done"
+
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(
+            issues=[
+                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
+                {"key": "TEST-3", "fields": {"summary": "Issue 3", "labels": ["review"]}},
+            ],
+            tag_client=tag_client,  # Link tag client so it filters processed issues
+        )
+        agent_client = SlowAgentClient()
+        config = make_config(max_concurrent_executions=2)
+        orchestrations = [make_orchestration(tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        results = sentinel.run_once_and_wait()
+
+        # All 3 issues should have been processed
+        assert len(results) == 3
+        # Max concurrent should not exceed 2
+        assert max_concurrent_seen <= 2
+
+    def test_run_once_and_wait_completes_all_work(self) -> None:
+        """Test that run_once_and_wait waits for all tasks to complete."""
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(
+            issues=[
+                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
+            ],
+            tag_client=tag_client,
+        )
+        agent_client = MockAgentClient(responses=["SUCCESS: Done"])
+        config = make_config(max_concurrent_executions=2)
+        orchestrations = [make_orchestration(tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        results = sentinel.run_once_and_wait()
+
+        # Both issues should have results
+        assert len(results) == 2
+        assert all(r.succeeded for r in results)
+
+    def test_slots_limiting_skips_polling_when_busy(self) -> None:
+        """Test that polling is skipped when all slots are busy."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        # Track poll calls
+        poll_calls = 0
+
+        class TrackingJiraClient(MockJiraClient):
+            def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
+                nonlocal poll_calls
+                poll_calls += 1
+                return super().search_issues(jql, max_results)
+
+        tag_client = MockTagClient()
+        jira_client = TrackingJiraClient(
+            issues=[{"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}}],
+            tag_client=tag_client,
+        )
+        agent_client = MockAgentClient(responses=["SUCCESS: Done"])
+        config = make_config(poll_interval=1, max_concurrent_executions=1)
+        orchestrations = [make_orchestration(tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Manually set up the thread pool and simulate a busy slot
+        sentinel._thread_pool = ThreadPoolExecutor(max_workers=1)
+        # Submit a dummy task to occupy the slot
+        import threading
+        block_event = threading.Event()
+        future = sentinel._thread_pool.submit(lambda: block_event.wait(timeout=5))
+        sentinel._active_futures = [future]
+
+        # First run_once should skip polling since slot is busy
+        results = sentinel.run_once()
+        first_poll_count = poll_calls
+
+        # Should have returned immediately without polling
+        assert first_poll_count == 0
+        assert len(results) == 0
+
+        # Release the blocking task
+        block_event.set()
+        future.result()  # Wait for completion
+
+        # Clean up
+        sentinel._thread_pool.shutdown(wait=True)
+        sentinel._thread_pool = None
+
+    def test_concurrent_execution_with_thread_pool(self) -> None:
+        """Test that run() uses thread pool correctly."""
+        import threading
+        import time
+
+        execution_order: list[str] = []
+        lock = threading.Lock()
+
+        class OrderTrackingAgentClient(AgentClient):
+            def run_agent(
+                self,
+                prompt: str,
+                tools: list[str],
+                context: dict[str, Any] | None = None,
+                timeout_seconds: int | None = None,
+                issue_key: str | None = None,
+                model: str | None = None,
+                orchestration_name: str | None = None,
+            ) -> str:
+                with lock:
+                    execution_order.append(f"start:{issue_key}")
+                time.sleep(0.05)
+                with lock:
+                    execution_order.append(f"end:{issue_key}")
+                return "SUCCESS: Done"
+
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(
+            issues=[
+                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
+            ],
+            tag_client=tag_client,
+        )
+        agent_client = OrderTrackingAgentClient()
+        config = make_config(poll_interval=1, max_concurrent_executions=2)
+        orchestrations = [make_orchestration(tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Run a single cycle with wait
+        results = sentinel.run_once_and_wait()
+
+        assert len(results) == 2
+
+        # With concurrent execution, both should start before either ends
+        # (since we have 2 slots and 2 issues)
+        start_indices = [i for i, x in enumerate(execution_order) if x.startswith("start:")]
+        end_indices = [i for i, x in enumerate(execution_order) if x.startswith("end:")]
+
+        # Both should start before either ends (concurrent execution)
+        assert len(start_indices) == 2
+        assert len(end_indices) == 2
+        # Second start should happen before first end in concurrent execution
+        assert start_indices[1] < end_indices[0]
