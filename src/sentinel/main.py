@@ -82,9 +82,10 @@ class Sentinel:
             Number of execution slots available for new work.
         """
         with self._futures_lock:
-            # Remove completed futures
-            self._active_futures = [f for f in self._active_futures if not f.done()]
-            return self.config.max_concurrent_executions - len(self._active_futures)
+            # Count active futures without removing them - results must be collected
+            # by _collect_completed_results() to avoid losing execution results
+            active_count = sum(1 for f in self._active_futures if not f.done())
+            return self.config.max_concurrent_executions - active_count
 
     def _collect_completed_results(self) -> list[ExecutionResult]:
         """Collect results from completed futures.
