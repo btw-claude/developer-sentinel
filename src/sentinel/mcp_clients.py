@@ -1,20 +1,21 @@
-"""MCP-based client implementations using Claude Code CLI.
+"""MCP-based client implementations using Claude Agent SDK.
 
-These clients use subprocess calls to the `claude` CLI to leverage MCP tools
+These clients use the Claude Agent SDK to leverage MCP tools
 for Jira and other operations, avoiding the need for separate API configuration.
 """
 
 from __future__ import annotations
 
-import contextlib
+import asyncio
 import json
-import subprocess
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from claude_agent_sdk import ClaudeAgentOptions, query
+
+from sentinel.config import Config
 from sentinel.executor import AgentClient, AgentClientError, AgentTimeoutError
 from sentinel.logging import get_logger
 from sentinel.poller import JiraClient, JiraClientError
@@ -22,510 +23,116 @@ from sentinel.tag_manager import JiraTagClient, JiraTagClientError
 
 logger = get_logger(__name__)
 
-
-def _extract_text_from_stream_json(line: str) -> tuple[str | None, str | None]:
-    """Extract text content from a stream-json line.
-
-    Parses stream-json format and extracts human-readable text.
-
-    Args:
-        line: A JSON line from stream-json output.
-
-    Returns:
-        A tuple of (text_content, final_result):
-        - text_content: Extracted text to display, or None
-        - final_result: The complete result if this is a result message, or None
-    """
-    line = line.strip()
-    if not line:
-        return None, None
-
-    try:
-        data = json.loads(line)
-    except json.JSONDecodeError:
-        return None, None
-
-    msg_type = data.get("type")
-
-    # Extract text from streaming deltas (real-time output)
-    if msg_type == "stream_event":
-        event = data.get("event", {})
-        if event.get("type") == "content_block_delta":
-            delta = event.get("delta", {})
-            if delta.get("type") == "text_delta":
-                return delta.get("text"), None
-
-    # Extract text from assistant messages
-    if msg_type == "assistant":
-        message = data.get("message", {})
-        content = message.get("content", [])
-        texts = []
-        for block in content:
-            if block.get("type") == "text":
-                texts.append(block.get("text", ""))
-        if texts:
-            return "".join(texts), None
-
-    # Capture final result
-    if msg_type == "result":
-        return None, data.get("result", "")
-
-    return None, None
+# Module-level shutdown event for interrupting async operations
+_shutdown_event: asyncio.Event | None = None
+_shutdown_lock = threading.Lock()
 
 
-def _stream_json_to_text_writer(
-    stream: Any,
-    output_file: Any,
-    result_holder: list[str],
-) -> None:
-    """Read stream-json from a stream and write extracted text to a file.
-
-    This function runs in a separate thread. It parses JSON and extracts
-    human-readable text, writing it to the output file with OS buffering
-    (no explicit flush on every write).
-
-    Args:
-        stream: The stdout stream to read from.
-        output_file: An open file handle to write text to.
-        result_holder: List to store the final result.
-    """
-    try:
-        for line in iter(stream.readline, ""):
-            if not line:
-                break
-
-            text_content, final_result = _extract_text_from_stream_json(line)
-
-            if text_content:
-                output_file.write(text_content)
-                output_file.flush()
-
-            if final_result is not None:
-                result_holder.append(final_result)
-
-    except Exception:
-        pass  # Stream closed or error
-    finally:
-        with contextlib.suppress(Exception):
-            stream.close()
-
-
-# Module-level shutdown event for interrupting Claude subprocesses
-_shutdown_event = threading.Event()
+def get_shutdown_event() -> asyncio.Event:
+    """Get or create the shutdown event for async operations."""
+    global _shutdown_event
+    with _shutdown_lock:
+        if _shutdown_event is None:
+            _shutdown_event = asyncio.Event()
+        return _shutdown_event
 
 
 def request_shutdown() -> None:
-    """Request shutdown of any running Claude subprocesses.
-
-    This sets a flag that causes _run_claude to terminate its subprocess
-    and raise an exception.
-    """
-    logger.debug("Shutdown requested for Claude subprocesses")
-    _shutdown_event.set()
+    """Request shutdown of any running Claude agent operations."""
+    global _shutdown_event
+    logger.debug("Shutdown requested for Claude agent operations")
+    with _shutdown_lock:
+        if _shutdown_event is None:
+            _shutdown_event = asyncio.Event()
+        _shutdown_event.set()
 
 
 def reset_shutdown() -> None:
     """Reset the shutdown flag. Used for testing."""
-    _shutdown_event.clear()
+    global _shutdown_event
+    with _shutdown_lock:
+        _shutdown_event = None
 
 
 def is_shutdown_requested() -> bool:
     """Check if shutdown has been requested."""
-    return _shutdown_event.is_set()
+    global _shutdown_event
+    with _shutdown_lock:
+        return _shutdown_event is not None and _shutdown_event.is_set()
 
 
 class ClaudeProcessInterruptedError(Exception):
-    """Raised when a Claude subprocess is interrupted by shutdown request."""
+    """Raised when a Claude agent operation is interrupted by shutdown request."""
 
     pass
 
 
-def _stream_reader(
-    stream: Any,
-    output_lines: list[str],
-) -> None:
-    """Read lines from a stream into a list.
-
-    This function runs in a separate thread to avoid blocking.
-
-    Args:
-        stream: The stream to read from (stdout or stderr).
-        output_lines: List to accumulate output lines.
-    """
-    try:
-        for line in iter(stream.readline, ""):
-            if not line:
-                break
-            output_lines.append(line)
-    except Exception:
-        pass  # Stream closed or error, just exit
-    finally:
-        with contextlib.suppress(Exception):
-            stream.close()
-
-
-def _run_claude(
+async def _run_query(
     prompt: str,
-    timeout_seconds: int | None = None,
-    allowed_tools: list[str] | None = None,
-    cwd: str | None = None,
+    mcp_servers: dict[str, Any],
     model: str | None = None,
-    stdout_file: Path | None = None,
+    cwd: str | None = None,
 ) -> str:
-    """Run a prompt through Claude Code CLI.
-
-    Uses Popen with polling to allow for graceful shutdown on Ctrl-C.
+    """Run a query using the Claude Agent SDK.
 
     Args:
-        prompt: The prompt to send to Claude.
-        timeout_seconds: Optional timeout in seconds.
-        allowed_tools: Optional list of MCP tool names to pre-authorize.
-        cwd: Optional working directory for the subprocess.
-        model: Optional model identifier (e.g., "claude-opus-4-5-20251101").
-        stdout_file: Optional path to file for streaming text output. When provided,
-            stream-json is parsed and human-readable text is written to this file
-            in real-time. Use `tail -f` on the file for real-time viewing.
-
-    Returns:
-        Claude's response text.
-
-    Raises:
-        subprocess.TimeoutExpired: If the command times out.
-        subprocess.CalledProcessError: If the command fails.
-        ClaudeProcessInterruptedError: If shutdown was requested during execution.
-    """
-    cmd = [
-        "claude",
-        "--print",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--dangerously-skip-permissions",  # Bypass permission prompts that block output
-    ]
-
-    # Add model if specified
-    if model:
-        cmd.extend(["--model", model])
-
-    # Add allowed tools if specified
-    if allowed_tools:
-        cmd.extend(["--allowedTools", ",".join(allowed_tools)])
-
-    cmd.extend(["-p", prompt])
-
-    logger.debug(f"Running claude command with prompt length {len(prompt)}, cwd={cwd}")
-
-    # Use file output mode if stdout_file is provided (streaming text to file)
-    if stdout_file is not None:
-        return _run_claude_with_file_output(
-            cmd=cmd,
-            stdout_file=stdout_file,
-            timeout_seconds=timeout_seconds,
-            cwd=cwd,
-        )
-
-    # Otherwise capture output directly via pipe
-    return _run_claude_with_pipe(
-        cmd=cmd,
-        timeout_seconds=timeout_seconds,
-        cwd=cwd,
-    )
-
-
-def _run_claude_with_file_output(
-    cmd: list[str],
-    stdout_file: Path,
-    timeout_seconds: int | None,
-    cwd: str | None,
-) -> str:
-    """Run Claude with streaming text output to a file.
-
-    Reads stream-json from Claude, extracts human-readable text, and writes
-    it to the file in real-time with OS buffering (no explicit flush per write).
-
-    Args:
-        cmd: The command to run.
-        stdout_file: Path to file for text output (will be appended to).
-        timeout_seconds: Optional timeout in seconds.
+        prompt: The prompt to send.
+        mcp_servers: MCP server configurations.
+        model: Optional model identifier.
         cwd: Optional working directory.
 
     Returns:
-        Claude's response text.
+        The response text.
 
     Raises:
-        subprocess.TimeoutExpired: If the command times out.
-        subprocess.CalledProcessError: If the command fails.
         ClaudeProcessInterruptedError: If shutdown was requested.
     """
-    start_time = time.time()
-    poll_interval = 0.5
-
-    # Open file for text output (append mode to preserve any header)
-    with open(stdout_file, "a", encoding="utf-8") as f_out:
-        # Use pipe for stdout so we can parse stream-json and extract text
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=cwd,
-            start_new_session=True,
-        )
-
-        # Collect stderr in a thread
-        stderr_lines: list[str] = []
-        stderr_thread = threading.Thread(
-            target=_stream_reader,
-            args=(process.stderr, stderr_lines),
-            daemon=True,
-        )
-
-        # Stream stdout through JSON parser to extract text and write to file
-        result_holder: list[str] = []
-        stdout_thread = threading.Thread(
-            target=_stream_json_to_text_writer,
-            args=(process.stdout, f_out, result_holder),
-            daemon=True,
-        )
-
-        stderr_thread.start()
-        stdout_thread.start()
-
-        try:
-            while True:
-                # Check if shutdown was requested
-                if _shutdown_event.is_set():
-                    logger.info("Shutdown requested, terminating Claude subprocess")
-                    process.terminate()
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        logger.warning("Claude subprocess did not terminate, killing")
-                        process.kill()
-                        process.wait()
-                    stdout_thread.join(timeout=1)
-                    stderr_thread.join(timeout=1)
-                    raise ClaudeProcessInterruptedError(
-                        "Claude subprocess interrupted by shutdown request"
-                    )
-
-                # Check if process completed
-                return_code = process.poll()
-                if return_code is not None:
-                    stdout_thread.join(timeout=5)
-                    stderr_thread.join(timeout=5)
-                    stderr = "".join(stderr_lines)
-
-                    if return_code != 0:
-                        raise subprocess.CalledProcessError(
-                            return_code, cmd, "", stderr
-                        )
-
-                    # Return captured result
-                    break
-
-                # Check for timeout
-                if timeout_seconds is not None:
-                    elapsed = time.time() - start_time
-                    if elapsed >= timeout_seconds:
-                        logger.warning(
-                            f"Claude subprocess timed out after {timeout_seconds}s"
-                        )
-                        process.terminate()
-                        try:
-                            process.wait(timeout=5)
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-                            process.wait()
-                        stdout_thread.join(timeout=1)
-                        stderr_thread.join(timeout=1)
-                        raise subprocess.TimeoutExpired(cmd, timeout_seconds)
-
-                time.sleep(poll_interval)
-
-        except ClaudeProcessInterruptedError:
-            raise
-        except subprocess.TimeoutExpired:
-            raise
-        except subprocess.CalledProcessError:
-            raise
-        except Exception:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-            stdout_thread.join(timeout=1)
-            stderr_thread.join(timeout=1)
-            raise
-
-    # Return the result captured from stream-json
-    if result_holder:
-        return result_holder[-1].strip()
-    return ""
-
-
-def _stream_json_reader(
-    stream: Any,
-    result_holder: list[str],
-) -> None:
-    """Read stream-json from a stream and capture the result.
-
-    This function runs in a separate thread. It parses JSON and captures
-    the final result.
-
-    Args:
-        stream: The stdout stream to read from.
-        result_holder: List to store the final result.
-    """
-    try:
-        for line in iter(stream.readline, ""):
-            if not line:
-                break
-
-            _, final_result = _extract_text_from_stream_json(line)
-
-            if final_result is not None:
-                result_holder.append(final_result)
-
-    except Exception:
-        pass  # Stream closed or error
-    finally:
-        with contextlib.suppress(Exception):
-            stream.close()
-
-
-def _run_claude_with_pipe(
-    cmd: list[str],
-    timeout_seconds: int | None,
-    cwd: str | None,
-) -> str:
-    """Run Claude with output captured via pipe.
-
-    Args:
-        cmd: The command to run.
-        timeout_seconds: Optional timeout in seconds.
-        cwd: Optional working directory.
-
-    Returns:
-        Claude's response text.
-
-    Raises:
-        subprocess.TimeoutExpired: If the command times out.
-        subprocess.CalledProcessError: If the command fails.
-        ClaudeProcessInterruptedError: If shutdown was requested.
-    """
-    start_time = time.time()
-    poll_interval = 0.5
-
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+    options = ClaudeAgentOptions(
+        mcp_servers=mcp_servers,
+        permission_mode="bypassPermissions",
+        model=model,
         cwd=cwd,
-        start_new_session=True,
     )
 
-    # Collect stderr and capture result from stdout
-    stderr_lines: list[str] = []
-    result_holder: list[str] = []
+    shutdown_event = get_shutdown_event()
+    response_text = ""
 
-    # Start reader threads
-    stdout_thread = threading.Thread(
-        target=_stream_json_reader,
-        args=(process.stdout, result_holder),
-        daemon=True,
-    )
-    stderr_thread = threading.Thread(
-        target=_stream_reader,
-        args=(process.stderr, stderr_lines),
-        daemon=True,
-    )
-    stdout_thread.start()
-    stderr_thread.start()
+    async for message in query(prompt=prompt, options=options):
+        if shutdown_event.is_set():
+            raise ClaudeProcessInterruptedError(
+                "Claude agent interrupted by shutdown request"
+            )
+        if hasattr(message, "text"):
+            response_text = message.text
+        elif hasattr(message, "content"):
+            for block in message.content:
+                if hasattr(block, "text"):
+                    response_text = block.text
 
-    try:
-        while True:
-            if _shutdown_event.is_set():
-                logger.info("Shutdown requested, terminating Claude subprocess")
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    logger.warning("Claude subprocess did not terminate, killing")
-                    process.kill()
-                    process.wait()
-                stdout_thread.join(timeout=1)
-                stderr_thread.join(timeout=1)
-                raise ClaudeProcessInterruptedError(
-                    "Claude subprocess interrupted by shutdown request"
-                )
-
-            return_code = process.poll()
-            if return_code is not None:
-                stdout_thread.join(timeout=5)
-                stderr_thread.join(timeout=5)
-
-                stderr = "".join(stderr_lines)
-
-                if return_code != 0:
-                    raise subprocess.CalledProcessError(return_code, cmd, "", stderr)
-
-                # Return result captured from stream-json
-                if result_holder:
-                    return result_holder[-1].strip()
-                return ""
-
-            if timeout_seconds is not None:
-                elapsed = time.time() - start_time
-                if elapsed >= timeout_seconds:
-                    logger.warning(f"Claude subprocess timed out after {timeout_seconds}s")
-                    process.terminate()
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
-                    stdout_thread.join(timeout=1)
-                    stderr_thread.join(timeout=1)
-                    raise subprocess.TimeoutExpired(cmd, timeout_seconds)
-
-            time.sleep(poll_interval)
-
-    except ClaudeProcessInterruptedError:
-        raise
-    except Exception:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-        stdout_thread.join(timeout=1)
-        stderr_thread.join(timeout=1)
-        raise
+    return response_text
 
 
 class JiraMcpClient(JiraClient):
-    """Jira client that uses Claude Code's MCP tools for API operations."""
+    """Jira client that uses Claude Agent SDK with MCP tools."""
+
+    def __init__(self, config: Config) -> None:
+        self.config = config
+
+    def _get_mcp_servers(self) -> dict[str, Any]:
+        if self.config.mcp_jira_command:
+            return {
+                "jira-agent": {
+                    "command": self.config.mcp_jira_command,
+                    "args": self.config.mcp_jira_args,
+                }
+            }
+        return {}
 
     def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
-        """Search for issues using JQL via MCP.
+        """Search for issues using JQL via MCP."""
+        return asyncio.run(self._search_issues_async(jql, max_results))
 
-        Args:
-            jql: JQL query string.
-            max_results: Maximum number of results to return.
-
-        Returns:
-            List of raw issue data from Jira API.
-
-        Raises:
-            JiraClientError: If the search fails.
-        """
+    async def _search_issues_async(self, jql: str, max_results: int) -> list[dict[str, Any]]:
         prompt = f"""Search Jira for issues using this JQL query and return the results as JSON.
 
 JQL: {jql}
@@ -540,14 +147,9 @@ Return ONLY a valid JSON array of issues. Each issue should have at minimum:
 Do not include any explanation, just the JSON array."""
 
         try:
-            response = _run_claude(
-                prompt,
-                timeout_seconds=120,
-                allowed_tools=["mcp__jira-agent__search_issues"],
-            )
+            response = await _run_query(prompt, self._get_mcp_servers())
 
-            # Try to parse as JSON
-            # Claude might include markdown code blocks, so strip those
+            # Parse JSON response, handling markdown code blocks
             json_str = response
             if "```json" in json_str:
                 json_str = json_str.split("```json")[1].split("```")[0]
@@ -555,7 +157,6 @@ Do not include any explanation, just the JSON array."""
                 json_str = json_str.split("```")[1].split("```")[0]
 
             issues = json.loads(json_str.strip())
-
             if not isinstance(issues, list):
                 issues = [issues] if issues else []
 
@@ -563,11 +164,9 @@ Do not include any explanation, just the JSON array."""
             return issues
 
         except ClaudeProcessInterruptedError:
-            raise  # Let shutdown interruption propagate
-        except subprocess.TimeoutExpired as e:
+            raise
+        except asyncio.TimeoutError as e:
             raise JiraClientError(f"Jira search timed out: {e}") from e
-        except subprocess.CalledProcessError as e:
-            raise JiraClientError(f"Jira search failed: {e.stderr}") from e
         except json.JSONDecodeError as e:
             raise JiraClientError(f"Failed to parse Jira response as JSON: {e}") from e
         except Exception as e:
@@ -575,130 +174,91 @@ Do not include any explanation, just the JSON array."""
 
 
 class JiraMcpTagClient(JiraTagClient):
-    """Jira tag client that uses Claude Code's MCP tools for label operations."""
+    """Jira tag client that uses Claude Agent SDK with MCP tools."""
+
+    def __init__(self, config: Config) -> None:
+        self.config = config
+
+    def _get_mcp_servers(self) -> dict[str, Any]:
+        if self.config.mcp_jira_command:
+            return {
+                "jira-agent": {
+                    "command": self.config.mcp_jira_command,
+                    "args": self.config.mcp_jira_args,
+                }
+            }
+        return {}
+
+    async def _update_label(self, issue_key: str, label: str, action: str) -> None:
+        prompt = f"""{action.capitalize()} the label "{label}" {"to" if action == "add" else "from"} Jira issue {issue_key}.
+
+Use the mcp__jira-agent__update_issue tool to {action} this label.
+
+If successful, respond with exactly: SUCCESS
+If there's an error, respond with: ERROR: <description>"""
+
+        try:
+            response = await _run_query(prompt, self._get_mcp_servers())
+
+            if "ERROR" in response.upper() and "SUCCESS" not in response.upper():
+                raise JiraTagClientError(f"Failed to {action} label: {response}")
+
+            logger.info(f"{action.capitalize()}ed label '{label}' {'to' if action == 'add' else 'from'} {issue_key}")
+
+        except ClaudeProcessInterruptedError:
+            raise
+        except JiraTagClientError:
+            raise
+        except asyncio.TimeoutError as e:
+            raise JiraTagClientError(f"{action.capitalize()} label timed out: {e}") from e
+        except Exception as e:
+            raise JiraTagClientError(f"{action.capitalize()} label failed: {e}") from e
 
     def add_label(self, issue_key: str, label: str) -> None:
-        """Add a label to a Jira issue via MCP.
-
-        Args:
-            issue_key: The Jira issue key (e.g., "PROJ-123").
-            label: The label to add.
-
-        Raises:
-            JiraTagClientError: If the operation fails.
-        """
-        prompt = f"""Add the label "{label}" to Jira issue {issue_key}.
-
-Use the mcp__jira-agent__update_issue tool to add this label.
-
-If successful, respond with exactly: SUCCESS
-If there's an error, respond with: ERROR: <description>"""
-
-        try:
-            response = _run_claude(
-                prompt,
-                timeout_seconds=60,
-                allowed_tools=["mcp__jira-agent__update_issue"],
-            )
-
-            if "ERROR" in response.upper() and "SUCCESS" not in response.upper():
-                raise JiraTagClientError(f"Failed to add label: {response}")
-
-            logger.info(f"Added label '{label}' to {issue_key}")
-
-        except ClaudeProcessInterruptedError:
-            raise  # Let shutdown interruption propagate
-        except subprocess.TimeoutExpired as e:
-            raise JiraTagClientError(f"Add label timed out: {e}") from e
-        except subprocess.CalledProcessError as e:
-            raise JiraTagClientError(f"Add label failed: {e.stderr}") from e
-        except JiraTagClientError:
-            raise
-        except Exception as e:
-            raise JiraTagClientError(f"Add label failed: {e}") from e
+        """Add a label to a Jira issue via MCP."""
+        asyncio.run(self._update_label(issue_key, label, "add"))
 
     def remove_label(self, issue_key: str, label: str) -> None:
-        """Remove a label from a Jira issue via MCP.
-
-        Args:
-            issue_key: The Jira issue key (e.g., "PROJ-123").
-            label: The label to remove.
-
-        Raises:
-            JiraTagClientError: If the operation fails.
-        """
-        prompt = f"""Remove the label "{label}" from Jira issue {issue_key}.
-
-Use the mcp__jira-agent__update_issue tool to remove this label.
-
-If successful, respond with exactly: SUCCESS
-If there's an error, respond with: ERROR: <description>"""
-
-        try:
-            response = _run_claude(
-                prompt,
-                timeout_seconds=60,
-                allowed_tools=["mcp__jira-agent__update_issue"],
-            )
-
-            if "ERROR" in response.upper() and "SUCCESS" not in response.upper():
-                raise JiraTagClientError(f"Failed to remove label: {response}")
-
-            logger.info(f"Removed label '{label}' from {issue_key}")
-
-        except ClaudeProcessInterruptedError:
-            raise  # Let shutdown interruption propagate
-        except subprocess.TimeoutExpired as e:
-            raise JiraTagClientError(f"Remove label timed out: {e}") from e
-        except subprocess.CalledProcessError as e:
-            raise JiraTagClientError(f"Remove label failed: {e.stderr}") from e
-        except JiraTagClientError:
-            raise
-        except Exception as e:
-            raise JiraTagClientError(f"Remove label failed: {e}") from e
+        """Remove a label from a Jira issue via MCP."""
+        asyncio.run(self._update_label(issue_key, label, "remove"))
 
 
 class ClaudeMcpAgentClient(AgentClient):
-    """Agent client that uses Claude Code CLI with MCP tools."""
+    """Agent client that uses Claude Agent SDK with MCP tools."""
 
     def __init__(
         self,
+        config: Config,
         base_workdir: Path | None = None,
         log_base_dir: Path | None = None,
     ) -> None:
-        """Initialize the agent client.
-
-        Args:
-            base_workdir: Base directory for creating agent working directories.
-                         If None, agents run in the current directory.
-            log_base_dir: Base directory for streaming log files.
-                         If None, no streaming logs are created.
-        """
+        self.config = config
         self.base_workdir = base_workdir
         self.log_base_dir = log_base_dir
 
     def _create_workdir(self, issue_key: str) -> Path:
-        """Create a unique working directory for an agent execution.
-
-        Args:
-            issue_key: The Jira issue key (e.g., "DS-123").
-
-        Returns:
-            Path to the created directory.
-        """
         if self.base_workdir is None:
             raise AgentClientError("base_workdir not configured")
-
-        # Create base directory if it doesn't exist
         self.base_workdir.mkdir(parents=True, exist_ok=True)
-
-        # Create unique directory: {issue_key}_{timestamp}
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         workdir = self.base_workdir / f"{issue_key}_{timestamp}"
         workdir.mkdir(parents=True, exist_ok=True)
-
         logger.info(f"Created agent working directory: {workdir}")
         return workdir
+
+    def _get_mcp_servers(self, tools: list[str]) -> dict[str, Any]:
+        mcp_servers: dict[str, Any] = {}
+        tool_configs = {
+            "jira": ("jira-agent", self.config.mcp_jira_command, self.config.mcp_jira_args),
+            "confluence": ("confluence-wiki", self.config.mcp_confluence_command, self.config.mcp_confluence_args),
+            "github": ("github", self.config.mcp_github_command, self.config.mcp_github_args),
+        }
+        for tool in tools:
+            if tool in tool_configs:
+                name, cmd, args = tool_configs[tool]
+                if cmd:
+                    mcp_servers[name] = {"command": cmd, "args": args}
+        return mcp_servers
 
     def run_agent(
         self,
@@ -710,207 +270,98 @@ class ClaudeMcpAgentClient(AgentClient):
         model: str | None = None,
         orchestration_name: str | None = None,
     ) -> str:
-        """Run a Claude agent with the given prompt and tools via Claude Code CLI.
-
-        Args:
-            prompt: The prompt to send to the agent.
-            tools: List of tool names the agent can use (e.g., ["jira", "github"]).
-            context: Optional context dict (e.g., GitHub repo info).
-            timeout_seconds: Optional timeout in seconds.
-            issue_key: Optional issue key for creating a unique working directory.
-            model: Optional model identifier. If None, uses the CLI's default model.
-            orchestration_name: Optional orchestration name for streaming log files.
-
-        Returns:
-            The agent's response text.
-
-        Raises:
-            AgentClientError: If the agent execution fails.
-            AgentTimeoutError: If the agent execution times out.
-        """
-        # Create working directory if base_workdir is configured and issue_key provided
-        workdir: str | None = None
+        """Run a Claude agent with the given prompt and tools."""
+        workdir = None
         if self.base_workdir is not None and issue_key is not None:
-            workdir = str(self._create_workdir(issue_key))
+            workdir = self._create_workdir(issue_key)
 
-        # Build context section if provided
-        context_section = ""
+        # Build full prompt with context and tools sections
+        full_prompt = prompt
         if context:
-            context_section = "\n\nContext:\n"
-            for key, value in context.items():
-                context_section += f"- {key}: {value}\n"
-
-        # Build tools section and allowed tools list
-        tools_section = ""
-        allowed_tools: list[str] = []
+            full_prompt += "\n\nContext:\n" + "".join(f"- {k}: {v}\n" for k, v in context.items())
         if tools:
-            tools_section = "\n\nAvailable tools:\n"
-            for tool in tools:
-                if tool == "jira":
-                    tools_section += "- Jira: mcp__jira-agent__* tools for issue operations\n"
-                    allowed_tools.append("mcp__jira-agent__*")
-                elif tool == "confluence":
-                    tools_section += "- Confluence: mcp__confluence-wiki__* tools for wiki pages\n"
-                    allowed_tools.append("mcp__confluence-wiki__*")
-                elif tool == "github":
-                    tools_section += "- GitHub: mcp__github__* tools for repository operations\n"
-                    allowed_tools.append("mcp__github__*")
+            tool_docs = {"jira": "Jira: mcp__jira-agent__* tools", "confluence": "Confluence: mcp__confluence-wiki__* tools", "github": "GitHub: mcp__github__* tools"}
+            full_prompt += "\n\nAvailable tools:\n" + "".join(f"- {tool_docs.get(t, t)}\n" for t in tools)
 
-        full_prompt = f"{prompt}{context_section}{tools_section}"
-
-        # Determine if we should use streaming logs
-        use_streaming = (
-            self.log_base_dir is not None
-            and issue_key is not None
-            and orchestration_name is not None
-        )
+        use_streaming = self.log_base_dir and issue_key and orchestration_name
 
         if use_streaming:
-            return self._run_with_streaming_log(
-                full_prompt=full_prompt,
-                timeout_seconds=timeout_seconds,
-                allowed_tools=allowed_tools if allowed_tools else None,
-                workdir=workdir,
-                model=model,
-                issue_key=issue_key,  # type: ignore[arg-type]
-                orchestration_name=orchestration_name,  # type: ignore[arg-type]
-            )
-        else:
-            return self._run_without_streaming(
-                full_prompt=full_prompt,
-                timeout_seconds=timeout_seconds,
-                allowed_tools=allowed_tools if allowed_tools else None,
-                workdir=workdir,
-                model=model,
-            )
+            return asyncio.run(self._run_with_log(full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name))  # type: ignore
+        return asyncio.run(self._run_simple(full_prompt, tools, timeout_seconds, workdir, model))
 
-    def _run_without_streaming(
-        self,
-        full_prompt: str,
-        timeout_seconds: int | None,
-        allowed_tools: list[str] | None,
-        workdir: str | None,
-        model: str | None,
+    async def _run_simple(
+        self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None
     ) -> str:
-        """Run agent without streaming logs."""
         try:
-            response = _run_claude(
-                full_prompt,
-                timeout_seconds=timeout_seconds,
-                allowed_tools=allowed_tools,
-                cwd=workdir,
-                model=model,
-            )
+            coro = _run_query(prompt, self._get_mcp_servers(tools), model, str(workdir) if workdir else None)
+            response = await asyncio.wait_for(coro, timeout=timeout) if timeout else await coro
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
-
         except ClaudeProcessInterruptedError:
-            raise  # Let shutdown interruption propagate
-        except subprocess.TimeoutExpired as e:
-            raise AgentTimeoutError(f"Agent execution timed out after {timeout_seconds}s") from e
-        except subprocess.CalledProcessError as e:
-            raise AgentClientError(f"Agent execution failed: {e.stderr}") from e
+            raise
+        except asyncio.TimeoutError:
+            raise AgentTimeoutError(f"Agent execution timed out after {timeout}s")
         except Exception as e:
             raise AgentClientError(f"Agent execution failed: {e}") from e
 
-    def _run_with_streaming_log(
-        self,
-        full_prompt: str,
-        timeout_seconds: int | None,
-        allowed_tools: list[str] | None,
-        workdir: str | None,
-        model: str | None,
-        issue_key: str,
-        orchestration_name: str,
+    async def _run_with_log(
+        self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None, issue_key: str, orch_name: str
     ) -> str:
-        """Run agent with output piped directly to a log file.
-
-        Uses direct file piping for best performance - the OS handles buffering
-        instead of Python reading/writing every line.
-        """
-        assert self.log_base_dir is not None  # Caller ensures this
-
-        # Create log directory and file path
+        assert self.log_base_dir is not None
         start_time = datetime.now()
-        log_dir = self.log_base_dir / orchestration_name
+        log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / f"{start_time.strftime('%Y%m%d_%H%M%S')}.log"
 
-        # Write header to log file
-        separator = "=" * 80
-        header = f"""{separator}
-AGENT EXECUTION LOG
-{separator}
-
-Issue Key:      {issue_key}
-Orchestration:  {orchestration_name}
-Start Time:     {start_time.isoformat()}
-
-{separator}
-PROMPT
-{separator}
-
-{full_prompt}
-
-{separator}
-AGENT OUTPUT
-{separator}
-
-"""
-        log_path.write_text(header, encoding="utf-8")
+        sep = "=" * 80
+        log_path.write_text(f"{sep}\nAGENT EXECUTION LOG\n{sep}\n\nIssue Key:      {issue_key}\nOrchestration:  {orch_name}\nStart Time:     {start_time.isoformat()}\n\n{sep}\nPROMPT\n{sep}\n\n{prompt}\n\n{sep}\nAGENT OUTPUT\n{sep}\n\n", encoding="utf-8")
         logger.info(f"Streaming log started: {log_path}")
 
         status = "ERROR"
         try:
-            response = _run_claude(
-                full_prompt,
-                timeout_seconds=timeout_seconds,
-                allowed_tools=allowed_tools,
-                cwd=workdir,
+            options = ClaudeAgentOptions(
+                mcp_servers=self._get_mcp_servers(tools),
+                permission_mode="bypassPermissions",
                 model=model,
-                stdout_file=log_path,
+                cwd=str(workdir) if workdir else None,
             )
+            shutdown_event = get_shutdown_event()
+
+            async def run_streaming() -> str:
+                response_text = ""
+                with open(log_path, "a", encoding="utf-8") as f:
+                    async for message in query(prompt=prompt, options=options):
+                        if shutdown_event.is_set():
+                            raise ClaudeProcessInterruptedError("Interrupted by shutdown")
+                        text = ""
+                        if hasattr(message, "text"):
+                            text = response_text = message.text
+                        elif hasattr(message, "content"):
+                            for block in message.content:
+                                if hasattr(block, "text"):
+                                    text = response_text = block.text
+                        if text:
+                            f.write(text)
+                            f.flush()
+                return response_text
+
+            response = await asyncio.wait_for(run_streaming(), timeout=timeout) if timeout else await run_streaming()
             status = "COMPLETED"
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
-
         except ClaudeProcessInterruptedError:
             status = "INTERRUPTED"
             raise
-        except subprocess.TimeoutExpired as e:
+        except asyncio.TimeoutError:
             status = "TIMEOUT"
-            raise AgentTimeoutError(
-                f"Agent execution timed out after {timeout_seconds}s"
-            ) from e
-        except subprocess.CalledProcessError as e:
-            status = "FAILED"
-            # Append error info to log
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"\n[Error] Process exited with code {e.returncode}\n")
-                if e.stderr:
-                    f.write(f"[stderr] {e.stderr}\n")
-            raise AgentClientError(f"Agent execution failed: {e.stderr}") from e
+            raise AgentTimeoutError(f"Agent execution timed out after {timeout}s")
         except Exception as e:
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"\n[Error] {e}\n")
             raise AgentClientError(f"Agent execution failed: {e}") from e
         finally:
-            # Always write footer with final status
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            footer = f"""
-{separator}
-EXECUTION SUMMARY
-{separator}
-
-Status:         {status}
-End Time:       {end_time.isoformat()}
-Duration:       {duration:.2f}s
-
-{separator}
-END OF LOG
-{separator}
-"""
             with open(log_path, "a", encoding="utf-8") as f:
-                f.write(footer)
+                f.write(f"\n{sep}\nEXECUTION SUMMARY\n{sep}\n\nStatus:         {status}\nEnd Time:       {end_time.isoformat()}\nDuration:       {duration:.2f}s\n\n{sep}\nEND OF LOG\n{sep}\n")
             logger.info(f"Streaming log completed: {log_path}")

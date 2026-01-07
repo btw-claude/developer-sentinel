@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -41,6 +41,14 @@ class Config:
     jira_base_url: str = ""  # e.g., "https://yoursite.atlassian.net"
     jira_email: str = ""  # User email for authentication
     jira_api_token: str = ""  # API token for authentication
+
+    # MCP Server Configuration
+    mcp_jira_command: str = ""
+    mcp_jira_args: list[str] = field(default_factory=list)
+    mcp_confluence_command: str = ""
+    mcp_confluence_args: list[str] = field(default_factory=list)
+    mcp_github_command: str = ""
+    mcp_github_args: list[str] = field(default_factory=list)
 
     @property
     def jira_configured(self) -> bool:
@@ -165,6 +173,11 @@ def load_config(env_file: Path | None = None) -> Config:
     # Parse log JSON format option
     log_json = _parse_bool(os.getenv("SENTINEL_LOG_JSON", ""))
 
+    # Parse MCP server args (comma-separated)
+    def parse_args(env_var: str) -> list[str]:
+        value = os.getenv(env_var, "")
+        return [arg.strip() for arg in value.split(",") if arg.strip()] if value else []
+
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
@@ -177,4 +190,10 @@ def load_config(env_file: Path | None = None) -> Config:
         jira_base_url=os.getenv("JIRA_BASE_URL", ""),
         jira_email=os.getenv("JIRA_EMAIL", ""),
         jira_api_token=os.getenv("JIRA_API_TOKEN", ""),
+        mcp_jira_command=os.getenv("MCP_JIRA_COMMAND", ""),
+        mcp_jira_args=parse_args("MCP_JIRA_ARGS"),
+        mcp_confluence_command=os.getenv("MCP_CONFLUENCE_COMMAND", ""),
+        mcp_confluence_args=parse_args("MCP_CONFLUENCE_ARGS"),
+        mcp_github_command=os.getenv("MCP_GITHUB_COMMAND", ""),
+        mcp_github_args=parse_args("MCP_GITHUB_ARGS"),
     )
