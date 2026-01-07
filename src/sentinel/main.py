@@ -492,17 +492,18 @@ def main(args: list[str] | None = None) -> int:
             api_token=config.jira_api_token,
         )
     else:
-        logger.info("Using Jira MCP clients (via Claude Code CLI)")
+        logger.info("Using Jira MCP clients (via Claude Agent SDK)")
         logger.warning(
             "Jira REST API not configured. Set JIRA_BASE_URL, JIRA_EMAIL, "
             "and JIRA_API_TOKEN for faster polling."
         )
-        jira_client = JiraMcpClient()
-        tag_client = JiraMcpTagClient()
+        jira_client = JiraMcpClient(config)
+        tag_client = JiraMcpTagClient(config)
 
-    # Agent client always uses Claude MCP (that's the whole point)
+    # Agent client always uses Claude Agent SDK (that's the whole point)
     # Pass log_base_dir to enable streaming logs during agent execution
     agent_client = ClaudeMcpAgentClient(
+        config=config,
         base_workdir=config.agent_workdir,
         log_base_dir=config.agent_logs_dir,
     )
