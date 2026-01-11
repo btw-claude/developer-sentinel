@@ -5,12 +5,41 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from sentinel.logging import get_logger
 from sentinel.orchestration import TriggerConfig
 
 logger = get_logger(__name__)
+
+
+@runtime_checkable
+class GitHubIssueProtocol(Protocol):
+    """Protocol defining the interface for GitHub issue objects.
+
+    This protocol enables type-safe handling of both GitHubIssue and wrapper classes
+    like GitHubIssueWithRepo (which adds repository context to the issue key).
+
+    Both GitHubIssue and any wrapper classes that delegate to GitHubIssue should
+    satisfy this protocol, enabling proper type annotations without '# type: ignore'.
+    """
+
+    number: int
+    title: str
+    body: str
+    state: str
+    author: str
+    assignees: list[str]
+    labels: list[str]
+    is_pull_request: bool
+    head_ref: str
+    base_ref: str
+    draft: bool
+
+    @property
+    def key(self) -> str:
+        """Return a unique key for this issue/PR."""
+        ...
 
 
 @dataclass

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Union
 
-from sentinel.github_poller import GitHubIssue
+from sentinel.github_poller import GitHubIssue, GitHubIssueProtocol
 from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraIssue
@@ -17,7 +17,8 @@ from sentinel.poller import JiraIssue
 logger = get_logger(__name__)
 
 # Type alias for issues from any supported source
-AnyIssue = Union[JiraIssue, GitHubIssue]
+# Uses GitHubIssueProtocol to support both GitHubIssue and GitHubIssueWithRepo
+AnyIssue = Union[JiraIssue, GitHubIssueProtocol]
 
 
 @dataclass
@@ -84,7 +85,7 @@ class Router:
                 issue_project = issue.key.split("-")[0] if "-" in issue.key else ""
                 if issue_project.upper() != trigger.project.upper():
                     return False
-        elif isinstance(issue, GitHubIssue):
+        elif isinstance(issue, GitHubIssueProtocol):
             if trigger.source != "github":
                 return False
 
