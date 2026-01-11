@@ -803,6 +803,23 @@ class TestValidateGitHubRepoFormat:
         assert _validate_github_repo_format("owner/repo#1") is False
         assert _validate_github_repo_format("owner/repo name") is False  # spaces
 
+    # Reserved names validation tests
+    def test_owner_reserved_name_dot_is_invalid(self) -> None:
+        """Owner with reserved name '.' should be invalid."""
+        assert _validate_github_repo_format("./repo") is False
+
+    def test_owner_reserved_name_dotdot_is_invalid(self) -> None:
+        """Owner with reserved name '..' should be invalid."""
+        assert _validate_github_repo_format("../repo") is False
+
+    def test_repo_reserved_name_dot_is_invalid(self) -> None:
+        """Repo with reserved name '.' should be invalid."""
+        assert _validate_github_repo_format("owner/.") is False
+
+    def test_repo_reserved_name_dotdot_is_invalid(self) -> None:
+        """Repo with reserved name '..' should be invalid."""
+        assert _validate_github_repo_format("owner/..") is False
+
 
 class TestInvalidGitHubRepoFormat:
     """Tests for invalid GitHub repo format validation in trigger parsing."""

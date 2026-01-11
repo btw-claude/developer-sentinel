@@ -211,12 +211,14 @@ def _validate_github_repo_format(repo: str) -> bool:
         - Alphanumeric characters and hyphens only
         - Cannot start or end with a hyphen
         - Cannot have consecutive hyphens
+        - Cannot be a reserved name ("." or "..")
 
     **Repository name rules:**
         - Maximum 100 characters
         - Alphanumeric characters, hyphens, underscores, and periods
         - Cannot start with a period
         - Cannot end with .git (case-insensitive)
+        - Cannot be a reserved name ("." or "..")
 
     Args:
         repo: The repository string to validate.
@@ -238,6 +240,8 @@ def _validate_github_repo_format(repo: str) -> bool:
         - "owner-/repo" (owner ends with hyphen)
         - "owner/repo.git" (repo ends with .git)
         - "a" * 40 + "/repo" (owner too long)
+        - "./repo" (owner is reserved name)
+        - "owner/." (repo is reserved name)
     """
     if not repo:
         return True  # Empty is valid (optional field)
@@ -250,6 +254,13 @@ def _validate_github_repo_format(repo: str) -> bool:
 
     # Basic check for non-empty parts
     if not owner.strip() or not repo_name.strip():
+        return False
+
+    # Reserved names check (both owner and repo cannot be "." or "..")
+    if owner in (".", ".."):
+        return False
+
+    if repo_name in (".", ".."):
         return False
 
     # Validate owner (username/organization)
