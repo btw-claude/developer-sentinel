@@ -1,6 +1,6 @@
 """Tests for GitHub REST API client implementations."""
 
-from typing import Any
+from dataclasses import FrozenInstanceError
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -9,7 +9,6 @@ import pytest
 from sentinel.github_rest_client import (
     DEFAULT_GITHUB_API_URL,
     DEFAULT_RETRY_CONFIG,
-    GitHubRateLimitError,
     GitHubRestClient,
     GitHubRestTagClient,
     GitHubRetryConfig,
@@ -48,7 +47,7 @@ class TestGitHubRetryConfig:
 
     def test_is_frozen(self) -> None:
         config = GitHubRetryConfig()
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(FrozenInstanceError):
             config.max_retries = 10  # type: ignore[misc]
 
 
@@ -288,9 +287,8 @@ class TestGitHubRestClient:
 
     @patch("sentinel.github_rest_client.httpx.Client")
     def test_search_issues_success(self, mock_client_class: MagicMock) -> None:
-        mock_client = MagicMock()
-        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -303,7 +301,7 @@ class TestGitHubRestClient:
             "total_count": 2,
         }
         mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
+        mock_http_client.get.return_value = mock_response
 
         client = GitHubRestClient(token="test-token")
         results = client.search_issues("repo:org/repo label:bug")
@@ -314,42 +312,40 @@ class TestGitHubRestClient:
 
     @patch("sentinel.github_rest_client.httpx.Client")
     def test_search_issues_respects_max_results(self, mock_client_class: MagicMock) -> None:
-        mock_client = MagicMock()
-        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {}
         mock_response.json.return_value = {"items": [], "total_count": 0}
         mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
+        mock_http_client.get.return_value = mock_response
 
         client = GitHubRestClient(token="test-token")
         client.search_issues("query", max_results=25)
 
         # Check that per_page was set correctly
-        call_args = mock_client.get.call_args
+        call_args = mock_http_client.get.call_args
         assert call_args[1]["params"]["per_page"] == 25
 
     @patch("sentinel.github_rest_client.httpx.Client")
     def test_search_issues_caps_max_results_at_100(self, mock_client_class: MagicMock) -> None:
-        mock_client = MagicMock()
-        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {}
         mock_response.json.return_value = {"items": [], "total_count": 0}
         mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
+        mock_http_client.get.return_value = mock_response
 
         client = GitHubRestClient(token="test-token")
         client.search_issues("query", max_results=500)
 
         # GitHub max is 100 per page
-        call_args = mock_client.get.call_args
+        call_args = mock_http_client.get.call_args
         assert call_args[1]["params"]["per_page"] == 100
 
 
@@ -363,54 +359,51 @@ class TestGitHubRestTagClient:
 
     @patch("sentinel.github_rest_client.httpx.Client")
     def test_add_label_success(self, mock_client_class: MagicMock) -> None:
-        mock_client = MagicMock()
-        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {}
         mock_response.raise_for_status = MagicMock()
-        mock_client.post.return_value = mock_response
+        mock_http_client.post.return_value = mock_response
 
         client = GitHubRestTagClient(token="test-token")
         client.add_label("owner", "repo", 123, "bug")
 
         # Verify the API was called correctly
-        call_args = mock_client.post.call_args
+        call_args = mock_http_client.post.call_args
         assert "owner/repo/issues/123/labels" in call_args[0][0]
         assert call_args[1]["json"] == {"labels": ["bug"]}
 
     @patch("sentinel.github_rest_client.httpx.Client")
     def test_remove_label_success(self, mock_client_class: MagicMock) -> None:
-        mock_client = MagicMock()
-        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {}
         mock_response.raise_for_status = MagicMock()
-        mock_client.delete.return_value = mock_response
+        mock_http_client.delete.return_value = mock_response
 
         client = GitHubRestTagClient(token="test-token")
         client.remove_label("owner", "repo", 123, "bug")
 
         # Verify the API was called correctly
-        call_args = mock_client.delete.call_args
+        call_args = mock_http_client.delete.call_args
         assert "owner/repo/issues/123/labels/" in call_args[0][0]
 
     @patch("sentinel.github_rest_client.httpx.Client")
     def test_remove_label_handles_404(self, mock_client_class: MagicMock) -> None:
         """Remove should not error if label already gone (404)."""
-        mock_client = MagicMock()
-        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
 
         mock_response = MagicMock()
         mock_response.status_code = 404
         mock_response.headers = {}
-        mock_client.delete.return_value = mock_response
+        mock_http_client.delete.return_value = mock_response
 
         client = GitHubRestTagClient(token="test-token")
         # Should not raise
@@ -418,9 +411,8 @@ class TestGitHubRestTagClient:
 
     @patch("sentinel.github_rest_client.httpx.Client")
     def test_add_label_raises_on_error(self, mock_client_class: MagicMock) -> None:
-        mock_client = MagicMock()
-        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
 
         mock_response = MagicMock()
         mock_response.status_code = 500
@@ -429,7 +421,7 @@ class TestGitHubRestTagClient:
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
             "Server error", request=MagicMock(), response=mock_response
         )
-        mock_client.post.return_value = mock_response
+        mock_http_client.post.return_value = mock_response
 
         client = GitHubRestTagClient(token="test-token")
         with pytest.raises(GitHubTagClientError, match="status 500"):
@@ -437,11 +429,10 @@ class TestGitHubRestTagClient:
 
     @patch("sentinel.github_rest_client.httpx.Client")
     def test_add_label_handles_timeout(self, mock_client_class: MagicMock) -> None:
-        mock_client = MagicMock()
-        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
 
-        mock_client.post.side_effect = httpx.TimeoutException("Timeout")
+        mock_http_client.post.side_effect = httpx.TimeoutException("Timeout")
 
         client = GitHubRestTagClient(token="test-token")
         with pytest.raises(GitHubTagClientError, match="timed out"):

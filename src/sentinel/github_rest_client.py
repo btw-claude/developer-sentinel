@@ -57,7 +57,13 @@ DEFAULT_RETRY_CONFIG = GitHubRetryConfig()
 
 
 class GitHubRateLimitError(GitHubClientError):
-    """Raised when rate limit is exceeded and all retries are exhausted."""
+    """Raised when rate limit is exceeded and all retries are exhausted.
+
+    This exception is raised by _execute_with_retry when all retry attempts
+    are exhausted due to rate limiting (HTTP 403 with rate limit headers or
+    HTTP 429). It indicates the caller should wait before making additional
+    requests to the GitHub API.
+    """
 
     pass
 
@@ -193,8 +199,9 @@ def _execute_with_retry(
             last_exception = e
 
             if attempt >= config.max_retries:
-                # All retries exhausted
-                raise error_class(
+                # All retries exhausted - raise GitHubRateLimitError specifically
+                # for rate limit failures to distinguish from other errors
+                raise GitHubRateLimitError(
                     f"Rate limit exceeded after {config.max_retries} retries"
                 ) from e
 
@@ -219,6 +226,8 @@ class GitHubRestClient(GitHubClient):
     """GitHub client that uses direct REST API calls for searching issues.
 
     Supports both GitHub.com and GitHub Enterprise via configurable base URL.
+    Uses connection pooling via a reusable httpx.Client for better performance
+    in high-volume scenarios.
     """
 
     def __init__(
@@ -247,6 +256,35 @@ class GitHubRestClient(GitHubClient):
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        # Reusable HTTP client for connection pooling - lazily initialized
+        self._client: httpx.Client | None = None
+
+    def _get_client(self) -> httpx.Client:
+        """Get or create the reusable HTTP client.
+
+        Returns:
+            A configured httpx.Client instance with connection pooling.
+        """
+        if self._client is None:
+            self._client = httpx.Client(timeout=self.timeout, headers=self._headers)
+        return self._client
+
+    def close(self) -> None:
+        """Close the HTTP client and release resources.
+
+        Should be called when the client is no longer needed.
+        """
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> GitHubRestClient:
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        """Context manager exit - closes the HTTP client."""
+        self.close()
 
     def search_issues(
         self, query: str, max_results: int = 50
@@ -272,17 +310,17 @@ class GitHubRestClient(GitHubClient):
         logger.debug(f"Searching GitHub: {query}")
 
         def do_search() -> list[dict[str, Any]]:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.get(url, params=params, headers=self._headers)
-                _check_rate_limit_warning(response)
-                response.raise_for_status()
-                data: dict[str, Any] = response.json()
-                items: list[dict[str, Any]] = data.get("items", [])
-                total_count = data.get("total_count", 0)
-                logger.info(
-                    f"GitHub search returned {len(items)} items (total: {total_count})"
-                )
-                return items
+            client = self._get_client()
+            response = client.get(url, params=params)
+            _check_rate_limit_warning(response)
+            response.raise_for_status()
+            data: dict[str, Any] = response.json()
+            items: list[dict[str, Any]] = data.get("items", [])
+            total_count = data.get("total_count", 0)
+            logger.info(
+                f"GitHub search returned {len(items)} items (total: {total_count})"
+            )
+            return items
 
         try:
             return _execute_with_retry(do_search, self.retry_config, GitHubClientError)
@@ -341,7 +379,11 @@ class GitHubTagClient(ABC):
 
 
 class GitHubRestTagClient(GitHubTagClient):
-    """GitHub tag client that uses direct REST API calls for label operations."""
+    """GitHub tag client that uses direct REST API calls for label operations.
+
+    Uses connection pooling via a reusable httpx.Client for better performance
+    in high-volume scenarios.
+    """
 
     def __init__(
         self,
@@ -369,6 +411,35 @@ class GitHubRestTagClient(GitHubTagClient):
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        # Reusable HTTP client for connection pooling - lazily initialized
+        self._client: httpx.Client | None = None
+
+    def _get_client(self) -> httpx.Client:
+        """Get or create the reusable HTTP client.
+
+        Returns:
+            A configured httpx.Client instance with connection pooling.
+        """
+        if self._client is None:
+            self._client = httpx.Client(timeout=self.timeout, headers=self._headers)
+        return self._client
+
+    def close(self) -> None:
+        """Close the HTTP client and release resources.
+
+        Should be called when the client is no longer needed.
+        """
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> GitHubRestTagClient:
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        """Context manager exit - closes the HTTP client."""
+        self.close()
 
     def add_label(self, owner: str, repo: str, issue_number: int, label: str) -> None:
         """Add a label to a GitHub issue or pull request.
@@ -386,10 +457,10 @@ class GitHubRestTagClient(GitHubTagClient):
         payload = {"labels": [label]}
 
         def do_add() -> None:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(url, json=payload, headers=self._headers)
-                _check_rate_limit_warning(response)
-                response.raise_for_status()
+            client = self._get_client()
+            response = client.post(url, json=payload)
+            _check_rate_limit_warning(response)
+            response.raise_for_status()
 
         try:
             _execute_with_retry(do_add, self.retry_config, GitHubTagClientError)
@@ -420,21 +491,24 @@ class GitHubRestTagClient(GitHubTagClient):
         Raises:
             GitHubTagClientError: If the operation fails.
         """
-        # URL-encode the label name for path safety
+        # URL-encode the label name for path safety. Using httpx.URL(path=label).path
+        # leverages httpx's built-in URL encoding to safely handle labels containing
+        # special characters (e.g., spaces, slashes, unicode) that would otherwise
+        # break the URL path or cause incorrect API calls.
         encoded_label = httpx.URL(path=label).path
         url = f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}/labels/{encoded_label}"
 
         def do_remove() -> None:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.delete(url, headers=self._headers)
-                _check_rate_limit_warning(response)
-                # 404 is acceptable - label might already be removed
-                if response.status_code == 404:
-                    logger.debug(
-                        f"Label '{label}' not found on {owner}/{repo}#{issue_number}"
-                    )
-                    return
-                response.raise_for_status()
+            client = self._get_client()
+            response = client.delete(url)
+            _check_rate_limit_warning(response)
+            # 404 is acceptable - label might already be removed
+            if response.status_code == 404:
+                logger.debug(
+                    f"Label '{label}' not found on {owner}/{repo}#{issue_number}"
+                )
+                return
+            response.raise_for_status()
 
         try:
             _execute_with_retry(do_remove, self.retry_config, GitHubTagClientError)
