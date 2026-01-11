@@ -15,7 +15,7 @@ from typing import Any
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config, load_config
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
-from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubPoller
+from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubIssueProtocol, GitHubPoller
 from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
 from sentinel.logging import get_logger, setup_logging
 from sentinel.mcp_clients import (
@@ -344,7 +344,7 @@ class Sentinel:
         self,
         issues: list[GitHubIssue],
         repo: str,
-    ) -> list[GitHubIssue]:
+    ) -> list[GitHubIssueProtocol]:
         """Add repository context to GitHub issues for proper key formatting.
 
         The GitHubIssue.key property returns "#123" but tag operations need "org/repo#123".
@@ -357,7 +357,7 @@ class Sentinel:
         Returns:
             List of GitHubIssueWithRepo objects with updated keys.
         """
-        return [GitHubIssueWithRepo(issue, repo) for issue in issues]  # type: ignore
+        return [GitHubIssueWithRepo(issue, repo) for issue in issues]
 
     def _submit_execution_tasks(
         self,
