@@ -697,8 +697,23 @@ class TestValidateGitHubRepoFormat:
         """Valid owner/repo format should return True."""
         assert _validate_github_repo_format("owner/repo") is True
         assert _validate_github_repo_format("org-name/repo-name") is True
-        assert _validate_github_repo_format("my_org/my_repo") is True
         assert _validate_github_repo_format("user123/project456") is True
+
+    def test_valid_repo_with_periods(self) -> None:
+        """Repo names with periods should be valid."""
+        assert _validate_github_repo_format("owner/my.project") is True
+        assert _validate_github_repo_format("owner/repo.name.here") is True
+
+    def test_valid_repo_with_underscores(self) -> None:
+        """Repo names with underscores should be valid."""
+        assert _validate_github_repo_format("owner/my_repo") is True
+        assert _validate_github_repo_format("owner/repo_name_here") is True
+
+    def test_valid_single_char_names(self) -> None:
+        """Single character owner and repo names should be valid."""
+        assert _validate_github_repo_format("a/b") is True
+        assert _validate_github_repo_format("x/repo") is True
+        assert _validate_github_repo_format("owner/y") is True
 
     def test_empty_string_is_valid(self) -> None:
         """Empty string should be valid (repo field is optional)."""
@@ -722,6 +737,71 @@ class TestValidateGitHubRepoFormat:
         """Whitespace-only parts should be invalid."""
         assert _validate_github_repo_format("  /repo") is False
         assert _validate_github_repo_format("owner/  ") is False
+
+    # GitHub username/org validation tests
+    def test_owner_starting_with_hyphen_is_invalid(self) -> None:
+        """Owner starting with hyphen should be invalid."""
+        assert _validate_github_repo_format("-owner/repo") is False
+        assert _validate_github_repo_format("-/repo") is False
+
+    def test_owner_ending_with_hyphen_is_invalid(self) -> None:
+        """Owner ending with hyphen should be invalid."""
+        assert _validate_github_repo_format("owner-/repo") is False
+
+    def test_owner_with_consecutive_hyphens_is_invalid(self) -> None:
+        """Owner with consecutive hyphens should be invalid."""
+        assert _validate_github_repo_format("owner--name/repo") is False
+        assert _validate_github_repo_format("a--b/repo") is False
+
+    def test_owner_with_underscore_is_invalid(self) -> None:
+        """Owner with underscore should be invalid (GitHub doesn't allow)."""
+        assert _validate_github_repo_format("my_org/repo") is False
+        assert _validate_github_repo_format("owner_name/repo") is False
+
+    def test_owner_with_period_is_invalid(self) -> None:
+        """Owner with period should be invalid."""
+        assert _validate_github_repo_format("my.org/repo") is False
+
+    def test_owner_exceeding_max_length_is_invalid(self) -> None:
+        """Owner exceeding 39 characters should be invalid."""
+        long_owner = "a" * 40
+        assert _validate_github_repo_format(f"{long_owner}/repo") is False
+        # 39 chars should be valid
+        valid_owner = "a" * 39
+        assert _validate_github_repo_format(f"{valid_owner}/repo") is True
+
+    def test_owner_with_special_chars_is_invalid(self) -> None:
+        """Owner with special characters should be invalid."""
+        assert _validate_github_repo_format("owner!/repo") is False
+        assert _validate_github_repo_format("owner@name/repo") is False
+        assert _validate_github_repo_format("owner#/repo") is False
+
+    # Repository name validation tests
+    def test_repo_starting_with_period_is_invalid(self) -> None:
+        """Repo starting with period should be invalid."""
+        assert _validate_github_repo_format("owner/.repo") is False
+        assert _validate_github_repo_format("owner/.hidden") is False
+
+    def test_repo_ending_with_git_is_invalid(self) -> None:
+        """Repo ending with .git should be invalid."""
+        assert _validate_github_repo_format("owner/repo.git") is False
+        assert _validate_github_repo_format("owner/my-project.git") is False
+        assert _validate_github_repo_format("owner/REPO.GIT") is False  # case insensitive
+
+    def test_repo_exceeding_max_length_is_invalid(self) -> None:
+        """Repo exceeding 100 characters should be invalid."""
+        long_repo = "a" * 101
+        assert _validate_github_repo_format(f"owner/{long_repo}") is False
+        # 100 chars should be valid
+        valid_repo = "a" * 100
+        assert _validate_github_repo_format(f"owner/{valid_repo}") is True
+
+    def test_repo_with_special_chars_is_invalid(self) -> None:
+        """Repo with invalid special characters should be invalid."""
+        assert _validate_github_repo_format("owner/repo!") is False
+        assert _validate_github_repo_format("owner/repo@name") is False
+        assert _validate_github_repo_format("owner/repo#1") is False
+        assert _validate_github_repo_format("owner/repo name") is False  # spaces
 
 
 class TestInvalidGitHubRepoFormat:

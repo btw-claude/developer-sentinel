@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -186,6 +187,20 @@ class OrchestrationError(Exception):
 def _validate_github_repo_format(repo: str) -> bool:
     """Validate that a GitHub repo string is in 'owner/repo-name' format.
 
+    Enforces GitHub-specific character restrictions:
+
+    **Username/Organization rules (owner):**
+        - Maximum 39 characters
+        - Alphanumeric characters and hyphens only
+        - Cannot start or end with a hyphen
+        - Cannot have consecutive hyphens
+
+    **Repository name rules:**
+        - Maximum 100 characters
+        - Alphanumeric characters, hyphens, underscores, and periods
+        - Cannot start with a period
+        - Cannot end with .git (case-insensitive)
+
     Args:
         repo: The repository string to validate.
 
@@ -196,19 +211,64 @@ def _validate_github_repo_format(repo: str) -> bool:
         - "owner/repo"
         - "owner/repo-name"
         - "org-name/repo_name"
+        - "user123/my.project"
     Invalid formats:
         - "repo" (missing owner)
         - "owner/" (missing repo name)
         - "/repo" (missing owner)
         - "owner/repo/extra" (too many parts)
+        - "-owner/repo" (owner starts with hyphen)
+        - "owner-/repo" (owner ends with hyphen)
+        - "owner/repo.git" (repo ends with .git)
+        - "a" * 40 + "/repo" (owner too long)
     """
     if not repo:
         return True  # Empty is valid (optional field)
+
     parts = repo.split("/")
     if len(parts) != 2:
         return False
+
     owner, repo_name = parts
-    return bool(owner.strip() and repo_name.strip())
+
+    # Basic check for non-empty parts
+    if not owner.strip() or not repo_name.strip():
+        return False
+
+    # Validate owner (username/organization)
+    # - Max 39 characters
+    # - Alphanumeric and hyphens only
+    # - Cannot start or end with hyphen
+    # - Cannot have consecutive hyphens
+    if len(owner) > 39:
+        return False
+
+    # Pattern: starts with alphanumeric, ends with alphanumeric,
+    # middle can have alphanumeric or single hyphens (no consecutive hyphens)
+    owner_pattern = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9]|-(?!-))*[a-zA-Z0-9]$|^[a-zA-Z0-9]$")
+    if not owner_pattern.match(owner):
+        return False
+
+    # Validate repo name
+    # - Max 100 characters
+    # - Alphanumeric, hyphens, underscores, periods
+    # - Cannot start with a period
+    # - Cannot end with .git
+    if len(repo_name) > 100:
+        return False
+
+    if repo_name.startswith("."):
+        return False
+
+    if repo_name.lower().endswith(".git"):
+        return False
+
+    # Pattern: alphanumeric, hyphens, underscores, periods
+    repo_pattern = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$|^[a-zA-Z0-9]$")
+    if not repo_pattern.match(repo_name):
+        return False
+
+    return True
 
 
 def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
