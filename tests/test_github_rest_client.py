@@ -9,6 +9,7 @@ import pytest
 from sentinel.github_rest_client import (
     DEFAULT_GITHUB_API_URL,
     DEFAULT_RETRY_CONFIG,
+    GitHubRateLimitError,
     GitHubRestClient,
     GitHubRestTagClient,
     GitHubRetryConfig,
@@ -252,8 +253,8 @@ class TestExecuteWithRetry:
 
         config = GitHubRetryConfig(max_retries=2, initial_delay=0.01)
 
-        with pytest.raises(Exception, match="Rate limit exceeded"):
-            _execute_with_retry(operation, config, error_class=Exception)
+        with pytest.raises(GitHubRateLimitError, match="Rate limit exceeded"):
+            _execute_with_retry(operation, config)
 
         assert operation.call_count == 3  # Initial + 2 retries
 
