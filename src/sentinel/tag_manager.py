@@ -1,15 +1,26 @@
-"""Post-processing tag management for Jira issues."""
+"""Post-processing tag management for Jira and GitHub issues."""
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sentinel.executor import ExecutionResult, ExecutionStatus
 from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration
 
+if TYPE_CHECKING:
+    from sentinel.github_rest_client import GitHubTagClient
+
 logger = get_logger(__name__)
+
+# Regex patterns for issue key detection
+# GitHub format: org/repo#123
+GITHUB_ISSUE_PATTERN = re.compile(r"^([^/]+)/([^#]+)#(\d+)$")
+# Jira format: PROJ-123
+JIRA_ISSUE_PATTERN = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 
 
 class JiraTagClientError(Exception):
@@ -76,20 +87,138 @@ class TagUpdateResult:
 
 
 class TagManager:
-    """Manages tag updates for Jira issues throughout the processing lifecycle.
+    """Manages tag updates for Jira and GitHub issues throughout the processing lifecycle.
 
     Handles tags at two points:
     - On start: removes trigger tags, adds in-progress tag (prevents duplicate processing)
     - On complete: removes in-progress tag, adds completion/failure tags
+
+    Supports both Jira issues (PROJ-123 format) and GitHub issues (org/repo#123 format).
     """
 
-    def __init__(self, client: JiraTagClient) -> None:
-        """Initialize the tag manager with a Jira client.
+    def __init__(
+        self,
+        client: JiraTagClient,
+        github_client: GitHubTagClient | None = None,
+    ) -> None:
+        """Initialize the tag manager with Jira and optional GitHub clients.
 
         Args:
             client: Jira tag client implementation.
+            github_client: Optional GitHub tag client for GitHub issue support.
         """
         self.client = client
+        self.github_client = github_client
+
+    def _get_client_for_issue(
+        self, issue_key: str
+    ) -> tuple[str, JiraTagClient | GitHubTagClient | None, tuple[str, str, int] | None]:
+        """Detect the platform from issue key format and return appropriate client.
+
+        Args:
+            issue_key: The issue identifier.
+                      GitHub format: org/repo#123
+                      Jira format: PROJ-123
+
+        Returns:
+            A tuple of (platform, client, parsed_info):
+            - platform: "github" or "jira"
+            - client: The appropriate tag client, or None if not available
+            - parsed_info: For GitHub, a tuple of (owner, repo, issue_number).
+                          For Jira, None.
+        """
+        # Try GitHub format first: org/repo#123
+        github_match = GITHUB_ISSUE_PATTERN.match(issue_key)
+        if github_match:
+            owner, repo, issue_num = github_match.groups()
+            return ("github", self.github_client, (owner, repo, int(issue_num)))
+
+        # Try Jira format: PROJ-123
+        if JIRA_ISSUE_PATTERN.match(issue_key):
+            return ("jira", self.client, None)
+
+        # Default to Jira for backwards compatibility
+        logger.warning(
+            f"Issue key '{issue_key}' doesn't match known formats. "
+            "Assuming Jira format for backwards compatibility."
+        )
+        return ("jira", self.client, None)
+
+    def _add_label(self, issue_key: str, label: str) -> None:
+        """Add a label to an issue using the appropriate client.
+
+        Args:
+            issue_key: The issue identifier (Jira or GitHub format).
+            label: The label to add.
+
+        Raises:
+            JiraTagClientError: If the Jira operation fails.
+            GitHubTagClientError: If the GitHub operation fails.
+            ValueError: If the client for the platform is not available.
+        """
+        from sentinel.github_rest_client import GitHubTagClientError
+
+        platform, client, github_info = self._get_client_for_issue(issue_key)
+
+        if client is None:
+            raise ValueError(
+                f"No client available for {platform} platform. "
+                f"Cannot add label to {issue_key}."
+            )
+
+        if platform == "github" and github_info:
+            owner, repo, issue_number = github_info
+            # GitHubTagClient has a different signature
+            from sentinel.github_rest_client import GitHubTagClient as GHClient
+
+            if isinstance(client, GHClient):
+                client.add_label(owner, repo, issue_number, label)
+            else:
+                raise ValueError(f"Invalid GitHub client type for {issue_key}")
+        else:
+            # Jira client
+            if isinstance(client, JiraTagClient):
+                client.add_label(issue_key, label)
+            else:
+                raise ValueError(f"Invalid Jira client type for {issue_key}")
+
+    def _remove_label(self, issue_key: str, label: str) -> None:
+        """Remove a label from an issue using the appropriate client.
+
+        Args:
+            issue_key: The issue identifier (Jira or GitHub format).
+            label: The label to remove.
+
+        Raises:
+            JiraTagClientError: If the Jira operation fails.
+            GitHubTagClientError: If the GitHub operation fails.
+            ValueError: If the client for the platform is not available.
+        """
+        from sentinel.github_rest_client import GitHubTagClientError
+
+        platform, client, github_info = self._get_client_for_issue(issue_key)
+
+        if client is None:
+            raise ValueError(
+                f"No client available for {platform} platform. "
+                f"Cannot remove label from {issue_key}."
+            )
+
+        if platform == "github" and github_info:
+            owner, repo, issue_number = github_info
+            # GitHubTagClient has a different signature
+            from sentinel.github_rest_client import GitHubTagClient as GHClient
+
+            if isinstance(client, GHClient):
+                client.remove_label(owner, repo, issue_number, label)
+            else:
+                raise ValueError(f"Invalid GitHub client type for {issue_key}")
+        else:
+            # Jira client
+            if isinstance(client, JiraTagClient):
+                client.remove_label(issue_key, label)
+            else:
+                raise ValueError(f"Invalid Jira client type for {issue_key}")
 
     def start_processing(
         self,
@@ -101,12 +230,14 @@ class TagManager:
         Removes trigger tags and adds in-progress tag to prevent duplicate processing.
 
         Args:
-            issue_key: The Jira issue key (e.g., "PROJ-123").
+            issue_key: The issue key (Jira "PROJ-123" or GitHub "org/repo#123").
             orchestration: The orchestration configuration.
 
         Returns:
             TagUpdateResult with details of what was changed.
         """
+        from sentinel.github_rest_client import GitHubTagClientError
+
         added_tags: list[str] = []
         removed_tags: list[str] = []
         errors: list[str] = []
@@ -114,10 +245,10 @@ class TagManager:
         # Remove trigger tags
         for tag in orchestration.trigger.tags:
             try:
-                self.client.remove_label(issue_key, tag)
+                self._remove_label(issue_key, tag)
                 removed_tags.append(tag)
                 logger.info(f"Removed trigger tag '{tag}' from {issue_key}")
-            except JiraTagClientError as e:
+            except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = f"Failed to remove trigger tag '{tag}' from {issue_key}: {e}"
                 errors.append(error_msg)
                 logger.error(error_msg)
@@ -126,10 +257,10 @@ class TagManager:
         on_start = orchestration.on_start
         if on_start.add_tag:
             try:
-                self.client.add_label(issue_key, on_start.add_tag)
+                self._add_label(issue_key, on_start.add_tag)
                 added_tags.append(on_start.add_tag)
                 logger.info(f"Added in-progress tag '{on_start.add_tag}' to {issue_key}")
-            except JiraTagClientError as e:
+            except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = (
                     f"Failed to add in-progress tag '{on_start.add_tag}' to {issue_key}: {e}"
                 )
@@ -158,7 +289,7 @@ class TagManager:
         result: ExecutionResult,
         orchestration: Orchestration,
     ) -> TagUpdateResult:
-        """Update tags on a Jira issue based on execution result.
+        """Update tags on an issue based on execution result.
 
         Removes in-progress tag (if configured) and applies completion/failure tags.
 
@@ -169,6 +300,8 @@ class TagManager:
         Returns:
             TagUpdateResult with details of what was changed.
         """
+        from sentinel.github_rest_client import GitHubTagClientError
+
         added_tags: list[str] = []
         removed_tags: list[str] = []
         errors: list[str] = []
@@ -177,10 +310,10 @@ class TagManager:
         on_start = orchestration.on_start
         if on_start.add_tag:
             try:
-                self.client.remove_label(result.issue_key, on_start.add_tag)
+                self._remove_label(result.issue_key, on_start.add_tag)
                 removed_tags.append(on_start.add_tag)
                 logger.info(f"Removed in-progress tag '{on_start.add_tag}' from {result.issue_key}")
-            except JiraTagClientError as e:
+            except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = (
                     f"Failed to remove in-progress tag '{on_start.add_tag}' "
                     f"from {result.issue_key}: {e}"
@@ -206,12 +339,12 @@ class TagManager:
                 # Remove trigger tag if specified (legacy behavior)
                 if on_complete.remove_tag:
                     try:
-                        self.client.remove_label(result.issue_key, on_complete.remove_tag)
+                        self._remove_label(result.issue_key, on_complete.remove_tag)
                         removed_tags.append(on_complete.remove_tag)
                         logger.info(
                             f"Removed tag '{on_complete.remove_tag}' from {result.issue_key}"
                         )
-                    except JiraTagClientError as e:
+                    except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                         error_msg = (
                             f"Failed to remove tag '{on_complete.remove_tag}' "
                             f"from {result.issue_key}: {e}"
@@ -224,10 +357,10 @@ class TagManager:
             # Add the determined tag
             if tag_to_add:
                 try:
-                    self.client.add_label(result.issue_key, tag_to_add)
+                    self._add_label(result.issue_key, tag_to_add)
                     added_tags.append(tag_to_add)
                     logger.info(f"Added tag '{tag_to_add}' to {result.issue_key}")
-                except JiraTagClientError as e:
+                except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                     error_msg = f"Failed to add tag '{tag_to_add}' to {result.issue_key}: {e}"
                     errors.append(error_msg)
                     logger.error(error_msg)
@@ -238,10 +371,10 @@ class TagManager:
 
             if on_failure.add_tag:
                 try:
-                    self.client.add_label(result.issue_key, on_failure.add_tag)
+                    self._add_label(result.issue_key, on_failure.add_tag)
                     added_tags.append(on_failure.add_tag)
                     logger.info(f"Added failure tag '{on_failure.add_tag}' to {result.issue_key}")
-                except JiraTagClientError as e:
+                except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                     error_msg = (
                         f"Failed to add failure tag '{on_failure.add_tag}' "
                         f"to {result.issue_key}: {e}"
@@ -277,12 +410,14 @@ class TagManager:
         to mark the issue as failed. Removes in-progress tag and adds failure tag.
 
         Args:
-            issue_key: The Jira issue key (e.g., "PROJ-123").
+            issue_key: The issue key (Jira "PROJ-123" or GitHub "org/repo#123").
             orchestration: The orchestration configuration.
 
         Returns:
             TagUpdateResult with details of what was changed.
         """
+        from sentinel.github_rest_client import GitHubTagClientError
+
         added_tags: list[str] = []
         removed_tags: list[str] = []
         errors: list[str] = []
@@ -291,10 +426,10 @@ class TagManager:
         on_start = orchestration.on_start
         if on_start.add_tag:
             try:
-                self.client.remove_label(issue_key, on_start.add_tag)
+                self._remove_label(issue_key, on_start.add_tag)
                 removed_tags.append(on_start.add_tag)
                 logger.info(f"Removed in-progress tag '{on_start.add_tag}' from {issue_key}")
-            except JiraTagClientError as e:
+            except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = (
                     f"Failed to remove in-progress tag '{on_start.add_tag}' from {issue_key}: {e}"
                 )
@@ -305,10 +440,10 @@ class TagManager:
         on_failure = orchestration.on_failure
         if on_failure.add_tag:
             try:
-                self.client.add_label(issue_key, on_failure.add_tag)
+                self._add_label(issue_key, on_failure.add_tag)
                 added_tags.append(on_failure.add_tag)
                 logger.info(f"Added failure tag '{on_failure.add_tag}' to {issue_key}")
-            except JiraTagClientError as e:
+            except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = f"Failed to add failure tag '{on_failure.add_tag}' to {issue_key}: {e}"
                 errors.append(error_msg)
                 logger.error(error_msg)
