@@ -1,8 +1,9 @@
 """Tests for tag-based router module."""
 
+from sentinel.github_poller import GitHubIssue
 from sentinel.orchestration import AgentConfig, Orchestration, TriggerConfig
 from sentinel.poller import JiraIssue
-from sentinel.router import Router, RoutingResult
+from sentinel.router import AnyIssue, Router, RoutingResult
 
 
 def make_issue(
@@ -18,16 +19,33 @@ def make_issue(
     )
 
 
+def make_github_issue(
+    number: int = 1,
+    labels: list[str] | None = None,
+    title: str = "Test GitHub issue",
+) -> GitHubIssue:
+    """Helper to create a GitHubIssue for testing."""
+    return GitHubIssue(
+        number=number,
+        title=title,
+        labels=labels or [],
+    )
+
+
 def make_orchestration(
     name: str = "test-orch",
+    source: str = "jira",
     project: str = "",
+    repo: str = "",
     tags: list[str] | None = None,
 ) -> Orchestration:
     """Helper to create an Orchestration for testing."""
     return Orchestration(
         name=name,
         trigger=TriggerConfig(
+            source=source,  # type: ignore[arg-type]
             project=project,
+            repo=repo,
             tags=tags or [],
         ),
         agent=AgentConfig(prompt="Test prompt"),
@@ -239,3 +257,89 @@ class TestRouterRouteMatchedOnly:
         results = router.route_matched_only(issues)
 
         assert len(results) == 0
+
+
+class TestGitHubIssueRouting:
+    """Tests for routing GitHub issues."""
+
+    def test_github_issue_matches_github_trigger(self) -> None:
+        router = Router([])
+        issue = make_github_issue(labels=["needs-review"])
+        orch = make_orchestration(source="github", tags=["needs-review"])
+        assert router._matches_trigger(issue, orch) is True
+
+    def test_github_issue_rejects_jira_trigger(self) -> None:
+        router = Router([])
+        issue = make_github_issue(labels=["needs-review"])
+        orch = make_orchestration(source="jira", tags=["needs-review"])
+        assert router._matches_trigger(issue, orch) is False
+
+    def test_jira_issue_rejects_github_trigger(self) -> None:
+        router = Router([])
+        issue = make_issue(labels=["needs-review"])
+        orch = make_orchestration(source="github", tags=["needs-review"])
+        assert router._matches_trigger(issue, orch) is False
+
+    def test_github_issue_matches_tags_case_insensitive(self) -> None:
+        router = Router([])
+        issue = make_github_issue(labels=["Needs-Review", "URGENT"])
+        orch = make_orchestration(source="github", tags=["needs-review", "urgent"])
+        assert router._matches_trigger(issue, orch) is True
+
+    def test_github_issue_rejects_missing_tag(self) -> None:
+        router = Router([])
+        issue = make_github_issue(labels=["needs-review"])
+        orch = make_orchestration(source="github", tags=["needs-review", "urgent"])
+        assert router._matches_trigger(issue, orch) is False
+
+    def test_routes_github_issue_to_github_orchestration(self) -> None:
+        orch = make_orchestration(name="github-review", source="github", tags=["needs-review"])
+        router = Router([orch])
+        issue = make_github_issue(labels=["needs-review"])
+
+        result = router.route(issue)
+
+        assert result.matched is True
+        assert len(result.orchestrations) == 1
+        assert result.orchestrations[0].name == "github-review"
+
+    def test_routes_to_correct_source_orchestration(self) -> None:
+        jira_orch = make_orchestration(name="jira-review", source="jira", tags=["needs-review"])
+        github_orch = make_orchestration(name="github-review", source="github", tags=["needs-review"])
+        router = Router([jira_orch, github_orch])
+
+        jira_issue = make_issue(labels=["needs-review"])
+        github_issue = make_github_issue(labels=["needs-review"])
+
+        jira_result = router.route(jira_issue)
+        github_result = router.route(github_issue)
+
+        assert jira_result.matched is True
+        assert len(jira_result.orchestrations) == 1
+        assert jira_result.orchestrations[0].name == "jira-review"
+
+        assert github_result.matched is True
+        assert len(github_result.orchestrations) == 1
+        assert github_result.orchestrations[0].name == "github-review"
+
+    def test_routes_mixed_issues(self) -> None:
+        jira_orch = make_orchestration(name="jira-review", source="jira", tags=["needs-review"])
+        github_orch = make_orchestration(name="github-review", source="github", tags=["needs-review"])
+        router = Router([jira_orch, github_orch])
+
+        issues: list[AnyIssue] = [
+            make_issue(key="PROJ-1", labels=["needs-review"]),
+            make_github_issue(number=1, labels=["needs-review"]),
+            make_issue(key="PROJ-2", labels=["bug"]),
+            make_github_issue(number=2, labels=["bug"]),
+        ]
+
+        results = router.route_matched_only(issues)
+
+        assert len(results) == 2
+        # First match should be the Jira issue
+        assert isinstance(results[0].issue, JiraIssue)
+        assert results[0].orchestrations[0].name == "jira-review"
+        # Second match should be the GitHub issue
+        assert isinstance(results[1].issue, GitHubIssue)
+        assert results[1].orchestrations[0].name == "github-review"
