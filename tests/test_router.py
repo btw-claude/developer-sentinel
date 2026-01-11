@@ -1,5 +1,7 @@
 """Tests for tag-based router module."""
 
+from typing import Literal
+
 from sentinel.github_poller import GitHubIssue
 from sentinel.orchestration import AgentConfig, Orchestration, TriggerConfig
 from sentinel.poller import JiraIssue
@@ -34,7 +36,7 @@ def make_github_issue(
 
 def make_orchestration(
     name: str = "test-orch",
-    source: str = "jira",
+    source: Literal["jira", "github"] = "jira",
     project: str = "",
     repo: str = "",
     tags: list[str] | None = None,
@@ -43,7 +45,7 @@ def make_orchestration(
     return Orchestration(
         name=name,
         trigger=TriggerConfig(
-            source=source,  # type: ignore[arg-type]
+            source=source,
             project=project,
             repo=repo,
             tags=tags or [],
