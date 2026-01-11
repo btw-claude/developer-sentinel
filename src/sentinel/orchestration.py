@@ -11,12 +11,23 @@ import yaml
 
 @dataclass
 class TriggerConfig:
-    """Configuration for what triggers an orchestration."""
+    """Configuration for what triggers an orchestration.
 
-    source: Literal["jira"] = "jira"
+    Attributes:
+        source: The source system for triggers ("jira" or "github").
+        project: Jira project key (used when source is "jira").
+        jql_filter: JQL filter for Jira queries (used when source is "jira").
+        tags: List of tags/labels to filter by.
+        repo: GitHub repository in "org/repo-name" format (used when source is "github").
+        query_filter: GitHub search syntax filter (used when source is "github").
+    """
+
+    source: Literal["jira", "github"] = "jira"
     project: str = ""
     jql_filter: str = ""
     tags: list[str] = field(default_factory=list)
+    repo: str = ""
+    query_filter: str = ""
 
 
 @dataclass
@@ -153,12 +164,23 @@ class OrchestrationError(Exception):
 
 
 def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
-    """Parse trigger configuration from dict."""
+    """Parse trigger configuration from dict.
+
+    Supports both Jira and GitHub triggers:
+    - Jira triggers use: source="jira", project, jql_filter, tags
+    - GitHub triggers use: source="github", repo, query_filter, tags
+    """
+    source = data.get("source", "jira")
+    if source not in ("jira", "github"):
+        raise OrchestrationError(f"Invalid trigger source '{source}': must be 'jira' or 'github'")
+
     return TriggerConfig(
-        source=data.get("source", "jira"),
+        source=source,
         project=data.get("project", ""),
         jql_filter=data.get("jql_filter", ""),
         tags=data.get("tags", []),
+        repo=data.get("repo", ""),
+        query_filter=data.get("query_filter", ""),
     )
 
 

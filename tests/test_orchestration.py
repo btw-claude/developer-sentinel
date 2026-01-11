@@ -29,6 +29,21 @@ class TestDataclasses:
         assert trigger.project == ""
         assert trigger.jql_filter == ""
         assert trigger.tags == []
+        assert trigger.repo == ""
+        assert trigger.query_filter == ""
+
+    def test_trigger_config_github_source(self) -> None:
+        """TriggerConfig should support github source."""
+        trigger = TriggerConfig(
+            source="github",
+            repo="org/repo-name",
+            query_filter="is:issue is:open label:bug",
+            tags=["needs-triage"],
+        )
+        assert trigger.source == "github"
+        assert trigger.repo == "org/repo-name"
+        assert trigger.query_filter == "is:issue is:open label:bug"
+        assert trigger.tags == ["needs-triage"]
 
     def test_agent_config_defaults(self) -> None:
         """AgentConfig should have sensible defaults."""
@@ -449,6 +464,52 @@ orchestrations:
         file_path.write_text(yaml_content)
 
         with pytest.raises(OrchestrationError, match="Invalid default_status"):
+            load_orchestration_file(file_path)
+
+    def test_load_file_with_github_trigger(self, tmp_path: Path) -> None:
+        """Should load orchestration with GitHub trigger configuration."""
+        yaml_content = """
+orchestrations:
+  - name: "github-issue-triage"
+    trigger:
+      source: github
+      repo: "org/repo-name"
+      query_filter: "is:issue is:open label:needs-triage"
+      tags:
+        - "auto-process"
+    agent:
+      prompt: "Triage the GitHub issue"
+      tools:
+        - github
+"""
+        file_path = tmp_path / "github_trigger.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.name == "github-issue-triage"
+        assert orch.trigger.source == "github"
+        assert orch.trigger.repo == "org/repo-name"
+        assert orch.trigger.query_filter == "is:issue is:open label:needs-triage"
+        assert orch.trigger.tags == ["auto-process"]
+
+    def test_invalid_trigger_source_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for invalid trigger source value."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-source"
+    trigger:
+      source: gitlab
+      project: "TEST"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "invalid_source.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid trigger source"):
             load_orchestration_file(file_path)
 
     def test_load_file_with_outcomes(self, tmp_path: Path) -> None:
