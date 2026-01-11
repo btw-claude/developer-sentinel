@@ -28,6 +28,11 @@ class TriggerConfig:
         - repo: Repository in "owner/repo-name" format (e.g., "octocat/hello-world")
         - query_filter: Additional GitHub search syntax (e.g., "is:pr draft:false")
 
+    **Tag matching behavior:**
+        When multiple tags are specified, issues must have ALL tags to match (AND logic).
+        For example, tags: ["needs-review", "priority-high"] will only match issues
+        that have both labels applied.
+
     Attributes:
         source: The source system for triggers ("jira" or "github").
         project: Jira project key. Only used when source is "jira".
