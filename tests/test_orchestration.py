@@ -120,6 +120,25 @@ class TestDataclasses:
         )
         assert orch.outcomes == []
 
+    def test_orchestration_enabled_defaults_to_true(self) -> None:
+        """Orchestration enabled should default to True."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        assert orch.enabled is True
+
+    def test_orchestration_enabled_can_be_set_to_false(self) -> None:
+        """Orchestration enabled can be set to False."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+            enabled=False,
+        )
+        assert orch.enabled is False
+
 
 class TestLoadOrchestrationFile:
     """Tests for load_orchestration_file function."""
@@ -898,3 +917,250 @@ orchestrations:
         orchestrations = load_orchestration_file(file_path)
         assert len(orchestrations) == 1
         assert orchestrations[0].trigger.source == "jira"
+
+
+class TestOrchestrationEnabled:
+    """Tests for orchestration enabled/disabled functionality."""
+
+    def test_orchestration_enabled_defaults_to_true(self, tmp_path: Path) -> None:
+        """Orchestration should default to enabled when not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "default-enabled"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "default_enabled.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].enabled is True
+
+    def test_orchestration_enabled_true(self, tmp_path: Path) -> None:
+        """Orchestration with enabled: true should be loaded."""
+        yaml_content = """
+orchestrations:
+  - name: "explicitly-enabled"
+    enabled: true
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "explicitly_enabled.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].enabled is True
+
+    def test_orchestration_enabled_false(self, tmp_path: Path) -> None:
+        """Orchestration with enabled: false should be filtered out."""
+        yaml_content = """
+orchestrations:
+  - name: "disabled-orch"
+    enabled: false
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "disabled_orch.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 0
+
+    def test_mixed_enabled_orchestrations(self, tmp_path: Path) -> None:
+        """Only enabled orchestrations should be returned."""
+        yaml_content = """
+orchestrations:
+  - name: "enabled-one"
+    enabled: true
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "First"
+  - name: "disabled-one"
+    enabled: false
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Second"
+  - name: "enabled-two"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Third"
+"""
+        file_path = tmp_path / "mixed_enabled.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 2
+        names = [o.name for o in orchestrations]
+        assert "enabled-one" in names
+        assert "enabled-two" in names
+        assert "disabled-one" not in names
+
+    def test_invalid_orchestration_enabled_type(self, tmp_path: Path) -> None:
+        """Should raise error if orchestration enabled is not a boolean."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-enabled"
+    enabled: "yes"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "invalid_enabled.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="invalid 'enabled' value"):
+            load_orchestration_file(file_path)
+
+    def test_file_level_enabled_false(self, tmp_path: Path) -> None:
+        """File-level enabled: false should disable all orchestrations."""
+        yaml_content = """
+enabled: false
+orchestrations:
+  - name: "orch-one"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "First"
+  - name: "orch-two"
+    enabled: true
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Second"
+"""
+        file_path = tmp_path / "file_disabled.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 0
+
+    def test_file_level_enabled_true(self, tmp_path: Path) -> None:
+        """File-level enabled: true should allow orchestrations to be loaded."""
+        yaml_content = """
+enabled: true
+orchestrations:
+  - name: "orch-one"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "First"
+"""
+        file_path = tmp_path / "file_enabled.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 1
+
+    def test_file_level_enabled_defaults_to_true(self, tmp_path: Path) -> None:
+        """File-level enabled should default to true when not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "orch-one"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "First"
+"""
+        file_path = tmp_path / "no_file_enabled.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 1
+
+    def test_file_level_takes_precedence_over_orchestration_level(self, tmp_path: Path) -> None:
+        """File-level enabled: false should override orchestration-level enabled: true."""
+        yaml_content = """
+enabled: false
+orchestrations:
+  - name: "enabled-orch"
+    enabled: true
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "This should still be disabled"
+"""
+        file_path = tmp_path / "file_precedence.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        # File-level disabled should override orchestration-level enabled
+        assert len(orchestrations) == 0
+
+    def test_invalid_file_level_enabled_type(self, tmp_path: Path) -> None:
+        """Should raise error if file-level enabled is not a boolean."""
+        yaml_content = """
+enabled: "yes"
+orchestrations:
+  - name: "test"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "invalid_file_enabled.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="File-level 'enabled' must be a boolean"):
+            load_orchestration_file(file_path)
+
+    def test_file_enabled_false_with_empty_orchestrations(self, tmp_path: Path) -> None:
+        """File-level enabled: false with no orchestrations should return empty list."""
+        yaml_content = """
+enabled: false
+orchestrations: []
+"""
+        file_path = tmp_path / "disabled_empty.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert orchestrations == []
+
+    def test_all_orchestrations_disabled(self, tmp_path: Path) -> None:
+        """Should return empty list when all orchestrations are individually disabled."""
+        yaml_content = """
+orchestrations:
+  - name: "disabled-one"
+    enabled: false
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "First"
+  - name: "disabled-two"
+    enabled: false
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Second"
+"""
+        file_path = tmp_path / "all_disabled.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 0
