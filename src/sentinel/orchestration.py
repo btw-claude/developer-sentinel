@@ -204,7 +204,7 @@ class OrchestrationError(Exception):
     pass
 
 
-def _validate_github_repo_format(repo: str) -> bool:
+def _validate_github_repo_format(repo: str) -> tuple[bool, str]:
     """Validate that a GitHub repo string is in 'owner/repo-name' format.
 
     Enforces GitHub-specific character restrictions:
@@ -227,7 +227,7 @@ def _validate_github_repo_format(repo: str) -> bool:
         repo: The repository string to validate.
 
     Returns:
-        True if valid, False otherwise.
+        A tuple of (is_valid, error_message). If valid, error_message is empty.
 
     Valid formats:
         - "owner/repo"
@@ -247,24 +247,27 @@ def _validate_github_repo_format(repo: str) -> bool:
         - "owner/." (repo is reserved name)
     """
     if not repo:
-        return True  # Empty is valid (optional field)
+        return True, ""  # Empty is valid (optional field)
 
     parts = repo.split("/")
     if len(parts) != 2:
-        return False
+        return False, "must be in 'owner/repo-name' format (e.g., 'octocat/hello-world')"
 
     owner, repo_name = parts
 
     # Basic check for non-empty parts
-    if not owner.strip() or not repo_name.strip():
-        return False
+    if not owner.strip():
+        return False, "owner cannot be empty"
+
+    if not repo_name.strip():
+        return False, "repository name cannot be empty"
 
     # Reserved names check (both owner and repo cannot be "." or "..")
     if owner in (".", ".."):
-        return False
+        return False, f"owner '{owner}' is a reserved name"
 
     if repo_name in (".", ".."):
-        return False
+        return False, f"repository name '{repo_name}' is a reserved name"
 
     # Validate owner (username/organization)
     # - Max 39 characters
@@ -272,10 +275,14 @@ def _validate_github_repo_format(repo: str) -> bool:
     # - Cannot start or end with hyphen
     # - Cannot have consecutive hyphens
     if len(owner) > 39:
-        return False
+        return False, f"owner exceeds maximum length of 39 characters (got {len(owner)})"
 
     if not _GITHUB_OWNER_PATTERN.match(owner):
-        return False
+        return (
+            False,
+            f"owner '{owner}' contains invalid characters or format "
+            "(must be alphanumeric with single hyphens, cannot start/end with hyphen)",
+        )
 
     # Validate repo name
     # - Max 100 characters
@@ -283,18 +290,25 @@ def _validate_github_repo_format(repo: str) -> bool:
     # - Cannot start with a period
     # - Cannot end with .git
     if len(repo_name) > 100:
-        return False
+        return (
+            False,
+            f"repository name exceeds maximum length of 100 characters (got {len(repo_name)})",
+        )
 
     if repo_name.startswith("."):
-        return False
+        return False, "repository name cannot start with a period"
 
     if repo_name.lower().endswith(".git"):
-        return False
+        return False, "repository name cannot end with '.git'"
 
     if not _GITHUB_REPO_PATTERN.match(repo_name):
-        return False
+        return (
+            False,
+            f"repository name '{repo_name}' contains invalid characters "
+            "(allowed: alphanumeric, hyphens, underscores, periods)",
+        )
 
-    return True
+    return True, ""
 
 
 def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
@@ -314,11 +328,10 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     repo = data.get("repo", "")
 
     # Validate repo format for GitHub triggers
-    if source == "github" and repo and not _validate_github_repo_format(repo):
-        raise OrchestrationError(
-            f"Invalid GitHub repo format '{repo}': must be 'owner/repo-name' format "
-            "(e.g., 'octocat/hello-world')"
-        )
+    if source == "github" and repo:
+        is_valid, error_message = _validate_github_repo_format(repo)
+        if not is_valid:
+            raise OrchestrationError(f"Invalid GitHub repo format '{repo}': {error_message}")
 
     return TriggerConfig(
         source=source,
