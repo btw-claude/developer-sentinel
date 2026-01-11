@@ -250,7 +250,9 @@ class BaseGitHubHttpClient:
                 return response.json()
     """
 
-    # Type hints for attributes that subclasses must provide
+    # Instance attribute type stubs - subclasses MUST set these in __init__
+    # before calling _get_client(). These are declared here to support static
+    # type checking and IDE autocompletion for the abstract contract.
     timeout: httpx.Timeout
     _headers: dict[str, str]
 
