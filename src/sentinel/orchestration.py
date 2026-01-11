@@ -183,6 +183,8 @@ class Orchestration:
         on_start: Actions to take when processing starts.
         on_complete: Actions to take after successful processing (deprecated if outcomes used).
         on_failure: Actions to take after failed processing.
+        enabled: Whether this orchestration is enabled. Defaults to True for backwards
+            compatibility. When False, this orchestration will be skipped during loading.
     """
 
     name: str
@@ -193,6 +195,7 @@ class Orchestration:
     on_start: OnStartConfig = field(default_factory=OnStartConfig)
     on_complete: OnCompleteConfig = field(default_factory=OnCompleteConfig)
     on_failure: OnFailureConfig = field(default_factory=OnFailureConfig)
+    enabled: bool = True
 
 
 class OrchestrationError(Exception):
@@ -452,6 +455,13 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
     if not agent_data:
         raise OrchestrationError(f"Orchestration '{name}' must have an 'agent' field")
 
+    # Parse enabled field (defaults to True for backwards compatibility)
+    enabled = data.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise OrchestrationError(
+            f"Orchestration '{name}' has invalid 'enabled' value: must be a boolean"
+        )
+
     return Orchestration(
         name=name,
         trigger=_parse_trigger(trigger_data),
@@ -461,17 +471,24 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
         on_start=_parse_on_start(data.get("on_start")),
         on_complete=_parse_on_complete(data.get("on_complete")),
         on_failure=_parse_on_failure(data.get("on_failure")),
+        enabled=enabled,
     )
 
 
 def load_orchestration_file(file_path: Path) -> list[Orchestration]:
     """Load orchestrations from a single YAML file.
 
+    Supports file-level and orchestration-level enabled flags:
+    - File-level `enabled: false` disables all orchestrations in the file
+    - Orchestration-level `enabled: false` disables just that orchestration
+    - File-level takes precedence over orchestration-level
+    - Both default to True for backwards compatibility
+
     Args:
         file_path: Path to the YAML file.
 
     Returns:
-        List of Orchestration objects.
+        List of enabled Orchestration objects. Disabled orchestrations are filtered out.
 
     Raises:
         OrchestrationError: If the file is invalid.
@@ -487,11 +504,24 @@ def load_orchestration_file(file_path: Path) -> list[Orchestration]:
     if not data:
         return []
 
+    # Check file-level enabled flag (defaults to True for backwards compatibility)
+    file_enabled = data.get("enabled", True)
+    if not isinstance(file_enabled, bool):
+        raise OrchestrationError(
+            f"File-level 'enabled' must be a boolean in {file_path}"
+        )
+
+    # If file-level enabled is False, return empty list (all orchestrations disabled)
+    if not file_enabled:
+        return []
+
     orchestrations_data = data.get("orchestrations", [])
     if not isinstance(orchestrations_data, list):
         raise OrchestrationError(f"'orchestrations' must be a list in {file_path}")
 
-    return [_parse_orchestration(orch) for orch in orchestrations_data]
+    # Parse all orchestrations and filter out disabled ones
+    orchestrations = [_parse_orchestration(orch) for orch in orchestrations_data]
+    return [orch for orch in orchestrations if orch.enabled]
 
 
 def load_orchestrations(directory: Path) -> list[Orchestration]:
