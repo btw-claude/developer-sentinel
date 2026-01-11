@@ -352,6 +352,56 @@ class TestBaseGitHubHttpClient:
 
         mock_http_client.close.assert_called_once()
 
+    def test_get_client_raises_when_timeout_not_set(self) -> None:
+        """Test that _get_client raises RuntimeError if timeout is not set."""
+
+        class BadClient(BaseGitHubHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self._headers = {"Test": "Header"}
+                # Missing: self.timeout = ...
+
+        client = BadClient()
+        with pytest.raises(RuntimeError, match="must set self.timeout"):
+            client._get_client()
+
+    def test_get_client_raises_when_headers_not_set(self) -> None:
+        """Test that _get_client raises RuntimeError if _headers is not set."""
+
+        class BadClient(BaseGitHubHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout = httpx.Timeout(10.0)
+                # Missing: self._headers = ...
+
+        client = BadClient()
+        with pytest.raises(RuntimeError, match="must set self._headers"):
+            client._get_client()
+
+    def test_get_client_error_message_includes_class_name(self) -> None:
+        """Test that the error message includes the subclass name for debugging."""
+
+        class MyCustomClient(BaseGitHubHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                # Missing both timeout and _headers
+
+        client = MyCustomClient()
+        with pytest.raises(RuntimeError, match="MyCustomClient must set"):
+            client._get_client()
+
+    def test_get_client_error_message_references_docstring(self) -> None:
+        """Test that the error message references the docstring for help."""
+
+        class BadClient(BaseGitHubHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                # Missing both timeout and _headers
+
+        client = BadClient()
+        with pytest.raises(RuntimeError, match="See BaseGitHubHttpClient docstring"):
+            client._get_client()
+
 
 class TestGitHubRestClient:
     """Tests for GitHubRestClient class."""

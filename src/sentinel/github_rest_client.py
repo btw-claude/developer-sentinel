@@ -231,6 +231,23 @@ class BaseGitHubHttpClient:
     - Context manager support (__enter__/__exit__)
 
     Subclasses must set self.timeout and self._headers before using _get_client().
+
+    Example subclass implementation::
+
+        class MyGitHubClient(BaseGitHubHttpClient):
+            def __init__(self, token: str, timeout: httpx.Timeout | None = None) -> None:
+                super().__init__()
+                self.timeout = timeout or DEFAULT_TIMEOUT
+                self._headers = {
+                    "Accept": "application/vnd.github+json",
+                    "Authorization": f"Bearer {token}",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+
+            def my_api_method(self) -> dict:
+                client = self._get_client()
+                response = client.get("https://api.github.com/...")
+                return response.json()
     """
 
     # Type hints for attributes that subclasses must provide
@@ -251,8 +268,22 @@ class BaseGitHubHttpClient:
 
         Returns:
             A configured httpx.Client instance with connection pooling.
+
+        Raises:
+            RuntimeError: If subclass has not set required timeout or _headers attributes.
         """
         if self._client is None:
+            # Runtime safety check: ensure subclass has properly initialized required attributes
+            if not hasattr(self, "timeout") or self.timeout is None:
+                raise RuntimeError(
+                    f"{self.__class__.__name__} must set self.timeout before calling _get_client(). "
+                    "See BaseGitHubHttpClient docstring for implementation example."
+                )
+            if not hasattr(self, "_headers") or self._headers is None:
+                raise RuntimeError(
+                    f"{self.__class__.__name__} must set self._headers before calling _get_client(). "
+                    "See BaseGitHubHttpClient docstring for implementation example."
+                )
             self._client = httpx.Client(timeout=self.timeout, headers=self._headers)
         return self._client
 
