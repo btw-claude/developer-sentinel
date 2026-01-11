@@ -9,9 +9,13 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from sentinel.github_poller import GitHubIssue
 from sentinel.logging import get_logger, log_agent_summary
 from sentinel.orchestration import Orchestration, Outcome, RetryConfig
 from sentinel.poller import JiraIssue
+
+# Type alias for issues from any supported source
+AnyIssue = JiraIssue | GitHubIssue
 
 if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
@@ -124,51 +128,109 @@ class AgentExecutor:
         self.agent_logger = agent_logger
 
     def _build_template_variables(
-        self, issue: JiraIssue, orchestration: Orchestration
+        self, issue: AnyIssue, orchestration: Orchestration
     ) -> dict[str, str]:
         """Build the dictionary of template variables for prompt substitution.
 
         Args:
-            issue: The Jira issue to process.
+            issue: The issue to process (Jira or GitHub).
             orchestration: The orchestration configuration.
 
         Returns:
             Dictionary mapping variable names to their values.
         """
-        # Format comments - last 3 comments, each truncated to 500 chars
-        comments_text = ""
-        if issue.comments:
-            comment_parts = []
-            for i, comment in enumerate(issue.comments[-3:], 1):
-                if len(comment) > 500:
-                    comment_parts.append(f"{i}. {comment[:500]}...")
-                else:
-                    comment_parts.append(f"{i}. {comment}")
-            comments_text = "\n".join(comment_parts)
-
-        # Get GitHub context
+        # Get GitHub context from orchestration
         github = orchestration.agent.github
 
-        return {
-            # Jira context
-            "jira_issue_key": issue.key,
-            "jira_summary": issue.summary,
-            "jira_description": issue.description or "",
-            "jira_status": issue.status or "",
-            "jira_assignee": issue.assignee or "",
-            "jira_labels": ", ".join(issue.labels) if issue.labels else "",
-            "jira_comments": comments_text,
-            "jira_links": ", ".join(issue.links) if issue.links else "",
-            # GitHub context
+        # Build base variables dict with GitHub repository context
+        variables: dict[str, str] = {
+            # GitHub repository context
             "github_host": github.host if github else "",
             "github_org": github.org if github else "",
             "github_repo": github.repo if github else "",
         }
 
-    def build_prompt(self, issue: JiraIssue, orchestration: Orchestration) -> str:
+        if isinstance(issue, JiraIssue):
+            # Format comments - last 3 comments, each truncated to 500 chars
+            comments_text = ""
+            if issue.comments:
+                comment_parts = []
+                for i, comment in enumerate(issue.comments[-3:], 1):
+                    if len(comment) > 500:
+                        comment_parts.append(f"{i}. {comment[:500]}...")
+                    else:
+                        comment_parts.append(f"{i}. {comment}")
+                comments_text = "\n".join(comment_parts)
+
+            # Add Jira-specific variables
+            variables.update({
+                # Jira context
+                "jira_issue_key": issue.key,
+                "jira_summary": issue.summary,
+                "jira_description": issue.description or "",
+                "jira_status": issue.status or "",
+                "jira_assignee": issue.assignee or "",
+                "jira_labels": ", ".join(issue.labels) if issue.labels else "",
+                "jira_comments": comments_text,
+                "jira_links": ", ".join(issue.links) if issue.links else "",
+                # GitHub Issue variables (empty for Jira issues)
+                "github_issue_number": "",
+                "github_issue_title": "",
+                "github_issue_body": "",
+                "github_issue_state": "",
+                "github_issue_author": "",
+                "github_issue_assignees": "",
+                "github_issue_labels": "",
+                "github_issue_url": "",
+                "github_is_pr": "",
+                "github_pr_head": "",
+                "github_pr_base": "",
+                "github_pr_draft": "",
+            })
+        elif isinstance(issue, GitHubIssue):
+            # Build GitHub issue URL if we have the necessary info
+            github_issue_url = ""
+            if github and github.host and github.org and github.repo:
+                github_issue_url = (
+                    f"https://{github.host}/{github.org}/{github.repo}/"
+                    f"{'pull' if issue.is_pull_request else 'issues'}/{issue.number}"
+                )
+
+            # Add GitHub Issue-specific variables
+            variables.update({
+                # GitHub Issue context
+                "github_issue_number": str(issue.number),
+                "github_issue_title": issue.title,
+                "github_issue_body": issue.body or "",
+                "github_issue_state": issue.state,
+                "github_issue_author": issue.author,
+                "github_issue_assignees": ", ".join(issue.assignees) if issue.assignees else "",
+                "github_issue_labels": ", ".join(issue.labels) if issue.labels else "",
+                "github_issue_url": github_issue_url,
+                # PR-specific fields
+                "github_is_pr": str(issue.is_pull_request).lower(),
+                "github_pr_head": issue.head_ref if issue.is_pull_request else "",
+                "github_pr_base": issue.base_ref if issue.is_pull_request else "",
+                "github_pr_draft": str(issue.draft).lower() if issue.is_pull_request else "",
+                # Jira variables (empty for GitHub issues)
+                "jira_issue_key": "",
+                "jira_summary": "",
+                "jira_description": "",
+                "jira_status": "",
+                "jira_assignee": "",
+                "jira_labels": "",
+                "jira_comments": "",
+                "jira_links": "",
+            })
+
+        return variables
+
+    def build_prompt(self, issue: AnyIssue, orchestration: Orchestration) -> str:
         """Build the agent prompt by substituting template variables.
 
         Template variables available in the prompt:
+
+        Jira context (populated for Jira issues):
         - {jira_issue_key}: The Jira issue key (e.g., "DS-123")
         - {jira_summary}: Issue summary/title
         - {jira_description}: Full issue description
@@ -177,12 +239,28 @@ class AgentExecutor:
         - {jira_labels}: Comma-separated list of labels
         - {jira_comments}: Recent comments (last 3)
         - {jira_links}: Comma-separated list of linked issue keys
+
+        GitHub repository context (from orchestration config):
         - {github_host}: GitHub host (e.g., "github.com")
         - {github_org}: GitHub organization
         - {github_repo}: GitHub repository name
 
+        GitHub Issue context (populated for GitHub issues/PRs):
+        - {github_issue_number}: The issue/PR number
+        - {github_issue_title}: Issue/PR title
+        - {github_issue_body}: Issue/PR body/description
+        - {github_issue_state}: State (e.g., "open", "closed")
+        - {github_issue_author}: Username of the author
+        - {github_issue_assignees}: Comma-separated list of assignees
+        - {github_issue_labels}: Comma-separated list of labels
+        - {github_issue_url}: Full URL to the issue/PR
+        - {github_is_pr}: "true" if this is a pull request, "false" otherwise
+        - {github_pr_head}: Head branch reference (for PRs)
+        - {github_pr_base}: Base branch reference (for PRs)
+        - {github_pr_draft}: "true" if draft PR, "false" otherwise (for PRs)
+
         Args:
-            issue: The Jira issue to process.
+            issue: The issue to process (Jira or GitHub).
             orchestration: The orchestration configuration.
 
         Returns:
@@ -377,13 +455,13 @@ class AgentExecutor:
 
     def execute(
         self,
-        issue: JiraIssue,
+        issue: AnyIssue,
         orchestration: Orchestration,
     ) -> ExecutionResult:
         """Execute an agent on an issue with retry logic.
 
         Args:
-            issue: The Jira issue to process.
+            issue: The issue to process (Jira or GitHub).
             orchestration: The orchestration configuration.
 
         Returns:
