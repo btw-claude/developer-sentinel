@@ -5,14 +5,10 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
 from sentinel.executor import ExecutionResult, ExecutionStatus
+from sentinel.github_rest_client import GitHubTagClient, GitHubTagClientError
 from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration
-
-if TYPE_CHECKING:
-    from sentinel.github_rest_client import GitHubTagClient
 
 logger = get_logger(__name__)
 
@@ -66,7 +62,7 @@ class JiraTagClient(ABC):
 
 @dataclass
 class TagUpdateResult:
-    """Result of updating tags on a Jira issue."""
+    """Result of updating tags on a Jira or GitHub issue."""
 
     issue_key: str
     added_tags: list[str]
@@ -156,8 +152,6 @@ class TagManager:
             GitHubTagClientError: If the GitHub operation fails.
             ValueError: If the client for the platform is not available.
         """
-        from sentinel.github_rest_client import GitHubTagClientError
-
         platform, client, github_info = self._get_client_for_issue(issue_key)
 
         if client is None:
@@ -168,10 +162,7 @@ class TagManager:
 
         if platform == "github" and github_info:
             owner, repo, issue_number = github_info
-            # GitHubTagClient has a different signature
-            from sentinel.github_rest_client import GitHubTagClient as GHClient
-
-            if isinstance(client, GHClient):
+            if isinstance(client, GitHubTagClient):
                 client.add_label(owner, repo, issue_number, label)
             else:
                 raise ValueError(f"Invalid GitHub client type for {issue_key}")
@@ -194,8 +185,6 @@ class TagManager:
             GitHubTagClientError: If the GitHub operation fails.
             ValueError: If the client for the platform is not available.
         """
-        from sentinel.github_rest_client import GitHubTagClientError
-
         platform, client, github_info = self._get_client_for_issue(issue_key)
 
         if client is None:
@@ -206,10 +195,7 @@ class TagManager:
 
         if platform == "github" and github_info:
             owner, repo, issue_number = github_info
-            # GitHubTagClient has a different signature
-            from sentinel.github_rest_client import GitHubTagClient as GHClient
-
-            if isinstance(client, GHClient):
+            if isinstance(client, GitHubTagClient):
                 client.remove_label(owner, repo, issue_number, label)
             else:
                 raise ValueError(f"Invalid GitHub client type for {issue_key}")
@@ -236,8 +222,6 @@ class TagManager:
         Returns:
             TagUpdateResult with details of what was changed.
         """
-        from sentinel.github_rest_client import GitHubTagClientError
-
         added_tags: list[str] = []
         removed_tags: list[str] = []
         errors: list[str] = []
@@ -300,8 +284,6 @@ class TagManager:
         Returns:
             TagUpdateResult with details of what was changed.
         """
-        from sentinel.github_rest_client import GitHubTagClientError
-
         added_tags: list[str] = []
         removed_tags: list[str] = []
         errors: list[str] = []
@@ -416,8 +398,6 @@ class TagManager:
         Returns:
             TagUpdateResult with details of what was changed.
         """
-        from sentinel.github_rest_client import GitHubTagClientError
-
         added_tags: list[str] = []
         removed_tags: list[str] = []
         errors: list[str] = []
