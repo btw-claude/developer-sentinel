@@ -16,6 +16,8 @@ from typing import Any
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config, load_config
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
+from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubPoller
+from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
 from sentinel.logging import get_logger, setup_logging
 from sentinel.mcp_clients import (
     ClaudeMcpAgentClient,
@@ -27,7 +29,7 @@ from sentinel.mcp_clients import (
     request_shutdown as request_claude_shutdown,
 )
 from sentinel.orchestration import Orchestration, load_orchestrations
-from sentinel.poller import JiraClient, JiraPoller
+from sentinel.poller import JiraClient, JiraIssue, JiraPoller
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.router import Router
 from sentinel.tag_manager import JiraTagClient, TagManager
@@ -46,6 +48,8 @@ class Sentinel:
         agent_client: AgentClient,
         tag_client: JiraTagClient,
         agent_logger: AgentLogger | None = None,
+        github_client: GitHubClient | None = None,
+        github_tag_client: GitHubTagClient | None = None,
     ) -> None:
         """Initialize the Sentinel orchestrator.
 
@@ -56,13 +60,16 @@ class Sentinel:
             agent_client: Agent client for executing agents.
             tag_client: Jira client for tag operations.
             agent_logger: Optional logger for agent execution logs.
+            github_client: Optional GitHub client for polling GitHub issues/PRs.
+            github_tag_client: Optional GitHub client for tag/label operations.
         """
         self.config = config
         self.orchestrations = orchestrations
-        self.poller = JiraPoller(jira_client)
+        self.jira_poller = JiraPoller(jira_client)
+        self.github_poller = GitHubPoller(github_client) if github_client else None
         self.router = Router(orchestrations)
         self.executor = AgentExecutor(agent_client, agent_logger)
-        self.tag_manager = TagManager(tag_client)
+        self.tag_manager = TagManager(tag_client, github_client=github_tag_client)
         self._shutdown_requested = False
 
         # Thread pool for concurrent execution
@@ -166,87 +173,247 @@ class Sentinel:
             )
             return all_results
 
+        # Group orchestrations by trigger source
+        jira_orchestrations: list[Orchestration] = []
+        github_orchestrations: list[Orchestration] = []
+
+        for orch in self.orchestrations:
+            if orch.trigger.source == "github":
+                github_orchestrations.append(orch)
+            else:
+                jira_orchestrations.append(orch)
+
+        # Track how many tasks we've submitted this cycle
+        submitted_count = 0
+
+        # Poll Jira triggers
+        if jira_orchestrations:
+            jira_submitted = self._poll_jira_triggers(jira_orchestrations, all_results)
+            submitted_count += jira_submitted
+
+        # Poll GitHub triggers (if GitHub client is configured)
+        if github_orchestrations:
+            if self.github_poller:
+                github_submitted = self._poll_github_triggers(github_orchestrations, all_results)
+                submitted_count += github_submitted
+            else:
+                logger.warning(
+                    f"Found {len(github_orchestrations)} GitHub-triggered orchestrations "
+                    "but GitHub client is not configured. Set GITHUB_TOKEN to enable."
+                )
+
+        if submitted_count > 0:
+            logger.info(f"Submitted {submitted_count} execution tasks")
+
+        return all_results
+
+    def _poll_jira_triggers(
+        self,
+        orchestrations: list[Orchestration],
+        all_results: list[ExecutionResult],
+    ) -> int:
+        """Poll Jira for issues matching orchestration triggers.
+
+        Args:
+            orchestrations: List of Jira-triggered orchestrations.
+            all_results: List to append synchronous results to.
+
+        Returns:
+            Number of tasks submitted to the thread pool.
+        """
         # Collect unique trigger configs to avoid duplicate polling
         seen_triggers: set[str] = set()
         triggers_to_poll: list[tuple[Orchestration, Any]] = []
 
-        for orch in self.orchestrations:
-            trigger_key = f"{orch.trigger.project}:{','.join(orch.trigger.tags)}"
+        for orch in orchestrations:
+            trigger_key = f"jira:{orch.trigger.project}:{','.join(orch.trigger.tags)}"
             if trigger_key not in seen_triggers:
                 seen_triggers.add(trigger_key)
                 triggers_to_poll.append((orch, orch.trigger))
 
-        # Track how many tasks we've submitted this cycle
         submitted_count = 0
 
         # Poll for each unique trigger
         for orch, trigger in triggers_to_poll:
             if self._shutdown_requested:
                 logger.info("Shutdown requested, stopping polling")
-                return all_results
+                return submitted_count
 
-            logger.info(f"Polling for orchestration '{orch.name}'")
+            logger.info(f"Polling Jira for orchestration '{orch.name}'")
             try:
-                issues = self.poller.poll(trigger, self.config.max_issues_per_poll)
-                logger.info(f"Found {len(issues)} issues for '{orch.name}'")
+                issues = self.jira_poller.poll(trigger, self.config.max_issues_per_poll)
+                logger.info(f"Found {len(issues)} Jira issues for '{orch.name}'")
             except Exception as e:
-                logger.error(f"Failed to poll for '{orch.name}': {e}")
+                logger.error(f"Failed to poll Jira for '{orch.name}': {e}")
                 continue
 
             # Route issues to matching orchestrations
             routing_results = self.router.route_matched_only(issues)
 
-            # Submit execution tasks for matched issues
-            for routing_result in routing_results:
-                for matched_orch in routing_result.orchestrations:
-                    if self._shutdown_requested:
-                        logger.info("Shutdown requested, stopping execution")
-                        return all_results
+            # Submit execution tasks
+            submitted = self._submit_execution_tasks(routing_results, all_results)
+            submitted_count += submitted
 
-                    # Check if we have available slots
-                    if self._get_available_slots() <= 0:
-                        logger.debug("No available slots, will process in next cycle")
-                        return all_results
+        return submitted_count
 
-                    issue_key = routing_result.issue.key
-                    logger.info(f"Submitting '{matched_orch.name}' for {issue_key}")
+    def _poll_github_triggers(
+        self,
+        orchestrations: list[Orchestration],
+        all_results: list[ExecutionResult],
+    ) -> int:
+        """Poll GitHub for issues/PRs matching orchestration triggers.
 
-                    try:
-                        # Mark issue as being processed (remove trigger tags, add in-progress tag)
-                        self.tag_manager.start_processing(issue_key, matched_orch)
+        Args:
+            orchestrations: List of GitHub-triggered orchestrations.
+            all_results: List to append synchronous results to.
 
-                        # Submit to thread pool
-                        if self._thread_pool is not None:
-                            future = self._thread_pool.submit(
-                                self._execute_orchestration_task,
-                                routing_result.issue,
-                                matched_orch,
-                            )
-                            with self._futures_lock:
-                                self._active_futures.append(future)
-                            submitted_count += 1
-                        else:
-                            # Fallback: synchronous execution (e.g., run_once without run())
-                            result = self._execute_orchestration_task(
-                                routing_result.issue,
-                                matched_orch,
-                            )
-                            if result is not None:
-                                all_results.append(result)
+        Returns:
+            Number of tasks submitted to the thread pool.
+        """
+        if not self.github_poller:
+            return 0
 
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to submit '{matched_orch.name}' for {issue_key}: {e}"
+        # Collect unique trigger configs to avoid duplicate polling
+        seen_triggers: set[str] = set()
+        triggers_to_poll: list[tuple[Orchestration, Any]] = []
+
+        for orch in orchestrations:
+            trigger_key = f"github:{orch.trigger.repo}:{','.join(orch.trigger.tags)}"
+            if trigger_key not in seen_triggers:
+                seen_triggers.add(trigger_key)
+                triggers_to_poll.append((orch, orch.trigger))
+
+        submitted_count = 0
+
+        # Poll for each unique trigger
+        for orch, trigger in triggers_to_poll:
+            if self._shutdown_requested:
+                logger.info("Shutdown requested, stopping polling")
+                return submitted_count
+
+            logger.info(f"Polling GitHub for orchestration '{orch.name}'")
+            try:
+                issues = self.github_poller.poll(trigger, self.config.max_issues_per_poll)
+                logger.info(f"Found {len(issues)} GitHub issues/PRs for '{orch.name}'")
+            except Exception as e:
+                logger.error(f"Failed to poll GitHub for '{orch.name}': {e}")
+                continue
+
+            # Convert GitHub issues to include repo context for tag operations
+            # The GitHubIssue.key property returns "#123" format, but we need "org/repo#123"
+            # for tag operations to work correctly
+            issues_with_context = self._add_repo_context_to_github_issues(issues, trigger.repo)
+
+            # Route issues to matching orchestrations
+            routing_results = self.router.route_matched_only(issues_with_context)
+
+            # Submit execution tasks
+            submitted = self._submit_execution_tasks(routing_results, all_results)
+            submitted_count += submitted
+
+        return submitted_count
+
+    def _add_repo_context_to_github_issues(
+        self,
+        issues: list[GitHubIssue],
+        repo: str,
+    ) -> list[GitHubIssue]:
+        """Add repository context to GitHub issues for proper key formatting.
+
+        The GitHubIssue.key property returns "#123" but tag operations need "org/repo#123".
+        This creates new GitHubIssue objects with the full key.
+
+        Args:
+            issues: List of GitHubIssue objects from the poller.
+            repo: Repository in "org/repo" format.
+
+        Returns:
+            List of GitHubIssue objects with updated keys.
+        """
+        from dataclasses import replace
+
+        result = []
+        for issue in issues:
+            # Create a wrapper that provides the full key
+            # We can't modify the dataclass, so we create a simple wrapper
+            class GitHubIssueWithRepo:
+                def __init__(self, issue: GitHubIssue, repo: str):
+                    self._issue = issue
+                    self._repo = repo
+
+                @property
+                def key(self) -> str:
+                    return f"{self._repo}#{self._issue.number}"
+
+                def __getattr__(self, name: str) -> Any:
+                    return getattr(self._issue, name)
+
+            result.append(GitHubIssueWithRepo(issue, repo))  # type: ignore
+        return result  # type: ignore
+
+    def _submit_execution_tasks(
+        self,
+        routing_results: list[Any],
+        all_results: list[ExecutionResult],
+    ) -> int:
+        """Submit execution tasks for routed issues.
+
+        Args:
+            routing_results: List of routing results from the router.
+            all_results: List to append synchronous results to.
+
+        Returns:
+            Number of tasks submitted to the thread pool.
+        """
+        submitted_count = 0
+
+        for routing_result in routing_results:
+            for matched_orch in routing_result.orchestrations:
+                if self._shutdown_requested:
+                    logger.info("Shutdown requested, stopping execution")
+                    return submitted_count
+
+                # Check if we have available slots
+                if self._get_available_slots() <= 0:
+                    logger.debug("No available slots, will process in next cycle")
+                    return submitted_count
+
+                issue_key = routing_result.issue.key
+                logger.info(f"Submitting '{matched_orch.name}' for {issue_key}")
+
+                try:
+                    # Mark issue as being processed (remove trigger tags, add in-progress tag)
+                    self.tag_manager.start_processing(issue_key, matched_orch)
+
+                    # Submit to thread pool
+                    if self._thread_pool is not None:
+                        future = self._thread_pool.submit(
+                            self._execute_orchestration_task,
+                            routing_result.issue,
+                            matched_orch,
                         )
-                        try:
-                            self.tag_manager.apply_failure_tags(issue_key, matched_orch)
-                        except Exception as tag_error:
-                            logger.error(f"Failed to apply failure tags: {tag_error}")
+                        with self._futures_lock:
+                            self._active_futures.append(future)
+                        submitted_count += 1
+                    else:
+                        # Fallback: synchronous execution (e.g., run_once without run())
+                        result = self._execute_orchestration_task(
+                            routing_result.issue,
+                            matched_orch,
+                        )
+                        if result is not None:
+                            all_results.append(result)
 
-        if submitted_count > 0:
-            logger.info(f"Submitted {submitted_count} execution tasks")
+                except Exception as e:
+                    logger.error(
+                        f"Failed to submit '{matched_orch.name}' for {issue_key}: {e}"
+                    )
+                    try:
+                        self.tag_manager.apply_failure_tags(issue_key, matched_orch)
+                    except Exception as tag_error:
+                        logger.error(f"Failed to apply failure tags: {tag_error}")
 
-        return all_results
+        return submitted_count
 
     def run_once_and_wait(self) -> list[ExecutionResult]:
         """Run a single polling cycle with concurrent execution and wait for completion.
@@ -500,6 +667,29 @@ def main(args: list[str] | None = None) -> int:
         jira_client = JiraMcpClient(config)
         tag_client = JiraMcpTagClient(config)
 
+    # Initialize GitHub clients if configured
+    github_client: GitHubClient | None = None
+    github_tag_client: GitHubTagClient | None = None
+
+    if config.github_configured:
+        logger.info("Using GitHub REST API clients (direct HTTP)")
+        github_client = GitHubRestClient(
+            token=config.github_token,
+            base_url=config.github_api_url if config.github_api_url else None,
+        )
+        github_tag_client = GitHubRestTagClient(
+            token=config.github_token,
+            base_url=config.github_api_url if config.github_api_url else None,
+        )
+    else:
+        # Check if any orchestrations use GitHub triggers
+        github_orchestrations = [o for o in orchestrations if o.trigger.source == "github"]
+        if github_orchestrations:
+            logger.warning(
+                f"Found {len(github_orchestrations)} GitHub-triggered orchestrations "
+                "but GitHub is not configured. Set GITHUB_TOKEN to enable GitHub polling."
+            )
+
     # Agent client always uses Claude Agent SDK (that's the whole point)
     # Pass log_base_dir to enable streaming logs during agent execution
     agent_client = ClaudeMcpAgentClient(
@@ -517,6 +707,8 @@ def main(args: list[str] | None = None) -> int:
         agent_client=agent_client,
         tag_client=tag_client,
         agent_logger=agent_logger,
+        github_client=github_client,
+        github_tag_client=github_tag_client,
     )
 
     if parsed.once:
