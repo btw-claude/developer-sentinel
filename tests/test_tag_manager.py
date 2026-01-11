@@ -10,6 +10,7 @@ from sentinel.orchestration import (
     Outcome,
     TriggerConfig,
 )
+from sentinel.github_rest_client import GitHubTagClient, GitHubTagClientError
 from sentinel.tag_manager import (
     JiraTagClient,
     JiraTagClientError,
@@ -729,9 +730,6 @@ class TestTagManagerOutcomeBasedTags:
         assert "outcome-tag" not in update_result.added_tags
         # Currently implementation doesn't add on_complete tag when outcomes
         # are configured but outcome not matched - only adds outcome tag
-
-
-from sentinel.github_rest_client import GitHubTagClient, GitHubTagClientError
 
 
 class MockGitHubTagClient(GitHubTagClient):
