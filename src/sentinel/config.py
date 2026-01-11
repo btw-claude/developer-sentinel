@@ -50,10 +50,19 @@ class Config:
     mcp_github_command: str = ""
     mcp_github_args: list[str] = field(default_factory=list)
 
+    # GitHub REST API configuration
+    github_token: str = ""  # Personal access token or app token
+    github_api_url: str = ""  # Custom API URL for GitHub Enterprise (empty = github.com)
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
         return bool(self.jira_base_url and self.jira_email and self.jira_api_token)
+
+    @property
+    def github_configured(self) -> bool:
+        """Check if GitHub REST API is configured."""
+        return bool(self.github_token)
 
 
 def _parse_positive_int(value: str, name: str, default: int) -> int:
@@ -196,4 +205,6 @@ def load_config(env_file: Path | None = None) -> Config:
         mcp_confluence_args=parse_args("MCP_CONFLUENCE_ARGS"),
         mcp_github_command=os.getenv("MCP_GITHUB_COMMAND", ""),
         mcp_github_args=parse_args("MCP_GITHUB_ARGS"),
+        github_token=os.getenv("GITHUB_TOKEN", ""),
+        github_api_url=os.getenv("GITHUB_API_URL", ""),
     )
