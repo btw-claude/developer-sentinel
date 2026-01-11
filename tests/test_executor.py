@@ -1361,7 +1361,7 @@ class TestGitHubTemplateVariables:
         assert prompt == "Body: []"
 
     def test_github_issue_none_body_substitutes_empty_string(self) -> None:
-        """None body should substitute as empty string."""
+        """Empty body should substitute as empty string (None is normalized to empty)."""
         from sentinel.github_poller import GitHubIssue
 
         client = MockAgentClient()
