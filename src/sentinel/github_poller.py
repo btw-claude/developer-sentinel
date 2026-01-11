@@ -45,7 +45,7 @@ class GitHubIssue:
 
     @property
     def key(self) -> str:
-        """Return a unique key for this issue/PR in the format 'org/repo#number'.
+        """Return a unique key for this issue/PR in the format '#number'.
 
         This is used as a consistent identifier across the system.
         """
@@ -92,12 +92,6 @@ class GitHubIssue:
         draft = False
 
         if is_pull_request:
-            # For search results, PR data might be nested
-            pr_data = data.get("pull_request", {})
-            if isinstance(pr_data, dict):
-                # Search API doesn't include head/base, but PR API does
-                pass
-
             # Direct PR fields (from PR API or if included in search)
             head_data = data.get("head")
             if head_data and isinstance(head_data, dict):
