@@ -729,3 +729,268 @@ class TestTagManagerOutcomeBasedTags:
         assert "outcome-tag" not in update_result.added_tags
         # Currently implementation doesn't add on_complete tag when outcomes
         # are configured but outcome not matched - only adds outcome tag
+
+
+from sentinel.github_rest_client import GitHubTagClient, GitHubTagClientError
+
+
+class MockGitHubTagClient(GitHubTagClient):
+    """Mock GitHub tag client for testing."""
+
+    def __init__(self) -> None:
+        # Don't call super().__init__() - we don't need token for the mock
+        self.labels: dict[tuple[str, str, int], list[str]] = {}
+        self.add_calls: list[tuple[str, str, int, str]] = []
+        self.remove_calls: list[tuple[str, str, int, str]] = []
+        self.should_fail_add = False
+        self.should_fail_remove = False
+
+    def add_label(self, owner: str, repo: str, issue_number: int, label: str) -> None:
+        self.add_calls.append((owner, repo, issue_number, label))
+        if self.should_fail_add:
+            raise GitHubTagClientError("Mock add error")
+        key = (owner, repo, issue_number)
+        if key not in self.labels:
+            self.labels[key] = []
+        if label not in self.labels[key]:
+            self.labels[key].append(label)
+
+    def remove_label(self, owner: str, repo: str, issue_number: int, label: str) -> None:
+        self.remove_calls.append((owner, repo, issue_number, label))
+        if self.should_fail_remove:
+            raise GitHubTagClientError("Mock remove error")
+        key = (owner, repo, issue_number)
+        if key in self.labels and label in self.labels[key]:
+            self.labels[key].remove(label)
+
+
+class TestTagManagerGitHubIssueKeyDetection:
+    """Tests for TagManager issue key format detection."""
+
+    def test_detects_github_issue_format(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        manager = TagManager(jira_client, github_client)
+
+        platform, client, info = manager._get_client_for_issue("owner/repo#123")
+
+        assert platform == "github"
+        assert client is github_client
+        assert info == ("owner", "repo", 123)
+
+    def test_detects_jira_issue_format(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        manager = TagManager(jira_client, github_client)
+
+        platform, client, info = manager._get_client_for_issue("PROJ-123")
+
+        assert platform == "jira"
+        assert client is jira_client
+        assert info is None
+
+    def test_falls_back_to_jira_for_unknown_format(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        manager = TagManager(jira_client, github_client)
+
+        platform, client, info = manager._get_client_for_issue("unknown-format")
+
+        assert platform == "jira"
+        assert client is jira_client
+        assert info is None
+
+    def test_github_client_none_when_not_provided(self) -> None:
+        jira_client = MockJiraTagClient()
+        manager = TagManager(jira_client)  # No GitHub client
+
+        platform, client, info = manager._get_client_for_issue("owner/repo#123")
+
+        assert platform == "github"
+        assert client is None
+        assert info == ("owner", "repo", 123)
+
+
+class TestTagManagerGitHubLabels:
+    """Tests for TagManager with GitHub label operations."""
+
+    def test_adds_label_to_github_issue(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        manager = TagManager(jira_client, github_client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="myorg/myrepo#42",
+        )
+        orch = make_orchestration(add_tag="processed")
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "processed" in update_result.added_tags
+        assert ("myorg", "myrepo", 42, "processed") in github_client.add_calls
+        assert len(jira_client.add_calls) == 0  # Jira not called
+
+    def test_removes_label_from_github_issue(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        github_client.labels[("myorg", "myrepo", 42)] = ["needs-review"]
+        manager = TagManager(jira_client, github_client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="myorg/myrepo#42",
+        )
+        orch = make_orchestration(remove_tag="needs-review")
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "needs-review" in update_result.removed_tags
+        assert ("myorg", "myrepo", 42, "needs-review") in github_client.remove_calls
+
+    def test_github_start_processing_removes_trigger_tags(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        github_client.labels[("myorg", "myrepo", 42)] = ["needs-review", "urgent"]
+        manager = TagManager(jira_client, github_client)
+
+        orch = make_orchestration(trigger_tags=["needs-review", "urgent"])
+
+        result = manager.start_processing("myorg/myrepo#42", orch)
+
+        assert result.success is True
+        assert "needs-review" in result.removed_tags
+        assert "urgent" in result.removed_tags
+        assert ("myorg", "myrepo", 42, "needs-review") in github_client.remove_calls
+        assert ("myorg", "myrepo", 42, "urgent") in github_client.remove_calls
+
+    def test_github_start_processing_adds_in_progress_tag(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        manager = TagManager(jira_client, github_client)
+
+        orch = make_orchestration(on_start_tag="sentinel-processing")
+
+        result = manager.start_processing("myorg/myrepo#42", orch)
+
+        assert result.success is True
+        assert "sentinel-processing" in result.added_tags
+        assert ("myorg", "myrepo", 42, "sentinel-processing") in github_client.add_calls
+
+    def test_github_records_error_when_add_fails(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        github_client.should_fail_add = True
+        manager = TagManager(jira_client, github_client)
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="myorg/myrepo#42",
+        )
+        orch = make_orchestration(add_tag="processed")
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is False
+        assert len(update_result.errors) == 1
+        assert "processed" in update_result.errors[0]
+
+    def test_github_records_error_when_remove_fails(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        github_client.should_fail_remove = True
+        manager = TagManager(jira_client, github_client)
+
+        orch = make_orchestration(trigger_tags=["needs-review"])
+
+        result = manager.start_processing("myorg/myrepo#42", orch)
+
+        assert result.success is False
+        assert len(result.errors) == 1
+        assert "needs-review" in result.errors[0]
+
+    def test_github_failure_tag_on_failure(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        manager = TagManager(jira_client, github_client)
+
+        result = make_result(
+            status=ExecutionStatus.FAILURE,
+            issue_key="myorg/myrepo#42",
+        )
+        orch = make_orchestration(failure_tag="agent-failed")
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is True
+        assert "agent-failed" in update_result.added_tags
+        assert ("myorg", "myrepo", 42, "agent-failed") in github_client.add_calls
+
+    def test_github_apply_failure_tags(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        github_client.labels[("myorg", "myrepo", 42)] = ["sentinel-processing"]
+        manager = TagManager(jira_client, github_client)
+
+        orch = make_orchestration(
+            on_start_tag="sentinel-processing",
+            failure_tag="review-failed",
+        )
+
+        result = manager.apply_failure_tags("myorg/myrepo#42", orch)
+
+        assert result.success is True
+        assert "sentinel-processing" in result.removed_tags
+        assert "review-failed" in result.added_tags
+        assert ("myorg", "myrepo", 42, "sentinel-processing") in github_client.remove_calls
+        assert ("myorg", "myrepo", 42, "review-failed") in github_client.add_calls
+
+    def test_error_when_no_github_client_for_github_issue(self) -> None:
+        jira_client = MockJiraTagClient()
+        manager = TagManager(jira_client)  # No GitHub client
+
+        result = make_result(
+            status=ExecutionStatus.SUCCESS,
+            issue_key="myorg/myrepo#42",
+        )
+        orch = make_orchestration(add_tag="processed")
+
+        update_result = manager.update_tags(result, orch)
+
+        assert update_result.success is False
+        assert len(update_result.errors) == 1
+        assert "No client available for github" in update_result.errors[0]
+
+
+class TestTagManagerMixedIssues:
+    """Tests for TagManager handling both Jira and GitHub issues."""
+
+    def test_batch_with_mixed_issues(self) -> None:
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        manager = TagManager(jira_client, github_client)
+
+        results = [
+            (
+                make_result(status=ExecutionStatus.SUCCESS, issue_key="PROJ-1"),
+                make_orchestration(add_tag="jira-done"),
+            ),
+            (
+                make_result(status=ExecutionStatus.SUCCESS, issue_key="owner/repo#1"),
+                make_orchestration(add_tag="github-done"),
+            ),
+        ]
+
+        update_results = manager.update_tags_batch(results)
+
+        assert len(update_results) == 2
+        assert update_results[0].success is True
+        assert update_results[1].success is True
+
+        # Verify Jira was called for Jira issue
+        assert ("PROJ-1", "jira-done") in jira_client.add_calls
+
+        # Verify GitHub was called for GitHub issue
+        assert ("owner", "repo", 1, "github-done") in github_client.add_calls

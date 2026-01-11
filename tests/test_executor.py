@@ -984,3 +984,304 @@ class TestAgentExecutorExecuteWithOutcomes:
 
         assert result.succeeded is True
         assert result.matched_outcome is None
+
+
+class TestAgentExecutorBuildPromptGitHubIssue:
+    """Tests for AgentExecutor.build_prompt with GitHub Issues."""
+
+    def test_substitutes_github_issue_number(self) -> None:
+        """Should substitute {github_issue_number} with issue number."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Test Issue")
+        orch = make_orchestration(prompt="Review issue #{github_issue_number}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Review issue #42"
+
+    def test_substitutes_github_issue_title(self) -> None:
+        """Should substitute {github_issue_title} with issue title."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=1, title="Fix authentication bug")
+        orch = make_orchestration(prompt="Task: {github_issue_title}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Task: Fix authentication bug"
+
+    def test_substitutes_github_issue_body(self) -> None:
+        """Should substitute {github_issue_body} with issue body."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=1, title="Test", body="Detailed description here")
+        orch = make_orchestration(prompt="Description:\n{github_issue_body}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Description:\nDetailed description here"
+
+    def test_substitutes_github_issue_state(self) -> None:
+        """Should substitute {github_issue_state} with issue state."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=1, title="Test", state="open")
+        orch = make_orchestration(prompt="State: {github_issue_state}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "State: open"
+
+    def test_substitutes_github_issue_author(self) -> None:
+        """Should substitute {github_issue_author} with author username."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=1, title="Test", author="octocat")
+        orch = make_orchestration(prompt="Author: {github_issue_author}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Author: octocat"
+
+    def test_substitutes_github_issue_assignees(self) -> None:
+        """Should substitute {github_issue_assignees} with comma-separated assignees."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=1, title="Test", assignees=["alice", "bob"])
+        orch = make_orchestration(prompt="Assignees: {github_issue_assignees}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Assignees: alice, bob"
+
+    def test_substitutes_github_issue_labels(self) -> None:
+        """Should substitute {github_issue_labels} with comma-separated labels."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=1, title="Test", labels=["bug", "urgent"])
+        orch = make_orchestration(prompt="Labels: {github_issue_labels}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Labels: bug, urgent"
+
+    def test_substitutes_github_issue_url(self) -> None:
+        """Should substitute {github_issue_url} with full URL."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Test")
+        orch = make_orchestration(
+            prompt="URL: {github_issue_url}",
+            github=GitHubContext(host="github.com", org="myorg", repo="myrepo"),
+        )
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "URL: https://github.com/myorg/myrepo/issues/42"
+
+    def test_substitutes_github_pr_url(self) -> None:
+        """Should substitute {github_issue_url} with PR URL for pull requests."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Test PR", is_pull_request=True)
+        orch = make_orchestration(
+            prompt="URL: {github_issue_url}",
+            github=GitHubContext(host="github.com", org="myorg", repo="myrepo"),
+        )
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "URL: https://github.com/myorg/myrepo/pull/42"
+
+    def test_substitutes_github_is_pr(self) -> None:
+        """Should substitute {github_is_pr} with 'true' or 'false'."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+
+        issue = GitHubIssue(number=1, title="Test Issue", is_pull_request=False)
+        orch = make_orchestration(prompt="Is PR: {github_is_pr}")
+        prompt = executor.build_prompt(issue, orch)
+        assert prompt == "Is PR: false"
+
+        pr = GitHubIssue(number=1, title="Test PR", is_pull_request=True)
+        prompt = executor.build_prompt(pr, orch)
+        assert prompt == "Is PR: true"
+
+    def test_substitutes_github_pr_head(self) -> None:
+        """Should substitute {github_pr_head} with head branch reference."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(
+            number=1, title="Test PR", is_pull_request=True, head_ref="feature-branch"
+        )
+        orch = make_orchestration(prompt="Head: {github_pr_head}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Head: feature-branch"
+
+    def test_substitutes_github_pr_base(self) -> None:
+        """Should substitute {github_pr_base} with base branch reference."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=1, title="Test PR", is_pull_request=True, base_ref="main")
+        orch = make_orchestration(prompt="Base: {github_pr_base}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Base: main"
+
+    def test_substitutes_github_pr_draft(self) -> None:
+        """Should substitute {github_pr_draft} with 'true' or 'false'."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+
+        draft_pr = GitHubIssue(number=1, title="Draft PR", is_pull_request=True, draft=True)
+        orch = make_orchestration(prompt="Draft: {github_pr_draft}")
+        prompt = executor.build_prompt(draft_pr, orch)
+        assert prompt == "Draft: true"
+
+        ready_pr = GitHubIssue(number=1, title="Ready PR", is_pull_request=True, draft=False)
+        prompt = executor.build_prompt(ready_pr, orch)
+        assert prompt == "Draft: false"
+
+    def test_github_issue_jira_variables_empty(self) -> None:
+        """Jira variables should be empty for GitHub issues."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Test")
+        orch = make_orchestration(
+            prompt="Jira: [{jira_issue_key}] [{jira_summary}] [{jira_status}]"
+        )
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Jira: [] [] []"
+
+    def test_jira_issue_github_variables_empty(self) -> None:
+        """GitHub Issue variables should be empty for Jira issues."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="PROJ-123", summary="Test")
+        orch = make_orchestration(
+            prompt="GitHub: [{github_issue_number}] [{github_issue_title}] [{github_issue_state}]"
+        )
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "GitHub: [] [] []"
+
+    def test_substitutes_multiple_github_variables(self) -> None:
+        """Should substitute multiple GitHub variables in one prompt."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(
+            number=42,
+            title="Fix authentication",
+            state="open",
+            author="octocat",
+            labels=["bug", "security"],
+        )
+        orch = make_orchestration(
+            prompt="#{github_issue_number}: {github_issue_title} by {github_issue_author} ({github_issue_labels})"
+        )
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "#42: Fix authentication by octocat (bug, security)"
+
+    def test_substitutes_github_context_and_issue_variables(self) -> None:
+        """Should substitute both GitHub repo context and issue variables."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Test Issue")
+        orch = make_orchestration(
+            prompt="Review {github_org}/{github_repo}#{github_issue_number}: {github_issue_title}",
+            github=GitHubContext(host="github.com", org="myorg", repo="myrepo"),
+        )
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Review myorg/myrepo#42: Test Issue"
+
+
+class TestAgentExecutorExecuteGitHubIssue:
+    """Tests for AgentExecutor.execute with GitHub Issues."""
+
+    def test_successful_execution_with_github_issue(self) -> None:
+        """Execute should work with GitHub issues."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient(responses=["SUCCESS: Review completed"])
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Test PR", is_pull_request=True)
+        orch = make_orchestration(prompt="Review GitHub PR #{github_issue_number}")
+
+        result = executor.execute(issue, orch)
+
+        assert result.succeeded is True
+        assert result.status == ExecutionStatus.SUCCESS
+        assert result.issue_key == "#42"
+        assert "SUCCESS" in result.response
+
+    def test_github_issue_key_in_result(self) -> None:
+        """Result should include GitHub issue key format."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=123, title="Test")
+        orch = make_orchestration()
+
+        result = executor.execute(issue, orch)
+
+        assert result.issue_key == "#123"
+
+    def test_github_issue_retries_on_failure(self) -> None:
+        """Execute should retry on failure for GitHub issues."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient(
+            responses=["FAILURE: First attempt", "SUCCESS: Done"]
+        )
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Test")
+        orch = make_orchestration(max_attempts=3)
+
+        result = executor.execute(issue, orch)
+
+        assert result.succeeded is True
+        assert result.attempts == 2
