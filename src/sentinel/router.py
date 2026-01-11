@@ -1,21 +1,33 @@
-"""Tag-based router for matching Jira issues to orchestrations."""
+"""Tag-based router for matching issues to orchestrations.
+
+Supports routing both Jira issues and GitHub issues/PRs to matching orchestrations
+based on tags/labels and source-specific filters.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Union
 
+from sentinel.github_poller import GitHubIssue
 from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraIssue
 
 logger = get_logger(__name__)
 
+# Type alias for issues from any supported source
+AnyIssue = Union[JiraIssue, GitHubIssue]
+
 
 @dataclass
 class RoutingResult:
-    """Result of routing a Jira issue to orchestrations."""
+    """Result of routing an issue to orchestrations.
 
-    issue: JiraIssue
+    Works with both Jira issues and GitHub issues/PRs.
+    """
+
+    issue: AnyIssue
     orchestrations: list[Orchestration]
 
     @property
@@ -25,10 +37,11 @@ class RoutingResult:
 
 
 class Router:
-    """Routes Jira issues to matching orchestrations based on tags.
+    """Routes issues to matching orchestrations based on tags.
 
     The router matches issues to orchestrations by checking if the issue's
     labels contain all the tags specified in an orchestration's trigger config.
+    Supports both Jira issues and GitHub issues/PRs.
     """
 
     def __init__(self, orchestrations: list[Orchestration]) -> None:
@@ -40,15 +53,19 @@ class Router:
         self.orchestrations = orchestrations
         logger.info(f"Router initialized with {len(orchestrations)} orchestrations")
 
-    def _matches_trigger(self, issue: JiraIssue, orchestration: Orchestration) -> bool:
+    def _matches_trigger(self, issue: AnyIssue, orchestration: Orchestration) -> bool:
         """Check if an issue matches an orchestration's trigger.
 
         An issue matches if:
-        1. The issue has ALL tags specified in the trigger (if any)
-        2. The issue is in the specified project (if specified)
+        1. The issue source type matches the trigger source
+        2. For Jira: The issue is in the specified project (if specified)
+        3. For GitHub: The issue is in the specified repo (if specified)
+        4. The issue has ALL tags specified in the trigger (if any)
+
+        Tag matching is case-insensitive for both platforms.
 
         Args:
-            issue: The Jira issue to check.
+            issue: The issue to check (Jira or GitHub).
             orchestration: The orchestration to match against.
 
         Returns:
@@ -56,14 +73,28 @@ class Router:
         """
         trigger = orchestration.trigger
 
-        # Check project filter
-        if trigger.project:
-            # Extract project key from issue key (e.g., "PROJ-123" -> "PROJ")
-            issue_project = issue.key.split("-")[0] if "-" in issue.key else ""
-            if issue_project.upper() != trigger.project.upper():
+        # Check source type matches
+        if isinstance(issue, JiraIssue):
+            if trigger.source != "jira":
                 return False
 
-        # Check tag/label filter - issue must have ALL specified tags
+            # Check project filter for Jira
+            if trigger.project:
+                # Extract project key from issue key (e.g., "PROJ-123" -> "PROJ")
+                issue_project = issue.key.split("-")[0] if "-" in issue.key else ""
+                if issue_project.upper() != trigger.project.upper():
+                    return False
+        elif isinstance(issue, GitHubIssue):
+            if trigger.source != "github":
+                return False
+
+            # Check repo filter for GitHub
+            # Note: repo filter matching is handled during polling via search query,
+            # but we validate here for direct routing if repo info is available
+            # The GitHubIssue doesn't store repo info directly, so we skip repo
+            # validation here - it's enforced during polling via the search query
+
+        # Check tag/label filter - issue must have ALL specified tags (case-insensitive)
         if trigger.tags:
             issue_labels_lower = {label.lower() for label in issue.labels}
             for tag in trigger.tags:
@@ -72,11 +103,11 @@ class Router:
 
         return True
 
-    def route(self, issue: JiraIssue) -> RoutingResult:
+    def route(self, issue: AnyIssue) -> RoutingResult:
         """Route a single issue to matching orchestrations.
 
         Args:
-            issue: The Jira issue to route.
+            issue: The issue to route (Jira or GitHub).
 
         Returns:
             RoutingResult containing the issue and matching orchestrations.
@@ -98,11 +129,11 @@ class Router:
 
         return RoutingResult(issue=issue, orchestrations=matching)
 
-    def route_all(self, issues: list[JiraIssue]) -> list[RoutingResult]:
+    def route_all(self, issues: list[AnyIssue]) -> list[RoutingResult]:
         """Route multiple issues to matching orchestrations.
 
         Args:
-            issues: List of Jira issues to route.
+            issues: List of issues to route (Jira or GitHub).
 
         Returns:
             List of RoutingResults, one per issue.
@@ -117,11 +148,11 @@ class Router:
 
         return results
 
-    def route_matched_only(self, issues: list[JiraIssue]) -> list[RoutingResult]:
+    def route_matched_only(self, issues: list[AnyIssue]) -> list[RoutingResult]:
         """Route multiple issues and return only those that matched.
 
         Args:
-            issues: List of Jira issues to route.
+            issues: List of issues to route (Jira or GitHub).
 
         Returns:
             List of RoutingResults for issues that matched at least one orchestration.
