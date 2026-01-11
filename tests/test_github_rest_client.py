@@ -1,6 +1,6 @@
 """Tests for GitHub REST API client implementations."""
 
-from dataclasses import FrozenInstanceError
+import dataclasses
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -49,7 +49,7 @@ class TestGitHubRetryConfig:
 
     def test_is_frozen(self) -> None:
         config = GitHubRetryConfig()
-        with pytest.raises(FrozenInstanceError):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             config.max_retries = 10  # type: ignore[misc]
 
 
