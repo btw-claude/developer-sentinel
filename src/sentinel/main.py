@@ -8,7 +8,6 @@ import sys
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import replace
 from pathlib import Path
 from types import FrameType
 from typing import Any
@@ -35,6 +34,34 @@ from sentinel.router import Router
 from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
+
+
+class GitHubIssueWithRepo:
+    """Wrapper for GitHubIssue that provides full key with repo context.
+
+    The GitHubIssue.key property returns "#123" but tag operations need "org/repo#123".
+    This wrapper provides the full key while delegating all other attributes to the
+    underlying GitHubIssue.
+    """
+
+    def __init__(self, issue: GitHubIssue, repo: str) -> None:
+        """Initialize the wrapper.
+
+        Args:
+            issue: The underlying GitHubIssue object.
+            repo: Repository in "org/repo" format.
+        """
+        self._issue = issue
+        self._repo = repo
+
+    @property
+    def key(self) -> str:
+        """Return the full issue key including repo context."""
+        return f"{self._repo}#{self._issue.number}"
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate attribute access to the underlying issue."""
+        return getattr(self._issue, name)
 
 
 class Sentinel:
@@ -321,35 +348,16 @@ class Sentinel:
         """Add repository context to GitHub issues for proper key formatting.
 
         The GitHubIssue.key property returns "#123" but tag operations need "org/repo#123".
-        This creates new GitHubIssue objects with the full key.
+        This wraps GitHubIssue objects with the GitHubIssueWithRepo class.
 
         Args:
             issues: List of GitHubIssue objects from the poller.
             repo: Repository in "org/repo" format.
 
         Returns:
-            List of GitHubIssue objects with updated keys.
+            List of GitHubIssueWithRepo objects with updated keys.
         """
-        from dataclasses import replace
-
-        result = []
-        for issue in issues:
-            # Create a wrapper that provides the full key
-            # We can't modify the dataclass, so we create a simple wrapper
-            class GitHubIssueWithRepo:
-                def __init__(self, issue: GitHubIssue, repo: str):
-                    self._issue = issue
-                    self._repo = repo
-
-                @property
-                def key(self) -> str:
-                    return f"{self._repo}#{self._issue.number}"
-
-                def __getattr__(self, name: str) -> Any:
-                    return getattr(self._issue, name)
-
-            result.append(GitHubIssueWithRepo(issue, repo))  # type: ignore
-        return result  # type: ignore
+        return [GitHubIssueWithRepo(issue, repo) for issue in issues]  # type: ignore
 
     def _submit_execution_tasks(
         self,
