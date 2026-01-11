@@ -14,6 +14,7 @@ from sentinel.orchestration import (
     Outcome,
     RetryConfig,
     TriggerConfig,
+    _validate_github_repo_format,
     load_orchestration_file,
     load_orchestrations,
 )
@@ -687,3 +688,116 @@ orchestrations:
 
         with pytest.raises(OrchestrationError, match="not a directory"):
             load_orchestrations(file_path)
+
+
+class TestValidateGitHubRepoFormat:
+    """Tests for _validate_github_repo_format function."""
+
+    def test_valid_repo_format(self) -> None:
+        """Valid owner/repo format should return True."""
+        assert _validate_github_repo_format("owner/repo") is True
+        assert _validate_github_repo_format("org-name/repo-name") is True
+        assert _validate_github_repo_format("my_org/my_repo") is True
+        assert _validate_github_repo_format("user123/project456") is True
+
+    def test_empty_string_is_valid(self) -> None:
+        """Empty string should be valid (repo field is optional)."""
+        assert _validate_github_repo_format("") is True
+
+    def test_missing_owner_is_invalid(self) -> None:
+        """Repo without owner should be invalid."""
+        assert _validate_github_repo_format("repo-only") is False
+
+    def test_missing_repo_name_is_invalid(self) -> None:
+        """Owner without repo name should be invalid."""
+        assert _validate_github_repo_format("owner/") is False
+        assert _validate_github_repo_format("/repo") is False
+
+    def test_too_many_slashes_is_invalid(self) -> None:
+        """More than one slash should be invalid."""
+        assert _validate_github_repo_format("owner/repo/extra") is False
+        assert _validate_github_repo_format("a/b/c") is False
+
+    def test_whitespace_only_is_invalid(self) -> None:
+        """Whitespace-only parts should be invalid."""
+        assert _validate_github_repo_format("  /repo") is False
+        assert _validate_github_repo_format("owner/  ") is False
+
+
+class TestInvalidGitHubRepoFormat:
+    """Tests for invalid GitHub repo format validation in trigger parsing."""
+
+    def test_invalid_repo_format_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for invalid GitHub repo format."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-repo"
+    trigger:
+      source: github
+      repo: "invalid-format"
+      tags: ["test"]
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "invalid_repo.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid GitHub repo format"):
+            load_orchestration_file(file_path)
+
+    def test_repo_with_too_many_slashes_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for repo with too many path components."""
+        yaml_content = """
+orchestrations:
+  - name: "too-many-slashes"
+    trigger:
+      source: github
+      repo: "org/repo/extra"
+      tags: ["test"]
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "too_many_slashes.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid GitHub repo format"):
+            load_orchestration_file(file_path)
+
+    def test_empty_repo_is_allowed(self, tmp_path: Path) -> None:
+        """Empty repo should be allowed (triggers all repos if combined with tags)."""
+        yaml_content = """
+orchestrations:
+  - name: "empty-repo"
+    trigger:
+      source: github
+      tags: ["needs-review"]
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "empty_repo.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.repo == ""
+
+    def test_jira_source_ignores_repo_validation(self, tmp_path: Path) -> None:
+        """Jira source should not validate repo format (repo field is ignored)."""
+        yaml_content = """
+orchestrations:
+  - name: "jira-with-invalid-repo"
+    trigger:
+      source: jira
+      project: "TEST"
+      repo: "this-is-ignored-for-jira"
+      tags: ["test"]
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "jira_with_repo.yaml"
+        file_path.write_text(yaml_content)
+
+        # Should not raise error - repo field is ignored for Jira triggers
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.source == "jira"

@@ -13,13 +13,33 @@ import yaml
 class TriggerConfig:
     """Configuration for what triggers an orchestration.
 
+    This class supports both Jira and GitHub triggers. Fields are source-specific:
+
+    **Common fields (used by both sources):**
+        - source: The source system ("jira" or "github")
+        - tags: List of tags/labels to filter by (case-insensitive matching)
+
+    **Jira-specific fields (ignored when source="github"):**
+        - project: Jira project key (e.g., "PROJ")
+        - jql_filter: Additional JQL filter conditions
+
+    **GitHub-specific fields (ignored when source="jira"):**
+        - repo: Repository in "owner/repo-name" format (e.g., "octocat/hello-world")
+        - query_filter: Additional GitHub search syntax (e.g., "is:pr draft:false")
+
     Attributes:
         source: The source system for triggers ("jira" or "github").
-        project: Jira project key (used when source is "jira").
-        jql_filter: JQL filter for Jira queries (used when source is "jira").
-        tags: List of tags/labels to filter by.
-        repo: GitHub repository in "org/repo-name" format (used when source is "github").
-        query_filter: GitHub search syntax filter (used when source is "github").
+        project: Jira project key. Only used when source is "jira".
+            Ignored when source is "github".
+        jql_filter: JQL filter for Jira queries. Only used when source is "jira".
+            Ignored when source is "github".
+        tags: List of tags/labels to filter by. Used by both Jira and GitHub.
+            Issues must have ALL specified tags to match (AND logic).
+        repo: GitHub repository in "owner/repo-name" format. Only used when
+            source is "github". Ignored when source is "jira".
+        query_filter: GitHub search syntax filter. Only used when source is "github".
+            Ignored when source is "jira". Supports GitHub search qualifiers like
+            "is:pr", "is:issue", "draft:false", "author:username", etc.
     """
 
     source: Literal["jira", "github"] = "jira"
@@ -163,23 +183,63 @@ class OrchestrationError(Exception):
     pass
 
 
+def _validate_github_repo_format(repo: str) -> bool:
+    """Validate that a GitHub repo string is in 'owner/repo-name' format.
+
+    Args:
+        repo: The repository string to validate.
+
+    Returns:
+        True if valid, False otherwise.
+
+    Valid formats:
+        - "owner/repo"
+        - "owner/repo-name"
+        - "org-name/repo_name"
+    Invalid formats:
+        - "repo" (missing owner)
+        - "owner/" (missing repo name)
+        - "/repo" (missing owner)
+        - "owner/repo/extra" (too many parts)
+    """
+    if not repo:
+        return True  # Empty is valid (optional field)
+    parts = repo.split("/")
+    if len(parts) != 2:
+        return False
+    owner, repo_name = parts
+    return bool(owner.strip() and repo_name.strip())
+
+
 def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     """Parse trigger configuration from dict.
 
     Supports both Jira and GitHub triggers:
     - Jira triggers use: source="jira", project, jql_filter, tags
     - GitHub triggers use: source="github", repo, query_filter, tags
+
+    Raises:
+        OrchestrationError: If trigger configuration is invalid.
     """
     source = data.get("source", "jira")
     if source not in ("jira", "github"):
         raise OrchestrationError(f"Invalid trigger source '{source}': must be 'jira' or 'github'")
+
+    repo = data.get("repo", "")
+
+    # Validate repo format for GitHub triggers
+    if source == "github" and repo and not _validate_github_repo_format(repo):
+        raise OrchestrationError(
+            f"Invalid GitHub repo format '{repo}': must be 'owner/repo-name' format "
+            "(e.g., 'octocat/hello-world')"
+        )
 
     return TriggerConfig(
         source=source,
         project=data.get("project", ""),
         jql_filter=data.get("jql_filter", ""),
         tags=data.get("tags", []),
-        repo=data.get("repo", ""),
+        repo=repo,
         query_filter=data.get("query_filter", ""),
     )
 
