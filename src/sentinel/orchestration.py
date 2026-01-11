@@ -10,6 +10,18 @@ from typing import Any, Literal
 import yaml
 
 
+# Pre-compiled regex patterns for GitHub repository validation
+# These are compiled at module level to avoid overhead on each validation call
+# See _validate_github_repo_format() for usage and format documentation
+
+# Owner pattern: starts with alphanumeric, ends with alphanumeric,
+# middle can have alphanumeric or single hyphens (no consecutive hyphens)
+_GITHUB_OWNER_PATTERN = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9]|-(?!-))*[a-zA-Z0-9]$|^[a-zA-Z0-9]$")
+
+# Repo name pattern: alphanumeric, hyphens, underscores, periods
+_GITHUB_REPO_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$|^[a-zA-Z0-9]$")
+
+
 @dataclass
 class TriggerConfig:
     """Configuration for what triggers an orchestration.
@@ -248,10 +260,7 @@ def _validate_github_repo_format(repo: str) -> bool:
     if len(owner) > 39:
         return False
 
-    # Pattern: starts with alphanumeric, ends with alphanumeric,
-    # middle can have alphanumeric or single hyphens (no consecutive hyphens)
-    owner_pattern = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9]|-(?!-))*[a-zA-Z0-9]$|^[a-zA-Z0-9]$")
-    if not owner_pattern.match(owner):
+    if not _GITHUB_OWNER_PATTERN.match(owner):
         return False
 
     # Validate repo name
@@ -268,9 +277,7 @@ def _validate_github_repo_format(repo: str) -> bool:
     if repo_name.lower().endswith(".git"):
         return False
 
-    # Pattern: alphanumeric, hyphens, underscores, periods
-    repo_pattern = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$|^[a-zA-Z0-9]$")
-    if not repo_pattern.match(repo_name):
+    if not _GITHUB_REPO_PATTERN.match(repo_name):
         return False
 
     return True
