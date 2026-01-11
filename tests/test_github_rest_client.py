@@ -9,6 +9,7 @@ import pytest
 from sentinel.github_rest_client import (
     DEFAULT_GITHUB_API_URL,
     DEFAULT_RETRY_CONFIG,
+    BaseGitHubHttpClient,
     GitHubRateLimitError,
     GitHubRestClient,
     GitHubRestTagClient,
@@ -257,6 +258,99 @@ class TestExecuteWithRetry:
             _execute_with_retry(operation, config)
 
         assert operation.call_count == 3  # Initial + 2 retries
+
+
+class TestBaseGitHubHttpClient:
+    """Tests for BaseGitHubHttpClient base class."""
+
+    def test_lazy_client_initialization(self) -> None:
+        """Test that HTTP client is lazily initialized."""
+
+        class TestClient(BaseGitHubHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout = httpx.Timeout(10.0)
+                self._headers = {"Test": "Header"}
+
+        client = TestClient()
+        assert client._client is None
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_get_client_creates_client(self, mock_client_class: MagicMock) -> None:
+        """Test that _get_client creates the httpx.Client instance."""
+
+        class TestClient(BaseGitHubHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout = httpx.Timeout(10.0)
+                self._headers = {"Test": "Header"}
+
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        client = TestClient()
+        result = client._get_client()
+
+        assert result == mock_http_client
+        mock_client_class.assert_called_once()
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_get_client_reuses_client(self, mock_client_class: MagicMock) -> None:
+        """Test that _get_client reuses the same client instance."""
+
+        class TestClient(BaseGitHubHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout = httpx.Timeout(10.0)
+                self._headers = {"Test": "Header"}
+
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        client = TestClient()
+        client._get_client()
+        client._get_client()
+
+        # Should only create one client
+        assert mock_client_class.call_count == 1
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_close_closes_client(self, mock_client_class: MagicMock) -> None:
+        """Test that close() properly closes the HTTP client."""
+
+        class TestClient(BaseGitHubHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout = httpx.Timeout(10.0)
+                self._headers = {"Test": "Header"}
+
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        client = TestClient()
+        client._get_client()  # Create the client
+        client.close()
+
+        mock_http_client.close.assert_called_once()
+        assert client._client is None
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_context_manager(self, mock_client_class: MagicMock) -> None:
+        """Test context manager support."""
+
+        class TestClient(BaseGitHubHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout = httpx.Timeout(10.0)
+                self._headers = {"Test": "Header"}
+
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        with TestClient() as client:
+            client._get_client()
+
+        mock_http_client.close.assert_called_once()
 
 
 class TestGitHubRestClient:

@@ -14,7 +14,7 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any, Self, TypeVar
 
 import httpx
 
@@ -222,7 +222,59 @@ def _execute_with_retry(
     raise error_class("Retry failed with no exception")
 
 
-class GitHubRestClient(GitHubClient):
+class BaseGitHubHttpClient:
+    """Base class providing HTTP client connection pooling for GitHub API clients.
+
+    This class encapsulates the shared connection pooling functionality including:
+    - Lazy initialization of httpx.Client
+    - Resource cleanup via close() method
+    - Context manager support (__enter__/__exit__)
+
+    Subclasses must set self.timeout and self._headers before using _get_client().
+    """
+
+    # Type hints for attributes that subclasses must provide
+    timeout: httpx.Timeout
+    _headers: dict[str, str]
+
+    def __init__(self) -> None:
+        """Initialize the base HTTP client.
+
+        Note: Subclasses must call super().__init__() and then set
+        self.timeout and self._headers before using _get_client().
+        """
+        # Reusable HTTP client for connection pooling - lazily initialized
+        self._client: httpx.Client | None = None
+
+    def _get_client(self) -> httpx.Client:
+        """Get or create the reusable HTTP client.
+
+        Returns:
+            A configured httpx.Client instance with connection pooling.
+        """
+        if self._client is None:
+            self._client = httpx.Client(timeout=self.timeout, headers=self._headers)
+        return self._client
+
+    def close(self) -> None:
+        """Close the HTTP client and release resources.
+
+        Should be called when the client is no longer needed.
+        """
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> Self:
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        """Context manager exit - closes the HTTP client."""
+        self.close()
+
+
+class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
     """GitHub client that uses direct REST API calls for searching issues.
 
     Supports both GitHub.com and GitHub Enterprise via configurable base URL.
@@ -247,6 +299,7 @@ class GitHubRestClient(GitHubClient):
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
         """
+        super().__init__()
         self.base_url = (base_url or DEFAULT_GITHUB_API_URL).rstrip("/")
         self.token = token
         self.timeout = timeout or DEFAULT_TIMEOUT
@@ -256,35 +309,6 @@ class GitHubRestClient(GitHubClient):
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
-        # Reusable HTTP client for connection pooling - lazily initialized
-        self._client: httpx.Client | None = None
-
-    def _get_client(self) -> httpx.Client:
-        """Get or create the reusable HTTP client.
-
-        Returns:
-            A configured httpx.Client instance with connection pooling.
-        """
-        if self._client is None:
-            self._client = httpx.Client(timeout=self.timeout, headers=self._headers)
-        return self._client
-
-    def close(self) -> None:
-        """Close the HTTP client and release resources.
-
-        Should be called when the client is no longer needed.
-        """
-        if self._client is not None:
-            self._client.close()
-            self._client = None
-
-    def __enter__(self) -> GitHubRestClient:
-        """Context manager entry."""
-        return self
-
-    def __exit__(self, *args: Any) -> None:
-        """Context manager exit - closes the HTTP client."""
-        self.close()
 
     def search_issues(
         self, query: str, max_results: int = 50
@@ -378,7 +402,7 @@ class GitHubTagClient(ABC):
         pass
 
 
-class GitHubRestTagClient(GitHubTagClient):
+class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
     """GitHub tag client that uses direct REST API calls for label operations.
 
     Uses connection pooling via a reusable httpx.Client for better performance
@@ -402,6 +426,7 @@ class GitHubRestTagClient(GitHubTagClient):
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
         """
+        super().__init__()
         self.base_url = (base_url or DEFAULT_GITHUB_API_URL).rstrip("/")
         self.token = token
         self.timeout = timeout or DEFAULT_TIMEOUT
@@ -411,35 +436,6 @@ class GitHubRestTagClient(GitHubTagClient):
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
-        # Reusable HTTP client for connection pooling - lazily initialized
-        self._client: httpx.Client | None = None
-
-    def _get_client(self) -> httpx.Client:
-        """Get or create the reusable HTTP client.
-
-        Returns:
-            A configured httpx.Client instance with connection pooling.
-        """
-        if self._client is None:
-            self._client = httpx.Client(timeout=self.timeout, headers=self._headers)
-        return self._client
-
-    def close(self) -> None:
-        """Close the HTTP client and release resources.
-
-        Should be called when the client is no longer needed.
-        """
-        if self._client is not None:
-            self._client.close()
-            self._client = None
-
-    def __enter__(self) -> GitHubRestTagClient:
-        """Context manager entry."""
-        return self
-
-    def __exit__(self, *args: Any) -> None:
-        """Context manager exit - closes the HTTP client."""
-        self.close()
 
     def add_label(self, owner: str, repo: str, issue_number: int, label: str) -> None:
         """Add a label to a GitHub issue or pull request.
