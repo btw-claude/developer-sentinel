@@ -540,6 +540,12 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
     This is the internal implementation that performs all YAML parsing and filtering.
     It returns both the enabled orchestrations and the total count for logging purposes.
 
+    Supports file-level and orchestration-level enabled flags:
+    - File-level `enabled: false` disables all orchestrations in the file
+    - Orchestration-level `enabled: false` disables just that orchestration
+    - File-level takes precedence over orchestration-level
+    - Both default to True for backwards compatibility
+
     Args:
         file_path: Path to the YAML file.
 
