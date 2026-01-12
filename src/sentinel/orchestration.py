@@ -37,13 +37,8 @@ class ValidationResult(NamedTuple):
         error_message: Error message if validation failed, empty string if valid.
 
     Example usage:
-        # Using factory methods (preferred):
         return ValidationResult.success()
         return ValidationResult.failure("error details")
-
-        # Using direct instantiation:
-        return ValidationResult(is_valid=True, error_message="")
-        return ValidationResult(is_valid=False, error_message="error details")
     """
 
     is_valid: bool
