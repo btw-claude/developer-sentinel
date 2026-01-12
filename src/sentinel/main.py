@@ -40,8 +40,8 @@ class GitHubIssueWithRepo:
     """Wrapper for GitHubIssue that provides full key with repo context.
 
     The GitHubIssue.key property returns "#123" but tag operations need "org/repo#123".
-    This wrapper provides the full key while delegating all other attributes to the
-    underlying GitHubIssue.
+    This wrapper provides the full key while explicitly implementing all GitHubIssueProtocol
+    properties for better static type checking support.
     """
 
     def __init__(self, issue: GitHubIssue, repo: str) -> None:
@@ -59,9 +59,60 @@ class GitHubIssueWithRepo:
         """Return the full issue key including repo context."""
         return f"{self._repo}#{self._issue.number}"
 
-    def __getattr__(self, name: str) -> Any:
-        """Delegate attribute access to the underlying issue."""
-        return getattr(self._issue, name)
+    @property
+    def number(self) -> int:
+        """Return the issue/PR number."""
+        return self._issue.number
+
+    @property
+    def title(self) -> str:
+        """Return the issue/PR title."""
+        return self._issue.title
+
+    @property
+    def body(self) -> str:
+        """Return the issue/PR body/description."""
+        return self._issue.body
+
+    @property
+    def state(self) -> str:
+        """Return the state of the issue/PR."""
+        return self._issue.state
+
+    @property
+    def author(self) -> str:
+        """Return the username of the author."""
+        return self._issue.author
+
+    @property
+    def assignees(self) -> list[str]:
+        """Return the list of assigned usernames."""
+        return self._issue.assignees
+
+    @property
+    def labels(self) -> list[str]:
+        """Return the list of label names."""
+        return self._issue.labels
+
+    @property
+    def is_pull_request(self) -> bool:
+        """Return whether this is a pull request."""
+        return self._issue.is_pull_request
+
+    @property
+    def head_ref(self) -> str:
+        """Return the head branch reference (for PRs)."""
+        return self._issue.head_ref
+
+    @property
+    def base_ref(self) -> str:
+        """Return the base branch reference (for PRs)."""
+        return self._issue.base_ref
+
+    @property
+    def draft(self) -> bool:
+        """Return whether this PR is a draft."""
+        return self._issue.draft
 
 
 class Sentinel:
