@@ -9,6 +9,10 @@ from typing import Any, Literal
 
 import yaml
 
+from sentinel.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 # Pre-compiled regex patterns for GitHub repository validation
 # These are compiled at module level to avoid overhead on each validation call
@@ -526,6 +530,10 @@ def load_orchestration_file(file_path: Path) -> list[Orchestration]:
 
     # If file-level enabled is False, return empty list (all orchestrations disabled)
     if not file_enabled:
+        logger.debug(
+            "Skipping all orchestrations in %s: file-level enabled is false",
+            file_path,
+        )
         return []
 
     orchestrations_data = data.get("orchestrations", [])
@@ -534,7 +542,17 @@ def load_orchestration_file(file_path: Path) -> list[Orchestration]:
 
     # Parse all orchestrations and filter out disabled ones
     orchestrations = [_parse_orchestration(orch) for orch in orchestrations_data]
-    return [orch for orch in orchestrations if orch.enabled]
+    enabled_orchestrations = []
+    for orch in orchestrations:
+        if orch.enabled:
+            enabled_orchestrations.append(orch)
+        else:
+            logger.debug(
+                "Skipping orchestration '%s' in %s: orchestration-level enabled is false",
+                orch.name,
+                file_path,
+            )
+    return enabled_orchestrations
 
 
 def load_orchestrations(directory: Path) -> list[Orchestration]:
