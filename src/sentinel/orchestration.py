@@ -35,10 +35,40 @@ class ValidationResult(NamedTuple):
     Attributes:
         is_valid: Whether the validation passed.
         error_message: Error message if validation failed, empty string if valid.
+
+    Example usage:
+        # Using factory methods (preferred):
+        return ValidationResult.success()
+        return ValidationResult.failure("error details")
+
+        # Using direct instantiation:
+        return ValidationResult(is_valid=True, error_message="")
+        return ValidationResult(is_valid=False, error_message="error details")
     """
 
     is_valid: bool
     error_message: str
+
+    @classmethod
+    def success(cls) -> "ValidationResult":
+        """Create a successful validation result.
+
+        Returns:
+            A ValidationResult with is_valid=True and empty error_message.
+        """
+        return cls(is_valid=True, error_message="")
+
+    @classmethod
+    def failure(cls, message: str) -> "ValidationResult":
+        """Create a failed validation result.
+
+        Args:
+            message: The error message describing why validation failed.
+
+        Returns:
+            A ValidationResult with is_valid=False and the provided error_message.
+        """
+        return cls(is_valid=False, error_message=message)
 
 
 @dataclass
@@ -267,34 +297,29 @@ def _validate_github_repo_format(repo: str) -> ValidationResult:
         - "owner/." (repo is reserved name)
     """
     if not repo:
-        return ValidationResult(is_valid=True, error_message="")  # Empty is valid (optional field)
+        return ValidationResult.success()  # Empty is valid (optional field)
 
     parts = repo.split("/")
     if len(parts) != 2:
-        return ValidationResult(
-            is_valid=False,
-            error_message="must be in 'owner/repo-name' format (e.g., 'octocat/hello-world')",
+        return ValidationResult.failure(
+            "must be in 'owner/repo-name' format (e.g., 'octocat/hello-world')"
         )
 
     owner, repo_name = parts
 
     # Basic check for non-empty parts
     if not owner.strip():
-        return ValidationResult(is_valid=False, error_message="owner cannot be empty")
+        return ValidationResult.failure("owner cannot be empty")
 
     if not repo_name.strip():
-        return ValidationResult(is_valid=False, error_message="repository name cannot be empty")
+        return ValidationResult.failure("repository name cannot be empty")
 
     # Reserved names check (both owner and repo cannot be "." or "..")
     if owner in (".", ".."):
-        return ValidationResult(
-            is_valid=False, error_message=f"owner '{owner}' is a reserved name"
-        )
+        return ValidationResult.failure(f"owner '{owner}' is a reserved name")
 
     if repo_name in (".", ".."):
-        return ValidationResult(
-            is_valid=False, error_message=f"repository name '{repo_name}' is a reserved name"
-        )
+        return ValidationResult.failure(f"repository name '{repo_name}' is a reserved name")
 
     # Validate owner (username/organization)
     # - Max 39 characters
@@ -302,16 +327,14 @@ def _validate_github_repo_format(repo: str) -> ValidationResult:
     # - Cannot start or end with hyphen
     # - Cannot have consecutive hyphens
     if len(owner) > 39:
-        return ValidationResult(
-            is_valid=False,
-            error_message=f"owner exceeds maximum length of 39 characters (got {len(owner)})",
+        return ValidationResult.failure(
+            f"owner exceeds maximum length of 39 characters (got {len(owner)})"
         )
 
     if not _GITHUB_OWNER_PATTERN.match(owner):
-        return ValidationResult(
-            is_valid=False,
-            error_message=f"owner '{owner}' contains invalid characters or format "
-            "(must be alphanumeric with single hyphens, cannot start/end with hyphen)",
+        return ValidationResult.failure(
+            f"owner '{owner}' contains invalid characters or format "
+            "(must be alphanumeric with single hyphens, cannot start/end with hyphen)"
         )
 
     # Validate repo name
@@ -320,29 +343,23 @@ def _validate_github_repo_format(repo: str) -> ValidationResult:
     # - Cannot start with a period
     # - Cannot end with .git
     if len(repo_name) > 100:
-        return ValidationResult(
-            is_valid=False,
-            error_message=f"repository name exceeds maximum length of 100 characters (got {len(repo_name)})",
+        return ValidationResult.failure(
+            f"repository name exceeds maximum length of 100 characters (got {len(repo_name)})"
         )
 
     if repo_name.startswith("."):
-        return ValidationResult(
-            is_valid=False, error_message="repository name cannot start with a period"
-        )
+        return ValidationResult.failure("repository name cannot start with a period")
 
     if repo_name.lower().endswith(".git"):
-        return ValidationResult(
-            is_valid=False, error_message="repository name cannot end with '.git'"
-        )
+        return ValidationResult.failure("repository name cannot end with '.git'")
 
     if not _GITHUB_REPO_PATTERN.match(repo_name):
-        return ValidationResult(
-            is_valid=False,
-            error_message=f"repository name '{repo_name}' contains invalid characters "
-            "(allowed: alphanumeric, hyphens, underscores, periods)",
+        return ValidationResult.failure(
+            f"repository name '{repo_name}' contains invalid characters "
+            "(allowed: alphanumeric, hyphens, underscores, periods)"
         )
 
-    return ValidationResult(is_valid=True, error_message="")
+    return ValidationResult.success()
 
 
 def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
