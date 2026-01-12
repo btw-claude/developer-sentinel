@@ -14,6 +14,7 @@ from sentinel.orchestration import (
     Outcome,
     RetryConfig,
     TriggerConfig,
+    ValidationResult,
     _validate_github_repo_format,
     load_orchestration_file,
     load_orchestrations,
