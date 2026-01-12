@@ -713,6 +713,12 @@ orchestrations:
 class TestValidateGitHubRepoFormat:
     """Tests for _validate_github_repo_format function."""
 
+    def test_empty_string_is_valid(self) -> None:
+        """Empty string should be valid as the repo field is optional."""
+        result = _validate_github_repo_format("")
+        assert result.is_valid is True
+        assert result.error_message == ""
+
     # Valid repository format tests
     @pytest.mark.parametrize(
         "repo_format",
@@ -727,7 +733,6 @@ class TestValidateGitHubRepoFormat:
             "a/b",
             "x/repo",
             "owner/y",
-            "",  # Empty string is valid (repo field is optional)
             "a" * 39 + "/repo",  # Max length owner (39 chars)
             "owner/" + "a" * 100,  # Max length repo (100 chars)
         ],
