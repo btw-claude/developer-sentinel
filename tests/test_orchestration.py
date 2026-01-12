@@ -713,135 +713,88 @@ orchestrations:
 class TestValidateGitHubRepoFormat:
     """Tests for _validate_github_repo_format function."""
 
-    def test_valid_repo_format(self) -> None:
-        """Valid owner/repo format should return True with empty error."""
-        result = _validate_github_repo_format("owner/repo")
+    # Valid repository format tests
+    @pytest.mark.parametrize(
+        "repo_format",
+        [
+            "owner/repo",
+            "org-name/repo-name",
+            "user123/project456",
+            "owner/my.project",
+            "owner/repo.name.here",
+            "owner/my_repo",
+            "owner/repo_name_here",
+            "a/b",
+            "x/repo",
+            "owner/y",
+            "",  # Empty string is valid (repo field is optional)
+            "a" * 39 + "/repo",  # Max length owner (39 chars)
+            "owner/" + "a" * 100,  # Max length repo (100 chars)
+        ],
+    )
+    def test_valid_repo_format(self, repo_format: str) -> None:
+        """Valid owner/repo formats should return True with empty error."""
+        result = _validate_github_repo_format(repo_format)
         assert result.is_valid is True
         assert result.error_message == ""
 
-        result = _validate_github_repo_format("org-name/repo-name")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-        result = _validate_github_repo_format("user123/project456")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-    def test_valid_repo_with_periods(self) -> None:
-        """Repo names with periods should be valid."""
-        result = _validate_github_repo_format("owner/my.project")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-        result = _validate_github_repo_format("owner/repo.name.here")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-    def test_valid_repo_with_underscores(self) -> None:
-        """Repo names with underscores should be valid."""
-        result = _validate_github_repo_format("owner/my_repo")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-        result = _validate_github_repo_format("owner/repo_name_here")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-    def test_valid_single_char_names(self) -> None:
-        """Single character owner and repo names should be valid."""
-        result = _validate_github_repo_format("a/b")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-        result = _validate_github_repo_format("x/repo")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-        result = _validate_github_repo_format("owner/y")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-    def test_empty_string_is_valid(self) -> None:
-        """Empty string should be valid (repo field is optional)."""
-        result = _validate_github_repo_format("")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-    def test_missing_owner_is_invalid(self) -> None:
-        """Repo without owner should be invalid."""
-        result = _validate_github_repo_format("repo-only")
+    # Invalid format structure tests
+    @pytest.mark.parametrize(
+        "repo_format,expected_error",
+        [
+            ("repo-only", "owner/repo-name"),
+            ("owner/repo/extra", "owner/repo-name"),
+            ("a/b/c", "owner/repo-name"),
+        ],
+    )
+    def test_invalid_format_structure(
+        self, repo_format: str, expected_error: str
+    ) -> None:
+        """Invalid format structures should return False with appropriate error."""
+        result = _validate_github_repo_format(repo_format)
         assert result.is_valid is False
-        assert "owner/repo-name" in result.error_message
+        assert expected_error in result.error_message
 
-    def test_missing_repo_name_is_invalid(self) -> None:
-        """Owner without repo name should be invalid."""
-        result = _validate_github_repo_format("owner/")
+    # Empty component tests
+    @pytest.mark.parametrize(
+        "repo_format,expected_error",
+        [
+            ("owner/", "repository name cannot be empty"),
+            ("/repo", "owner cannot be empty"),
+            ("  /repo", "owner cannot be empty"),
+            ("owner/  ", "repository name cannot be empty"),
+        ],
+    )
+    def test_empty_components(self, repo_format: str, expected_error: str) -> None:
+        """Empty owner or repo components should be invalid."""
+        result = _validate_github_repo_format(repo_format)
         assert result.is_valid is False
-        assert "repository name cannot be empty" in result.error_message
+        assert expected_error in result.error_message
 
-        result = _validate_github_repo_format("/repo")
-        assert result.is_valid is False
-        assert "owner cannot be empty" in result.error_message
-
-    def test_too_many_slashes_is_invalid(self) -> None:
-        """More than one slash should be invalid."""
-        result = _validate_github_repo_format("owner/repo/extra")
-        assert result.is_valid is False
-        assert "owner/repo-name" in result.error_message
-
-        result = _validate_github_repo_format("a/b/c")
-        assert result.is_valid is False
-
-    def test_whitespace_only_is_invalid(self) -> None:
-        """Whitespace-only parts should be invalid."""
-        result = _validate_github_repo_format("  /repo")
-        assert result.is_valid is False
-        assert "owner cannot be empty" in result.error_message
-
-        result = _validate_github_repo_format("owner/  ")
-        assert result.is_valid is False
-        assert "repository name cannot be empty" in result.error_message
-
-    # GitHub username/org validation tests
-    def test_owner_starting_with_hyphen_is_invalid(self) -> None:
-        """Owner starting with hyphen should be invalid."""
-        result = _validate_github_repo_format("-owner/repo")
+    # Invalid owner format tests
+    @pytest.mark.parametrize(
+        "repo_format",
+        [
+            "-owner/repo",  # Starting with hyphen
+            "-/repo",  # Just hyphen
+            "owner-/repo",  # Ending with hyphen
+            "owner--name/repo",  # Consecutive hyphens
+            "a--b/repo",  # Consecutive hyphens
+            "my_org/repo",  # Underscore
+            "owner_name/repo",  # Underscore
+            "my.org/repo",  # Period
+            "owner!/repo",  # Special char !
+            "owner@name/repo",  # Special char @
+            "owner#/repo",  # Special char #
+        ],
+    )
+    def test_invalid_owner_characters(self, repo_format: str) -> None:
+        """Owner with invalid characters should be invalid."""
+        result = _validate_github_repo_format(repo_format)
         assert result.is_valid is False
         assert "invalid characters" in result.error_message
 
-        result = _validate_github_repo_format("-/repo")
-        assert result.is_valid is False
-
-    def test_owner_ending_with_hyphen_is_invalid(self) -> None:
-        """Owner ending with hyphen should be invalid."""
-        result = _validate_github_repo_format("owner-/repo")
-        assert result.is_valid is False
-        assert "invalid characters" in result.error_message
-
-    def test_owner_with_consecutive_hyphens_is_invalid(self) -> None:
-        """Owner with consecutive hyphens should be invalid."""
-        result = _validate_github_repo_format("owner--name/repo")
-        assert result.is_valid is False
-        assert "invalid characters" in result.error_message
-
-        result = _validate_github_repo_format("a--b/repo")
-        assert result.is_valid is False
-
-    def test_owner_with_underscore_is_invalid(self) -> None:
-        """Owner with underscore should be invalid (GitHub doesn't allow)."""
-        result = _validate_github_repo_format("my_org/repo")
-        assert result.is_valid is False
-        assert "invalid characters" in result.error_message
-
-        result = _validate_github_repo_format("owner_name/repo")
-        assert result.is_valid is False
-
-    def test_owner_with_period_is_invalid(self) -> None:
-        """Owner with period should be invalid."""
-        result = _validate_github_repo_format("my.org/repo")
-        assert result.is_valid is False
-        assert "invalid characters" in result.error_message
-
+    # Owner exceeding max length test
     def test_owner_exceeding_max_length_is_invalid(self) -> None:
         """Owner exceeding 39 characters should be invalid."""
         long_owner = "a" * 40
@@ -850,46 +803,42 @@ class TestValidateGitHubRepoFormat:
         assert "exceeds maximum length of 39 characters" in result.error_message
         assert "got 40" in result.error_message
 
-        # 39 chars should be valid
-        valid_owner = "a" * 39
-        result = _validate_github_repo_format(f"{valid_owner}/repo")
-        assert result.is_valid is True
-        assert result.error_message == ""
+    # Invalid repo format tests
+    @pytest.mark.parametrize(
+        "repo_format,expected_error",
+        [
+            ("owner/.repo", "cannot start with a period"),
+            ("owner/.hidden", "cannot start with a period"),
+            ("owner/repo.git", "cannot end with '.git'"),
+            ("owner/my-project.git", "cannot end with '.git'"),
+            ("owner/REPO.GIT", "cannot end with '.git'"),  # Case insensitive
+        ],
+    )
+    def test_invalid_repo_prefix_suffix(
+        self, repo_format: str, expected_error: str
+    ) -> None:
+        """Repo with invalid prefix or suffix should be invalid."""
+        result = _validate_github_repo_format(repo_format)
+        assert result.is_valid is False
+        assert expected_error in result.error_message
 
-    def test_owner_with_special_chars_is_invalid(self) -> None:
-        """Owner with special characters should be invalid."""
-        result = _validate_github_repo_format("owner!/repo")
+    # Invalid repo special characters tests
+    @pytest.mark.parametrize(
+        "repo_format",
+        [
+            "owner/repo!",
+            "owner/repo@name",
+            "owner/repo#1",
+            "owner/repo name",  # Spaces
+        ],
+    )
+    def test_invalid_repo_special_characters(self, repo_format: str) -> None:
+        """Repo with invalid special characters should be invalid."""
+        result = _validate_github_repo_format(repo_format)
         assert result.is_valid is False
         assert "invalid characters" in result.error_message
 
-        result = _validate_github_repo_format("owner@name/repo")
-        assert result.is_valid is False
-
-        result = _validate_github_repo_format("owner#/repo")
-        assert result.is_valid is False
-
-    # Repository name validation tests
-    def test_repo_starting_with_period_is_invalid(self) -> None:
-        """Repo starting with period should be invalid."""
-        result = _validate_github_repo_format("owner/.repo")
-        assert result.is_valid is False
-        assert "cannot start with a period" in result.error_message
-
-        result = _validate_github_repo_format("owner/.hidden")
-        assert result.is_valid is False
-
-    def test_repo_ending_with_git_is_invalid(self) -> None:
-        """Repo ending with .git should be invalid."""
-        result = _validate_github_repo_format("owner/repo.git")
-        assert result.is_valid is False
-        assert "cannot end with '.git'" in result.error_message
-
-        result = _validate_github_repo_format("owner/my-project.git")
-        assert result.is_valid is False
-
-        result = _validate_github_repo_format("owner/REPO.GIT")
-        assert result.is_valid is False  # case insensitive
-
+    # Repo exceeding max length test
     def test_repo_exceeding_max_length_is_invalid(self) -> None:
         """Repo exceeding 100 characters should be invalid."""
         long_repo = "a" * 101
@@ -898,64 +847,37 @@ class TestValidateGitHubRepoFormat:
         assert "exceeds maximum length of 100 characters" in result.error_message
         assert "got 101" in result.error_message
 
-        # 100 chars should be valid
-        valid_repo = "a" * 100
-        result = _validate_github_repo_format(f"owner/{valid_repo}")
-        assert result.is_valid is True
-        assert result.error_message == ""
-
-    def test_repo_with_special_chars_is_invalid(self) -> None:
-        """Repo with invalid special characters should be invalid."""
-        result = _validate_github_repo_format("owner/repo!")
-        assert result.is_valid is False
-        assert "invalid characters" in result.error_message
-
-        result = _validate_github_repo_format("owner/repo@name")
-        assert result.is_valid is False
-
-        result = _validate_github_repo_format("owner/repo#1")
-        assert result.is_valid is False
-
-        result = _validate_github_repo_format("owner/repo name")
-        assert result.is_valid is False  # spaces
-
-    # Reserved names validation tests
-    def test_owner_reserved_name_dot_is_invalid(self) -> None:
-        """Owner with reserved name '.' should be invalid."""
-        result = _validate_github_repo_format("./repo")
+    # Reserved names tests
+    @pytest.mark.parametrize(
+        "repo_format",
+        [
+            "./repo",  # Owner is reserved name '.'
+            "../repo",  # Owner is reserved name '..'
+            "owner/.",  # Repo is reserved name '.'
+            "owner/..",  # Repo is reserved name '..'
+        ],
+    )
+    def test_reserved_names_are_invalid(self, repo_format: str) -> None:
+        """Reserved names '.' and '..' should be invalid."""
+        result = _validate_github_repo_format(repo_format)
         assert result.is_valid is False
         assert "reserved name" in result.error_message
 
-    def test_owner_reserved_name_dotdot_is_invalid(self) -> None:
-        """Owner with reserved name '..' should be invalid."""
-        result = _validate_github_repo_format("../repo")
+    # Error message content tests
+    @pytest.mark.parametrize(
+        "repo_format,expected_in_error",
+        [
+            ("my_org/repo", "my_org"),  # Owner name in error
+            ("owner/repo!", "repo!"),  # Repo name in error
+        ],
+    )
+    def test_error_message_includes_invalid_name(
+        self, repo_format: str, expected_in_error: str
+    ) -> None:
+        """Error message should include the invalid name."""
+        result = _validate_github_repo_format(repo_format)
         assert result.is_valid is False
-        assert "reserved name" in result.error_message
-
-    def test_repo_reserved_name_dot_is_invalid(self) -> None:
-        """Repo with reserved name '.' should be invalid."""
-        result = _validate_github_repo_format("owner/.")
-        assert result.is_valid is False
-        assert "reserved name" in result.error_message
-
-    def test_repo_reserved_name_dotdot_is_invalid(self) -> None:
-        """Repo with reserved name '..' should be invalid."""
-        result = _validate_github_repo_format("owner/..")
-        assert result.is_valid is False
-        assert "reserved name" in result.error_message
-
-    # Test specific error messages for comprehensive validation
-    def test_error_message_includes_owner_name(self) -> None:
-        """Error message should include the invalid owner name."""
-        result = _validate_github_repo_format("my_org/repo")
-        assert result.is_valid is False
-        assert "my_org" in result.error_message
-
-    def test_error_message_includes_repo_name(self) -> None:
-        """Error message should include the invalid repo name."""
-        result = _validate_github_repo_format("owner/repo!")
-        assert result.is_valid is False
-        assert "repo!" in result.error_message
+        assert expected_in_error in result.error_message
 
     def test_error_message_includes_actual_length(self) -> None:
         """Error message should include the actual length for length violations."""
