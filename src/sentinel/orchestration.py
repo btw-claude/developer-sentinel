@@ -539,74 +539,11 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
     )
 
 
-def load_orchestration_file(file_path: Path) -> list[Orchestration]:
-    """Load orchestrations from a single YAML file.
-
-    Supports file-level and orchestration-level enabled flags:
-    - File-level `enabled: false` disables all orchestrations in the file
-    - Orchestration-level `enabled: false` disables just that orchestration
-    - File-level takes precedence over orchestration-level
-    - Both default to True for backwards compatibility
-
-    Args:
-        file_path: Path to the YAML file.
-
-    Returns:
-        List of enabled Orchestration objects. Disabled orchestrations are filtered out.
-
-    Raises:
-        OrchestrationError: If the file is invalid.
-    """
-    try:
-        with open(file_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-    except yaml.YAMLError as e:
-        raise OrchestrationError(f"Invalid YAML in {file_path}: {e}") from e
-    except FileNotFoundError:
-        raise OrchestrationError(f"Orchestration file not found: {file_path}") from None
-
-    if not data:
-        return []
-
-    # Check file-level enabled flag (defaults to True for backwards compatibility)
-    file_enabled = data.get("enabled", True)
-    if not isinstance(file_enabled, bool):
-        raise OrchestrationError(
-            f"File-level 'enabled' must be a boolean in {file_path}"
-        )
-
-    # If file-level enabled is False, return empty list (all orchestrations disabled)
-    if not file_enabled:
-        logger.debug(
-            "Skipping all orchestrations in %s: file-level enabled is false",
-            file_path,
-        )
-        return []
-
-    orchestrations_data = data.get("orchestrations", [])
-    if not isinstance(orchestrations_data, list):
-        raise OrchestrationError(f"'orchestrations' must be a list in {file_path}")
-
-    # Parse all orchestrations and filter out disabled ones
-    orchestrations = [_parse_orchestration(orch) for orch in orchestrations_data]
-    enabled_orchestrations = []
-    for orch in orchestrations:
-        if orch.enabled:
-            enabled_orchestrations.append(orch)
-        else:
-            logger.debug(
-                "Skipping orchestration '%s' in %s: orchestration-level enabled is false",
-                orch.name,
-                file_path,
-            )
-    return enabled_orchestrations
-
-
 def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestration], int]:
     """Load orchestrations from a file and return both enabled list and total count.
 
-    This is a helper function that wraps load_orchestration_file to also return
-    the total number of orchestrations defined in the file (including disabled ones).
+    This is the internal implementation that performs all YAML parsing and filtering.
+    It returns both the enabled orchestrations and the total count for logging purposes.
 
     Args:
         file_path: Path to the YAML file.
@@ -630,7 +567,7 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
     if not data:
         return [], 0
 
-    # Check file-level enabled flag
+    # Check file-level enabled flag (defaults to True for backwards compatibility)
     file_enabled = data.get("enabled", True)
     if not isinstance(file_enabled, bool):
         raise OrchestrationError(
@@ -665,6 +602,31 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
             )
 
     return enabled_orchestrations, total_count
+
+
+def load_orchestration_file(file_path: Path) -> list[Orchestration]:
+    """Load orchestrations from a single YAML file.
+
+    Supports file-level and orchestration-level enabled flags:
+    - File-level `enabled: false` disables all orchestrations in the file
+    - Orchestration-level `enabled: false` disables just that orchestration
+    - File-level takes precedence over orchestration-level
+    - Both default to True for backwards compatibility
+
+    This function delegates to _load_orchestration_file_with_counts() internally
+    and discards the count information for callers who only need the orchestration list.
+
+    Args:
+        file_path: Path to the YAML file.
+
+    Returns:
+        List of enabled Orchestration objects. Disabled orchestrations are filtered out.
+
+    Raises:
+        OrchestrationError: If the file is invalid.
+    """
+    enabled_orchestrations, _ = _load_orchestration_file_with_counts(file_path)
+    return enabled_orchestrations
 
 
 def load_orchestrations(directory: Path) -> list[Orchestration]:
