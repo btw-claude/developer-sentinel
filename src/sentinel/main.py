@@ -44,6 +44,8 @@ class GitHubIssueWithRepo:
     properties for better static type checking support.
     """
 
+    __slots__ = ("_issue", "_repo")
+
     def __init__(self, issue: GitHubIssue, repo: str) -> None:
         """Initialize the wrapper.
 
