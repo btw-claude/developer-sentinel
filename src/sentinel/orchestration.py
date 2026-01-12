@@ -585,6 +585,71 @@ def load_orchestration_file(file_path: Path) -> list[Orchestration]:
     return enabled_orchestrations
 
 
+def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestration], int]:
+    """Load orchestrations from a file and return both enabled list and total count.
+
+    This is a helper function that wraps load_orchestration_file to also return
+    the total number of orchestrations defined in the file (including disabled ones).
+
+    Args:
+        file_path: Path to the YAML file.
+
+    Returns:
+        A tuple of (enabled_orchestrations, total_count) where:
+        - enabled_orchestrations: List of enabled Orchestration objects
+        - total_count: Total number of orchestrations defined in the file
+
+    Raises:
+        OrchestrationError: If the file is invalid.
+    """
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise OrchestrationError(f"Invalid YAML in {file_path}: {e}") from e
+    except FileNotFoundError:
+        raise OrchestrationError(f"Orchestration file not found: {file_path}") from None
+
+    if not data:
+        return [], 0
+
+    # Check file-level enabled flag
+    file_enabled = data.get("enabled", True)
+    if not isinstance(file_enabled, bool):
+        raise OrchestrationError(
+            f"File-level 'enabled' must be a boolean in {file_path}"
+        )
+
+    orchestrations_data = data.get("orchestrations", [])
+    if not isinstance(orchestrations_data, list):
+        raise OrchestrationError(f"'orchestrations' must be a list in {file_path}")
+
+    total_count = len(orchestrations_data)
+
+    # If file-level enabled is False, all orchestrations are filtered
+    if not file_enabled:
+        logger.debug(
+            "Skipping all orchestrations in %s: file-level enabled is false",
+            file_path,
+        )
+        return [], total_count
+
+    # Parse all orchestrations and filter out disabled ones
+    orchestrations = [_parse_orchestration(orch) for orch in orchestrations_data]
+    enabled_orchestrations = []
+    for orch in orchestrations:
+        if orch.enabled:
+            enabled_orchestrations.append(orch)
+        else:
+            logger.debug(
+                "Skipping orchestration '%s' in %s: orchestration-level enabled is false",
+                orch.name,
+                file_path,
+            )
+
+    return enabled_orchestrations, total_count
+
+
 def load_orchestrations(directory: Path) -> list[Orchestration]:
     """Load all orchestrations from a directory.
 
@@ -606,9 +671,19 @@ def load_orchestrations(directory: Path) -> list[Orchestration]:
         raise OrchestrationError(f"Orchestrations path is not a directory: {directory}")
 
     orchestrations: list[Orchestration] = []
+    total_count = 0
 
     for file_path in sorted(directory.iterdir()):
         if file_path.suffix in (".yaml", ".yml"):
-            orchestrations.extend(load_orchestration_file(file_path))
+            enabled_orchestrations, file_total = _load_orchestration_file_with_counts(file_path)
+            orchestrations.extend(enabled_orchestrations)
+            total_count += file_total
+
+    filtered_count = total_count - len(orchestrations)
+    logger.info(
+        "Loaded %d orchestrations (%d disabled/filtered)",
+        len(orchestrations),
+        filtered_count,
+    )
 
     return orchestrations
