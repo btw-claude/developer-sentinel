@@ -13,6 +13,8 @@ Developer Sentinel monitors Jira for issues with specific tags (e.g., `@code-rev
 - **Multiple tool integrations**: Jira, Confluence, and GitHub tools available to agents
 - **Configurable polling**: Adjustable poll intervals and issue limits
 - **Structured logging**: JSON-formatted logs with context for debugging
+- **Hot-reload orchestrations**: Automatically load, reload, and unload orchestration files without restart
+- **Eager polling**: Polls immediately when work is submitted to maximize throughput
 
 ## Installation
 
@@ -119,6 +121,22 @@ orchestrations:
 ```
 
 See `orchestrations/README.md` for full configuration reference.
+
+## Dynamic Orchestration Management
+
+### Hot-Reload
+
+Sentinel automatically detects changes to orchestration files at the start of each poll cycle:
+
+- **New files**: Automatically loaded and routed to matching issues
+- **Modified files**: Reloaded with version protection - running executions continue with their original configuration
+- **Removed files**: Unloaded after running executions complete
+
+This allows updating orchestration configurations without restarting the service.
+
+### Eager Polling
+
+When work is submitted for execution, Sentinel polls immediately for more work instead of waiting for the next poll interval. This maximizes throughput when there's a backlog of issues to process while conserving resources during idle periods.
 
 ## Development
 
