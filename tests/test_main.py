@@ -101,12 +101,14 @@ def make_config(
     poll_interval: int = 60,
     max_issues: int = 50,
     max_concurrent_executions: int = 1,
+    max_eager_iterations: int = 10,
     orchestrations_dir: Path | None = None,
 ) -> Config:
     """Helper to create a Config for testing."""
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
+        max_eager_iterations=max_eager_iterations,
         max_concurrent_executions=max_concurrent_executions,
         orchestrations_dir=orchestrations_dir or Path("orchestrations"),
     )
@@ -402,6 +404,42 @@ class TestSentinelEagerPolling:
         future.result()
         sentinel._thread_pool.shutdown(wait=True)
         sentinel._thread_pool = None
+
+    def test_consecutive_eager_polls_counter_initialized(self) -> None:
+        """Test that consecutive eager polls counter starts at 0 (DS-98)."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        assert sentinel._consecutive_eager_polls == 0
+
+    def test_max_eager_iterations_config_respected(self) -> None:
+        """Test that max_eager_iterations config is stored correctly (DS-98)."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(max_eager_iterations=5)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        assert sentinel.config.max_eager_iterations == 5
 
 
 class TestSentinelRun:
