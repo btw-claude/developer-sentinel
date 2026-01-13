@@ -239,7 +239,11 @@ class Sentinel:
             if known_mtime is None:
                 # New file detected
                 logger.info(f"Detected new orchestration file: {file_path}")
-                loaded = self._load_orchestrations_from_file(file_path, current_mtime)
+                # Pass rebuild_router=False to defer Router rebuild until after
+                # all new files are processed (optimization for multiple files)
+                loaded = self._load_orchestrations_from_file(
+                    file_path, current_mtime, rebuild_router=False
+                )
                 new_orchestrations_count += loaded
                 self._known_orchestration_files[file_path] = current_mtime
 
@@ -253,6 +257,11 @@ class Sentinel:
                 modified_orchestrations_count += reloaded
                 self._known_orchestration_files[file_path] = current_mtime
 
+        # Rebuild Router once after all new files are processed (optimization)
+        # Modified files already rebuild the Router in _reload_modified_file()
+        if new_orchestrations_count > 0:
+            self.router = Router(self.orchestrations)
+
         if new_orchestrations_count > 0 or modified_orchestrations_count > 0:
             logger.info(
                 f"Hot-reload complete: {new_orchestrations_count} new, "
@@ -262,12 +271,18 @@ class Sentinel:
 
         return new_orchestrations_count, modified_orchestrations_count
 
-    def _load_orchestrations_from_file(self, file_path: Path, mtime: float) -> int:
+    def _load_orchestrations_from_file(
+        self, file_path: Path, mtime: float, rebuild_router: bool = True
+    ) -> int:
         """Load orchestrations from a new file.
 
         Args:
             file_path: Path to the orchestration file.
             mtime: Modification time of the file.
+            rebuild_router: Whether to rebuild the router after loading.
+                Set to False when loading multiple files in a batch to avoid
+                redundant rebuilds; caller should rebuild router once after all
+                files are processed.
 
         Returns:
             Number of orchestrations loaded.
@@ -277,7 +292,8 @@ class Sentinel:
             if new_orchestrations:
                 self.orchestrations.extend(new_orchestrations)
                 # Update the router with the new orchestrations
-                self.router = Router(self.orchestrations)
+                if rebuild_router:
+                    self.router = Router(self.orchestrations)
 
                 # Create versioned entries for tracking
                 with self._versions_lock:
