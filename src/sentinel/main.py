@@ -593,11 +593,13 @@ class Sentinel:
             if version is not None:
                 version.decrement_executions()
 
-    def run_once(self) -> list[ExecutionResult]:
+    def run_once(self) -> tuple[list[ExecutionResult], int]:
         """Run a single polling cycle.
 
         Returns:
-            List of execution results from this cycle.
+            Tuple of (execution results from this cycle, number of tasks submitted).
+            The submitted_count is used for eager polling - when > 0, the caller
+            should skip the sleep interval and poll immediately for more work.
         """
         # Detect and load any new or modified orchestration files at the start of each cycle
         self._detect_and_load_new_orchestration_files()
@@ -618,7 +620,7 @@ class Sentinel:
                 f"All {self.config.max_concurrent_executions} execution slots busy, "
                 "skipping polling this cycle"
             )
-            return all_results
+            return all_results, 0
 
         # Group orchestrations by trigger source
         jira_orchestrations: list[Orchestration] = []
@@ -652,7 +654,7 @@ class Sentinel:
         if submitted_count > 0:
             logger.info(f"Submitted {submitted_count} execution tasks")
 
-        return all_results
+        return all_results, submitted_count
 
     def _poll_jira_triggers(
         self,
@@ -883,7 +885,7 @@ class Sentinel:
             # Keep polling and processing until no new work is found
             while True:
                 # Run a polling cycle to submit work
-                cycle_results = self.run_once()
+                cycle_results, _ = self.run_once()
                 all_results.extend(cycle_results)
 
                 # Check if any work was submitted (active futures)
@@ -946,7 +948,7 @@ class Sentinel:
         try:
             while not self._shutdown_requested:
                 try:
-                    results = self.run_once()
+                    results, submitted_count = self.run_once()
                     success_count = sum(1 for r in results if r.succeeded)
                     if results:
                         logger.info(
@@ -954,14 +956,21 @@ class Sentinel:
                         )
                 except Exception as e:
                     logger.error(f"Error in polling cycle: {e}")
+                    submitted_count = 0  # On error, use normal poll interval
 
+                # Eager polling: skip sleep if work was submitted, poll immediately for more
                 if not self._shutdown_requested:
-                    logger.debug(f"Sleeping for {self.config.poll_interval}s")
-                    # Sleep in small increments to allow quick shutdown
-                    for _ in range(self.config.poll_interval):
-                        if self._shutdown_requested:
-                            break
-                        time.sleep(1)
+                    if submitted_count > 0:
+                        logger.debug(
+                            f"Submitted {submitted_count} task(s), polling immediately for more work"
+                        )
+                    else:
+                        logger.debug(f"Sleeping for {self.config.poll_interval}s")
+                        # Sleep in small increments to allow quick shutdown
+                        for _ in range(self.config.poll_interval):
+                            if self._shutdown_requested:
+                                break
+                            time.sleep(1)
 
             # Wait for active tasks to complete
             logger.info("Waiting for active executions to complete...")
