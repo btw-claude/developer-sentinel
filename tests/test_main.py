@@ -1,146 +1,27 @@
 """Tests for main entry point module."""
 
 import logging
-import os
 import signal
 import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from sentinel.config import Config
 from sentinel.executor import AgentClient
 from sentinel.main import Sentinel, parse_args, setup_logging
-from sentinel.orchestration import AgentConfig, Orchestration, TriggerConfig
-from sentinel.poller import JiraClient
-from sentinel.tag_manager import JiraTagClient
+from sentinel.orchestration import Orchestration
 
-# Note: pytest fixtures (temp_orchestrations_dir, mock_jira_client, etc.) are
-# automatically available from conftest.py. The helper classes and functions
-# below are kept here for backward compatibility with existing tests, but new
-# tests should prefer using the fixtures from conftest.py.
-#
-# DS-97: Test setup code has been refactored into shared fixtures in conftest.py
-
-
-class MockJiraClient(JiraClient):
-    """Mock Jira client for testing."""
-
-    def __init__(
-        self,
-        issues: list[dict[str, Any]] | None = None,
-        tag_client: "MockTagClient | None" = None,
-    ) -> None:
-        self.issues = issues or []
-        self.search_calls: list[tuple[str, int]] = []
-        self.tag_client = tag_client
-
-    def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
-        self.search_calls.append((jql, max_results))
-        # If we have a tag client, filter out issues whose trigger tags have been removed
-        if self.tag_client:
-            result = []
-            for issue in self.issues:
-                issue_key = issue.get("key", "")
-                removed = self.tag_client.remove_calls
-                # Check if any label in this issue was removed
-                labels = issue.get("fields", {}).get("labels", [])
-                # If any label was removed for this issue, skip it
-                if any(key == issue_key for key, _ in removed):
-                    continue
-                result.append(issue)
-            return result
-        return self.issues
-
-
-class MockAgentClient(AgentClient):
-    """Mock agent client for testing."""
-
-    def __init__(self, responses: list[str] | None = None) -> None:
-        self.responses = responses or ["SUCCESS: Done"]
-        self.call_count = 0
-        self.calls: list[
-            tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None, str | None]
-        ] = []
-
-    def run_agent(
-        self,
-        prompt: str,
-        tools: list[str],
-        context: dict[str, Any] | None = None,
-        timeout_seconds: int | None = None,
-        issue_key: str | None = None,
-        model: str | None = None,
-        orchestration_name: str | None = None,
-    ) -> str:
-        self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model, orchestration_name))
-        response = self.responses[min(self.call_count, len(self.responses) - 1)]
-        self.call_count += 1
-        return response
-
-
-class MockTagClient(JiraTagClient):
-    """Mock tag client for testing."""
-
-    def __init__(self) -> None:
-        self.labels: dict[str, list[str]] = {}
-        self.add_calls: list[tuple[str, str]] = []
-        self.remove_calls: list[tuple[str, str]] = []
-
-    def add_label(self, issue_key: str, label: str) -> None:
-        self.add_calls.append((issue_key, label))
-        if issue_key not in self.labels:
-            self.labels[issue_key] = []
-        self.labels[issue_key].append(label)
-
-    def remove_label(self, issue_key: str, label: str) -> None:
-        self.remove_calls.append((issue_key, label))
-
-
-def make_config(
-    poll_interval: int = 60,
-    max_issues: int = 50,
-    max_concurrent_executions: int = 1,
-    max_eager_iterations: int = 10,
-    orchestrations_dir: Path | None = None,
-) -> Config:
-    """Helper to create a Config for testing."""
-    return Config(
-        poll_interval=poll_interval,
-        max_issues_per_poll=max_issues,
-        max_eager_iterations=max_eager_iterations,
-        max_concurrent_executions=max_concurrent_executions,
-        orchestrations_dir=orchestrations_dir or Path("orchestrations"),
-    )
-
-
-def make_orchestration(
-    name: str = "test-orch",
-    project: str = "TEST",
-    tags: list[str] | None = None,
-) -> Orchestration:
-    """Helper to create an Orchestration for testing."""
-    return Orchestration(
-        name=name,
-        trigger=TriggerConfig(project=project, tags=tags or []),
-        agent=AgentConfig(prompt="Test prompt", tools=["jira"]),
-    )
-
-
-def set_mtime_in_future(file_path: Path, seconds_offset: float = 1.0) -> None:
-    """Set a file's mtime to a future time to ensure mtime difference detection.
-
-    This helper explicitly sets the file's modification time using os.utime()
-    rather than relying on time.sleep() which can be flaky on fast filesystems
-    or under heavy load.
-
-    Args:
-        file_path: Path to the file to modify.
-        seconds_offset: Number of seconds to add to current time (default: 1.0).
-    """
-    current_stat = file_path.stat()
-    new_mtime = current_stat.st_mtime + seconds_offset
-    os.utime(file_path, (current_stat.st_atime, new_mtime))
+# DS-100: Import shared fixtures and helpers from conftest.py
+# These provide MockJiraClient, MockAgentClient, MockTagClient,
+# make_config, make_orchestration, and set_mtime_in_future
+from tests.conftest import (
+    MockJiraClient,
+    MockAgentClient,
+    MockTagClient,
+    make_config,
+    make_orchestration,
+    set_mtime_in_future,
+)
 
 
 class TestParseArgs:
