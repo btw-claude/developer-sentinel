@@ -174,10 +174,36 @@ class Sentinel:
         self._pending_removal_versions: list[OrchestrationVersion] = []
         self._versions_lock = threading.Lock()
 
+        # Observability counters for hot-reload metrics (DS-97)
+        # These counters track orchestration lifecycle events for monitoring
+        self._orchestrations_loaded_total: int = 0
+        self._orchestrations_unloaded_total: int = 0
+        self._orchestrations_reloaded_total: int = 0
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
         logger.info("Shutdown requested")
         self._shutdown_requested = True
+
+    def get_hot_reload_metrics(self) -> dict[str, int]:
+        """Get observability metrics for hot-reload operations.
+
+        Returns a dictionary with the following counters:
+        - orchestrations_loaded_total: Count of orchestrations loaded from new files
+        - orchestrations_unloaded_total: Count of orchestrations unloaded from deleted files
+        - orchestrations_reloaded_total: Count of orchestrations reloaded from modified files
+
+        These metrics can be used for monitoring and alerting on orchestration
+        lifecycle events.
+
+        Returns:
+            Dict with hot-reload metric counters.
+        """
+        return {
+            "orchestrations_loaded_total": self._orchestrations_loaded_total,
+            "orchestrations_unloaded_total": self._orchestrations_unloaded_total,
+            "orchestrations_reloaded_total": self._orchestrations_reloaded_total,
+        }
 
     def _init_known_orchestration_files(self) -> None:
         """Initialize the set of known orchestration files with their mtimes.
@@ -301,6 +327,9 @@ class Sentinel:
                         version = OrchestrationVersion.create(orch, file_path, mtime)
                         self._active_versions.append(version)
 
+                # Update observability counter (DS-97)
+                self._orchestrations_loaded_total += len(new_orchestrations)
+
                 logger.info(
                     f"Loaded {len(new_orchestrations)} orchestration(s) from {file_path.name}"
                 )
@@ -372,6 +401,9 @@ class Sentinel:
 
         # Update the router with the updated orchestrations
         self.router = Router(self.orchestrations)
+
+        # Update observability counter (DS-97)
+        self._orchestrations_reloaded_total += len(new_orchestrations)
 
         logger.info(
             f"Reloaded {len(new_orchestrations)} orchestration(s) from {file_path.name}"
@@ -512,6 +544,9 @@ class Sentinel:
         # Update the router with the remaining orchestrations
         if unloaded_count > 0:
             self.router = Router(self.orchestrations)
+
+            # Update observability counter (DS-97)
+            self._orchestrations_unloaded_total += unloaded_count
 
         return unloaded_count
 
