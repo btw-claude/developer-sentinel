@@ -180,6 +180,10 @@ class Sentinel:
         self._orchestrations_unloaded_total: int = 0
         self._orchestrations_reloaded_total: int = 0
 
+        # Eager polling iteration counter (DS-98)
+        # Tracks consecutive immediate polls to prevent runaway polling
+        self._consecutive_eager_polls: int = 0
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
         logger.info("Shutdown requested")
@@ -1010,12 +1014,29 @@ class Sentinel:
                     submitted_count = 0  # On error, use normal poll interval
 
                 # Eager polling: skip sleep if work was submitted, poll immediately for more
+                # DS-98: Limit consecutive eager polls to prevent runaway polling
                 if not self._shutdown_requested:
                     if submitted_count > 0:
-                        logger.debug(
-                            f"Submitted {submitted_count} task(s), polling immediately for more work"
-                        )
+                        self._consecutive_eager_polls += 1
+                        if self._consecutive_eager_polls >= self.config.max_eager_iterations:
+                            logger.info(
+                                f"Reached max_eager_iterations ({self.config.max_eager_iterations}), "
+                                f"forcing sleep interval"
+                            )
+                            self._consecutive_eager_polls = 0
+                            logger.debug(f"Sleeping for {self.config.poll_interval}s")
+                            for _ in range(self.config.poll_interval):
+                                if self._shutdown_requested:
+                                    break
+                                time.sleep(1)
+                        else:
+                            logger.debug(
+                                f"Submitted {submitted_count} task(s), polling immediately for more work "
+                                f"(eager iteration {self._consecutive_eager_polls}/{self.config.max_eager_iterations})"
+                            )
                     else:
+                        # No work submitted, reset eager counter and sleep
+                        self._consecutive_eager_polls = 0
                         logger.debug(f"Sleeping for {self.config.poll_interval}s")
                         # Sleep in small increments to allow quick shutdown
                         for _ in range(self.config.poll_interval):
