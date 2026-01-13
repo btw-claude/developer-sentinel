@@ -947,3 +947,304 @@ class TestSentinelOrchestrationHotReload:
         # Should not raise during run_once
         sentinel.run_once()
         assert len(sentinel.orchestrations) == 0
+
+    def test_detects_modified_orchestration_files(self) -> None:
+        """Test that modified orchestration files are detected and reloaded."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+            orch_file = orch_dir / "modifiable.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: original-orch
+    trigger:
+      project: TEST
+      tags: [review]
+    agent:
+      prompt: Original prompt
+      tools: [jira]
+"""
+            )
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # File should be tracked with its mtime
+            assert len(sentinel._known_orchestration_files) == 1
+            assert orch_file in sentinel._known_orchestration_files
+            original_mtime = sentinel._known_orchestration_files[orch_file]
+
+            # First run - no new files (file was tracked at init)
+            sentinel.run_once()
+            assert len(sentinel.orchestrations) == 0
+
+            # Modify the file (need to ensure different mtime)
+            import time
+            time.sleep(0.1)  # Ensure different mtime
+            orch_file.write_text(
+                """orchestrations:
+  - name: modified-orch
+    trigger:
+      project: TEST
+      tags: [review]
+    agent:
+      prompt: Modified prompt
+      tools: [jira]
+"""
+            )
+
+            # Run again - should detect the modification
+            sentinel.run_once()
+
+            # Should have loaded the modified orchestration
+            assert len(sentinel.orchestrations) == 1
+            assert sentinel.orchestrations[0].name == "modified-orch"
+            assert sentinel.orchestrations[0].agent.prompt == "Modified prompt"
+
+            # Mtime should be updated
+            assert sentinel._known_orchestration_files[orch_file] > original_mtime
+
+    def test_modified_file_moves_old_version_to_pending_removal(self) -> None:
+        """Test that modifying a file moves old versions to pending removal."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+            orch_file = orch_dir / "versioned.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: versioned-orch
+    trigger:
+      project: TEST
+      tags: [review]
+    agent:
+      prompt: Version 1
+"""
+            )
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # No versions initially (file was tracked at init, not loaded)
+            assert len(sentinel._active_versions) == 0
+            assert len(sentinel._pending_removal_versions) == 0
+
+            # Add a new file after init to get it loaded with version tracking
+            new_file = orch_dir / "new_versioned.yaml"
+            new_file.write_text(
+                """orchestrations:
+  - name: new-versioned-orch
+    trigger:
+      project: TEST
+      tags: [review]
+    agent:
+      prompt: New Version 1
+"""
+            )
+
+            sentinel.run_once()
+
+            # Should have one active version
+            assert len(sentinel._active_versions) == 1
+            assert sentinel._active_versions[0].name == "new-versioned-orch"
+
+            # Simulate an active execution on this version
+            sentinel._active_versions[0].increment_executions()
+
+            # Modify the new file
+            import time
+            time.sleep(0.1)  # Ensure different mtime
+            new_file.write_text(
+                """orchestrations:
+  - name: new-versioned-orch
+    trigger:
+      project: TEST
+      tags: [review]
+    agent:
+      prompt: New Version 2 - Modified
+"""
+            )
+
+            sentinel.run_once()
+
+            # Old version should be in pending removal (has active execution)
+            assert len(sentinel._pending_removal_versions) == 1
+            assert sentinel._pending_removal_versions[0].orchestration.agent.prompt == "New Version 1"
+
+            # New version should be active
+            assert len(sentinel._active_versions) == 1
+            assert sentinel._active_versions[0].orchestration.agent.prompt == "New Version 2 - Modified"
+
+    def test_pending_removal_version_cleaned_up_after_execution_completes(self) -> None:
+        """Test that pending removal versions are cleaned up after executions complete."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add a file to get version tracking
+            orch_file = orch_dir / "cleanup_test.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: cleanup-orch
+    trigger:
+      project: TEST
+    agent:
+      prompt: Version 1
+"""
+            )
+
+            sentinel.run_once()
+
+            # Simulate active execution on this version
+            sentinel._active_versions[0].increment_executions()
+
+            # Modify the file
+            import time
+            time.sleep(0.1)
+            orch_file.write_text(
+                """orchestrations:
+  - name: cleanup-orch
+    trigger:
+      project: TEST
+    agent:
+      prompt: Version 2
+"""
+            )
+
+            sentinel.run_once()
+
+            # Old version in pending removal with 1 active execution
+            assert len(sentinel._pending_removal_versions) == 1
+            assert sentinel._pending_removal_versions[0].active_executions == 1
+
+            # Simulate execution completing
+            sentinel._pending_removal_versions[0].decrement_executions()
+
+            # Run again - cleanup should remove the old version
+            sentinel.run_once()
+
+            # Pending removal should be empty now
+            assert len(sentinel._pending_removal_versions) == 0
+
+    def test_version_without_active_executions_removed_immediately(self) -> None:
+        """Test that old versions without active executions are removed immediately."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add a file
+            orch_file = orch_dir / "no_exec.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: no-exec-orch
+    trigger:
+      project: TEST
+    agent:
+      prompt: Version 1
+"""
+            )
+
+            sentinel.run_once()
+
+            # No active executions on the version
+            assert sentinel._active_versions[0].active_executions == 0
+
+            # Modify the file
+            import time
+            time.sleep(0.1)
+            orch_file.write_text(
+                """orchestrations:
+  - name: no-exec-orch
+    trigger:
+      project: TEST
+    agent:
+      prompt: Version 2
+"""
+            )
+
+            sentinel.run_once()
+
+            # Old version should NOT be in pending removal (no active executions)
+            assert len(sentinel._pending_removal_versions) == 0
+
+            # New version should be active
+            assert len(sentinel._active_versions) == 1
+            assert sentinel._active_versions[0].orchestration.agent.prompt == "Version 2"
+
+    def test_known_files_stores_mtime(self) -> None:
+        """Test that _known_orchestration_files stores mtimes, not just presence."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+            orch_file = orch_dir / "mtime_test.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: test
+    trigger:
+      project: TEST
+    agent:
+      prompt: Test
+"""
+            )
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Should store mtime, not just True/False
+            assert isinstance(sentinel._known_orchestration_files[orch_file], float)
+            assert sentinel._known_orchestration_files[orch_file] > 0

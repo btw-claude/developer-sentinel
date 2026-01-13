@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
@@ -246,6 +247,70 @@ class OrchestrationError(Exception):
     """Raised when orchestration configuration is invalid."""
 
     pass
+
+
+@dataclass
+class OrchestrationVersion:
+    """A versioned wrapper around an Orchestration for hot-reload support.
+
+    When orchestration files are modified, new versions are created while
+    old versions remain active until all their running executions complete.
+
+    Attributes:
+        version_id: Unique identifier for this version (UUID).
+        orchestration: The underlying orchestration configuration.
+        source_file: Path to the file this orchestration was loaded from.
+        mtime: Modification time of the source file when loaded.
+        active_executions: Count of currently running executions using this version.
+    """
+
+    version_id: str
+    orchestration: Orchestration
+    source_file: Path
+    mtime: float
+    active_executions: int = 0
+
+    @classmethod
+    def create(
+        cls,
+        orchestration: Orchestration,
+        source_file: Path,
+        mtime: float,
+    ) -> "OrchestrationVersion":
+        """Create a new OrchestrationVersion with a unique version ID.
+
+        Args:
+            orchestration: The orchestration configuration.
+            source_file: Path to the source file.
+            mtime: Modification time of the source file.
+
+        Returns:
+            A new OrchestrationVersion instance.
+        """
+        return cls(
+            version_id=str(uuid.uuid4()),
+            orchestration=orchestration,
+            source_file=source_file,
+            mtime=mtime,
+        )
+
+    @property
+    def name(self) -> str:
+        """Return the orchestration name."""
+        return self.orchestration.name
+
+    def increment_executions(self) -> None:
+        """Increment the active execution count."""
+        self.active_executions += 1
+
+    def decrement_executions(self) -> None:
+        """Decrement the active execution count."""
+        self.active_executions = max(0, self.active_executions - 1)
+
+    @property
+    def has_active_executions(self) -> bool:
+        """Return True if there are active executions using this version."""
+        return self.active_executions > 0
 
 
 def _validate_github_repo_format(repo: str) -> ValidationResult:

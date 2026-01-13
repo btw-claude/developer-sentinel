@@ -11,6 +11,7 @@ from sentinel.orchestration import (
     OnStartConfig,
     Orchestration,
     OrchestrationError,
+    OrchestrationVersion,
     Outcome,
     RetryConfig,
     TriggerConfig,
@@ -139,6 +140,118 @@ class TestDataclasses:
             enabled=False,
         )
         assert orch.enabled is False
+
+
+class TestOrchestrationVersion:
+    """Tests for OrchestrationVersion dataclass."""
+
+    def test_create_generates_unique_version_id(self) -> None:
+        """OrchestrationVersion.create should generate unique version IDs."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version1 = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+        version2 = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+
+        assert version1.version_id != version2.version_id
+        assert len(version1.version_id) == 36  # UUID format
+
+    def test_create_sets_all_fields(self) -> None:
+        """OrchestrationVersion.create should set all fields correctly."""
+        orch = Orchestration(
+            name="test-orch",
+            trigger=TriggerConfig(project="TEST"),
+            agent=AgentConfig(prompt="Test prompt"),
+        )
+        source_file = Path("/path/to/test.yaml")
+        mtime = 1234567890.5
+
+        version = OrchestrationVersion.create(orch, source_file, mtime)
+
+        assert version.orchestration is orch
+        assert version.source_file == source_file
+        assert version.mtime == mtime
+        assert version.active_executions == 0
+
+    def test_name_property_returns_orchestration_name(self) -> None:
+        """name property should return the orchestration name."""
+        orch = Orchestration(
+            name="my-orchestration",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+
+        assert version.name == "my-orchestration"
+
+    def test_increment_executions(self) -> None:
+        """increment_executions should increase the count."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+
+        assert version.active_executions == 0
+        version.increment_executions()
+        assert version.active_executions == 1
+        version.increment_executions()
+        assert version.active_executions == 2
+
+    def test_decrement_executions(self) -> None:
+        """decrement_executions should decrease the count."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+        version.active_executions = 3
+
+        version.decrement_executions()
+        assert version.active_executions == 2
+        version.decrement_executions()
+        assert version.active_executions == 1
+
+    def test_decrement_executions_does_not_go_negative(self) -> None:
+        """decrement_executions should not go below zero."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+        assert version.active_executions == 0
+
+        version.decrement_executions()
+        assert version.active_executions == 0
+
+    def test_has_active_executions_returns_true_when_active(self) -> None:
+        """has_active_executions should return True when there are active executions."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+
+        assert version.has_active_executions is False
+        version.increment_executions()
+        assert version.has_active_executions is True
+
+    def test_has_active_executions_returns_false_when_none(self) -> None:
+        """has_active_executions should return False when count is zero."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+
+        assert version.has_active_executions is False
 
 
 class TestLoadOrchestrationFile:
