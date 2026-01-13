@@ -100,6 +100,7 @@ def make_config(
     poll_interval: int = 60,
     max_issues: int = 50,
     max_concurrent_executions: int = 1,
+    max_eager_iterations: int = 10,
     orchestrations_dir: Path | None = None,
 ) -> Config:
     """Helper to create a Config for testing."""
@@ -107,6 +108,7 @@ def make_config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
         max_concurrent_executions=max_concurrent_executions,
+        max_eager_iterations=max_eager_iterations,
         orchestrations_dir=orchestrations_dir or Path("orchestrations"),
     )
 
