@@ -2,6 +2,7 @@
 
 import logging
 import signal
+import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -92,12 +93,14 @@ def make_config(
     poll_interval: int = 60,
     max_issues: int = 50,
     max_concurrent_executions: int = 1,
+    orchestrations_dir: Path | None = None,
 ) -> Config:
     """Helper to create a Config for testing."""
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
         max_concurrent_executions=max_concurrent_executions,
+        orchestrations_dir=orchestrations_dir or Path("orchestrations"),
     )
 
 
@@ -677,3 +680,270 @@ class TestSentinelConcurrentExecution:
         assert len(end_indices) == 2
         # Second start should happen before first end in concurrent execution
         assert start_indices[1] < end_indices[0]
+
+
+class TestSentinelOrchestrationHotReload:
+    """Tests for Sentinel orchestration file hot-reload functionality."""
+
+    def test_init_tracks_existing_orchestration_files(self) -> None:
+        """Test that __init__ initializes the set of known orchestration files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+            # Create some initial orchestration files
+            (orch_dir / "existing1.yaml").write_text(
+                "orchestrations:\n  - name: existing1\n    trigger: {project: TEST}\n    agent: {prompt: test}"
+            )
+            (orch_dir / "existing2.yml").write_text(
+                "orchestrations:\n  - name: existing2\n    trigger: {project: TEST}\n    agent: {prompt: test}"
+            )
+            # Create a non-yaml file that should be ignored
+            (orch_dir / "readme.txt").write_text("This is not an orchestration file")
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations = [make_orchestration()]
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Should have tracked both yaml files
+            assert len(sentinel._known_orchestration_files) == 2
+            assert orch_dir / "existing1.yaml" in sentinel._known_orchestration_files
+            assert orch_dir / "existing2.yml" in sentinel._known_orchestration_files
+
+    def test_detects_new_orchestration_files(self) -> None:
+        """Test that new orchestration files are detected during poll cycles."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Initially no files
+            assert len(sentinel._known_orchestration_files) == 0
+            assert len(sentinel.orchestrations) == 0
+
+            # Add a new orchestration file
+            (orch_dir / "new_orch.yaml").write_text(
+                """orchestrations:
+  - name: new-orchestration
+    trigger:
+      project: TEST
+      tags: [review]
+    agent:
+      prompt: Test prompt
+      tools: [jira]
+"""
+            )
+
+            # Run a poll cycle - should detect and load the new file
+            sentinel.run_once()
+
+            # Should have detected and loaded the new orchestration
+            assert len(sentinel._known_orchestration_files) == 1
+            assert orch_dir / "new_orch.yaml" in sentinel._known_orchestration_files
+            assert len(sentinel.orchestrations) == 1
+            assert sentinel.orchestrations[0].name == "new-orchestration"
+
+    def test_loads_multiple_orchestrations_from_new_file(self) -> None:
+        """Test that multiple orchestrations from a single new file are loaded."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add a file with multiple orchestrations
+            (orch_dir / "multi.yaml").write_text(
+                """orchestrations:
+  - name: orch-1
+    trigger:
+      project: TEST
+    agent:
+      prompt: Test 1
+  - name: orch-2
+    trigger:
+      project: PROJ
+    agent:
+      prompt: Test 2
+"""
+            )
+
+            # Run a poll cycle
+            sentinel.run_once()
+
+            # Should have loaded both orchestrations
+            assert len(sentinel.orchestrations) == 2
+            assert sentinel.orchestrations[0].name == "orch-1"
+            assert sentinel.orchestrations[1].name == "orch-2"
+
+    def test_updates_router_with_new_orchestrations(self) -> None:
+        """Test that the router is updated when new orchestrations are loaded."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(
+                issues=[
+                    {"key": "TEST-1", "fields": {"summary": "Test", "labels": ["new-tag"]}},
+                ]
+            )
+            agent_client = MockAgentClient(responses=["SUCCESS"])
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # First run - no orchestrations, no matches
+            results = sentinel.run_once()
+            assert len(results) == 0
+
+            # Add a new orchestration that matches the existing issue
+            (orch_dir / "matching.yaml").write_text(
+                """orchestrations:
+  - name: matching-orch
+    trigger:
+      project: TEST
+      tags: [new-tag]
+    agent:
+      prompt: Process this
+      tools: [jira]
+"""
+            )
+
+            # Second run - should detect new file, update router, and match the issue
+            results = sentinel.run_once()
+            assert len(results) == 1
+            assert results[0].succeeded is True
+
+    def test_handles_invalid_orchestration_file_gracefully(self) -> None:
+        """Test that invalid orchestration files don't crash the system."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add an invalid orchestration file
+            (orch_dir / "invalid.yaml").write_text("this is not valid: yaml: [[[")
+
+            # Run a poll cycle - should handle error gracefully
+            sentinel.run_once()
+
+            # File should be marked as known (to avoid retry)
+            assert orch_dir / "invalid.yaml" in sentinel._known_orchestration_files
+            # But no orchestrations should be added
+            assert len(sentinel.orchestrations) == 0
+
+    def test_does_not_reload_known_files(self) -> None:
+        """Test that known files are not reloaded on subsequent poll cycles."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+            # Create initial file
+            (orch_dir / "initial.yaml").write_text(
+                """orchestrations:
+  - name: initial
+    trigger:
+      project: TEST
+    agent:
+      prompt: Test
+"""
+            )
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Initial file is already tracked at init time
+            assert len(sentinel._known_orchestration_files) == 1
+
+            # First run_once
+            sentinel.run_once()
+
+            # Orchestration count should still be 0 because the file was tracked at init
+            # (it won't be loaded by _detect_and_load_new_orchestration_files)
+            assert len(sentinel.orchestrations) == 0
+
+            # Run again - should not try to reload the file
+            initial_count = len(sentinel.orchestrations)
+            sentinel.run_once()
+            assert len(sentinel.orchestrations) == initial_count
+
+    def test_handles_nonexistent_orchestrations_directory(self) -> None:
+        """Test handling when orchestrations directory doesn't exist."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(orchestrations_dir=Path("/nonexistent/path"))
+        orchestrations: list[Orchestration] = []
+
+        # Should not raise during initialization
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        assert len(sentinel._known_orchestration_files) == 0
+
+        # Should not raise during run_once
+        sentinel.run_once()
+        assert len(sentinel.orchestrations) == 0
