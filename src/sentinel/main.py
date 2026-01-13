@@ -27,7 +27,7 @@ from sentinel.mcp_clients import (
 from sentinel.mcp_clients import (
     request_shutdown as request_claude_shutdown,
 )
-from sentinel.orchestration import Orchestration, load_orchestrations
+from sentinel.orchestration import Orchestration, load_orchestration_file, load_orchestrations
 from sentinel.poller import JiraClient, JiraIssue, JiraPoller
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.router import Router
@@ -157,10 +157,85 @@ class Sentinel:
         self._active_futures: list[Future[ExecutionResult]] = []
         self._futures_lock = threading.Lock()
 
+        # Track known orchestration files for hot-reload detection
+        self._known_orchestration_files: set[Path] = set()
+        self._init_known_orchestration_files()
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
         logger.info("Shutdown requested")
         self._shutdown_requested = True
+
+    def _init_known_orchestration_files(self) -> None:
+        """Initialize the set of known orchestration files.
+
+        Scans the orchestrations directory and records all .yaml/.yml files
+        that exist at startup. This establishes the baseline for detecting
+        new files in subsequent poll cycles.
+        """
+        orchestrations_dir = self.config.orchestrations_dir
+        if not orchestrations_dir.exists() or not orchestrations_dir.is_dir():
+            return
+
+        for file_path in orchestrations_dir.iterdir():
+            if file_path.suffix in (".yaml", ".yml"):
+                self._known_orchestration_files.add(file_path)
+
+        logger.debug(
+            f"Initialized with {len(self._known_orchestration_files)} known orchestration files"
+        )
+
+    def _detect_and_load_new_orchestration_files(self) -> int:
+        """Detect and load new orchestration files added since last check.
+
+        Scans the orchestrations directory for .yaml/.yml files that are not
+        in the known files set. New files are loaded using load_orchestration_file()
+        and their orchestrations are added to the active list.
+
+        Returns:
+            Number of new orchestrations loaded.
+        """
+        orchestrations_dir = self.config.orchestrations_dir
+        if not orchestrations_dir.exists() or not orchestrations_dir.is_dir():
+            return 0
+
+        new_orchestrations_count = 0
+
+        # Scan for new files
+        for file_path in sorted(orchestrations_dir.iterdir()):
+            if file_path.suffix not in (".yaml", ".yml"):
+                continue
+
+            if file_path in self._known_orchestration_files:
+                continue
+
+            # New file detected
+            logger.info(f"Detected new orchestration file: {file_path}")
+            try:
+                new_orchestrations = load_orchestration_file(file_path)
+                if new_orchestrations:
+                    self.orchestrations.extend(new_orchestrations)
+                    # Update the router with the new orchestrations
+                    self.router = Router(self.orchestrations)
+                    new_orchestrations_count += len(new_orchestrations)
+                    logger.info(
+                        f"Loaded {len(new_orchestrations)} orchestration(s) from {file_path.name}"
+                    )
+                else:
+                    logger.debug(f"No enabled orchestrations in {file_path.name}")
+            except Exception as e:
+                logger.error(f"Failed to load new orchestration file {file_path}: {e}")
+
+            # Mark file as known regardless of load success to avoid repeated attempts
+            self._known_orchestration_files.add(file_path)
+
+        if new_orchestrations_count > 0:
+            logger.info(
+                f"Hot-reload complete: {new_orchestrations_count} new orchestration(s), "
+                f"total active: {len(self.orchestrations)}"
+            )
+
+        return new_orchestrations_count
 
     def _get_available_slots(self) -> int:
         """Get the number of available execution slots.
@@ -241,6 +316,9 @@ class Sentinel:
         Returns:
             List of execution results from this cycle.
         """
+        # Detect and load any new orchestration files at the start of each cycle
+        self._detect_and_load_new_orchestration_files()
+
         # Collect any completed results from previous cycle
         all_results = self._collect_completed_results()
 
