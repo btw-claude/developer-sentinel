@@ -408,6 +408,97 @@ class Sentinel:
                     return version
         return None
 
+    def _detect_and_unload_removed_files(self) -> int:
+        """Detect and unload orchestrations from removed files.
+
+        Scans the known orchestration files to check if any have been deleted.
+        When a file is deleted:
+        1. Its orchestrations are removed from the active list
+        2. Versions with running executions are moved to pending_removal
+        3. Versions without running executions are removed immediately
+        4. The file is removed from the known files dict
+        5. The router is updated
+
+        Returns:
+            Number of orchestrations unloaded.
+        """
+        orchestrations_dir = self.config.orchestrations_dir
+        if not orchestrations_dir.exists() or not orchestrations_dir.is_dir():
+            return 0
+
+        unloaded_count = 0
+        removed_files: list[Path] = []
+
+        # Check which known files no longer exist
+        for file_path in list(self._known_orchestration_files.keys()):
+            if not file_path.exists():
+                logger.info(f"Detected removed orchestration file: {file_path}")
+                removed_files.append(file_path)
+
+        # Process each removed file
+        for file_path in removed_files:
+            unloaded = self._unload_orchestrations_from_file(file_path)
+            unloaded_count += unloaded
+            del self._known_orchestration_files[file_path]
+
+        if unloaded_count > 0:
+            logger.info(
+                f"Unloaded {unloaded_count} orchestration(s) from {len(removed_files)} "
+                f"removed file(s), total active: {len(self.orchestrations)}"
+            )
+
+        return unloaded_count
+
+    def _unload_orchestrations_from_file(self, file_path: Path) -> int:
+        """Unload orchestrations from a removed file.
+
+        Orchestrations with running executions are moved to pending_removal
+        and kept alive until those executions complete. Orchestrations without
+        running executions are removed immediately.
+
+        Args:
+            file_path: Path to the removed orchestration file.
+
+        Returns:
+            Number of orchestrations unloaded.
+        """
+        unloaded_count = 0
+
+        with self._versions_lock:
+            # Find versions from this file
+            versions_to_remove = [v for v in self._active_versions if v.source_file == file_path]
+
+            for version in versions_to_remove:
+                self._active_versions.remove(version)
+
+                if version.has_active_executions:
+                    # Keep alive until executions complete
+                    self._pending_removal_versions.append(version)
+                    logger.info(
+                        f"Orchestration '{version.name}' (version {version.version_id[:8]}) "
+                        f"moved to pending removal with {version.active_executions} active execution(s)"
+                    )
+                else:
+                    logger.debug(
+                        f"Orchestration '{version.name}' (version {version.version_id[:8]}) "
+                        f"removed immediately (no active executions)"
+                    )
+
+                unloaded_count += 1
+
+            # Remove orchestrations from the main list using identity comparison
+            orchestrations_to_remove = [v.orchestration for v in versions_to_remove]
+            self.orchestrations = [
+                o for o in self.orchestrations
+                if not any(o is orch for orch in orchestrations_to_remove)
+            ]
+
+        # Update the router with the remaining orchestrations
+        if unloaded_count > 0:
+            self.router = Router(self.orchestrations)
+
+        return unloaded_count
+
     def _detect_and_load_new_orchestration_files(self) -> int:
         """Detect and load new orchestration files added since last check.
 
@@ -510,6 +601,9 @@ class Sentinel:
         """
         # Detect and load any new or modified orchestration files at the start of each cycle
         self._detect_and_load_new_orchestration_files()
+
+        # Detect and unload orchestrations from removed files
+        self._detect_and_unload_removed_files()
 
         # Clean up old orchestration versions that no longer have active executions
         self._cleanup_pending_removal_versions()

@@ -1248,3 +1248,385 @@ class TestSentinelOrchestrationHotReload:
             # Should store mtime, not just True/False
             assert isinstance(sentinel._known_orchestration_files[orch_file], float)
             assert sentinel._known_orchestration_files[orch_file] > 0
+
+    def test_detects_removed_orchestration_files(self) -> None:
+        """Test that removed orchestration files are detected and their orchestrations unloaded."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add a new orchestration file
+            orch_file = orch_dir / "removable.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: removable-orch
+    trigger:
+      project: TEST
+      tags: [review]
+    agent:
+      prompt: Test prompt
+"""
+            )
+
+            # Run to detect and load the new file
+            sentinel.run_once()
+
+            # Should have loaded the orchestration
+            assert len(sentinel.orchestrations) == 1
+            assert sentinel.orchestrations[0].name == "removable-orch"
+            assert orch_file in sentinel._known_orchestration_files
+
+            # Now delete the file
+            orch_file.unlink()
+
+            # Run again - should detect removal and unload the orchestration
+            sentinel.run_once()
+
+            # Orchestration should be removed
+            assert len(sentinel.orchestrations) == 0
+            # File should be removed from known files
+            assert orch_file not in sentinel._known_orchestration_files
+
+    def test_removed_file_with_active_execution_moves_to_pending_removal(self) -> None:
+        """Test that orchestrations from removed files with active executions go to pending removal."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add a new orchestration file
+            orch_file = orch_dir / "active_removal.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: active-orch
+    trigger:
+      project: TEST
+    agent:
+      prompt: Test
+"""
+            )
+
+            # Run to load the file
+            sentinel.run_once()
+
+            # Should have one active version
+            assert len(sentinel._active_versions) == 1
+
+            # Simulate an active execution
+            sentinel._active_versions[0].increment_executions()
+            assert sentinel._active_versions[0].active_executions == 1
+
+            # Delete the file
+            orch_file.unlink()
+
+            # Run again - should detect removal
+            sentinel.run_once()
+
+            # Orchestration should be removed from main list
+            assert len(sentinel.orchestrations) == 0
+            # But version should be in pending removal
+            assert len(sentinel._pending_removal_versions) == 1
+            assert sentinel._pending_removal_versions[0].name == "active-orch"
+            assert sentinel._pending_removal_versions[0].active_executions == 1
+            # Active versions should be empty
+            assert len(sentinel._active_versions) == 0
+
+    def test_removed_file_without_active_execution_removed_immediately(self) -> None:
+        """Test that orchestrations from removed files without active executions are removed immediately."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add a new orchestration file
+            orch_file = orch_dir / "no_active.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: no-active-orch
+    trigger:
+      project: TEST
+    agent:
+      prompt: Test
+"""
+            )
+
+            # Run to load the file
+            sentinel.run_once()
+
+            # Should have one active version with no active executions
+            assert len(sentinel._active_versions) == 1
+            assert sentinel._active_versions[0].active_executions == 0
+
+            # Delete the file
+            orch_file.unlink()
+
+            # Run again - should detect removal
+            sentinel.run_once()
+
+            # Orchestration should be removed from main list
+            assert len(sentinel.orchestrations) == 0
+            # Should NOT be in pending removal (no active executions)
+            assert len(sentinel._pending_removal_versions) == 0
+            # Active versions should be empty
+            assert len(sentinel._active_versions) == 0
+
+    def test_pending_removal_from_file_deletion_cleaned_up_after_execution(self) -> None:
+        """Test that pending removal versions from deleted files are cleaned up after execution completes."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add a new orchestration file
+            orch_file = orch_dir / "cleanup_after_delete.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: cleanup-orch
+    trigger:
+      project: TEST
+    agent:
+      prompt: Test
+"""
+            )
+
+            # Run to load the file
+            sentinel.run_once()
+
+            # Simulate an active execution
+            sentinel._active_versions[0].increment_executions()
+
+            # Delete the file
+            orch_file.unlink()
+
+            # Run - should move to pending removal
+            sentinel.run_once()
+            assert len(sentinel._pending_removal_versions) == 1
+
+            # Simulate execution completing
+            sentinel._pending_removal_versions[0].decrement_executions()
+
+            # Run again - should clean up the pending removal
+            sentinel.run_once()
+            assert len(sentinel._pending_removal_versions) == 0
+
+    def test_router_updated_after_file_removal(self) -> None:
+        """Test that the router is updated when orchestrations are removed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(
+                issues=[
+                    {"key": "TEST-1", "fields": {"summary": "Test", "labels": ["review"]}},
+                ]
+            )
+            agent_client = MockAgentClient(responses=["SUCCESS"])
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add an orchestration file that matches the issue
+            orch_file = orch_dir / "matching.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: matching-orch
+    trigger:
+      project: TEST
+      tags: [review]
+    agent:
+      prompt: Process this
+"""
+            )
+
+            # Run - should detect and execute
+            results = sentinel.run_once()
+            assert len(results) == 1
+
+            # Reset client call count
+            jira_client.search_calls.clear()
+
+            # Delete the file
+            orch_file.unlink()
+
+            # Run again - removal detected, no more orchestrations to match
+            results = sentinel.run_once()
+
+            # No orchestrations means no polling should occur
+            assert len(sentinel.orchestrations) == 0
+
+    def test_multiple_orchestrations_from_same_removed_file(self) -> None:
+        """Test that multiple orchestrations from a single removed file are all unloaded."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add a file with multiple orchestrations
+            orch_file = orch_dir / "multi.yaml"
+            orch_file.write_text(
+                """orchestrations:
+  - name: orch-1
+    trigger:
+      project: TEST
+    agent:
+      prompt: Test 1
+  - name: orch-2
+    trigger:
+      project: PROJ
+    agent:
+      prompt: Test 2
+  - name: orch-3
+    trigger:
+      project: OTHER
+    agent:
+      prompt: Test 3
+"""
+            )
+
+            # Run to load all orchestrations
+            sentinel.run_once()
+
+            # Should have loaded all three
+            assert len(sentinel.orchestrations) == 3
+            assert len(sentinel._active_versions) == 3
+
+            # Delete the file
+            orch_file.unlink()
+
+            # Run again - should unload all orchestrations
+            sentinel.run_once()
+
+            # All orchestrations should be removed
+            assert len(sentinel.orchestrations) == 0
+            assert len(sentinel._active_versions) == 0
+            assert orch_file not in sentinel._known_orchestration_files
+
+    def test_removal_of_one_file_does_not_affect_others(self) -> None:
+        """Test that removing one file doesn't affect orchestrations from other files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Add two orchestration files
+            file1 = orch_dir / "keep.yaml"
+            file1.write_text(
+                """orchestrations:
+  - name: keep-orch
+    trigger:
+      project: TEST
+    agent:
+      prompt: Keep this
+"""
+            )
+
+            file2 = orch_dir / "remove.yaml"
+            file2.write_text(
+                """orchestrations:
+  - name: remove-orch
+    trigger:
+      project: PROJ
+    agent:
+      prompt: Remove this
+"""
+            )
+
+            # Run to load both files
+            sentinel.run_once()
+
+            # Should have loaded both
+            assert len(sentinel.orchestrations) == 2
+            assert len(sentinel._known_orchestration_files) == 2
+
+            # Delete only the second file
+            file2.unlink()
+
+            # Run again
+            sentinel.run_once()
+
+            # Should still have the first orchestration
+            assert len(sentinel.orchestrations) == 1
+            assert sentinel.orchestrations[0].name == "keep-orch"
+            # Only the deleted file should be removed from known files
+            assert file1 in sentinel._known_orchestration_files
+            assert file2 not in sentinel._known_orchestration_files
