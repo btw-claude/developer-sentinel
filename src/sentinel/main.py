@@ -27,7 +27,12 @@ from sentinel.mcp_clients import (
 from sentinel.mcp_clients import (
     request_shutdown as request_claude_shutdown,
 )
-from sentinel.orchestration import Orchestration, load_orchestration_file, load_orchestrations
+from sentinel.orchestration import (
+    Orchestration,
+    OrchestrationVersion,
+    load_orchestration_file,
+    load_orchestrations,
+)
 from sentinel.poller import JiraClient, JiraIssue, JiraPoller
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.router import Router
@@ -158,8 +163,16 @@ class Sentinel:
         self._futures_lock = threading.Lock()
 
         # Track known orchestration files for hot-reload detection
-        self._known_orchestration_files: set[Path] = set()
+        # Maps file path to its last known mtime
+        self._known_orchestration_files: dict[Path, float] = {}
         self._init_known_orchestration_files()
+
+        # Versioned orchestrations for hot-reload support
+        # Active versions that are used for routing new work
+        self._active_versions: list[OrchestrationVersion] = []
+        # Old versions pending removal - kept alive until their executions complete
+        self._pending_removal_versions: list[OrchestrationVersion] = []
+        self._versions_lock = threading.Lock()
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
@@ -167,11 +180,11 @@ class Sentinel:
         self._shutdown_requested = True
 
     def _init_known_orchestration_files(self) -> None:
-        """Initialize the set of known orchestration files.
+        """Initialize the set of known orchestration files with their mtimes.
 
         Scans the orchestrations directory and records all .yaml/.yml files
-        that exist at startup. This establishes the baseline for detecting
-        new files in subsequent poll cycles.
+        with their modification times. This establishes the baseline for detecting
+        new and modified files in subsequent poll cycles.
         """
         orchestrations_dir = self.config.orchestrations_dir
         if not orchestrations_dir.exists() or not orchestrations_dir.is_dir():
@@ -179,63 +192,234 @@ class Sentinel:
 
         for file_path in orchestrations_dir.iterdir():
             if file_path.suffix in (".yaml", ".yml"):
-                self._known_orchestration_files.add(file_path)
+                try:
+                    mtime = file_path.stat().st_mtime
+                    self._known_orchestration_files[file_path] = mtime
+                except OSError as e:
+                    logger.warning(f"Could not stat orchestration file {file_path}: {e}")
 
         logger.debug(
             f"Initialized with {len(self._known_orchestration_files)} known orchestration files"
         )
 
-    def _detect_and_load_new_orchestration_files(self) -> int:
-        """Detect and load new orchestration files added since last check.
+    def _detect_and_load_orchestration_changes(self) -> tuple[int, int]:
+        """Detect and load new and modified orchestration files.
 
-        Scans the orchestrations directory for .yaml/.yml files that are not
-        in the known files set. New files are loaded using load_orchestration_file()
-        and their orchestrations are added to the active list.
+        Scans the orchestrations directory for:
+        1. New .yaml/.yml files not in the known files dict
+        2. Modified files (mtime changed since last check)
+
+        For new files, orchestrations are added to the active list.
+        For modified files, new versions are created and old versions are
+        moved to pending_removal (keeping them active until their executions complete).
 
         Returns:
-            Number of new orchestrations loaded.
+            Tuple of (new_orchestrations_count, modified_orchestrations_count).
         """
         orchestrations_dir = self.config.orchestrations_dir
         if not orchestrations_dir.exists() or not orchestrations_dir.is_dir():
-            return 0
+            return 0, 0
 
         new_orchestrations_count = 0
+        modified_orchestrations_count = 0
 
-        # Scan for new files
+        # Scan for new and modified files
         for file_path in sorted(orchestrations_dir.iterdir()):
             if file_path.suffix not in (".yaml", ".yml"):
                 continue
 
-            if file_path in self._known_orchestration_files:
+            try:
+                current_mtime = file_path.stat().st_mtime
+            except OSError as e:
+                logger.warning(f"Could not stat orchestration file {file_path}: {e}")
                 continue
 
-            # New file detected
-            logger.info(f"Detected new orchestration file: {file_path}")
-            try:
-                new_orchestrations = load_orchestration_file(file_path)
-                if new_orchestrations:
-                    self.orchestrations.extend(new_orchestrations)
-                    # Update the router with the new orchestrations
-                    self.router = Router(self.orchestrations)
-                    new_orchestrations_count += len(new_orchestrations)
-                    logger.info(
-                        f"Loaded {len(new_orchestrations)} orchestration(s) from {file_path.name}"
-                    )
-                else:
-                    logger.debug(f"No enabled orchestrations in {file_path.name}")
-            except Exception as e:
-                logger.error(f"Failed to load new orchestration file {file_path}: {e}")
+            known_mtime = self._known_orchestration_files.get(file_path)
 
-            # Mark file as known regardless of load success to avoid repeated attempts
-            self._known_orchestration_files.add(file_path)
+            if known_mtime is None:
+                # New file detected
+                logger.info(f"Detected new orchestration file: {file_path}")
+                loaded = self._load_orchestrations_from_file(file_path, current_mtime)
+                new_orchestrations_count += loaded
+                self._known_orchestration_files[file_path] = current_mtime
 
-        if new_orchestrations_count > 0:
+            elif current_mtime > known_mtime:
+                # Modified file detected
+                logger.info(
+                    f"Detected modified orchestration file: {file_path} "
+                    f"(mtime: {known_mtime} -> {current_mtime})"
+                )
+                reloaded = self._reload_modified_file(file_path, current_mtime)
+                modified_orchestrations_count += reloaded
+                self._known_orchestration_files[file_path] = current_mtime
+
+        if new_orchestrations_count > 0 or modified_orchestrations_count > 0:
             logger.info(
-                f"Hot-reload complete: {new_orchestrations_count} new orchestration(s), "
+                f"Hot-reload complete: {new_orchestrations_count} new, "
+                f"{modified_orchestrations_count} reloaded, "
                 f"total active: {len(self.orchestrations)}"
             )
 
-        return new_orchestrations_count
+        return new_orchestrations_count, modified_orchestrations_count
+
+    def _load_orchestrations_from_file(self, file_path: Path, mtime: float) -> int:
+        """Load orchestrations from a new file.
+
+        Args:
+            file_path: Path to the orchestration file.
+            mtime: Modification time of the file.
+
+        Returns:
+            Number of orchestrations loaded.
+        """
+        try:
+            new_orchestrations = load_orchestration_file(file_path)
+            if new_orchestrations:
+                self.orchestrations.extend(new_orchestrations)
+                # Update the router with the new orchestrations
+                self.router = Router(self.orchestrations)
+
+                # Create versioned entries for tracking
+                with self._versions_lock:
+                    for orch in new_orchestrations:
+                        version = OrchestrationVersion.create(orch, file_path, mtime)
+                        self._active_versions.append(version)
+
+                logger.info(
+                    f"Loaded {len(new_orchestrations)} orchestration(s) from {file_path.name}"
+                )
+                return len(new_orchestrations)
+            else:
+                logger.debug(f"No enabled orchestrations in {file_path.name}")
+                return 0
+        except Exception as e:
+            logger.error(f"Failed to load orchestration file {file_path}: {e}")
+            return 0
+
+    def _reload_modified_file(self, file_path: Path, new_mtime: float) -> int:
+        """Reload orchestrations from a modified file.
+
+        Old versions from this file are moved to pending_removal and kept active
+        until their running executions complete. New versions are added to the
+        active list.
+
+        Args:
+            file_path: Path to the modified orchestration file.
+            new_mtime: New modification time of the file.
+
+        Returns:
+            Number of orchestrations reloaded.
+        """
+        try:
+            new_orchestrations = load_orchestration_file(file_path)
+        except Exception as e:
+            logger.error(f"Failed to reload modified orchestration file {file_path}: {e}")
+            return 0
+
+        with self._versions_lock:
+            # Move old versions from this file to pending_removal
+            old_versions = [v for v in self._active_versions if v.source_file == file_path]
+            for old_version in old_versions:
+                self._active_versions.remove(old_version)
+                if old_version.has_active_executions:
+                    self._pending_removal_versions.append(old_version)
+                    logger.info(
+                        f"Orchestration '{old_version.name}' (version {old_version.version_id[:8]}) "
+                        f"moved to pending removal with {old_version.active_executions} active execution(s)"
+                    )
+                else:
+                    logger.debug(
+                        f"Orchestration '{old_version.name}' (version {old_version.version_id[:8]}) "
+                        f"removed immediately (no active executions)"
+                    )
+
+            # Remove old orchestrations from the main list
+            old_orch_names = {v.name for v in old_versions}
+            self.orchestrations = [
+                o for o in self.orchestrations
+                if o.name not in old_orch_names or not any(
+                    v.orchestration is o for v in old_versions
+                )
+            ]
+
+        # Add new orchestrations
+        if new_orchestrations:
+            self.orchestrations.extend(new_orchestrations)
+
+            with self._versions_lock:
+                for orch in new_orchestrations:
+                    version = OrchestrationVersion.create(orch, file_path, new_mtime)
+                    self._active_versions.append(version)
+                    logger.info(
+                        f"Created new version {version.version_id[:8]} for '{orch.name}'"
+                    )
+
+        # Update the router with the updated orchestrations
+        self.router = Router(self.orchestrations)
+
+        logger.info(
+            f"Reloaded {len(new_orchestrations)} orchestration(s) from {file_path.name}"
+        )
+        return len(new_orchestrations)
+
+    def _cleanup_pending_removal_versions(self) -> int:
+        """Clean up old orchestration versions that no longer have active executions.
+
+        Returns:
+            Number of versions cleaned up.
+        """
+        cleaned_count = 0
+        with self._versions_lock:
+            still_pending = []
+            for version in self._pending_removal_versions:
+                if version.has_active_executions:
+                    still_pending.append(version)
+                else:
+                    logger.info(
+                        f"Cleaned up old orchestration version '{version.name}' "
+                        f"(version {version.version_id[:8]})"
+                    )
+                    cleaned_count += 1
+            self._pending_removal_versions = still_pending
+
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} old orchestration version(s)")
+
+        return cleaned_count
+
+    def _get_version_for_orchestration(
+        self, orchestration: Orchestration
+    ) -> OrchestrationVersion | None:
+        """Get the OrchestrationVersion for an orchestration.
+
+        Args:
+            orchestration: The orchestration to find.
+
+        Returns:
+            The OrchestrationVersion if found, None otherwise.
+        """
+        with self._versions_lock:
+            for version in self._active_versions:
+                if version.orchestration is orchestration:
+                    return version
+            # Also check pending removal versions for in-flight executions
+            for version in self._pending_removal_versions:
+                if version.orchestration is orchestration:
+                    return version
+        return None
+
+    def _detect_and_load_new_orchestration_files(self) -> int:
+        """Detect and load new orchestration files added since last check.
+
+        This method is kept for backwards compatibility. It now delegates to
+        _detect_and_load_orchestration_changes() and returns the sum of new
+        and modified orchestrations.
+
+        Returns:
+            Number of orchestrations loaded or reloaded.
+        """
+        new_count, modified_count = self._detect_and_load_orchestration_changes()
+        return new_count + modified_count
 
     def _get_available_slots(self) -> int:
         """Get the number of available execution slots.
@@ -272,14 +456,18 @@ class Sentinel:
         self,
         issue: Any,
         orchestration: Orchestration,
+        version: OrchestrationVersion | None = None,
     ) -> ExecutionResult | None:
         """Execute a single orchestration in a thread.
 
-        This is the task that runs in the thread pool.
+        This is the task that runs in the thread pool. It tracks execution counts
+        on the OrchestrationVersion to support hot-reload without affecting
+        running executions.
 
         Args:
             issue: The Jira issue to process.
             orchestration: The orchestration to execute.
+            version: Optional OrchestrationVersion for execution tracking.
 
         Returns:
             ExecutionResult if execution completed, None if interrupted.
@@ -309,6 +497,10 @@ class Sentinel:
             except Exception as tag_error:
                 logger.error(f"Failed to apply failure tags: {tag_error}")
             return None
+        finally:
+            # Decrement the version's active execution count when done
+            if version is not None:
+                version.decrement_executions()
 
     def run_once(self) -> list[ExecutionResult]:
         """Run a single polling cycle.
@@ -316,8 +508,11 @@ class Sentinel:
         Returns:
             List of execution results from this cycle.
         """
-        # Detect and load any new orchestration files at the start of each cycle
+        # Detect and load any new or modified orchestration files at the start of each cycle
         self._detect_and_load_new_orchestration_files()
+
+        # Clean up old orchestration versions that no longer have active executions
+        self._cleanup_pending_removal_versions()
 
         # Collect any completed results from previous cycle
         all_results = self._collect_completed_results()
@@ -497,6 +692,9 @@ class Sentinel:
     ) -> int:
         """Submit execution tasks for routed issues.
 
+        Tracks active executions on OrchestrationVersion instances to support
+        hot-reload without affecting running executions.
+
         Args:
             routing_results: List of routing results from the router.
             all_results: List to append synchronous results to.
@@ -520,6 +718,11 @@ class Sentinel:
                 issue_key = routing_result.issue.key
                 logger.info(f"Submitting '{matched_orch.name}' for {issue_key}")
 
+                # Get the version for this orchestration to track executions
+                version = self._get_version_for_orchestration(matched_orch)
+                if version is not None:
+                    version.increment_executions()
+
                 try:
                     # Mark issue as being processed (remove trigger tags, add in-progress tag)
                     self.tag_manager.start_processing(issue_key, matched_orch)
@@ -530,6 +733,7 @@ class Sentinel:
                             self._execute_orchestration_task,
                             routing_result.issue,
                             matched_orch,
+                            version,
                         )
                         with self._futures_lock:
                             self._active_futures.append(future)
@@ -539,11 +743,15 @@ class Sentinel:
                         result = self._execute_orchestration_task(
                             routing_result.issue,
                             matched_orch,
+                            version,
                         )
                         if result is not None:
                             all_results.append(result)
 
                 except Exception as e:
+                    # Decrement version count on submission failure
+                    if version is not None:
+                        version.decrement_executions()
                     logger.error(
                         f"Failed to submit '{matched_orch.name}' for {issue_key}: {e}"
                     )
