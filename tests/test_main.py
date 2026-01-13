@@ -204,7 +204,7 @@ class TestSentinelRunOnce:
             tag_client=tag_client,
         )
 
-        results = sentinel.run_once()
+        results, submitted_count = sentinel.run_once()
 
         assert len(results) == 1
         assert results[0].succeeded is True
@@ -226,7 +226,7 @@ class TestSentinelRunOnce:
             tag_client=tag_client,
         )
 
-        results = sentinel.run_once()
+        results, submitted_count = sentinel.run_once()
 
         assert len(results) == 0
         assert len(agent_client.calls) == 0
@@ -253,7 +253,7 @@ class TestSentinelRunOnce:
             tag_client=tag_client,
         )
 
-        results = sentinel.run_once()
+        results, submitted_count = sentinel.run_once()
 
         # Issue matches both orchestrations
         assert len(results) == 2
@@ -280,10 +280,104 @@ class TestSentinelRunOnce:
 
         # Request shutdown before running
         sentinel.request_shutdown()
-        results = sentinel.run_once()
+        results, submitted_count = sentinel.run_once()
 
         # Should return early without executing all issues
         assert len(results) == 0
+
+
+class TestSentinelEagerPolling:
+    """Tests for Sentinel eager polling feature (DS-94)."""
+
+    def test_run_once_returns_submitted_count(self) -> None:
+        """Test that run_once returns the number of submitted tasks."""
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(
+            issues=[
+                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
+            ],
+            tag_client=tag_client,
+        )
+        agent_client = MockAgentClient(responses=["SUCCESS"])
+        config = make_config()
+        orchestrations = [make_orchestration(tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        results, submitted_count = sentinel.run_once()
+
+        # Without thread pool, execution is synchronous
+        assert len(results) == 2
+        # submitted_count represents tasks submitted (0 in sync mode)
+        assert isinstance(submitted_count, int)
+
+    def test_run_once_returns_zero_submitted_when_no_work(self) -> None:
+        """Test that run_once returns 0 submitted when no issues found."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        results, submitted_count = sentinel.run_once()
+
+        assert len(results) == 0
+        assert submitted_count == 0
+
+    def test_run_once_returns_zero_submitted_when_slots_busy(self) -> None:
+        """Test that run_once returns 0 submitted when all slots are busy."""
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(
+            issues=[{"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}}],
+            tag_client=tag_client,
+        )
+        agent_client = MockAgentClient(responses=["SUCCESS"])
+        config = make_config(max_concurrent_executions=1)
+        orchestrations = [make_orchestration(tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Manually set up the thread pool with a busy slot
+        sentinel._thread_pool = ThreadPoolExecutor(max_workers=1)
+        block_event = threading.Event()
+        future = sentinel._thread_pool.submit(lambda: block_event.wait(timeout=5))
+        sentinel._active_futures = [future]
+
+        # run_once should return 0 submitted since slot is busy
+        results, submitted_count = sentinel.run_once()
+
+        assert len(results) == 0
+        assert submitted_count == 0
+
+        # Clean up
+        block_event.set()
+        future.result()
+        sentinel._thread_pool.shutdown(wait=True)
+        sentinel._thread_pool = None
 
 
 class TestSentinelRun:
@@ -604,7 +698,7 @@ class TestSentinelConcurrentExecution:
         sentinel._active_futures = [future]
 
         # First run_once should skip polling since slot is busy
-        results = sentinel.run_once()
+        results, submitted_count = sentinel.run_once()
         first_poll_count = poll_calls
 
         # Should have returned immediately without polling
@@ -830,7 +924,7 @@ class TestSentinelOrchestrationHotReload:
             )
 
             # First run - no orchestrations, no matches
-            results = sentinel.run_once()
+            results, submitted_count = sentinel.run_once()
             assert len(results) == 0
 
             # Add a new orchestration that matches the existing issue
@@ -847,7 +941,7 @@ class TestSentinelOrchestrationHotReload:
             )
 
             # Second run - should detect new file, update router, and match the issue
-            results = sentinel.run_once()
+            results, submitted_count = sentinel.run_once()
             assert len(results) == 1
             assert results[0].succeeded is True
 
@@ -1495,7 +1589,7 @@ class TestSentinelOrchestrationHotReload:
             )
 
             # Run - should detect and execute
-            results = sentinel.run_once()
+            results, submitted_count = sentinel.run_once()
             assert len(results) == 1
 
             # Reset client call count
@@ -1505,7 +1599,7 @@ class TestSentinelOrchestrationHotReload:
             orch_file.unlink()
 
             # Run again - removal detected, no more orchestrations to match
-            results = sentinel.run_once()
+            results, submitted_count = sentinel.run_once()
 
             # No orchestrations means no polling should occur
             assert len(sentinel.orchestrations) == 0
