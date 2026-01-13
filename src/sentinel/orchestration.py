@@ -300,11 +300,23 @@ class OrchestrationVersion:
         return self.orchestration.name
 
     def increment_executions(self) -> None:
-        """Increment the active execution count."""
+        """Increment the active execution count.
+
+        Thread Safety Note:
+            This method modifies active_executions without internal synchronization.
+            Callers must hold the appropriate lock (e.g., _versions_lock in main.py)
+            when calling this method to ensure thread safety.
+        """
         self.active_executions += 1
 
     def decrement_executions(self) -> None:
-        """Decrement the active execution count."""
+        """Decrement the active execution count.
+
+        Thread Safety Note:
+            This method modifies active_executions without internal synchronization.
+            Callers must hold the appropriate lock (e.g., _versions_lock in main.py)
+            when calling this method to ensure thread safety.
+        """
         self.active_executions = max(0, self.active_executions - 1)
 
     @property

@@ -1,6 +1,7 @@
 """Tests for main entry point module."""
 
 import logging
+import os
 import signal
 import tempfile
 from pathlib import Path
@@ -115,6 +116,22 @@ def make_orchestration(
         trigger=TriggerConfig(project=project, tags=tags or []),
         agent=AgentConfig(prompt="Test prompt", tools=["jira"]),
     )
+
+
+def set_mtime_in_future(file_path: Path, seconds_offset: float = 1.0) -> None:
+    """Set a file's mtime to a future time to ensure mtime difference detection.
+
+    This helper explicitly sets the file's modification time using os.utime()
+    rather than relying on time.sleep() which can be flaky on fast filesystems
+    or under heavy load.
+
+    Args:
+        file_path: Path to the file to modify.
+        seconds_offset: Number of seconds to add to current time (default: 1.0).
+    """
+    current_stat = file_path.stat()
+    new_mtime = current_stat.st_mtime + seconds_offset
+    os.utime(file_path, (current_stat.st_atime, new_mtime))
 
 
 class TestParseArgs:
@@ -1083,8 +1100,6 @@ class TestSentinelOrchestrationHotReload:
             assert len(sentinel.orchestrations) == 0
 
             # Modify the file (need to ensure different mtime)
-            import time
-            time.sleep(0.1)  # Ensure different mtime
             orch_file.write_text(
                 """orchestrations:
   - name: modified-orch
@@ -1096,6 +1111,7 @@ class TestSentinelOrchestrationHotReload:
       tools: [jira]
 """
             )
+            set_mtime_in_future(orch_file)
 
             # Run again - should detect the modification
             sentinel.run_once()
@@ -1165,8 +1181,6 @@ class TestSentinelOrchestrationHotReload:
             sentinel._active_versions[0].increment_executions()
 
             # Modify the new file
-            import time
-            time.sleep(0.1)  # Ensure different mtime
             new_file.write_text(
                 """orchestrations:
   - name: new-versioned-orch
@@ -1177,6 +1191,7 @@ class TestSentinelOrchestrationHotReload:
       prompt: New Version 2 - Modified
 """
             )
+            set_mtime_in_future(new_file)
 
             sentinel.run_once()
 
@@ -1225,8 +1240,6 @@ class TestSentinelOrchestrationHotReload:
             sentinel._active_versions[0].increment_executions()
 
             # Modify the file
-            import time
-            time.sleep(0.1)
             orch_file.write_text(
                 """orchestrations:
   - name: cleanup-orch
@@ -1236,6 +1249,7 @@ class TestSentinelOrchestrationHotReload:
       prompt: Version 2
 """
             )
+            set_mtime_in_future(orch_file)
 
             sentinel.run_once()
 
@@ -1289,8 +1303,6 @@ class TestSentinelOrchestrationHotReload:
             assert sentinel._active_versions[0].active_executions == 0
 
             # Modify the file
-            import time
-            time.sleep(0.1)
             orch_file.write_text(
                 """orchestrations:
   - name: no-exec-orch
@@ -1300,6 +1312,7 @@ class TestSentinelOrchestrationHotReload:
       prompt: Version 2
 """
             )
+            set_mtime_in_future(orch_file)
 
             sentinel.run_once()
 
