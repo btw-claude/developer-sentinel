@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sentinel.github_poller import GitHubIssue
@@ -21,6 +23,50 @@ if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class AgentRunResult:
+    """Result of running a Claude agent.
+
+    Attributes:
+        response: The agent's response text.
+        workdir: Path to the agent's working directory, if one was created.
+    """
+
+    response: str
+    workdir: Path | None = None
+
+
+def cleanup_workdir(workdir: Path | None) -> bool:
+    """Clean up an agent's working directory.
+
+    Safely removes the working directory and all its contents using shutil.rmtree().
+    Handles errors gracefully and logs any issues encountered.
+
+    Args:
+        workdir: Path to the working directory to clean up. If None, returns True.
+
+    Returns:
+        True if cleanup was successful or workdir was None, False if an error occurred.
+    """
+    if workdir is None:
+        return True
+
+    try:
+        if workdir.exists():
+            shutil.rmtree(workdir)
+            logger.debug(f"Cleaned up working directory: {workdir}")
+        return True
+    except PermissionError as e:
+        logger.warning(f"Permission denied while cleaning up workdir {workdir}: {e}")
+        return False
+    except OSError as e:
+        logger.warning(f"OS error while cleaning up workdir {workdir}: {e}")
+        return False
+    except Exception as e:
+        logger.warning(f"Unexpected error while cleaning up workdir {workdir}: {e}")
+        return False
 
 
 class ExecutionStatus(Enum):
@@ -88,7 +134,7 @@ class AgentClient(ABC):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
-    ) -> str:
+    ) -> AgentRunResult:
         """Run a Claude agent with the given prompt and tools.
 
         Args:
@@ -101,7 +147,7 @@ class AgentClient(ABC):
             orchestration_name: Optional orchestration name for streaming log files.
 
         Returns:
-            The agent's response text.
+            AgentRunResult containing the agent's response text and optional working directory path.
 
         Raises:
             AgentClientError: If the agent execution fails.
@@ -504,7 +550,7 @@ class AgentExecutor:
             )
 
             try:
-                response = self.client.run_agent(
+                run_result = self.client.run_agent(
                     prompt,
                     tools,
                     context,
@@ -513,6 +559,7 @@ class AgentExecutor:
                     model=model,
                     orchestration_name=orchestration.name,
                 )
+                response = run_result.response
                 last_response = response
                 status, matched_outcome = self._determine_status(response, retry_config, outcomes)
                 last_status = status
