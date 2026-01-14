@@ -16,7 +16,7 @@ from typing import Any
 from claude_agent_sdk import ClaudeAgentOptions, query
 
 from sentinel.config import Config
-from sentinel.executor import AgentClient, AgentClientError, AgentTimeoutError
+from sentinel.executor import AgentClient, AgentClientError, AgentRunResult, AgentTimeoutError
 from sentinel.logging import get_logger
 from sentinel.poller import JiraClient, JiraClientError
 from sentinel.tag_manager import JiraTagClient, JiraTagClientError
@@ -269,7 +269,7 @@ class ClaudeMcpAgentClient(AgentClient):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
-    ) -> str:
+    ) -> AgentRunResult:
         """Run a Claude agent with the given prompt and tools."""
         workdir = None
         if self.base_workdir is not None and issue_key is not None:
@@ -286,8 +286,10 @@ class ClaudeMcpAgentClient(AgentClient):
         use_streaming = self.log_base_dir and issue_key and orchestration_name
 
         if use_streaming:
-            return asyncio.run(self._run_with_log(full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name))  # type: ignore
-        return asyncio.run(self._run_simple(full_prompt, tools, timeout_seconds, workdir, model))
+            response = asyncio.run(self._run_with_log(full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name))  # type: ignore
+        else:
+            response = asyncio.run(self._run_simple(full_prompt, tools, timeout_seconds, workdir, model))
+        return AgentRunResult(response=response, workdir=workdir)
 
     async def _run_simple(
         self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None
