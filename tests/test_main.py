@@ -1278,6 +1278,68 @@ class TestSentinelOrchestrationHotReload:
             # But no orchestrations should be added
             assert len(sentinel.orchestrations) == 0
 
+    def test_no_router_rebuild_for_empty_or_invalid_files(self) -> None:
+        """Test that Router is not rebuilt when files contain no valid orchestrations.
+
+        DS-99: This optimization ensures that finding new files that are empty,
+        invalid, or contain no enabled orchestrations does not trigger an unnecessary
+        Router rebuild. The Router should only be rebuilt when actual orchestrations
+        are loaded.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orch_dir = Path(tmpdir)
+
+            jira_client = MockJiraClient(issues=[])
+            agent_client = MockAgentClient()
+            tag_client = MockTagClient()
+            config = make_config(orchestrations_dir=orch_dir)
+            orchestrations: list[Orchestration] = []
+
+            sentinel = Sentinel(
+                config=config,
+                orchestrations=orchestrations,
+                jira_client=jira_client,
+                agent_client=agent_client,
+                tag_client=tag_client,
+            )
+
+            # Capture original router reference
+            original_router = sentinel.router
+
+            # Add an invalid orchestration file
+            (orch_dir / "invalid.yaml").write_text("this is not valid: yaml: [[[")
+
+            # Add an empty orchestration file (valid YAML but no orchestrations)
+            (orch_dir / "empty.yaml").write_text("orchestrations: []")
+
+            # Add a file with disabled orchestrations only
+            (orch_dir / "disabled.yaml").write_text(
+                """orchestrations:
+  - name: disabled-orch
+    enabled: false
+    trigger:
+      project: TEST
+    agent:
+      prompt: Test
+"""
+            )
+
+            # Run a poll cycle
+            sentinel.run_once()
+
+            # All files should be tracked as known
+            assert orch_dir / "invalid.yaml" in sentinel._known_orchestration_files
+            assert orch_dir / "empty.yaml" in sentinel._known_orchestration_files
+            assert orch_dir / "disabled.yaml" in sentinel._known_orchestration_files
+
+            # No orchestrations should be loaded
+            assert len(sentinel.orchestrations) == 0
+
+            # Router should NOT have been rebuilt (same object reference)
+            # This verifies the DS-99 optimization: Router rebuild only happens
+            # when actual orchestrations are loaded, not just when files are found
+            assert sentinel.router is original_router
+
     def test_does_not_reload_known_files(self) -> None:
         """Test that known files are not reloaded on subsequent poll cycles."""
         with tempfile.TemporaryDirectory() as tmpdir:

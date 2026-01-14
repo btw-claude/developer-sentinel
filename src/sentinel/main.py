@@ -289,6 +289,11 @@ class Sentinel:
 
         # Rebuild Router once after all new files are processed (optimization)
         # Modified files already rebuild the Router in _reload_modified_file()
+        # DS-99: Only rebuild if actual orchestrations were loaded, not just files found.
+        # This avoids unnecessary rebuilds when files are empty, invalid, or contain
+        # only disabled orchestrations. new_orchestrations_count tracks the actual
+        # number of orchestrations loaded (sum of _load_orchestrations_from_file() returns),
+        # not just the number of files found.
         if new_orchestrations_count > 0:
             self.router = Router(self.orchestrations)
 
