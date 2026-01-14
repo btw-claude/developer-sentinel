@@ -3,6 +3,9 @@
 import logging
 import signal
 import tempfile
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -248,9 +251,6 @@ class TestSentinelEagerPolling:
 
     def test_run_once_returns_zero_submitted_when_slots_busy(self) -> None:
         """Test that run_once returns 0 submitted when all slots are busy."""
-        from concurrent.futures import ThreadPoolExecutor
-        import threading
-
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
             issues=[{"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}}],
@@ -334,11 +334,6 @@ class TestSentinelEagerPolling:
 
         The test uses the full run() method with time.sleep and signal mocking.
         """
-        import threading
-        import time
-        from concurrent.futures import ThreadPoolExecutor
-        from unittest.mock import patch
-
         # Save original sleep function before patching
         real_sleep = time.sleep
 
@@ -417,7 +412,13 @@ class TestSentinelEagerPolling:
             real_sleep(0.001)
 
         def mock_signal(signum: int, handler: Any) -> Any:
-            """Mock signal.signal to avoid threading issues."""
+            """Mock signal.signal to avoid threading issues.
+
+            The handler parameter is intentionally ignored. Installing real signal
+            handlers from a non-main thread raises an error, and we don't need the
+            actual signal handling behavior in these tests - we use request_shutdown()
+            to stop the sentinel instead.
+            """
             return None
 
         # Run the sentinel's run() method in a thread with mocked sleep and signal
@@ -469,10 +470,6 @@ class TestSentinelEagerPolling:
 
         Uses run() to test the full run loop behavior.
         """
-        import threading
-        import time
-        from unittest.mock import patch
-
         # Save original sleep function before patching
         real_sleep = time.sleep
 
@@ -533,7 +530,13 @@ class TestSentinelEagerPolling:
             real_sleep(0.001)
 
         def mock_signal(signum: int, handler: Any) -> Any:
-            """Mock signal.signal to avoid threading issues."""
+            """Mock signal.signal to avoid threading issues.
+
+            The handler parameter is intentionally ignored. Installing real signal
+            handlers from a non-main thread raises an error, and we don't need the
+            actual signal handling behavior in these tests - we use request_shutdown()
+            to stop the sentinel instead.
+            """
             return None
 
         sentinel_exception: Exception | None = None
@@ -578,10 +581,6 @@ class TestSentinelEagerPolling:
         This tests that when work is continuously submitted, the _consecutive_eager_polls
         counter increments properly until it reaches max_eager_iterations.
         """
-        import threading
-        import time
-        from unittest.mock import patch
-
         # Save original sleep function before patching
         real_sleep = time.sleep
 
@@ -638,7 +637,13 @@ class TestSentinelEagerPolling:
             real_sleep(0.001)
 
         def mock_signal(signum: int, handler: Any) -> Any:
-            """Mock signal.signal to avoid threading issues."""
+            """Mock signal.signal to avoid threading issues.
+
+            The handler parameter is intentionally ignored. Installing real signal
+            handlers from a non-main thread raises an error, and we don't need the
+            actual signal handling behavior in these tests - we use request_shutdown()
+            to stop the sentinel instead.
+            """
             return None
 
         sentinel_exception: Exception | None = None
@@ -703,12 +708,8 @@ class TestSentinelRun:
 
         # Request shutdown after a short delay
         def shutdown_after_delay() -> None:
-            import time
-
             time.sleep(0.1)
             sentinel.request_shutdown()
-
-        import threading
 
         shutdown_thread = threading.Thread(target=shutdown_after_delay)
         shutdown_thread.start()
@@ -799,8 +800,6 @@ class TestSentinelSignalHandling:
 
         with patch("signal.signal", side_effect=capture_sigint_handler):
             # Start run in a thread that will be stopped by the signal
-            import threading
-
             def run_sentinel() -> None:
                 sentinel.run()
 
@@ -808,8 +807,6 @@ class TestSentinelSignalHandling:
             thread.start()
 
             # Give it a moment to register handlers
-            import time
-
             time.sleep(0.05)
 
             # Simulate SIGINT by calling the captured handler
@@ -845,8 +842,6 @@ class TestSentinelSignalHandling:
 
         with patch("signal.signal", side_effect=capture_sigterm_handler):
             # Start run in a thread that will be stopped by the signal
-            import threading
-
             def run_sentinel() -> None:
                 sentinel.run()
 
@@ -854,8 +849,6 @@ class TestSentinelSignalHandling:
             thread.start()
 
             # Give it a moment to register handlers
-            import time
-
             time.sleep(0.05)
 
             # Simulate SIGTERM by calling the captured handler
@@ -872,9 +865,6 @@ class TestSentinelConcurrentExecution:
 
     def test_respects_max_concurrent_executions(self) -> None:
         """Test that max_concurrent_executions limits parallel work."""
-        import threading
-        import time
-
         execution_count = 0
         max_concurrent_seen = 0
         lock = threading.Lock()
@@ -964,8 +954,6 @@ class TestSentinelConcurrentExecution:
 
     def test_slots_limiting_skips_polling_when_busy(self) -> None:
         """Test that polling is skipped when all slots are busy."""
-        from concurrent.futures import ThreadPoolExecutor
-
         # Track poll calls
         poll_calls = 0
 
@@ -995,7 +983,6 @@ class TestSentinelConcurrentExecution:
         # Manually set up the thread pool and simulate a busy slot
         sentinel._thread_pool = ThreadPoolExecutor(max_workers=1)
         # Submit a dummy task to occupy the slot
-        import threading
         block_event = threading.Event()
         future = sentinel._thread_pool.submit(lambda: block_event.wait(timeout=5))
         sentinel._active_futures = [future]
@@ -1018,9 +1005,6 @@ class TestSentinelConcurrentExecution:
 
     def test_concurrent_execution_with_thread_pool(self) -> None:
         """Test that run() uses thread pool correctly."""
-        import threading
-        import time
-
         execution_order: list[str] = []
         lock = threading.Lock()
 
