@@ -1,14 +1,19 @@
 """Tests for Claude Agent SDK executor module."""
 
+import tempfile
+from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from sentinel.executor import (
     AgentClient,
     AgentClientError,
     AgentExecutor,
+    AgentRunResult,
     AgentTimeoutError,
     ExecutionResult,
     ExecutionStatus,
+    cleanup_workdir,
 )
 from sentinel.orchestration import (
     AgentConfig,
@@ -24,8 +29,13 @@ from sentinel.poller import JiraIssue
 class MockAgentClient(AgentClient):
     """Mock agent client for testing."""
 
-    def __init__(self, responses: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        responses: list[str] | None = None,
+        workdir: Path | None = None,
+    ) -> None:
         self.responses = responses or ["SUCCESS: Task completed"]
+        self.workdir = workdir
         self.call_count = 0
         self.calls: list[
             tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None]
@@ -46,7 +56,7 @@ class MockAgentClient(AgentClient):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
-    ) -> str:
+    ) -> AgentRunResult:
         self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model))
 
         if self.should_timeout and self.timeout_count < self.max_timeouts:
@@ -59,7 +69,7 @@ class MockAgentClient(AgentClient):
 
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
-        return response
+        return AgentRunResult(response=response, workdir=self.workdir)
 
 
 def make_issue(
@@ -1593,3 +1603,225 @@ class TestGitHubTemplateVariables:
             "in company/project from feature-x to develop"
         )
         assert prompt == expected
+
+
+class TestCleanupWorkdir:
+    """Tests for the cleanup_workdir function."""
+
+    def test_cleanup_workdir_removes_directory(self) -> None:
+        """cleanup_workdir should remove the directory and return True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+            (workdir / "test_file.txt").write_text("test content")
+
+            assert workdir.exists()
+            result = cleanup_workdir(workdir)
+
+            assert result is True
+            assert not workdir.exists()
+
+    def test_cleanup_workdir_none_returns_true(self) -> None:
+        """cleanup_workdir should return True when workdir is None."""
+        result = cleanup_workdir(None)
+        assert result is True
+
+    def test_cleanup_workdir_nonexistent_returns_true(self) -> None:
+        """cleanup_workdir should return True for non-existent directory."""
+        workdir = Path("/nonexistent/path/that/does/not/exist")
+        result = cleanup_workdir(workdir)
+        assert result is True
+
+    def test_cleanup_workdir_permission_error_returns_false(self) -> None:
+        """cleanup_workdir should return False on PermissionError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            with patch("shutil.rmtree") as mock_rmtree:
+                mock_rmtree.side_effect = PermissionError("Permission denied")
+                result = cleanup_workdir(workdir)
+
+            assert result is False
+
+    def test_cleanup_workdir_os_error_returns_false(self) -> None:
+        """cleanup_workdir should return False on OSError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            with patch("shutil.rmtree") as mock_rmtree:
+                mock_rmtree.side_effect = OSError("OS error")
+                result = cleanup_workdir(workdir)
+
+            assert result is False
+
+    def test_cleanup_workdir_unexpected_error_returns_false(self) -> None:
+        """cleanup_workdir should return False on unexpected exceptions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            with patch("shutil.rmtree") as mock_rmtree:
+                mock_rmtree.side_effect = RuntimeError("Unexpected error")
+                result = cleanup_workdir(workdir)
+
+            assert result is False
+
+
+class TestAgentExecutorWorkdirCleanup:
+    """Tests for AgentExecutor workdir cleanup behavior."""
+
+    def test_cleanup_on_success_when_enabled(self) -> None:
+        """Should cleanup workdir on successful execution when cleanup is enabled."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+            (workdir / "test_file.txt").write_text("test content")
+
+            client = MockAgentClient(
+                responses=["SUCCESS: Task completed"],
+                workdir=workdir,
+            )
+            # cleanup_workdir_on_success=True is the default
+            executor = AgentExecutor(client, cleanup_workdir_on_success=True)
+            issue = make_issue()
+            orch = make_orchestration()
+
+            assert workdir.exists()
+            result = executor.execute(issue, orch)
+
+            assert result.succeeded is True
+            assert not workdir.exists()
+
+    def test_no_cleanup_when_disabled(self) -> None:
+        """Should preserve workdir when cleanup_workdir_on_success is False."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+            (workdir / "test_file.txt").write_text("test content")
+
+            client = MockAgentClient(
+                responses=["SUCCESS: Task completed"],
+                workdir=workdir,
+            )
+            executor = AgentExecutor(client, cleanup_workdir_on_success=False)
+            issue = make_issue()
+            orch = make_orchestration()
+
+            result = executor.execute(issue, orch)
+
+            assert result.succeeded is True
+            assert workdir.exists()  # Workdir should be preserved
+
+    def test_no_cleanup_on_failure(self) -> None:
+        """Should preserve workdir on failed execution for debugging."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+            (workdir / "test_file.txt").write_text("test content")
+
+            client = MockAgentClient(
+                responses=["FAILURE: Task failed"],
+                workdir=workdir,
+            )
+            # Even with cleanup enabled, failures should preserve workdir
+            executor = AgentExecutor(client, cleanup_workdir_on_success=True)
+            issue = make_issue()
+            orch = make_orchestration(max_attempts=1)
+
+            result = executor.execute(issue, orch)
+
+            assert result.succeeded is False
+            assert result.status == ExecutionStatus.FAILURE
+            assert workdir.exists()  # Workdir preserved for debugging
+
+    def test_cleanup_handles_none_workdir(self) -> None:
+        """Should handle None workdir gracefully."""
+        client = MockAgentClient(
+            responses=["SUCCESS: Task completed"],
+            workdir=None,  # No workdir
+        )
+        executor = AgentExecutor(client, cleanup_workdir_on_success=True)
+        issue = make_issue()
+        orch = make_orchestration()
+
+        # Should not raise any errors
+        result = executor.execute(issue, orch)
+
+        assert result.succeeded is True
+
+    def test_cleanup_default_is_enabled(self) -> None:
+        """Should have cleanup enabled by default."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)  # No explicit cleanup_workdir_on_success
+
+        assert executor.cleanup_workdir_on_success is True
+
+    def test_no_cleanup_on_error(self) -> None:
+        """Should preserve workdir on agent client error."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+            (workdir / "test_file.txt").write_text("test content")
+
+            client = MockAgentClient(
+                responses=["SUCCESS: Done"],
+                workdir=workdir,
+            )
+            client.should_error = True
+            client.max_errors = 10  # Always error
+            executor = AgentExecutor(client, cleanup_workdir_on_success=True)
+            issue = make_issue()
+            orch = make_orchestration(max_attempts=1)
+
+            result = executor.execute(issue, orch)
+
+            assert result.succeeded is False
+            assert result.status == ExecutionStatus.ERROR
+            assert workdir.exists()  # Workdir preserved
+
+    def test_no_cleanup_on_timeout(self) -> None:
+        """Should preserve workdir on agent timeout."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+            (workdir / "test_file.txt").write_text("test content")
+
+            client = MockAgentClient(
+                responses=["SUCCESS: Done"],
+                workdir=workdir,
+            )
+            client.should_timeout = True
+            client.max_timeouts = 10  # Always timeout
+            executor = AgentExecutor(client, cleanup_workdir_on_success=True)
+            issue = make_issue()
+            orch = make_orchestration(max_attempts=1)
+
+            result = executor.execute(issue, orch)
+
+            assert result.succeeded is False
+            assert result.status == ExecutionStatus.ERROR
+            assert workdir.exists()  # Workdir preserved
+
+
+class TestAgentRunResult:
+    """Tests for AgentRunResult dataclass."""
+
+    def test_agent_run_result_with_response_only(self) -> None:
+        """AgentRunResult can be created with just response."""
+        result = AgentRunResult(response="Task completed")
+        assert result.response == "Task completed"
+        assert result.workdir is None
+
+    def test_agent_run_result_with_workdir(self) -> None:
+        """AgentRunResult can include a workdir path."""
+        workdir = Path("/tmp/test-workdir")
+        result = AgentRunResult(response="Task completed", workdir=workdir)
+        assert result.response == "Task completed"
+        assert result.workdir == workdir
+
+    def test_agent_run_result_workdir_default_none(self) -> None:
+        """AgentRunResult workdir should default to None."""
+        result = AgentRunResult(response="Done")
+        assert result.workdir is None
