@@ -271,7 +271,7 @@ class TestClaudeMcpAgentClient:
     """Tests for ClaudeMcpAgentClient."""
 
     def test_run_agent_returns_response(self, mock_config: Config) -> None:
-        """Should return agent response."""
+        """Should return AgentRunResult with agent response."""
         with patch(
             "sentinel.mcp_clients.query",
             create_mock_query("Agent completed successfully"),
@@ -279,7 +279,8 @@ class TestClaudeMcpAgentClient:
             client = ClaudeMcpAgentClient(mock_config)
             result = client.run_agent("Do something", ["jira"])
 
-        assert result == "Agent completed successfully"
+        assert result.response == "Agent completed successfully"
+        assert result.workdir is None
 
     def test_run_agent_builds_context_section(self, mock_config: Config) -> None:
         """Should include context in prompt."""
@@ -467,7 +468,8 @@ class TestClaudeMcpAgentClientStreaming:
                 orchestration_name="test",
             )
 
-        assert result == "Agent completed task"
+        assert result.response == "Agent completed task"
+        assert result.workdir is None
 
         # Check log file content
         log_files = list((log_dir / "test").glob("*.log"))

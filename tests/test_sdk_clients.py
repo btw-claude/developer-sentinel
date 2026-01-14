@@ -264,7 +264,7 @@ class TestClaudeSdkAgentClient:
     """Tests for ClaudeSdkAgentClient."""
 
     def test_run_agent_returns_response(self, mock_config: Config) -> None:
-        """Should return agent response."""
+        """Should return AgentRunResult with agent response."""
         with patch(
             "sentinel.sdk_clients.query",
             create_mock_query("Agent completed successfully"),
@@ -272,7 +272,8 @@ class TestClaudeSdkAgentClient:
             client = ClaudeSdkAgentClient(mock_config)
             result = client.run_agent("Do something", ["jira"])
 
-        assert result == "Agent completed successfully"
+        assert result.response == "Agent completed successfully"
+        assert result.workdir is None
 
     def test_run_agent_builds_context_section(self, mock_config: Config) -> None:
         """Should include context in prompt."""
@@ -446,7 +447,8 @@ class TestClaudeSdkAgentClientStreaming:
                 orchestration_name="test",
             )
 
-        assert result == "Agent completed task"
+        assert result.response == "Agent completed task"
+        assert result.workdir is None
 
         # Check log file content
         log_files = list((log_dir / "test").glob("*.log"))

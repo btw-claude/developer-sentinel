@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from sentinel.executor import AgentClient
+from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.main import Sentinel, parse_args, setup_logging
 from sentinel.orchestration import Orchestration
 
@@ -881,7 +881,7 @@ class TestSentinelConcurrentExecution:
                 issue_key: str | None = None,
                 model: str | None = None,
                 orchestration_name: str | None = None,
-            ) -> str:
+            ) -> AgentRunResult:
                 nonlocal execution_count, max_concurrent_seen
                 with lock:
                     execution_count += 1
@@ -894,7 +894,7 @@ class TestSentinelConcurrentExecution:
                 with lock:
                     execution_count -= 1
 
-                return "SUCCESS: Done"
+                return AgentRunResult(response="SUCCESS: Done", workdir=None)
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
@@ -1018,13 +1018,13 @@ class TestSentinelConcurrentExecution:
                 issue_key: str | None = None,
                 model: str | None = None,
                 orchestration_name: str | None = None,
-            ) -> str:
+            ) -> AgentRunResult:
                 with lock:
                     execution_order.append(f"start:{issue_key}")
                 time.sleep(0.05)
                 with lock:
                     execution_order.append(f"end:{issue_key}")
-                return "SUCCESS: Done"
+                return AgentRunResult(response="SUCCESS: Done", workdir=None)
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(

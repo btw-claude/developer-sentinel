@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from sentinel.config import Config
-from sentinel.executor import AgentClient
+from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.orchestration import AgentConfig, Orchestration, TriggerConfig
 from sentinel.poller import JiraClient
 from sentinel.tag_manager import JiraTagClient
@@ -71,11 +71,11 @@ class MockAgentClient(AgentClient):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
-    ) -> str:
+    ) -> AgentRunResult:
         self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model, orchestration_name))
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
-        return response
+        return AgentRunResult(response=response, workdir=None)
 
 
 class MockTagClient(JiraTagClient):
