@@ -163,15 +163,20 @@ class AgentExecutor:
         self,
         client: AgentClient,
         agent_logger: AgentLogger | None = None,
+        cleanup_workdir_on_success: bool = True,
     ) -> None:
         """Initialize the executor with an agent client.
 
         Args:
             client: Agent client implementation.
             agent_logger: Optional logger for writing agent execution logs.
+            cleanup_workdir_on_success: Whether to cleanup workdir after successful execution.
+                Defaults to True. When False, workdirs are preserved for inspection.
+                Failed executions always preserve workdirs regardless of this setting.
         """
         self.client = client
         self.agent_logger = agent_logger
+        self.cleanup_workdir_on_success = cleanup_workdir_on_success
 
     def _build_template_variables(
         self, issue: AnyIssue, orchestration: Orchestration
@@ -533,6 +538,7 @@ class AgentExecutor:
         last_response = ""
         last_status = ExecutionStatus.ERROR
         last_matched_outcome: str | None = None
+        last_workdir: Path | None = None
         start_time = datetime.now()
 
         # Get outcomes if configured
@@ -561,6 +567,7 @@ class AgentExecutor:
                 )
                 response = run_result.response
                 last_response = response
+                last_workdir = run_result.workdir
                 status, matched_outcome = self._determine_status(response, retry_config, outcomes)
                 last_status = status
                 last_matched_outcome = matched_outcome
@@ -594,6 +601,9 @@ class AgentExecutor:
                         attempt,
                         start_time,
                     )
+                    # Cleanup workdir on success if enabled
+                    if self.cleanup_workdir_on_success:
+                        cleanup_workdir(last_workdir)
                     return result
 
                 if status == ExecutionStatus.FAILURE and attempt < max_attempts:
