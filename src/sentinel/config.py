@@ -55,6 +55,9 @@ class Config:
     github_token: str = ""  # Personal access token or app token
     github_api_url: str = ""  # Custom API URL for GitHub Enterprise (empty = github.com)
 
+    # Workdir cleanup configuration
+    cleanup_workdir_on_success: bool = True  # Whether to cleanup workdir after successful execution
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -189,6 +192,10 @@ def load_config(env_file: Path | None = None) -> Config:
     # Parse log JSON format option
     log_json = _parse_bool(os.getenv("SENTINEL_LOG_JSON", ""))
 
+    # Parse workdir cleanup option (SENTINEL_KEEP_WORKDIR=true means cleanup_workdir_on_success=False)
+    keep_workdir = _parse_bool(os.getenv("SENTINEL_KEEP_WORKDIR", ""))
+    cleanup_workdir_on_success = not keep_workdir
+
     # Parse MCP server args (comma-separated)
     def parse_args(env_var: str) -> list[str]:
         value = os.getenv(env_var, "")
@@ -215,4 +222,5 @@ def load_config(env_file: Path | None = None) -> Config:
         mcp_github_args=parse_args("MCP_GITHUB_ARGS"),
         github_token=os.getenv("GITHUB_TOKEN", ""),
         github_api_url=os.getenv("GITHUB_API_URL", ""),
+        cleanup_workdir_on_success=cleanup_workdir_on_success,
     )
