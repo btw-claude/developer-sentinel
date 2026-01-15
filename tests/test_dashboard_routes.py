@@ -6,13 +6,12 @@ DS-126: Tests for the SSE log streaming endpoint.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -419,9 +418,8 @@ class TestSseLogStreamingEndpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            # Create a file outside logs directory that attacker might try to access
-            parent_dir = Path(tmpdir).parent
-            # We can't actually create a file in parent, but we can test the path check
+            # Test path traversal blocking - we can't create a file in parent,
+            # but we can test the path check
 
             config = Config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
