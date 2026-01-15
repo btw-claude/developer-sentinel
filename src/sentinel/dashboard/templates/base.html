@@ -213,6 +213,7 @@
         <nav>
             <a href="/" {% if request.url.path == "/" %}class="active"{% endif %}>Dashboard</a>
             <a href="/orchestrations" {% if request.url.path == "/orchestrations" %}class="active"{% endif %}>Orchestrations</a>
+            <a href="/logs" {% if request.url.path == "/logs" %}class="active"{% endif %}>Logs</a>
             <a href="/metrics" {% if request.url.path == "/metrics" %}class="active"{% endif %}>Metrics</a>
         </nav>
     </header>

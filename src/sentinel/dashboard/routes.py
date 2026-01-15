@@ -7,10 +7,15 @@ read-only access to the orchestrator's state.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, AsyncGenerator
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
+from sse_starlette.sse import EventSourceResponse
 
 if TYPE_CHECKING:
     from sentinel.dashboard.state import SentinelStateAccessor
@@ -233,5 +238,135 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
             JSON with health status.
         """
         return {"status": "healthy"}
+
+    @dashboard_router.get("/logs", response_class=HTMLResponse)
+    async def logs(request: Request) -> HTMLResponse:
+        """Render the log viewer page (DS-127).
+
+        This page allows users to view log files from orchestration executions
+        with real-time updates via SSE.
+
+        Args:
+            request: The incoming HTTP request.
+
+        Returns:
+            HTML response with the log viewer page.
+        """
+        log_files = state_accessor.get_log_files()
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request=request,
+            name="log_viewer.html",
+            context={"log_files": log_files},
+        )
+
+    @dashboard_router.get("/api/logs")
+    async def api_logs() -> list[dict]:
+        """Return the list of available log files as JSON (DS-127).
+
+        This endpoint returns log files grouped by orchestration for the
+        log viewer dropdown.
+
+        Returns:
+            List of orchestration log file info.
+        """
+        return state_accessor.get_log_files()
+
+    @dashboard_router.get("/api/logs/stream/{orchestration}/{filename}")
+    async def stream_log(
+        request: Request,
+        orchestration: str,
+        filename: str,
+    ) -> EventSourceResponse:
+        """Stream log file content via SSE (DS-127).
+
+        This endpoint streams the content of a log file in real-time using
+        Server-Sent Events. It sends the initial content and then watches
+        for updates.
+
+        Args:
+            request: The incoming HTTP request.
+            orchestration: The orchestration name.
+            filename: The log file name.
+
+        Returns:
+            EventSourceResponse streaming log content.
+        """
+
+        async def event_generator() -> AsyncGenerator[dict, None]:
+            """Generate SSE events for log file content."""
+            log_path = state_accessor.get_log_file_path(orchestration, filename)
+
+            if log_path is None or not log_path.exists():
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"error": "Log file not found"}),
+                }
+                return
+
+            # Send initial content
+            try:
+                content = log_path.read_text()
+                yield {
+                    "event": "initial",
+                    "data": json.dumps({"type": "initial", "content": content}),
+                }
+            except Exception as e:
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"error": str(e)}),
+                }
+                return
+
+            # Watch for updates
+            last_size = log_path.stat().st_size
+            last_mtime = log_path.stat().st_mtime
+
+            while True:
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    break
+
+                await asyncio.sleep(1)  # Poll every second
+
+                try:
+                    if not log_path.exists():
+                        break
+
+                    current_mtime = log_path.stat().st_mtime
+                    current_size = log_path.stat().st_size
+
+                    if current_mtime > last_mtime or current_size > last_size:
+                        # File has been modified, read new content
+                        with open(log_path, "r") as f:
+                            if current_size > last_size:
+                                # Append mode - seek to last position
+                                f.seek(last_size)
+                                new_content = f.read()
+                                if new_content:
+                                    yield {
+                                        "event": "append",
+                                        "data": json.dumps(
+                                            {"type": "append", "content": new_content}
+                                        ),
+                                    }
+                            else:
+                                # File might have been truncated/rewritten
+                                content = f.read()
+                                yield {
+                                    "event": "initial",
+                                    "data": json.dumps(
+                                        {"type": "initial", "content": content}
+                                    ),
+                                }
+
+                        last_size = current_size
+                        last_mtime = current_mtime
+
+                except Exception:
+                    # File access error, continue polling
+                    pass
+
+        return EventSourceResponse(event_generator())
 
     return dashboard_router
