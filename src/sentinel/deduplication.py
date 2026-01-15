@@ -6,6 +6,10 @@ combination within a single polling cycle.
 
 DS-138: Refactored from inline implementations in _poll_jira_triggers() and
 _poll_github_triggers() (DS-130, DS-131) into a shared utility.
+
+Note: Some features in this module (cycle_tracker, CycleTracker class, reset_cycle,
+_current_cycle_pairs) are designed for future concurrent polling patterns and are not
+yet used in the current implementation. See individual method docstrings for details.
 """
 
 from __future__ import annotations
