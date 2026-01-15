@@ -130,6 +130,80 @@
             font-size: 0.75rem;
             margin-right: 0.25rem;
         }
+
+        /* Collapsible section styles */
+        .collapsible-section {
+            padding: 0;
+        }
+
+        .collapsible-header {
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+
+        .collapsible-header:hover {
+            background-color: var(--accent);
+        }
+
+        .collapsible-header h2 {
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .collapse-icon {
+            font-size: 0.75rem;
+            transition: transform 0.2s;
+            display: inline-block;
+        }
+
+        .collapse-icon.rotated {
+            transform: rotate(90deg);
+        }
+
+        .badge {
+            background-color: var(--accent);
+            padding: 0.125rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: normal;
+            color: var(--text-secondary);
+            margin-left: auto;
+        }
+
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+            padding: 0 1.5rem;
+        }
+
+        .collapsible-content.expanded {
+            max-height: 2000px;
+            padding: 0 1.5rem 1.5rem 1.5rem;
+        }
+
+        /* Source badge styles */
+        .source-badge {
+            display: inline-block;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .source-badge.jira {
+            background-color: #0052cc;
+            color: white;
+        }
+
+        .source-badge.github {
+            background-color: #238636;
+            color: white;
+        }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
