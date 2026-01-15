@@ -1312,8 +1312,11 @@ class Sentinel:
                             if self._shutdown_requested:
                                 break
                             time.sleep(1)
-                    # If submitted_count > 0 but no pending futures, poll immediately
-                    # (edge case: tasks completed very quickly)
+                    else:
+                        # submitted_count > 0 but no pending futures - tasks completed very quickly
+                        logger.debug(
+                            f"Submitted {submitted_count} task(s) but all completed quickly, polling immediately"
+                        )
 
             # Wait for active tasks to complete
             logger.info("Waiting for active executions to complete...")
