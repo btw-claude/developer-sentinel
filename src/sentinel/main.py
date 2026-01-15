@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from types import FrameType
 from typing import Any
@@ -120,6 +121,75 @@ class GitHubIssueWithRepo:
     def draft(self) -> bool:
         """Return whether this PR is a draft."""
         return self._issue.draft
+
+
+class DashboardServer:
+    """Background server for the dashboard web interface.
+
+    This class manages a uvicorn server running in a background thread,
+    allowing the dashboard to run alongside the main Sentinel polling loop.
+    """
+
+    def __init__(self, host: str, port: int) -> None:
+        """Initialize the dashboard server.
+
+        Args:
+            host: The host address to bind to.
+            port: The port to listen on.
+        """
+        self._host = host
+        self._port = port
+        self._server: Any = None
+        self._thread: threading.Thread | None = None
+        self._started = threading.Event()
+
+    def start(self, app: Any) -> None:
+        """Start the dashboard server in a background thread.
+
+        Args:
+            app: The FastAPI application to serve.
+        """
+        import uvicorn
+
+        config = uvicorn.Config(
+            app=app,
+            host=self._host,
+            port=self._port,
+            log_level="warning",  # Reduce uvicorn logging noise
+            access_log=False,
+        )
+        self._server = uvicorn.Server(config)
+
+        def run_server() -> None:
+            """Run the uvicorn server."""
+            # Signal that we've started
+            self._started.set()
+            self._server.run()
+
+        self._thread = threading.Thread(
+            target=run_server,
+            name="dashboard-server",
+            daemon=True,
+        )
+        self._thread.start()
+
+        # Wait for server to start
+        self._started.wait(timeout=5.0)
+        logger.info(f"Dashboard server started at http://{self._host}:{self._port}")
+
+    def shutdown(self) -> None:
+        """Shutdown the dashboard server gracefully."""
+        if self._server is not None:
+            logger.info("Shutting down dashboard server...")
+            self._server.should_exit = True
+
+            # Wait for the server thread to finish
+            if self._thread is not None and self._thread.is_alive():
+                self._thread.join(timeout=5.0)
+                if self._thread.is_alive():
+                    logger.warning("Dashboard server thread did not terminate gracefully")
+
+            logger.info("Dashboard server shutdown complete")
 
 
 class Sentinel:
@@ -1238,15 +1308,42 @@ def main(args: list[str] | None = None) -> int:
         github_tag_client=github_tag_client,
     )
 
-    if parsed.once:
-        logger.info("Running single polling cycle (--once mode)")
-        results = sentinel.run_once_and_wait()
-        success_count = sum(1 for r in results if r.succeeded)
-        logger.info(f"Completed: {success_count}/{len(results)} successful")
-        return 0 if success_count == len(results) or not results else 1
+    # Start dashboard server if enabled
+    dashboard_server: DashboardServer | None = None
+    if config.dashboard_enabled:
+        try:
+            from sentinel.dashboard import create_app
 
-    sentinel.run()
-    return 0
+            logger.info(
+                f"Starting dashboard server on {config.dashboard_host}:{config.dashboard_port}"
+            )
+            dashboard_app = create_app(sentinel)
+            dashboard_server = DashboardServer(
+                host=config.dashboard_host,
+                port=config.dashboard_port,
+            )
+            dashboard_server.start(dashboard_app)
+        except ImportError as e:
+            logger.warning(
+                f"Dashboard dependencies not available, skipping dashboard: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to start dashboard server: {e}")
+
+    try:
+        if parsed.once:
+            logger.info("Running single polling cycle (--once mode)")
+            results = sentinel.run_once_and_wait()
+            success_count = sum(1 for r in results if r.succeeded)
+            logger.info(f"Completed: {success_count}/{len(results)} successful")
+            return 0 if success_count == len(results) or not results else 1
+
+        sentinel.run()
+        return 0
+    finally:
+        # Shutdown dashboard server if it was started
+        if dashboard_server is not None:
+            dashboard_server.shutdown()
 
 
 if __name__ == "__main__":
