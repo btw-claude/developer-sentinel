@@ -22,7 +22,8 @@
  * Related: DS-154 (original implementation), DS-159 (extraction to this file),
  *          DS-162 (CSS variable fallbacks and organization),
  *          DS-163 (axis-specific spacing, extended scale, text-accent),
- *          DS-164 (CSS logical properties, my-auto documentation)
+ *          DS-164 (CSS logical properties, my-auto documentation),
+ *          DS-165 (RTL layout examples for logical property utilities)
  */
 
 /* =============================================================================
@@ -221,7 +222,137 @@
    - ps-* = padding-inline-start (left in LTR, right in RTL)
    - pe-* = padding-inline-end (right in LTR, left in RTL)
 
-   See: DS-164 for implementation details
+   See: DS-164 for implementation details, DS-165 for RTL examples
+
+   -----------------------------------------------------------------------------
+   RTL/LTR LAYOUT EXAMPLES
+   -----------------------------------------------------------------------------
+
+   The .ms-auto and .me-auto utilities are particularly useful for creating
+   asymmetric layouts that automatically adapt to the reading direction.
+
+   EXAMPLE 1: Push element to the end (right in LTR, left in RTL)
+   -------------------------------------------------------------
+   Use .ms-auto to push an element to the inline-end of its flex container.
+
+   LTR Layout (dir="ltr"):
+   ┌─────────────────────────────────────────────┐
+   │ [Logo]                           [Settings] │
+   │  start                              end     │
+   └─────────────────────────────────────────────┘
+
+   RTL Layout (dir="rtl"):
+   ┌─────────────────────────────────────────────┐
+   │ [Settings]                           [Logo] │
+   │    end                              start   │
+   └─────────────────────────────────────────────┘
+
+   HTML:
+     <nav class="d-flex align-center" dir="ltr">
+       <div class="logo">Logo</div>
+       <button class="ms-auto">Settings</button>
+     </nav>
+
+   EXAMPLE 2: Push element to the start (left in LTR, right in RTL)
+   ----------------------------------------------------------------
+   Use .me-auto to push subsequent elements to the inline-end.
+
+   LTR Layout (dir="ltr"):
+   ┌─────────────────────────────────────────────┐
+   │ [Back]                     [Help] [Profile] │
+   │  start                              end     │
+   └─────────────────────────────────────────────┘
+
+   RTL Layout (dir="rtl"):
+   ┌─────────────────────────────────────────────┐
+   │ [Profile] [Help]                     [Back] │
+   │    end                              start   │
+   └─────────────────────────────────────────────┘
+
+   HTML:
+     <header class="d-flex align-center gap-2" dir="ltr">
+       <button class="me-auto">Back</button>
+       <button>Help</button>
+       <button>Profile</button>
+     </header>
+
+   EXAMPLE 3: Asymmetric three-column layout with centered content
+   ---------------------------------------------------------------
+   Combine .ms-auto and .me-auto to create complex layouts where
+   one element is centered while others are pushed to the edges.
+
+   LTR Layout (dir="ltr"):
+   ┌─────────────────────────────────────────────┐
+   │ [Menu]         [Page Title]        [Search] │
+   │ start            center               end   │
+   └─────────────────────────────────────────────┘
+
+   RTL Layout (dir="rtl"):
+   ┌─────────────────────────────────────────────┐
+   │ [Search]        [Page Title]         [Menu] │
+   │   end             center             start  │
+   └─────────────────────────────────────────────┘
+
+   HTML:
+     <div class="d-flex align-center">
+       <button>Menu</button>
+       <h1 class="ms-auto me-auto">Page Title</h1>
+       <input type="search" placeholder="Search">
+     </div>
+
+   EXAMPLE 4: Card with action button aligned to end
+   -------------------------------------------------
+   Common pattern for cards where the action should align to the
+   "natural" end of the reading direction.
+
+   LTR Layout (dir="ltr"):
+   ┌─────────────────────────────────────────────┐
+   │ Card Title                                  │
+   │ Description text here...                    │
+   │                               [Learn More →]│
+   └─────────────────────────────────────────────┘
+
+   RTL Layout (dir="rtl"):
+   ┌─────────────────────────────────────────────┐
+   │                                  عنوان البطاقة│
+   │                           ...نص الوصف هنا   │
+   │[← اقرأ المزيد]                              │
+   └─────────────────────────────────────────────┘
+
+   HTML:
+     <div class="card">
+       <h3>Card Title</h3>
+       <p>Description text here...</p>
+       <div class="d-flex">
+         <a href="#" class="ms-auto">Learn More</a>
+       </div>
+     </div>
+
+   KEY DIFFERENCES: .ms-auto/.me-auto vs .ml-auto/.mr-auto
+   -------------------------------------------------------
+   Physical properties (.ml-auto, .mr-auto):
+   - Always affect left/right regardless of text direction
+   - Use when layout should NOT change with reading direction
+   - Example: A progress bar that always fills left-to-right
+
+   Logical properties (.ms-auto, .me-auto):
+   - Adapt to the document's writing direction (dir attribute)
+   - Use when layout SHOULD mirror for RTL languages
+   - Example: Navigation items that should flip for Arabic/Hebrew
+
+   TESTING RTL LAYOUTS
+   -------------------
+   To test RTL behavior, add dir="rtl" to the container or <html> element:
+
+     <!-- Test a single component in RTL -->
+     <nav class="d-flex" dir="rtl">
+       <span>Start</span>
+       <span class="ms-auto">End</span>
+     </nav>
+
+     <!-- Test entire page in RTL -->
+     <html dir="rtl" lang="ar">
+
    ============================================================================= */
 
 /* Margin inline-start utilities (ms-*) */
