@@ -479,3 +479,59 @@ class TestMaxEagerIterations:
 
         assert config.max_eager_iterations == 10
         assert "not positive" in caplog.text
+
+
+class TestAttemptCountsTtlConfig:
+    """Tests for attempt_counts_ttl configuration (DS-152)."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that attempt_counts_ttl defaults to 3600 seconds (1 hour)."""
+        monkeypatch.delenv("SENTINEL_ATTEMPT_COUNTS_TTL", raising=False)
+
+        config = load_config()
+
+        assert config.attempt_counts_ttl == 3600
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that attempt_counts_ttl loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_ATTEMPT_COUNTS_TTL", "7200")
+
+        config = load_config()
+
+        assert config.attempt_counts_ttl == 7200
+
+    def test_invalid_value_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid values use the default."""
+        monkeypatch.setenv("SENTINEL_ATTEMPT_COUNTS_TTL", "not-a-number")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.attempt_counts_ttl == 3600
+        assert "Invalid SENTINEL_ATTEMPT_COUNTS_TTL" in caplog.text
+
+    def test_zero_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that zero uses the default (must be positive)."""
+        monkeypatch.setenv("SENTINEL_ATTEMPT_COUNTS_TTL", "0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.attempt_counts_ttl == 3600
+        assert "not positive" in caplog.text
+
+    def test_negative_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that negative values use the default."""
+        monkeypatch.setenv("SENTINEL_ATTEMPT_COUNTS_TTL", "-100")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.attempt_counts_ttl == 3600
+        assert "not positive" in caplog.text

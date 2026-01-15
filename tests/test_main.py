@@ -2285,9 +2285,11 @@ class TestAttemptCountTracking:
         assert count3 == 3, "Third attempt should be 3"
 
         # Verify the internal state matches
+        # DS-152: Now stores AttemptCountEntry with count and last_access
         key = ("TEST-1", "test-orch")
         with sentinel._attempt_counts_lock:
-            stored_count = sentinel._attempt_counts.get(key, 0)
+            entry = sentinel._attempt_counts.get(key)
+            stored_count = entry.count if entry else 0
         assert stored_count == 3, "Stored count should be 3 after 3 increments"
 
     def test_running_step_info_contains_attempt_number(self) -> None:
@@ -2355,3 +2357,133 @@ class TestAttemptCountTracking:
             run_thread.join(timeout=5)
             sentinel._thread_pool.shutdown(wait=True)
             sentinel._thread_pool = None
+
+    def test_cleanup_stale_attempt_counts(self) -> None:
+        """Test that stale attempt count entries are cleaned up based on TTL (DS-152).
+
+        This test verifies that the cleanup mechanism removes entries that haven't
+        been accessed within the configured TTL period.
+        """
+        import time
+        from unittest.mock import patch
+        from sentinel.main import AttemptCountEntry
+
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(issues=[], tag_client=tag_client)
+        agent_client = MockAgentClient(responses=[])
+
+        # Use a very short TTL for testing
+        config = make_config(attempt_counts_ttl=1)
+        orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Add some entries directly with old timestamps
+        current_time = time.monotonic()
+        with sentinel._attempt_counts_lock:
+            # Old entry (should be cleaned up)
+            sentinel._attempt_counts[("OLD-1", "test-orch")] = AttemptCountEntry(
+                count=5, last_access=current_time - 100  # 100 seconds ago
+            )
+            # Recent entry (should NOT be cleaned up)
+            sentinel._attempt_counts[("RECENT-1", "test-orch")] = AttemptCountEntry(
+                count=3, last_access=current_time - 0.5  # 0.5 seconds ago
+            )
+
+        # Verify both entries exist
+        assert len(sentinel._attempt_counts) == 2
+
+        # Run cleanup
+        cleaned = sentinel._cleanup_stale_attempt_counts()
+
+        # Verify old entry was cleaned up
+        assert cleaned == 1
+        assert len(sentinel._attempt_counts) == 1
+        assert ("OLD-1", "test-orch") not in sentinel._attempt_counts
+        assert ("RECENT-1", "test-orch") in sentinel._attempt_counts
+
+    def test_cleanup_attempt_counts_called_in_run_once(self) -> None:
+        """Test that _cleanup_stale_attempt_counts is called during run_once (DS-152).
+
+        This ensures the cleanup is integrated into the main polling cycle.
+        """
+        from unittest.mock import patch, MagicMock
+
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(issues=[], tag_client=tag_client)
+        agent_client = MockAgentClient(responses=[])
+        config = make_config()
+        orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Mock the cleanup method to track if it was called
+        with patch.object(sentinel, '_cleanup_stale_attempt_counts') as mock_cleanup:
+            mock_cleanup.return_value = 0
+            sentinel.run_once()
+            mock_cleanup.assert_called_once()
+
+    def test_attempt_count_entry_updates_last_access(self) -> None:
+        """Test that accessing an attempt count updates its last_access time (DS-152).
+
+        This verifies that the TTL clock is reset each time an issue is processed,
+        ensuring active issues are not prematurely cleaned up.
+        """
+        import time
+        from sentinel.main import AttemptCountEntry
+
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(issues=[], tag_client=tag_client)
+        agent_client = MockAgentClient(responses=[])
+        config = make_config()
+        orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Get initial time
+        time_before = time.monotonic()
+
+        # Increment attempt count
+        sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
+
+        time_after = time.monotonic()
+
+        # Verify the entry has a recent last_access time
+        key = ("TEST-1", "test-orch")
+        with sentinel._attempt_counts_lock:
+            entry = sentinel._attempt_counts[key]
+
+        assert entry.count == 1
+        assert entry.last_access >= time_before
+        assert entry.last_access <= time_after
+
+        # Wait a tiny bit and update again
+        time.sleep(0.01)
+        time_before_second = time.monotonic()
+
+        sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
+
+        # Verify last_access was updated
+        with sentinel._attempt_counts_lock:
+            entry = sentinel._attempt_counts[key]
+
+        assert entry.count == 2
+        assert entry.last_access >= time_before_second

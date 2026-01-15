@@ -50,6 +50,18 @@ MAX_QUEUE_SIZE = 100
 
 
 @dataclass
+class AttemptCountEntry:
+    """Entry in the attempt counts dictionary tracking count and last access time (DS-152).
+
+    This class tracks both the attempt count and the last time the entry was accessed,
+    enabling TTL-based cleanup to prevent unbounded memory growth.
+    """
+
+    count: int
+    last_access: float  # time.monotonic() timestamp
+
+
+@dataclass
 class RunningStepInfo:
     """Metadata about a currently running execution step.
 
@@ -279,7 +291,9 @@ class Sentinel:
         # Track attempt counts per (issue_key, orchestration_name) pair (DS-141)
         # This tracks how many times an issue has been processed for an orchestration
         # across different polling cycles, providing accurate retry attempt numbers.
-        self._attempt_counts: dict[tuple[str, str], int] = {}
+        # DS-152: Changed from dict[tuple[str, str], int] to track last_access time
+        # for TTL-based cleanup to prevent unbounded memory growth.
+        self._attempt_counts: dict[tuple[str, str], AttemptCountEntry] = {}
         self._attempt_counts_lock = threading.Lock()
 
         # Track queued issues waiting for execution slots (DS-123)
@@ -443,6 +457,8 @@ class Sentinel:
         across different polling cycles, providing accurate retry attempt numbers
         in the Running Steps dashboard.
 
+        DS-152: Also updates the last_access time to support TTL-based cleanup.
+
         Args:
             issue_key: The key of the issue being processed.
             orchestration_name: The name of the orchestration being executed.
@@ -451,10 +467,49 @@ class Sentinel:
             The new attempt number (1 for first attempt, 2 for second, etc.).
         """
         key = (issue_key, orchestration_name)
+        current_time = time.monotonic()
         with self._attempt_counts_lock:
-            count = self._attempt_counts.get(key, 0) + 1
-            self._attempt_counts[key] = count
-            return count
+            entry = self._attempt_counts.get(key)
+            if entry is None:
+                new_count = 1
+            else:
+                new_count = entry.count + 1
+            self._attempt_counts[key] = AttemptCountEntry(
+                count=new_count, last_access=current_time
+            )
+            return new_count
+
+    def _cleanup_stale_attempt_counts(self) -> int:
+        """Clean up stale attempt count entries based on TTL (DS-152).
+
+        Removes entries from _attempt_counts that haven't been accessed within
+        the configured TTL period. This prevents unbounded memory growth for
+        long-running processes.
+
+        Returns:
+            Number of entries cleaned up.
+        """
+        ttl = self.config.attempt_counts_ttl
+        current_time = time.monotonic()
+        cleaned_count = 0
+
+        with self._attempt_counts_lock:
+            stale_keys = [
+                key
+                for key, entry in self._attempt_counts.items()
+                if (current_time - entry.last_access) > ttl
+            ]
+            for key in stale_keys:
+                del self._attempt_counts[key]
+                cleaned_count += 1
+
+        if cleaned_count > 0:
+            logger.info(
+                f"Cleaned up {cleaned_count} stale attempt count entries "
+                f"(TTL: {ttl}s)"
+            )
+
+        return cleaned_count
 
     def _init_known_orchestration_files(self) -> None:
         """Initialize the set of known orchestration files with their mtimes.
@@ -923,6 +978,9 @@ class Sentinel:
 
         # Clean up old orchestration versions that no longer have active executions
         self._cleanup_pending_removal_versions()
+
+        # DS-152: Clean up stale attempt count entries to prevent unbounded memory growth
+        self._cleanup_stale_attempt_counts()
 
         # Collect any completed results from previous cycle
         all_results = self._collect_completed_results()
