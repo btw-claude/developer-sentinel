@@ -77,7 +77,7 @@ class DashboardState:
 
     # Polling state
     shutdown_requested: bool = False
-    consecutive_eager_polls: int = 0
+    pending_tasks: int = 0
 
 
 class SentinelStateProvider(Protocol):
@@ -156,6 +156,10 @@ class SentinelStateAccessor:
             orchestrations_reloaded_total=metrics["orchestrations_reloaded_total"],
         )
 
+        # Get count of pending (not yet started) futures
+        with sentinel._futures_lock:
+            pending_count = sum(1 for f in sentinel._active_futures if not f.done())
+
         return DashboardState(
             poll_interval=config.poll_interval,
             max_concurrent_executions=config.max_concurrent_executions,
@@ -167,7 +171,7 @@ class SentinelStateAccessor:
             available_slots=available_slots,
             hot_reload_metrics=hot_reload_metrics,
             shutdown_requested=sentinel._shutdown_requested,
-            consecutive_eager_polls=sentinel._consecutive_eager_polls,
+            pending_tasks=pending_count,
         )
 
     def _orchestration_to_info(self, orch: Orchestration) -> OrchestrationInfo:
