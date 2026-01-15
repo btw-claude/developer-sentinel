@@ -765,9 +765,10 @@ class Sentinel:
         # Track how many tasks we've submitted this cycle
         submitted_count = 0
 
-        # DS-130: Track submitted (issue_key, orchestration_name) pairs within this
-        # polling cycle to prevent duplicate agent spawns when the same issue matches
-        # multiple overlapping triggers before tag updates propagate.
+        # DS-130, DS-131: Track submitted (issue_key, orchestration_name) pairs within
+        # this polling cycle to prevent duplicate agent spawns when the same issue
+        # matches multiple overlapping triggers before tag updates propagate.
+        # This deduplication applies to both Jira and GitHub trigger polling.
         submitted_pairs: set[tuple[str, str]] = set()
 
         # Poll Jira triggers
@@ -947,7 +948,7 @@ class Sentinel:
             submitted_pairs: Optional set of (issue_key, orchestration_name) pairs
                 already submitted in this polling cycle. If provided, duplicates
                 are skipped to prevent spawning multiple agents for the same
-                issue/orchestration combination (DS-130).
+                issue/orchestration combination (DS-130, DS-131).
 
         Returns:
             Number of tasks submitted to the thread pool.
@@ -967,8 +968,8 @@ class Sentinel:
 
                 issue_key = routing_result.issue.key
 
-                # DS-130: Skip if this (issue_key, orchestration_name) pair was already
-                # submitted in this polling cycle to prevent duplicate agent spawns
+                # DS-130, DS-131: Skip if this (issue_key, orchestration_name) pair was
+                # already submitted in this polling cycle to prevent duplicate agent spawns
                 if submitted_pairs is not None:
                     pair = (issue_key, matched_orch.name)
                     if pair in submitted_pairs:
