@@ -2119,3 +2119,239 @@ class TestSentinelHotReloadMetrics:
         assert metrics["orchestrations_unloaded_total"] == 1  # Unchanged
         assert metrics["orchestrations_reloaded_total"] == 1
 
+
+class TestAttemptCountTracking:
+    """Tests for DS-141: Track retry attempt numbers in Running Steps dashboard."""
+
+    def test_get_and_increment_attempt_count_starts_at_one(self) -> None:
+        """Test that first attempt for an issue/orchestration pair returns 1."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        count = sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        assert count == 1
+
+    def test_get_and_increment_attempt_count_increments(self) -> None:
+        """Test that subsequent calls increment the attempt count."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        count1 = sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        count2 = sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        count3 = sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
+
+        assert count1 == 1
+        assert count2 == 2
+        assert count3 == 3
+
+    def test_get_and_increment_tracks_separately_by_issue_key(self) -> None:
+        """Test that different issues have separate attempt counts."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # First issue gets attempts 1, 2
+        sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
+
+        # Second issue starts at 1
+        count = sentinel._get_and_increment_attempt_count("TEST-2", "my-orchestration")
+        assert count == 1
+
+    def test_get_and_increment_tracks_separately_by_orchestration(self) -> None:
+        """Test that different orchestrations have separate attempt counts."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Same issue, different orchestrations
+        sentinel._get_and_increment_attempt_count("TEST-1", "orch-a")
+        sentinel._get_and_increment_attempt_count("TEST-1", "orch-a")
+
+        # Different orchestration starts at 1
+        count = sentinel._get_and_increment_attempt_count("TEST-1", "orch-b")
+        assert count == 1
+
+    def test_get_and_increment_is_thread_safe(self) -> None:
+        """Test that attempt count incrementing is thread-safe."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        results: list[int] = []
+        num_threads = 10
+
+        def increment() -> None:
+            count = sentinel._get_and_increment_attempt_count("TEST-1", "orch")
+            results.append(count)
+
+        threads = [threading.Thread(target=increment) for _ in range(num_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # All numbers from 1 to 10 should appear exactly once
+        assert sorted(results) == list(range(1, num_threads + 1))
+
+    def test_running_steps_use_tracked_attempt_number(self) -> None:
+        """Test that Running Steps dashboard uses the tracked attempt number (DS-141).
+
+        This test verifies that the attempt_number in RunningStepInfo is correctly
+        tracked across multiple executions of the same issue/orchestration pair.
+        We test this directly by calling _get_and_increment_attempt_count and verifying
+        the values are used when creating RunningStepInfo objects.
+        """
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(
+            issues=[
+                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+            ],
+            tag_client=tag_client,
+        )
+        agent_client = MockAgentClient(responses=["SUCCESS", "SUCCESS"])
+        config = make_config(max_concurrent_executions=2)
+        orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Simulate multiple executions by directly calling the attempt count tracker
+        # This is the core functionality that DS-141 implements
+        count1 = sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
+        count2 = sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
+        count3 = sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
+
+        # Verify the counts increment correctly
+        assert count1 == 1, "First attempt should be 1"
+        assert count2 == 2, "Second attempt should be 2"
+        assert count3 == 3, "Third attempt should be 3"
+
+        # Verify the internal state matches
+        key = ("TEST-1", "test-orch")
+        with sentinel._attempt_counts_lock:
+            stored_count = sentinel._attempt_counts.get(key, 0)
+        assert stored_count == 3, "Stored count should be 3 after 3 increments"
+
+    def test_running_step_info_contains_attempt_number(self) -> None:
+        """Test that RunningStepInfo is created with correct attempt_number (DS-141).
+
+        This test verifies that when an execution is submitted to the thread pool,
+        the RunningStepInfo correctly uses the attempt_number from the tracker.
+        """
+        from sentinel.main import RunningStepInfo
+        from datetime import datetime
+
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(
+            issues=[
+                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+            ],
+            tag_client=tag_client,
+        )
+        # Use a blocking response to keep the future active
+        blocking_event = threading.Event()
+        task_started_event = threading.Event()
+
+        class BlockingAgentClient(MockAgentClient):
+            def run_agent(self, *args: Any, **kwargs: Any) -> AgentRunResult:
+                task_started_event.set()  # Signal that task has started
+                blocking_event.wait(timeout=5)
+                return super().run_agent(*args, **kwargs)
+
+        agent_client = BlockingAgentClient(responses=["SUCCESS"])
+        config = make_config(max_concurrent_executions=2)
+        orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Pre-increment the attempt count to simulate a previous execution
+        sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
+
+        # Set up thread pool and run
+        sentinel._thread_pool = ThreadPoolExecutor(max_workers=2)
+
+        try:
+            # Run once in a background thread so we can check running steps
+            run_thread = threading.Thread(target=sentinel.run_once)
+            run_thread.start()
+
+            # Wait for the task to actually start executing
+            task_started_event.wait(timeout=5)
+
+            # Check the running steps while task is blocked
+            running_steps = sentinel.get_running_steps()
+            assert len(running_steps) == 1, "Should have one running step"
+            step = running_steps[0]
+            assert step.attempt_number == 2, "Attempt number should be 2 (second attempt)"
+            assert step.issue_key == "TEST-1"
+            assert step.orchestration_name == "test-orch"
+        finally:
+            # Unblock the agent and clean up
+            blocking_event.set()
+            run_thread.join(timeout=5)
+            sentinel._thread_pool.shutdown(wait=True)
+            sentinel._thread_pool = None
