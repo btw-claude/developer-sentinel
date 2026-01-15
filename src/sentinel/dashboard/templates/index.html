@@ -47,6 +47,27 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
+         hx-get="/partials/running_steps"
+         hx-target="#running-steps-content"
+         hx-swap="innerHTML"
+         hx-trigger="click[!document.querySelector('#running-steps-content').classList.contains('expanded')]"
+         onclick="this.parentElement.querySelector('#running-steps-content').classList.toggle('expanded'); this.querySelector('.collapse-icon').classList.toggle('rotated');">
+        <h2>
+            <span class="collapse-icon">&#9654;</span>
+            Running Steps
+            <span class="badge">{{ state.running_steps | length }}</span>
+        </h2>
+    </div>
+    <div id="running-steps-content" class="collapsible-content"
+         hx-get="/partials/running_steps"
+         hx-trigger="every 1s[document.querySelector('#running-steps-content').classList.contains('expanded')]"
+         hx-swap="innerHTML">
+        <!-- Content loaded via HTMX when expanded, auto-refreshes every 1s -->
+    </div>
+</div>
+
+<div class="card collapsible-section">
+    <div class="collapsible-header"
          hx-get="/partials/orchestrations"
          hx-target="#orchestrations-content"
          hx-swap="innerHTML"

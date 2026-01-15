@@ -8,7 +8,8 @@ import sys
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from types import FrameType
 from typing import Any
@@ -40,6 +41,19 @@ from sentinel.router import Router
 from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class RunningStepInfo:
+    """Metadata about a currently running execution step.
+
+    This class tracks information about active agent executions for dashboard display.
+    """
+
+    issue_key: str
+    orchestration_name: str
+    attempt_number: int
+    started_at: datetime
 
 
 class GitHubIssueWithRepo:
@@ -232,6 +246,10 @@ class Sentinel:
         self._active_futures: list[Future[ExecutionResult]] = []
         self._futures_lock = threading.Lock()
 
+        # Track running step metadata for dashboard display (DS-122)
+        # Maps future id() to RunningStepInfo for active executions
+        self._running_steps: dict[int, RunningStepInfo] = {}
+
         # Track known orchestration files for hot-reload detection
         # Maps file path to its last known mtime
         self._known_orchestration_files: dict[Path, float] = {}
@@ -278,6 +296,25 @@ class Sentinel:
             "orchestrations_unloaded_total": self._orchestrations_unloaded_total,
             "orchestrations_reloaded_total": self._orchestrations_reloaded_total,
         }
+
+    def get_running_steps(self) -> list[RunningStepInfo]:
+        """Get information about currently running execution steps.
+
+        Returns a list of RunningStepInfo objects for all active executions.
+        This is used by the dashboard to display running steps.
+
+        Returns:
+            List of RunningStepInfo for active executions.
+        """
+        with self._futures_lock:
+            # Get running step info for futures that are still running
+            running = []
+            for future in self._active_futures:
+                if not future.done():
+                    future_id = id(future)
+                    if future_id in self._running_steps:
+                        running.append(self._running_steps[future_id])
+            return running
 
     def _init_known_orchestration_files(self) -> None:
         """Initialize the set of known orchestration files with their mtimes.
@@ -664,6 +701,9 @@ class Sentinel:
         with self._futures_lock:
             completed = [f for f in self._active_futures if f.done()]
             for future in completed:
+                # Clean up running step metadata (DS-122)
+                future_id = id(future)
+                self._running_steps.pop(future_id, None)
                 try:
                     result = future.result()
                     if result is not None:
@@ -1001,6 +1041,14 @@ class Sentinel:
                         )
                         with self._futures_lock:
                             self._active_futures.append(future)
+                            # Track running step metadata for dashboard (DS-122)
+                            # attempt_number is 1 for now - could be enhanced to track retries
+                            self._running_steps[id(future)] = RunningStepInfo(
+                                issue_key=issue_key,
+                                orchestration_name=matched_orch.name,
+                                attempt_number=1,
+                                started_at=datetime.now(),
+                            )
                         submitted_count += 1
                     else:
                         # Fallback: synchronous execution (e.g., run_once without run())

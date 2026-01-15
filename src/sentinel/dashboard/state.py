@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from sentinel.main import Sentinel
+    from sentinel.main import RunningStepInfo, Sentinel
     from sentinel.orchestration import Orchestration, OrchestrationVersion
 
 
@@ -50,6 +50,21 @@ class HotReloadMetrics:
 
 
 @dataclass(frozen=True)
+class RunningStepInfoView:
+    """Read-only running step information for the dashboard (DS-122).
+
+    This provides an immutable view of a running execution step including
+    calculated elapsed time for display purposes.
+    """
+
+    issue_key: str
+    orchestration_name: str
+    attempt_number: int
+    started_at: datetime
+    elapsed_seconds: float
+
+
+@dataclass(frozen=True)
 class DashboardState:
     """Immutable snapshot of Sentinel state for dashboard rendering.
 
@@ -71,6 +86,9 @@ class DashboardState:
     # Execution state
     active_execution_count: int = 0
     available_slots: int = 0
+
+    # Running steps (DS-122) - active execution details for dashboard display
+    running_steps: list[RunningStepInfoView] = field(default_factory=list)
 
     # Hot-reload metrics
     hot_reload_metrics: HotReloadMetrics | None = None
@@ -160,6 +178,20 @@ class SentinelStateAccessor:
         with sentinel._futures_lock:
             pending_count = sum(1 for f in sentinel._active_futures if not f.done())
 
+        # Get running step info (DS-122)
+        running_steps_raw = sentinel.get_running_steps()
+        now = datetime.now()
+        running_step_views = [
+            RunningStepInfoView(
+                issue_key=step.issue_key,
+                orchestration_name=step.orchestration_name,
+                attempt_number=step.attempt_number,
+                started_at=step.started_at,
+                elapsed_seconds=(now - step.started_at).total_seconds(),
+            )
+            for step in running_steps_raw
+        ]
+
         return DashboardState(
             poll_interval=config.poll_interval,
             max_concurrent_executions=config.max_concurrent_executions,
@@ -169,6 +201,7 @@ class SentinelStateAccessor:
             pending_removal_versions=pending_removal_version_infos,
             active_execution_count=active_count,
             available_slots=available_slots,
+            running_steps=running_step_views,
             hot_reload_metrics=hot_reload_metrics,
             shutdown_requested=sentinel._shutdown_requested,
             pending_tasks=pending_count,
