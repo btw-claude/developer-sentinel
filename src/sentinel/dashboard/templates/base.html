@@ -182,6 +182,10 @@
         }
 
         .collapsible-content.expanded {
+            /* CSS transitions cannot animate to 'auto' height, so we use a fixed
+               max-height value large enough to accommodate the content. This is a
+               known CSS limitation - the value must be larger than any expected
+               content height for the animation to work smoothly. */
             max-height: 2000px;
             padding: 0 1.5rem 1.5rem 1.5rem;
         }
@@ -205,6 +209,22 @@
             color: white;
         }
     </style>
+    <script>
+        /**
+         * Toggle a collapsible section's expanded state.
+         * Handles both the visual toggle (icon rotation, content expansion)
+         * and works with HTMX's lazy loading pattern.
+         * @param {HTMLElement} headerElement - The .collapsible-header element that was clicked
+         */
+        function toggleCollapsibleSection(headerElement) {
+            const section = headerElement.parentElement;
+            const content = section.querySelector('.collapsible-content');
+            const icon = headerElement.querySelector('.collapse-icon');
+
+            content.classList.toggle('expanded');
+            icon.classList.toggle('rotated');
+        }
+    </script>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
