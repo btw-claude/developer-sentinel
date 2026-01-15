@@ -189,8 +189,6 @@ class DashboardServer:
 
         def run_server() -> None:
             """Run the uvicorn server."""
-            # Signal that we've started
-            self._started.set()
             self._server.run()
 
         self._thread = threading.Thread(
@@ -200,9 +198,20 @@ class DashboardServer:
         )
         self._thread.start()
 
-        # Wait for server to start
-        self._started.wait(timeout=5.0)
-        logger.info(f"Dashboard server started at http://{self._host}:{self._port}")
+        # Wait for uvicorn server to be ready to accept connections
+        # The server.started property is set by uvicorn after the server
+        # is actually listening, providing a more reliable readiness signal
+        start_wait = time.monotonic()
+        timeout = 5.0
+        while not self._server.started:
+            if time.monotonic() - start_wait > timeout:
+                logger.warning("Dashboard server startup timed out, continuing anyway")
+                break
+            time.sleep(0.05)
+
+        if self._server.started:
+            logger.info(f"Dashboard server started at http://{self._host}:{self._port}")
+        self._started.set()
 
     def shutdown(self) -> None:
         """Shutdown the dashboard server gracefully."""
