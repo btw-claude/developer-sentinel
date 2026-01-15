@@ -273,6 +273,12 @@ class Sentinel:
         # Maps future id() to RunningStepInfo for active executions
         self._running_steps: dict[int, RunningStepInfo] = {}
 
+        # Track attempt counts per (issue_key, orchestration_name) pair (DS-141)
+        # This tracks how many times an issue has been processed for an orchestration
+        # across different polling cycles, providing accurate retry attempt numbers.
+        self._attempt_counts: dict[tuple[str, str], int] = {}
+        self._attempt_counts_lock = threading.Lock()
+
         # Track queued issues waiting for execution slots (DS-123)
         # List of QueuedIssueInfo for issues matched but waiting for slot
         self._issue_queue: list[QueuedIssueInfo] = []
@@ -413,6 +419,29 @@ class Sentinel:
                     queued_at=datetime.now(),
                 )
             )
+
+    def _get_and_increment_attempt_count(
+        self, issue_key: str, orchestration_name: str
+    ) -> int:
+        """Get and increment the attempt count for an issue/orchestration pair (DS-141).
+
+        This method atomically increments the attempt count and returns the new value.
+        It tracks how many times an issue has been processed for a given orchestration
+        across different polling cycles, providing accurate retry attempt numbers
+        in the Running Steps dashboard.
+
+        Args:
+            issue_key: The key of the issue being processed.
+            orchestration_name: The name of the orchestration being executed.
+
+        Returns:
+            The new attempt number (1 for first attempt, 2 for second, etc.).
+        """
+        key = (issue_key, orchestration_name)
+        with self._attempt_counts_lock:
+            count = self._attempt_counts.get(key, 0) + 1
+            self._attempt_counts[key] = count
+            return count
 
     def _init_known_orchestration_files(self) -> None:
         """Initialize the set of known orchestration files with their mtimes.
@@ -1147,11 +1176,14 @@ class Sentinel:
                         with self._futures_lock:
                             self._active_futures.append(future)
                             # Track running step metadata for dashboard (DS-122)
-                            # attempt_number is 1 for now - could be enhanced to track retries
+                            # DS-141: Track actual retry attempt numbers
+                            attempt_number = self._get_and_increment_attempt_count(
+                                issue_key, matched_orch.name
+                            )
                             self._running_steps[id(future)] = RunningStepInfo(
                                 issue_key=issue_key,
                                 orchestration_name=matched_orch.name,
-                                attempt_number=1,
+                                attempt_number=attempt_number,
                                 started_at=datetime.now(),
                             )
                         submitted_count += 1
