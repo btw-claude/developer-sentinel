@@ -2487,3 +2487,41 @@ class TestAttemptCountTracking:
 
         assert entry.count == 2
         assert entry.last_access >= time_before_second
+
+    def test_cleanup_logs_debug_when_no_stale_entries(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that cleanup logs at debug level when no stale entries are found (DS-157).
+
+        This test verifies that the cleanup method logs a debug message when it runs
+        but finds no stale entries to clean up, improving operational visibility.
+        """
+        import logging
+
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(issues=[], tag_client=tag_client)
+        agent_client = MockAgentClient(responses=[])
+        config = make_config(attempt_counts_ttl=3600)  # 1 hour TTL
+        orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Ensure no entries exist (empty state)
+        assert len(sentinel._attempt_counts) == 0
+
+        # Run cleanup with debug logging enabled
+        with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
+            cleaned = sentinel._cleanup_stale_attempt_counts()
+
+        # Verify no entries were cleaned
+        assert cleaned == 0
+
+        # Verify debug message was logged
+        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        assert any("no stale entries found" in msg for msg in debug_messages), (
+            f"Expected debug log about no stale entries, got: {debug_messages}"
+        )

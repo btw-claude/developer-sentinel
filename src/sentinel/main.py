@@ -508,6 +508,8 @@ class Sentinel:
                 f"Cleaned up {cleaned_count} stale attempt count entries "
                 f"(TTL: {ttl}s)"
             )
+        else:
+            logger.debug(f"Attempt counts cleanup: no stale entries found (TTL: {ttl}s)")
 
         return cleaned_count
 
