@@ -206,7 +206,7 @@
     <div class="log-controls">
         <div class="log-select-group">
             <label for="orchestration-select">Orchestration:</label>
-            <select id="orchestration-select" onchange="updateLogFileOptions()">
+            <select id="orchestration-select">
                 <option value="">Select orchestration...</option>
                 {% for log_file in log_files %}
                 <option value="{{ log_file.orchestration }}">{{ log_file.orchestration }}</option>
@@ -216,17 +216,17 @@
 
         <div class="log-select-group">
             <label for="logfile-select">Log File:</label>
-            <select id="logfile-select" onchange="loadLogFile()">
+            <select id="logfile-select">
                 <option value="">Select log file...</option>
             </select>
         </div>
 
         <div class="control-buttons">
-            <button id="pause-btn" class="control-btn" onclick="togglePause()" disabled>
+            <button id="pause-btn" class="control-btn" disabled>
                 <span id="pause-icon">⏸</span>
                 <span id="pause-text">Pause</span>
             </button>
-            <button id="refresh-btn" class="control-btn" onclick="refreshLogFiles()">
+            <button id="refresh-btn" class="control-btn">
                 ↻ Refresh
             </button>
         </div>
@@ -247,7 +247,7 @@
                     <p style="font-size: 0.75rem;">Log files are updated in real-time via SSE</p>
                 </div>
             </div>
-            <div class="scroll-indicator" id="scroll-indicator" onclick="scrollToBottom()">
+            <div class="scroll-indicator" id="scroll-indicator">
                 ↓ New content available
             </div>
         </div>
@@ -488,5 +488,12 @@ logContent.addEventListener('scroll', function() {
 window.addEventListener('beforeunload', function() {
     closeSSE();
 });
+
+// Event listeners for controls (DS-144: replacing inline handlers with addEventListener)
+orchestrationSelect.addEventListener('change', updateLogFileOptions);
+logfileSelect.addEventListener('change', loadLogFile);
+pauseBtn.addEventListener('click', togglePause);
+document.getElementById('refresh-btn').addEventListener('click', refreshLogFiles);
+scrollIndicator.addEventListener('click', scrollToBottom);
 </script>
 {% endblock %}

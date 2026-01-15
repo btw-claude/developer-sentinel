@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -379,8 +382,13 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                         last_mtime = current_mtime
 
                 except Exception:
-                    # File access error, continue polling
-                    pass
+                    # Log file access errors for debugging (DS-144)
+                    logger.warning(
+                        "Error accessing log file %s/%s",
+                        orchestration,
+                        filename,
+                        exc_info=True,
+                    )
 
         return EventSourceResponse(event_generator())
 
