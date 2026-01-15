@@ -43,6 +43,11 @@ from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
 
+# DS-142: Maximum number of issues that can be held in the queue
+# This prevents unbounded memory growth in edge cases where Jira returns
+# unusually large numbers of matching issues
+MAX_QUEUE_SIZE = 100
+
 
 @dataclass
 class RunningStepInfo:
@@ -407,11 +412,21 @@ class Sentinel:
     def _add_to_issue_queue(self, issue_key: str, orchestration_name: str) -> None:
         """Add an issue to the queue when no execution slot is available (DS-123).
 
+        DS-142: Queue size is limited to MAX_QUEUE_SIZE to prevent unbounded
+        memory growth in edge cases where Jira returns unusually large numbers
+        of matching issues.
+
         Args:
             issue_key: The key of the issue being queued.
             orchestration_name: The name of the orchestration the issue matched.
         """
         with self._queue_lock:
+            if len(self._issue_queue) >= MAX_QUEUE_SIZE:
+                logger.warning(
+                    f"Issue queue at maximum capacity ({MAX_QUEUE_SIZE}), "
+                    f"dropping issue {issue_key} for '{orchestration_name}'"
+                )
+                return
             self._issue_queue.append(
                 QueuedIssueInfo(
                     issue_key=issue_key,
