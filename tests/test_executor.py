@@ -1963,7 +1963,16 @@ class TestAgentExecutorWorkdirCleanup:
             assert workdir.exists()  # Workdir preserved for debugging
 
     def test_cleanup_handles_none_workdir(self) -> None:
-        """Should handle None workdir gracefully."""
+        """Should handle None workdir gracefully when no workdir is provided.
+
+        This test verifies the executor handles the case where the agent client
+        returns None for workdir (e.g., when the agent doesn't create a working
+        directory). Graceful handling prevents crashes and ensures the cleanup
+        logic safely skips cleanup when there's nothing to clean up.
+
+        Expected behavior: execution completes successfully without raising
+        any errors, even when workdir is None.
+        """
         client = MockAgentClient(
             responses=["SUCCESS: Task completed"],
             workdir=None,  # No workdir
