@@ -16,6 +16,7 @@ from typing import Any
 
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config, load_config
+from sentinel.deduplication import DeduplicationManager
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
 from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubIssueProtocol, GitHubPoller
 from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
@@ -303,6 +304,9 @@ class Sentinel:
         self._start_time: datetime = datetime.now()
         self._last_jira_poll: datetime | None = None
         self._last_github_poll: datetime | None = None
+
+        # DS-138: Shared deduplication manager for preventing duplicate agent spawns
+        self._dedup_manager = DeduplicationManager()
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
@@ -903,11 +907,10 @@ class Sentinel:
         # Track how many tasks we've submitted this cycle
         submitted_count = 0
 
-        # DS-130, DS-131: Track submitted (issue_key, orchestration_name) pairs within
-        # this polling cycle to prevent duplicate agent spawns when the same issue
-        # matches multiple overlapping triggers before tag updates propagate.
-        # This deduplication applies to both Jira and GitHub trigger polling.
-        submitted_pairs: set[tuple[str, str]] = set()
+        # DS-138: Use shared DeduplicationManager for tracking submitted pairs.
+        # This replaces the inline set creation from DS-130/DS-131, providing
+        # consistent deduplication behavior across all trigger types.
+        submitted_pairs = self._dedup_manager.create_cycle_set()
 
         # Poll Jira triggers
         if jira_orchestrations:
@@ -1105,17 +1108,13 @@ class Sentinel:
 
                 issue_key = routing_result.issue.key
 
-                # DS-130, DS-131: Skip if this (issue_key, orchestration_name) pair was
-                # already submitted in this polling cycle to prevent duplicate agent spawns
+                # DS-138: Use DeduplicationManager for consistent deduplication logic.
+                # This replaces the inline set operations from DS-130/DS-131.
                 if submitted_pairs is not None:
-                    pair = (issue_key, matched_orch.name)
-                    if pair in submitted_pairs:
-                        logger.debug(
-                            f"Skipping duplicate submission of '{matched_orch.name}' "
-                            f"for {issue_key} (already submitted this cycle)"
-                        )
+                    if not self._dedup_manager.check_and_mark(
+                        submitted_pairs, issue_key, matched_orch.name
+                    ):
                         continue
-                    submitted_pairs.add(pair)
 
                 # Check if we have available slots
                 if self._get_available_slots() <= 0:
