@@ -2525,3 +2525,318 @@ class TestAttemptCountTracking:
         assert any("no stale entries found" in msg for msg in debug_messages), (
             f"Expected debug log about no stale entries, got: {debug_messages}"
         )
+
+
+class TestQueueEvictionBehavior:
+    """Tests for DS-158: Queue eviction behavior - tests and logging."""
+
+    def test_queue_evicts_oldest_item_when_full(self) -> None:
+        """Test that the oldest item is evicted when queue reaches maxlen (DS-158).
+
+        This test verifies that the deque-based queue correctly evicts the oldest
+        (leftmost) item when a new item is added at capacity, maintaining FIFO ordering.
+        """
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(max_queue_size=3)  # Small queue for testing
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Add 3 items to fill the queue
+        sentinel._add_to_issue_queue("TEST-1", "orch-1")
+        sentinel._add_to_issue_queue("TEST-2", "orch-2")
+        sentinel._add_to_issue_queue("TEST-3", "orch-3")
+
+        # Verify queue is full
+        assert len(sentinel._issue_queue) == 3
+        queue_keys = [item.issue_key for item in sentinel._issue_queue]
+        assert queue_keys == ["TEST-1", "TEST-2", "TEST-3"]
+
+        # Add a 4th item - should evict TEST-1 (oldest)
+        sentinel._add_to_issue_queue("TEST-4", "orch-4")
+
+        # Verify queue still has 3 items but TEST-1 was evicted
+        assert len(sentinel._issue_queue) == 3
+        queue_keys = [item.issue_key for item in sentinel._issue_queue]
+        assert queue_keys == ["TEST-2", "TEST-3", "TEST-4"]
+        assert "TEST-1" not in queue_keys
+
+    def test_queue_maintains_fifo_ordering(self) -> None:
+        """Test that the queue maintains FIFO ordering as items are added (DS-158).
+
+        This test verifies that items are ordered from oldest (leftmost) to newest
+        (rightmost), which is the expected deque behavior for FIFO eviction.
+        """
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(max_queue_size=5)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Add items in order
+        for i in range(1, 6):
+            sentinel._add_to_issue_queue(f"TEST-{i}", f"orch-{i}")
+
+        # Verify FIFO order (oldest first)
+        queue_keys = [item.issue_key for item in sentinel._issue_queue]
+        assert queue_keys == ["TEST-1", "TEST-2", "TEST-3", "TEST-4", "TEST-5"]
+
+        # First item should be oldest (TEST-1)
+        assert sentinel._issue_queue[0].issue_key == "TEST-1"
+        # Last item should be newest (TEST-5)
+        assert sentinel._issue_queue[-1].issue_key == "TEST-5"
+
+    def test_eviction_logging_includes_evicted_item_key(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that eviction logging includes the evicted item's key (DS-158).
+
+        This test verifies that when an item is evicted due to queue being at
+        capacity, the log message includes the key of the evicted item for
+        better debugging and observability.
+        """
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(max_queue_size=2)  # Small queue for testing
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Fill the queue
+        sentinel._add_to_issue_queue("EVICT-ME", "orch-old")
+        sentinel._add_to_issue_queue("TEST-2", "orch-2")
+
+        # Clear log records
+        caplog.clear()
+
+        # Add new item to trigger eviction (with debug logging)
+        with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
+            sentinel._add_to_issue_queue("NEW-ITEM", "orch-new")
+
+        # Verify log message includes evicted item key
+        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        eviction_logs = [msg for msg in debug_messages if "evicted" in msg.lower()]
+
+        assert len(eviction_logs) == 1, f"Expected 1 eviction log, got: {eviction_logs}"
+        assert "EVICT-ME" in eviction_logs[0], (
+            f"Expected evicted key 'EVICT-ME' in log message: {eviction_logs[0]}"
+        )
+        assert "orch-old" in eviction_logs[0], (
+            f"Expected evicted orchestration 'orch-old' in log message: {eviction_logs[0]}"
+        )
+        assert "NEW-ITEM" in eviction_logs[0], (
+            f"Expected new key 'NEW-ITEM' in log message: {eviction_logs[0]}"
+        )
+
+    def test_dashboard_shows_most_recent_queued_issues(self) -> None:
+        """Test that get_issue_queue returns most recent items after eviction (DS-158).
+
+        This test verifies that after eviction, the dashboard API (get_issue_queue)
+        returns the most recently queued issues, not the oldest ones that were evicted.
+        """
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(max_queue_size=3)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Add 5 items, causing 2 evictions
+        for i in range(1, 6):
+            sentinel._add_to_issue_queue(f"TEST-{i}", f"orch-{i}")
+
+        # Dashboard API should return the 3 most recent items
+        queue = sentinel.get_issue_queue()
+        assert len(queue) == 3
+
+        queue_keys = [item.issue_key for item in queue]
+        # Should have TEST-3, TEST-4, TEST-5 (the 3 most recent)
+        assert queue_keys == ["TEST-3", "TEST-4", "TEST-5"]
+        # TEST-1 and TEST-2 should have been evicted
+        assert "TEST-1" not in queue_keys
+        assert "TEST-2" not in queue_keys
+
+    def test_no_eviction_log_when_queue_not_full(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that no eviction log is produced when queue is not full (DS-158).
+
+        This test ensures that eviction logging only occurs when an item is
+        actually evicted, not on every add operation.
+        """
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(max_queue_size=10)  # Larger queue
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Add items without filling the queue
+        with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
+            sentinel._add_to_issue_queue("TEST-1", "orch-1")
+            sentinel._add_to_issue_queue("TEST-2", "orch-2")
+            sentinel._add_to_issue_queue("TEST-3", "orch-3")
+
+        # No eviction logs should be present
+        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        eviction_logs = [msg for msg in debug_messages if "evicted" in msg.lower()]
+        assert len(eviction_logs) == 0, f"Expected no eviction logs, got: {eviction_logs}"
+
+    def test_multiple_evictions_log_each_evicted_item(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that each eviction produces a log with the correct evicted item (DS-158).
+
+        This test verifies that when multiple items are evicted in sequence,
+        each eviction is logged with the correct evicted item's key.
+        """
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(max_queue_size=2)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Fill the queue
+        sentinel._add_to_issue_queue("ITEM-A", "orch-a")
+        sentinel._add_to_issue_queue("ITEM-B", "orch-b")
+
+        with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
+            # Add ITEM-C -> evicts ITEM-A
+            sentinel._add_to_issue_queue("ITEM-C", "orch-c")
+            # Add ITEM-D -> evicts ITEM-B
+            sentinel._add_to_issue_queue("ITEM-D", "orch-d")
+
+        # Get eviction logs
+        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        eviction_logs = [msg for msg in debug_messages if "evicted" in msg.lower()]
+
+        assert len(eviction_logs) == 2, f"Expected 2 eviction logs, got: {eviction_logs}"
+
+        # First eviction should mention ITEM-A
+        assert "ITEM-A" in eviction_logs[0], (
+            f"Expected 'ITEM-A' in first eviction log: {eviction_logs[0]}"
+        )
+        # Second eviction should mention ITEM-B
+        assert "ITEM-B" in eviction_logs[1], (
+            f"Expected 'ITEM-B' in second eviction log: {eviction_logs[1]}"
+        )
+
+    def test_queue_clear_resets_for_new_cycle(self) -> None:
+        """Test that _clear_issue_queue properly resets the queue (DS-158).
+
+        This test verifies that the queue can be cleared (as happens at the
+        start of each polling cycle) and new items can be added fresh.
+        """
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(max_queue_size=3)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Fill the queue
+        for i in range(1, 4):
+            sentinel._add_to_issue_queue(f"OLD-{i}", f"orch-{i}")
+
+        assert len(sentinel._issue_queue) == 3
+
+        # Clear the queue (as happens at cycle start)
+        sentinel._clear_issue_queue()
+
+        assert len(sentinel._issue_queue) == 0
+
+        # Add new items - should not trigger eviction since queue is empty
+        sentinel._add_to_issue_queue("NEW-1", "new-orch-1")
+
+        assert len(sentinel._issue_queue) == 1
+        assert sentinel._issue_queue[0].issue_key == "NEW-1"
+
+    def test_eviction_preserves_queued_at_timestamp_ordering(self) -> None:
+        """Test that queued_at timestamps are preserved and ordered correctly (DS-158).
+
+        This test verifies that the queued_at timestamp for each item is preserved
+        after eviction, ensuring proper ordering for dashboard display.
+        """
+        import time
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config(max_queue_size=2)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Add items with small delays
+        sentinel._add_to_issue_queue("TEST-1", "orch-1")
+        time.sleep(0.01)  # Small delay to ensure different timestamps
+        sentinel._add_to_issue_queue("TEST-2", "orch-2")
+        time.sleep(0.01)
+        sentinel._add_to_issue_queue("TEST-3", "orch-3")  # Evicts TEST-1
+
+        # Verify timestamps are in ascending order
+        queue_items = list(sentinel._issue_queue)
+        assert len(queue_items) == 2
+
+        # TEST-2's timestamp should be before TEST-3's
+        assert queue_items[0].issue_key == "TEST-2"
+        assert queue_items[1].issue_key == "TEST-3"
+        assert queue_items[0].queued_at < queue_items[1].queued_at
