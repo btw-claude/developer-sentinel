@@ -203,6 +203,28 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
             context={"state": state},
         )
 
+    @dashboard_router.get("/partials/system_status", response_class=HTMLResponse)
+    async def partial_system_status(request: Request) -> HTMLResponse:
+        """Render the system status partial for HTMX updates (DS-124).
+
+        This endpoint returns the system status section HTML for efficient
+        live updates without full page reloads. Shows thread pool usage,
+        last poll times, poll interval, and process uptime.
+
+        Args:
+            request: The incoming HTTP request.
+
+        Returns:
+            HTML response with the system status partial.
+        """
+        state = state_accessor.get_state()
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/system_status.html",
+            context={"state": state},
+        )
+
     @dashboard_router.get("/health")
     async def health() -> dict:
         """Health check endpoint.

@@ -79,6 +79,30 @@ class QueuedIssueInfoView:
 
 
 @dataclass(frozen=True)
+class SystemStatusInfo:
+    """System status information for the dashboard (DS-124).
+
+    This provides system-level metrics including thread pool usage,
+    poll times, and process uptime.
+    """
+
+    # Thread pool usage
+    used_slots: int
+    max_slots: int
+
+    # Poll times per source
+    last_jira_poll: datetime | None
+    last_github_poll: datetime | None
+
+    # Configuration
+    poll_interval: int
+
+    # Process uptime
+    start_time: datetime
+    uptime_seconds: float
+
+
+@dataclass(frozen=True)
 class DashboardState:
     """Immutable snapshot of Sentinel state for dashboard rendering.
 
@@ -113,6 +137,9 @@ class DashboardState:
     # Polling state
     shutdown_requested: bool = False
     pending_tasks: int = 0
+
+    # System status (DS-124) - thread pool, poll times, uptime
+    system_status: SystemStatusInfo | None = None
 
 
 class SentinelStateProvider(Protocol):
@@ -221,6 +248,18 @@ class SentinelStateAccessor:
             for item in issue_queue_raw
         ]
 
+        # Get system status info (DS-124)
+        start_time = sentinel.get_start_time()
+        system_status = SystemStatusInfo(
+            used_slots=active_count,
+            max_slots=config.max_concurrent_executions,
+            last_jira_poll=sentinel.get_last_jira_poll(),
+            last_github_poll=sentinel.get_last_github_poll(),
+            poll_interval=config.poll_interval,
+            start_time=start_time,
+            uptime_seconds=(now - start_time).total_seconds(),
+        )
+
         return DashboardState(
             poll_interval=config.poll_interval,
             max_concurrent_executions=config.max_concurrent_executions,
@@ -235,6 +274,7 @@ class SentinelStateAccessor:
             hot_reload_metrics=hot_reload_metrics,
             shutdown_requested=sentinel._shutdown_requested,
             pending_tasks=pending_count,
+            system_status=system_status,
         )
 
     def _orchestration_to_info(self, orch: Orchestration) -> OrchestrationInfo:
