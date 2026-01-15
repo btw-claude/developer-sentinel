@@ -4,18 +4,30 @@
         <th>Name</th>
         <th>Source</th>
         <th>Project/Repo</th>
-        <th>Tags</th>
+        <th>Trigger Info</th>
         <th>Status</th>
     </tr>
     {% for orch in state.orchestrations %}
     <tr>
-        <td>{{ orch.name }}</td>
-        <td>{{ orch.trigger_source }}</td>
+        <td><strong>{{ orch.name }}</strong></td>
+        <td>
+            {% if orch.trigger_source == 'jira' %}
+            <span class="source-badge jira">Jira</span>
+            {% elif orch.trigger_source == 'github' %}
+            <span class="source-badge github">GitHub</span>
+            {% else %}
+            <span class="source-badge">{{ orch.trigger_source }}</span>
+            {% endif %}
+        </td>
         <td>{{ orch.trigger_project or orch.trigger_repo or '-' }}</td>
         <td>
-            {% for tag in orch.trigger_tags %}
-            <span class="tag">{{ tag }}</span>
-            {% endfor %}
+            {% if orch.trigger_tags %}
+                {% for tag in orch.trigger_tags %}
+                <span class="tag">{{ tag }}</span>
+                {% endfor %}
+            {% else %}
+            <span style="color: var(--text-secondary);">-</span>
+            {% endif %}
         </td>
         <td>
             {% if orch.enabled %}

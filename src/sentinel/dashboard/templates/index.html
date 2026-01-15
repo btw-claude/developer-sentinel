@@ -44,4 +44,22 @@
         </tr>
     </table>
 </div>
+
+<div class="card collapsible-section">
+    <div class="collapsible-header"
+         hx-get="/partials/orchestrations"
+         hx-target="#orchestrations-content"
+         hx-swap="innerHTML"
+         hx-trigger="click[!document.querySelector('#orchestrations-content').classList.contains('expanded')]"
+         onclick="this.parentElement.querySelector('#orchestrations-content').classList.toggle('expanded'); this.querySelector('.collapse-icon').classList.toggle('rotated');">
+        <h2>
+            <span class="collapse-icon">&#9654;</span>
+            Orchestrations
+            <span class="badge">{{ state.orchestrations | length }}</span>
+        </h2>
+    </div>
+    <div id="orchestrations-content" class="collapsible-content">
+        <!-- Content loaded via HTMX when expanded -->
+    </div>
+</div>
 {% endblock %}
