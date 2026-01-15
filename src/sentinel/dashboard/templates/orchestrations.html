@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Orchestrations - Developer Sentinel{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Active Orchestrations</h2>
+    <div id="orchestrations-list" hx-get="/partials/orchestrations" hx-trigger="every 10s" hx-swap="innerHTML">
+        {% include "partials/orchestrations.html" %}
+    </div>
+</div>
+
+<div class="card">
+    <h2>Active Versions</h2>
+    {% if state.active_versions %}
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Version ID</th>
+            <th>Source File</th>
+            <th>Active Executions</th>
+        </tr>
+        {% for version in state.active_versions %}
+        <tr>
+            <td>{{ version.name }}</td>
+            <td><code>{{ version.version_id[:8] }}</code></td>
+            <td>{{ version.source_file }}</td>
+            <td>{{ version.active_executions }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p style="color: var(--text-secondary);">No active versions</p>
+    {% endif %}
+</div>
+
+{% if state.pending_removal_versions %}
+<div class="card">
+    <h2>Pending Removal</h2>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Version ID</th>
+            <th>Active Executions</th>
+        </tr>
+        {% for version in state.pending_removal_versions %}
+        <tr>
+            <td>{{ version.name }}</td>
+            <td><code>{{ version.version_id[:8] }}</code></td>
+            <td>{{ version.active_executions }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+{% endblock %}

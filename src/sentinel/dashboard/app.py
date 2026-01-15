@@ -1,0 +1,127 @@
+"""FastAPI application factory for the dashboard.
+
+This module provides a factory function for creating the FastAPI application
+that serves the dashboard. The application is configured with Jinja2 templates
+and routes for displaying Sentinel state.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+from sentinel.dashboard.routes import create_routes
+from sentinel.dashboard.state import SentinelStateAccessor
+
+if TYPE_CHECKING:
+    from sentinel.main import Sentinel
+
+
+class TemplateEnvironmentWrapper:
+    """Wrapper to make Jinja2 Environment work with FastAPI's TemplateResponse.
+
+    FastAPI's Jinja2Templates expects a specific interface. This wrapper
+    provides that interface while using our configured Environment.
+    """
+
+    def __init__(self, env: Environment) -> None:
+        """Initialize the wrapper.
+
+        Args:
+            env: The Jinja2 Environment to wrap.
+        """
+        self._env = env
+
+    def template_response(
+        self,
+        *,
+        request: object,
+        name: str,
+        context: dict | None = None,
+    ) -> HTMLResponse:
+        """Render a template and return an HTML response.
+
+        Args:
+            request: The incoming HTTP request.
+            name: The template name to render.
+            context: Template context variables.
+
+        Returns:
+            An HTMLResponse with the rendered template.
+        """
+        template = self._env.get_template(name)
+        context = context or {}
+        context["request"] = request
+        content = template.render(**context)
+        return HTMLResponse(content=content)
+
+    # Alias for backwards compatibility with the expected interface
+    TemplateResponse = template_response
+
+
+def create_app(
+    sentinel: Sentinel,
+    *,
+    templates_dir: Path | None = None,
+    static_dir: Path | None = None,
+) -> FastAPI:
+    """Create and configure the FastAPI dashboard application.
+
+    This factory function creates a FastAPI application configured with:
+    - Jinja2 templates for rendering HTML pages
+    - Static file serving (if static_dir is provided)
+    - Routes for dashboard pages and API endpoints
+    - Read-only state access through SentinelStateAccessor
+
+    Args:
+        sentinel: The Sentinel instance to monitor.
+        templates_dir: Optional custom templates directory. Defaults to
+            the templates/ directory within this module.
+        static_dir: Optional static files directory for CSS/JS assets.
+
+    Returns:
+        A configured FastAPI application ready to serve the dashboard.
+    """
+    app = FastAPI(
+        title="Developer Sentinel Dashboard",
+        description="Monitoring dashboard for the Developer Sentinel orchestrator",
+        version="0.1.0",
+    )
+
+    # Configure templates directory
+    if templates_dir is None:
+        templates_dir = Path(__file__).parent / "templates"
+
+    # Ensure templates directory exists
+    templates_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create subdirectories for partials
+    (templates_dir / "partials").mkdir(exist_ok=True)
+
+    # Create Jinja2 environment with autoescape for security
+    template_env = Environment(
+        loader=FileSystemLoader(str(templates_dir)),
+        autoescape=select_autoescape(["html", "xml"]),
+        enable_async=True,
+    )
+
+    # Store wrapped templates in app state for access in routes
+    app.state.templates = TemplateEnvironmentWrapper(template_env)
+
+    # Mount static files if directory provided
+    if static_dir is not None and static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # Create state accessor for read-only access to Sentinel state
+    state_accessor = SentinelStateAccessor(sentinel)
+
+    # Create and include routes
+    dashboard_routes = create_routes(state_accessor)
+    app.include_router(dashboard_routes)
+
+    return app

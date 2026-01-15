@@ -1,0 +1,32 @@
+{% if state.orchestrations %}
+<table>
+    <tr>
+        <th>Name</th>
+        <th>Source</th>
+        <th>Project/Repo</th>
+        <th>Tags</th>
+        <th>Status</th>
+    </tr>
+    {% for orch in state.orchestrations %}
+    <tr>
+        <td>{{ orch.name }}</td>
+        <td>{{ orch.trigger_source }}</td>
+        <td>{{ orch.trigger_project or orch.trigger_repo or '-' }}</td>
+        <td>
+            {% for tag in orch.trigger_tags %}
+            <span class="tag">{{ tag }}</span>
+            {% endfor %}
+        </td>
+        <td>
+            {% if orch.enabled %}
+            <span class="status-ok">Enabled</span>
+            {% else %}
+            <span class="status-warn">Disabled</span>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p style="color: var(--text-secondary);">No orchestrations loaded</p>
+{% endif %}
