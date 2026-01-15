@@ -1861,7 +1861,23 @@ class TestCleanupWorkdir:
 
 
 class TestAgentExecutorWorkdirCleanup:
-    """Tests for AgentExecutor workdir cleanup behavior."""
+    """Tests for AgentExecutor workdir cleanup behavior.
+
+    Design rationale for workdir preservation on failure:
+        When an agent execution fails (whether through explicit FAILURE response,
+        client ERROR, or timeout), the workdir is intentionally preserved rather
+        than cleaned up. This design decision supports debugging by allowing
+        developers to inspect:
+        - Cloned repositories and their state at failure time
+        - Partial work completed before the failure
+        - Log files or artifacts generated during execution
+        - Any modifications made to files that might explain the failure
+
+        The tests in this class verify both the success-path cleanup AND the
+        failure-path preservation behavior. Tests that verify preservation on
+        failure are critical - they ensure we don't accidentally remove valuable
+        debugging context when something goes wrong.
+    """
 
     def test_cleanup_on_success_when_enabled(self) -> None:
         """Should cleanup workdir on successful execution when cleanup is enabled."""
@@ -1906,7 +1922,12 @@ class TestAgentExecutorWorkdirCleanup:
             assert workdir.exists()  # Workdir should be preserved
 
     def test_no_cleanup_on_failure(self) -> None:
-        """Should preserve workdir on failed execution for debugging."""
+        """Should preserve workdir on failed execution for debugging.
+
+        When an agent reports FAILURE, we intentionally keep the workdir intact.
+        This allows debugging what went wrong by examining the file state,
+        partial work, and any artifacts the agent created before failing.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             workdir = Path(tmpdir) / "test_workdir"
             workdir.mkdir()
@@ -1950,7 +1971,12 @@ class TestAgentExecutorWorkdirCleanup:
         assert executor.cleanup_workdir_on_success is True
 
     def test_no_cleanup_on_error(self) -> None:
-        """Should preserve workdir on agent client error."""
+        """Should preserve workdir on agent client error.
+
+        When the agent client raises an error (e.g., API failure, network issue),
+        we preserve the workdir to aid debugging. The workdir may contain partial
+        state or cloned repos that help diagnose why the agent errored.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             workdir = Path(tmpdir) / "test_workdir"
             workdir.mkdir()
@@ -1973,7 +1999,13 @@ class TestAgentExecutorWorkdirCleanup:
             assert workdir.exists()  # Workdir preserved
 
     def test_no_cleanup_on_timeout(self) -> None:
-        """Should preserve workdir on agent timeout."""
+        """Should preserve workdir on agent timeout.
+
+        When an agent times out, the workdir is preserved to support debugging.
+        Timeout scenarios often leave partial work in progress, and examining
+        the workdir state can reveal what the agent was working on when time
+        ran out.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             workdir = Path(tmpdir) / "test_workdir"
             workdir.mkdir()
