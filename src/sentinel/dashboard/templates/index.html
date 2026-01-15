@@ -51,7 +51,7 @@
          hx-target="#system-status-content"
          hx-swap="innerHTML"
          hx-trigger="click[!document.querySelector('#system-status-content').classList.contains('expanded')]"
-         onclick="this.parentElement.querySelector('#system-status-content').classList.toggle('expanded'); this.querySelector('.collapse-icon').classList.toggle('rotated');">
+         onclick="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             System Status
@@ -71,7 +71,7 @@
          hx-target="#running-steps-content"
          hx-swap="innerHTML"
          hx-trigger="click[!document.querySelector('#running-steps-content').classList.contains('expanded')]"
-         onclick="this.parentElement.querySelector('#running-steps-content').classList.toggle('expanded'); this.querySelector('.collapse-icon').classList.toggle('rotated');">
+         onclick="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Running Steps
@@ -92,7 +92,7 @@
          hx-target="#issue-queue-content"
          hx-swap="innerHTML"
          hx-trigger="click[!document.querySelector('#issue-queue-content').classList.contains('expanded')]"
-         onclick="this.parentElement.querySelector('#issue-queue-content').classList.toggle('expanded'); this.querySelector('.collapse-icon').classList.toggle('rotated');">
+         onclick="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Issue Queue
@@ -113,7 +113,7 @@
          hx-target="#orchestrations-content"
          hx-swap="innerHTML"
          hx-trigger="click[!document.querySelector('#orchestrations-content').classList.contains('expanded')]"
-         onclick="this.parentElement.querySelector('#orchestrations-content').classList.toggle('expanded'); this.querySelector('.collapse-icon').classList.toggle('rotated');">
+         onclick="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Orchestrations
