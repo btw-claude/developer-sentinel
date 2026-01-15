@@ -290,6 +290,11 @@ class Sentinel:
         # Polling is now completion-driven: wait for task completion, then poll immediately
         # Only sleep poll_interval when no work is found and no tasks are pending
 
+        # DS-124: Track process start time and last poll times for system status display
+        self._start_time: datetime = datetime.now()
+        self._last_jira_poll: datetime | None = None
+        self._last_github_poll: datetime | None = None
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
         logger.info("Shutdown requested")
@@ -346,6 +351,30 @@ class Sentinel:
         """
         with self._queue_lock:
             return list(self._issue_queue)
+
+    def get_start_time(self) -> datetime:
+        """Get the process start time (DS-124).
+
+        Returns:
+            The datetime when the Sentinel instance was created.
+        """
+        return self._start_time
+
+    def get_last_jira_poll(self) -> datetime | None:
+        """Get the last Jira poll time (DS-124).
+
+        Returns:
+            The datetime of the last Jira poll, or None if never polled.
+        """
+        return self._last_jira_poll
+
+    def get_last_github_poll(self) -> datetime | None:
+        """Get the last GitHub poll time (DS-124).
+
+        Returns:
+            The datetime of the last GitHub poll, or None if never polled.
+        """
+        return self._last_github_poll
 
     def _clear_issue_queue(self) -> None:
         """Clear the issue queue at the start of a new polling cycle (DS-123).
@@ -932,6 +961,8 @@ class Sentinel:
                 return submitted_count
 
             logger.info(f"Polling Jira for orchestration '{orch.name}'")
+            # DS-124: Update last Jira poll time for system status display
+            self._last_jira_poll = datetime.now()
             try:
                 issues = self.jira_poller.poll(trigger, self.config.max_issues_per_poll)
                 logger.info(f"Found {len(issues)} Jira issues for '{orch.name}'")
@@ -989,6 +1020,8 @@ class Sentinel:
                 return submitted_count
 
             logger.info(f"Polling GitHub for orchestration '{orch.name}'")
+            # DS-124: Update last GitHub poll time for system status display
+            self._last_github_poll = datetime.now()
             try:
                 issues = self.github_poller.poll(trigger, self.config.max_issues_per_poll)
                 logger.info(f"Found {len(issues)} GitHub issues/PRs for '{orch.name}'")

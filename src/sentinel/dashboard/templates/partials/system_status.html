@@ -1,0 +1,63 @@
+{% if state.system_status %}
+<table>
+    <tr>
+        <th>Metric</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td>Thread Pool Usage</td>
+        <td>
+            <span class="{% if state.system_status.used_slots == state.system_status.max_slots %}status-warn{% elif state.system_status.used_slots > 0 %}status-ok{% endif %}">
+                {{ state.system_status.used_slots }}
+            </span>
+            / {{ state.system_status.max_slots }} slots
+        </td>
+    </tr>
+    <tr>
+        <td>Poll Interval</td>
+        <td>{{ state.system_status.poll_interval }}s</td>
+    </tr>
+    <tr>
+        <td>Last Jira Poll</td>
+        <td>
+            {% if state.system_status.last_jira_poll %}
+            {{ state.system_status.last_jira_poll.strftime('%H:%M:%S') }}
+            {% else %}
+            <span style="color: var(--text-secondary);">Never</span>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <td>Last GitHub Poll</td>
+        <td>
+            {% if state.system_status.last_github_poll %}
+            {{ state.system_status.last_github_poll.strftime('%H:%M:%S') }}
+            {% else %}
+            <span style="color: var(--text-secondary);">Never</span>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <td>Process Uptime</td>
+        <td>
+            {% set total_seconds = state.system_status.uptime_seconds | int %}
+            {% set hours = total_seconds // 3600 %}
+            {% set minutes = (total_seconds % 3600) // 60 %}
+            {% set seconds = total_seconds % 60 %}
+            {% if hours > 0 %}
+            {{ hours }}h {{ minutes }}m {{ seconds }}s
+            {% elif minutes > 0 %}
+            {{ minutes }}m {{ seconds }}s
+            {% else %}
+            {{ seconds }}s
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <td>Started At</td>
+        <td>{{ state.system_status.start_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+    </tr>
+</table>
+{% else %}
+<p style="color: var(--text-secondary);">System status unavailable</p>
+{% endif %}
