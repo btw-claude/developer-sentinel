@@ -666,6 +666,10 @@ class AgentExecutor:
                             f"Cleaning up workdir after successful execution: {last_workdir}"
                         )
                         cleanup_workdir(last_workdir)
+                    elif not self.cleanup_workdir_on_success and last_workdir:
+                        logger.debug(
+                            f"Workdir preserved at {last_workdir} (cleanup_workdir_on_success=False)"
+                        )
                     return result
 
                 if status == ExecutionStatus.FAILURE and attempt < max_attempts:
