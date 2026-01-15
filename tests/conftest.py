@@ -102,6 +102,7 @@ def make_config(
     max_concurrent_executions: int = 1,
     max_eager_iterations: int = 10,
     orchestrations_dir: Path | None = None,
+    attempt_counts_ttl: int = 3600,
 ) -> Config:
     """Helper to create a Config for testing."""
     return Config(
@@ -110,6 +111,7 @@ def make_config(
         max_concurrent_executions=max_concurrent_executions,
         max_eager_iterations=max_eager_iterations,
         orchestrations_dir=orchestrations_dir or Path("orchestrations"),
+        attempt_counts_ttl=attempt_counts_ttl,
     )
 
 

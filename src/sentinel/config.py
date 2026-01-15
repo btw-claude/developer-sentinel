@@ -68,6 +68,10 @@ class Config:
     dashboard_port: int = 8080  # Port for the dashboard server
     dashboard_host: str = "127.0.0.1"  # Host to bind the dashboard server
 
+    # Attempt counts cleanup configuration (DS-152)
+    # Time in seconds after which inactive attempt count entries are cleaned up
+    attempt_counts_ttl: int = 3600  # 1 hour default
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -251,6 +255,13 @@ def load_config(env_file: Path | None = None) -> Config:
     )
     dashboard_host = os.getenv("SENTINEL_DASHBOARD_HOST", "127.0.0.1")
 
+    # Parse attempt counts TTL (DS-152)
+    attempt_counts_ttl = _parse_positive_int(
+        os.getenv("SENTINEL_ATTEMPT_COUNTS_TTL", "3600"),
+        "SENTINEL_ATTEMPT_COUNTS_TTL",
+        3600,
+    )
+
     # Parse MCP server args (comma-separated)
     def parse_args(env_var: str) -> list[str]:
         value = os.getenv(env_var, "")
@@ -281,4 +292,5 @@ def load_config(env_file: Path | None = None) -> Config:
         dashboard_enabled=dashboard_enabled,
         dashboard_port=dashboard_port,
         dashboard_host=dashboard_host,
+        attempt_counts_ttl=attempt_counts_ttl,
     )
