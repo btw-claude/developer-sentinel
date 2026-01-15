@@ -2527,6 +2527,12 @@ class TestAttemptCountTracking:
             f"Expected debug log about no stale entries, got: {debug_messages}"
         )
 
+        # DS-160: Verify TTL value is included in the debug message
+        ttl_value = config.attempt_counts_ttl
+        assert any(f"TTL: {ttl_value}s" in msg for msg in debug_messages), (
+            f"Expected TTL value ({ttl_value}s) in debug message, got: {debug_messages}"
+        )
+
 
 class TestQueueEvictionBehavior:
     """Tests for DS-158: Queue eviction behavior - tests and logging."""
