@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Developer Sentinel{% endblock %}
+
+{% block content %}
+<div id="status-section" hx-get="/partials/status" hx-trigger="every 5s" hx-swap="innerHTML">
+    {% include "partials/status.html" %}
+</div>
+
+<div class="card">
+    <h2>Quick Stats</h2>
+    <div class="metric">
+        <div class="metric-label">Orchestrations</div>
+        <div class="metric-value">{{ state.orchestrations | length }}</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Active Versions</div>
+        <div class="metric-value">{{ state.active_versions | length }}</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Pending Removal</div>
+        <div class="metric-value">{{ state.pending_removal_versions | length }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Configuration</h2>
+    <table>
+        <tr>
+            <th>Setting</th>
+            <th>Value</th>
+        </tr>
+        <tr>
+            <td>Poll Interval</td>
+            <td>{{ state.poll_interval }}s</td>
+        </tr>
+        <tr>
+            <td>Max Concurrent Executions</td>
+            <td>{{ state.max_concurrent_executions }}</td>
+        </tr>
+        <tr>
+            <td>Max Issues Per Poll</td>
+            <td>{{ state.max_issues_per_poll }}</td>
+        </tr>
+    </table>
+</div>
+{% endblock %}

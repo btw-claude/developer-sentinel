@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Metrics - Developer Sentinel{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Hot-Reload Metrics</h2>
+    {% if state.hot_reload_metrics %}
+    <div class="metric">
+        <div class="metric-label">Loaded Total</div>
+        <div class="metric-value">{{ state.hot_reload_metrics.orchestrations_loaded_total }}</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Unloaded Total</div>
+        <div class="metric-value">{{ state.hot_reload_metrics.orchestrations_unloaded_total }}</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Reloaded Total</div>
+        <div class="metric-value">{{ state.hot_reload_metrics.orchestrations_reloaded_total }}</div>
+    </div>
+    {% else %}
+    <p style="color: var(--text-secondary);">Hot-reload metrics not available</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Execution Metrics</h2>
+    <div class="metric">
+        <div class="metric-label">Active Executions</div>
+        <div class="metric-value">{{ state.active_execution_count }}</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Available Slots</div>
+        <div class="metric-value">{{ state.available_slots }}</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Eager Polls</div>
+        <div class="metric-value">{{ state.consecutive_eager_polls }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>System Status</h2>
+    <table>
+        <tr>
+            <th>Status</th>
+            <th>Value</th>
+        </tr>
+        <tr>
+            <td>Shutdown Requested</td>
+            <td>
+                {% if state.shutdown_requested %}
+                <span class="status-warn">Yes</span>
+                {% else %}
+                <span class="status-ok">No</span>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td>Capacity</td>
+            <td>
+                {% if state.available_slots > 0 %}
+                <span class="status-ok">{{ state.available_slots }}/{{ state.max_concurrent_executions }} available</span>
+                {% else %}
+                <span class="status-warn">At capacity</span>
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+</div>
+{% endblock %}

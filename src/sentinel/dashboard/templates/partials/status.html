@@ -1,0 +1,25 @@
+<div class="card">
+    <h2>Execution Status</h2>
+    <div class="metric">
+        <div class="metric-label">Active</div>
+        <div class="metric-value {% if state.active_execution_count > 0 %}status-ok{% endif %}">
+            {{ state.active_execution_count }}
+        </div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Available Slots</div>
+        <div class="metric-value {% if state.available_slots == 0 %}status-warn{% endif %}">
+            {{ state.available_slots }}
+        </div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Status</div>
+        <div class="metric-value">
+            {% if state.shutdown_requested %}
+            <span class="status-warn">Shutting Down</span>
+            {% else %}
+            <span class="status-ok">Running</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
