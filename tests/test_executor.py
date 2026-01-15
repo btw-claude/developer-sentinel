@@ -1979,7 +1979,12 @@ class TestAgentExecutorWorkdirCleanup:
         assert result.succeeded is True
 
     def test_cleanup_default_is_enabled(self) -> None:
-        """Should have cleanup enabled by default."""
+        """Should have cleanup enabled by default.
+
+        Verifies that cleanup_workdir_on_success defaults to True when not
+        explicitly specified. This ensures workdirs are cleaned up after
+        successful executions unless explicitly disabled.
+        """
         client = MockAgentClient()
         executor = AgentExecutor(client)  # No explicit cleanup_workdir_on_success
 
