@@ -250,8 +250,9 @@ class Sentinel:
         self._orchestrations_unloaded_total: int = 0
         self._orchestrations_reloaded_total: int = 0
 
-        # Note: DS-133 removed _consecutive_eager_polls counter
-        # Polling is now driven by task completion events, not submission counts
+        # Note: DS-133/DS-134 removed _consecutive_eager_polls counter
+        # Polling is now completion-driven: wait for task completion, then poll immediately
+        # Only sleep poll_interval when no work is found and no tasks are pending
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
