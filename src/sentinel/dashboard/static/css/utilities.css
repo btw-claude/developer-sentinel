@@ -21,7 +21,8 @@
  *
  * Related: DS-154 (original implementation), DS-159 (extraction to this file),
  *          DS-162 (CSS variable fallbacks and organization),
- *          DS-163 (axis-specific spacing, extended scale, text-accent)
+ *          DS-163 (axis-specific spacing, extended scale, text-accent),
+ *          DS-164 (CSS logical properties, my-auto documentation)
  */
 
 /* =============================================================================
@@ -131,7 +132,9 @@
 .ml-5 { margin-left: 3rem; }
 .mr-5 { margin-right: 3rem; }
 
-/* Axis-specific margin utilities (horizontal and vertical) */
+/* Axis-specific margin utilities (horizontal and vertical)
+ * Note: .mx-auto is commonly used for horizontal centering of block elements with a defined width.
+ */
 .mx-0 { margin-left: 0; margin-right: 0; }
 .mx-1 { margin-left: 0.25rem; margin-right: 0.25rem; }
 .mx-2 { margin-left: 0.5rem; margin-right: 0.5rem; }
@@ -146,6 +149,13 @@
 .my-3 { margin-top: 1rem; margin-bottom: 1rem; }
 .my-4 { margin-top: 1.5rem; margin-bottom: 1.5rem; }
 .my-5 { margin-top: 3rem; margin-bottom: 3rem; }
+/* Note: .my-auto has more limited use cases than .mx-auto.
+ * Vertical auto margins only work for centering in specific contexts:
+ * - Flex containers with flex-direction: column
+ * - Grid containers
+ * For standard block elements, vertical auto margins collapse to 0.
+ * Use with .d-flex.flex-column or .d-grid for vertical centering.
+ */
 .my-auto { margin-top: auto; margin-bottom: auto; }
 
 /* Padding utilities */
@@ -199,6 +209,54 @@
 .py-3 { padding-top: 1rem; padding-bottom: 1rem; }
 .py-4 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
 .py-5 { padding-top: 3rem; padding-bottom: 3rem; }
+
+/* =============================================================================
+   CSS LOGICAL PROPERTIES (RTL/LTR Support)
+   Uses margin-inline-start/end and padding-inline-start/end for proper
+   bidirectional text support. These properties adapt to the document's
+   writing direction (dir="ltr" or dir="rtl").
+
+   - ms-* = margin-inline-start (left in LTR, right in RTL)
+   - me-* = margin-inline-end (right in LTR, left in RTL)
+   - ps-* = padding-inline-start (left in LTR, right in RTL)
+   - pe-* = padding-inline-end (right in LTR, left in RTL)
+
+   See: DS-164 for implementation details
+   ============================================================================= */
+
+/* Margin inline-start utilities (ms-*) */
+.ms-0 { margin-inline-start: 0; }
+.ms-1 { margin-inline-start: 0.25rem; }
+.ms-2 { margin-inline-start: 0.5rem; }
+.ms-3 { margin-inline-start: 1rem; }
+.ms-4 { margin-inline-start: 1.5rem; }
+.ms-5 { margin-inline-start: 3rem; }
+.ms-auto { margin-inline-start: auto; }
+
+/* Margin inline-end utilities (me-*) */
+.me-0 { margin-inline-end: 0; }
+.me-1 { margin-inline-end: 0.25rem; }
+.me-2 { margin-inline-end: 0.5rem; }
+.me-3 { margin-inline-end: 1rem; }
+.me-4 { margin-inline-end: 1.5rem; }
+.me-5 { margin-inline-end: 3rem; }
+.me-auto { margin-inline-end: auto; }
+
+/* Padding inline-start utilities (ps-*) */
+.ps-0 { padding-inline-start: 0; }
+.ps-1 { padding-inline-start: 0.25rem; }
+.ps-2 { padding-inline-start: 0.5rem; }
+.ps-3 { padding-inline-start: 1rem; }
+.ps-4 { padding-inline-start: 1.5rem; }
+.ps-5 { padding-inline-start: 3rem; }
+
+/* Padding inline-end utilities (pe-*) */
+.pe-0 { padding-inline-end: 0; }
+.pe-1 { padding-inline-end: 0.25rem; }
+.pe-2 { padding-inline-end: 0.5rem; }
+.pe-3 { padding-inline-end: 1rem; }
+.pe-4 { padding-inline-end: 1.5rem; }
+.pe-5 { padding-inline-end: 3rem; }
 
 /* =============================================================================
    LAYOUT UTILITIES
