@@ -48,7 +48,7 @@
             {% if state.system_status.poll_interval is not none %}
             {{ state.system_status.poll_interval }}s
             {% else %}
-            <span style="color: var(--text-secondary);">N/A</span>
+            <span class="text-secondary">N/A</span>
             {% endif %}
         </td>
     </tr>
@@ -60,11 +60,11 @@
             <span title="{{ state.system_status.last_jira_poll.strftime('%Y-%m-%d %H:%M:%S %Z') }}">
                 {{ format_relative_time(state.system_status.last_jira_poll, now) }}
             </span>
-            <span style="color: var(--text-secondary); font-size: 0.85em;">
+            <span class="text-secondary-small">
                 ({{ state.system_status.last_jira_poll.strftime('%H:%M:%S %Z') | replace(' ', '') or state.system_status.last_jira_poll.strftime('%H:%M:%S') }} local)
             </span>
             {% else %}
-            <span style="color: var(--text-secondary);">Never</span>
+            <span class="text-secondary">Never</span>
             {% endif %}
         </td>
     </tr>
@@ -76,11 +76,11 @@
             <span title="{{ state.system_status.last_github_poll.strftime('%Y-%m-%d %H:%M:%S %Z') }}">
                 {{ format_relative_time(state.system_status.last_github_poll, now) }}
             </span>
-            <span style="color: var(--text-secondary); font-size: 0.85em;">
+            <span class="text-secondary-small">
                 ({{ state.system_status.last_github_poll.strftime('%H:%M:%S %Z') | replace(' ', '') or state.system_status.last_github_poll.strftime('%H:%M:%S') }} local)
             </span>
             {% else %}
-            <span style="color: var(--text-secondary);">Never</span>
+            <span class="text-secondary">Never</span>
             {% endif %}
         </td>
     </tr>
@@ -101,7 +101,7 @@
             {{ seconds }}s
             {% endif %}
             {% else %}
-            <span style="color: var(--text-secondary);">N/A</span>
+            <span class="text-secondary">N/A</span>
             {% endif %}
         </td>
     </tr>
@@ -111,15 +111,15 @@
             {# DS-143: Edge case handling for None start_time, timezone indicator #}
             {% if state.system_status.start_time %}
             {{ state.system_status.start_time.strftime('%Y-%m-%d %H:%M:%S') }}
-            <span style="color: var(--text-secondary); font-size: 0.85em;">
+            <span class="text-secondary-small">
                 ({{ state.system_status.start_time.strftime('%Z') or 'local' }})
             </span>
             {% else %}
-            <span style="color: var(--text-secondary);">Unknown</span>
+            <span class="text-secondary">Unknown</span>
             {% endif %}
         </td>
     </tr>
 </table>
 {% else %}
-<p style="color: var(--text-secondary);">System status unavailable</p>
+<p class="text-secondary">System status unavailable</p>
 {% endif %}
