@@ -181,6 +181,28 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
             context={"state": state},
         )
 
+    @dashboard_router.get("/partials/issue_queue", response_class=HTMLResponse)
+    async def partial_issue_queue(request: Request) -> HTMLResponse:
+        """Render the issue queue partial for HTMX updates (DS-123).
+
+        This endpoint returns the issue queue section HTML for efficient
+        live updates without full page reloads. Shows issues waiting for
+        execution slots.
+
+        Args:
+            request: The incoming HTTP request.
+
+        Returns:
+            HTML response with the issue queue partial.
+        """
+        state = state_accessor.get_state()
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/issue_queue.html",
+            context={"state": state},
+        )
+
     @dashboard_router.get("/health")
     async def health() -> dict:
         """Health check endpoint.

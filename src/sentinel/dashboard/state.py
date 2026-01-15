@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from sentinel.main import RunningStepInfo, Sentinel
+    from sentinel.main import QueuedIssueInfo, RunningStepInfo, Sentinel
     from sentinel.orchestration import Orchestration, OrchestrationVersion
 
 
@@ -65,6 +65,20 @@ class RunningStepInfoView:
 
 
 @dataclass(frozen=True)
+class QueuedIssueInfoView:
+    """Read-only queued issue information for the dashboard (DS-123).
+
+    This provides an immutable view of an issue waiting in queue for an
+    execution slot, including calculated wait time for display purposes.
+    """
+
+    issue_key: str
+    orchestration_name: str
+    queued_at: datetime
+    wait_seconds: float
+
+
+@dataclass(frozen=True)
 class DashboardState:
     """Immutable snapshot of Sentinel state for dashboard rendering.
 
@@ -89,6 +103,9 @@ class DashboardState:
 
     # Running steps (DS-122) - active execution details for dashboard display
     running_steps: list[RunningStepInfoView] = field(default_factory=list)
+
+    # Issue queue (DS-123) - issues waiting for execution slots
+    issue_queue: list[QueuedIssueInfoView] = field(default_factory=list)
 
     # Hot-reload metrics
     hot_reload_metrics: HotReloadMetrics | None = None
@@ -192,6 +209,18 @@ class SentinelStateAccessor:
             for step in running_steps_raw
         ]
 
+        # Get issue queue info (DS-123)
+        issue_queue_raw = sentinel.get_issue_queue()
+        issue_queue_views = [
+            QueuedIssueInfoView(
+                issue_key=item.issue_key,
+                orchestration_name=item.orchestration_name,
+                queued_at=item.queued_at,
+                wait_seconds=(now - item.queued_at).total_seconds(),
+            )
+            for item in issue_queue_raw
+        ]
+
         return DashboardState(
             poll_interval=config.poll_interval,
             max_concurrent_executions=config.max_concurrent_executions,
@@ -202,6 +231,7 @@ class SentinelStateAccessor:
             active_execution_count=active_count,
             available_slots=available_slots,
             running_steps=running_step_views,
+            issue_queue=issue_queue_views,
             hot_reload_metrics=hot_reload_metrics,
             shutdown_requested=sentinel._shutdown_requested,
             pending_tasks=pending_count,
