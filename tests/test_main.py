@@ -286,26 +286,12 @@ class TestSentinelEagerPolling:
         sentinel._thread_pool.shutdown(wait=True)
         sentinel._thread_pool = None
 
-    def test_consecutive_eager_polls_counter_initialized(self) -> None:
-        """Test that consecutive eager polls counter starts at 0 (DS-98)."""
-        jira_client = MockJiraClient(issues=[])
-        agent_client = MockAgentClient()
-        tag_client = MockTagClient()
-        config = make_config()
-        orchestrations = [make_orchestration()]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
-            tag_client=tag_client,
-        )
-
-        assert sentinel._consecutive_eager_polls == 0
-
     def test_max_eager_iterations_config_respected(self) -> None:
-        """Test that max_eager_iterations config is stored correctly (DS-98)."""
+        """Test that max_eager_iterations config is stored correctly (DS-98).
+
+        Note: DS-133 deprecated max_eager_iterations, but we keep this test
+        for backward compatibility since the config parameter still exists.
+        """
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
@@ -322,28 +308,29 @@ class TestSentinelEagerPolling:
 
         assert sentinel.config.max_eager_iterations == 5
 
-    def test_eager_polling_limit_forces_sleep_in_run_loop(self) -> None:
-        """Integration test: verify max_eager_iterations forces sleep in the run loop (DS-101).
+    def test_completion_driven_polling_waits_for_task_completion(self) -> None:
+        """Integration test: verify polling waits for task completion (DS-133).
 
-        This test exercises the full eager polling limit behavior by:
-        1. Configuring max_eager_iterations=3 and a short poll_interval
-        2. Providing a continuous stream of work (issues that always match)
-        3. Verifying the counter increments each time work is submitted
-        4. Verifying that after reaching max_eager_iterations, a sleep is forced
-        5. Verifying the counter resets appropriately
+        This test verifies the completion-driven polling behavior:
+        1. When tasks are submitted, the sentinel waits for at least one to complete
+        2. After a task completes, the sentinel immediately polls for more work
+        3. Only when no work is found and no tasks are pending does it sleep
 
-        The test uses the full run() method with time.sleep and signal mocking.
+        The test uses the full run() method with mocked sleep and signal.
         """
+        from concurrent.futures import Future
+        from unittest.mock import MagicMock
+
         # Save original sleep function before patching
         real_sleep = time.sleep
 
-        # Track forced sleeps and poll cycles
-        forced_sleep_intervals = 0
+        # Track poll cycles and waits
         poll_cycles = 0
-        max_poll_cycles = 10  # Safety limit to prevent infinite loops
+        wait_calls: list[int] = []  # Track when wait() is called with pending future count
+        max_poll_cycles = 6
 
-        class ContinuousWorkJiraClient(MockJiraClient):
-            """Jira client that always returns fresh work to trigger eager polling."""
+        class ControlledWorkJiraClient(MockJiraClient):
+            """Jira client that returns work for first few polls, then stops."""
 
             def __init__(self, tag_client: MockTagClient) -> None:
                 super().__init__(issues=[], tag_client=tag_client)
@@ -354,11 +341,11 @@ class TestSentinelEagerPolling:
                 self.search_calls.append((jql, max_results))
                 poll_cycles += 1
 
-                # Stop returning work after max_poll_cycles to allow shutdown
+                # Stop returning work after max_poll_cycles
                 if poll_cycles > max_poll_cycles:
                     return []
 
-                # Always return a new issue to simulate continuous work
+                # Return a new issue to trigger task submission
                 self.issue_counter += 1
                 return [
                     {
@@ -368,255 +355,11 @@ class TestSentinelEagerPolling:
                 ]
 
         tag_client = MockTagClient()
-        jira_client = ContinuousWorkJiraClient(tag_client=tag_client)
-        agent_client = MockAgentClient(responses=["SUCCESS: Done"])
-
-        # Configure with max_eager_iterations=3 and short poll interval
-        config = make_config(
-            poll_interval=2,  # 2 seconds to distinguish from eager polling (which is immediate)
-            max_eager_iterations=3,
-            max_concurrent_executions=1,
-        )
-        orchestrations = [make_orchestration(tags=["review"])]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
-            tag_client=tag_client,
-        )
-
-        # Verify initial state
-        assert sentinel._consecutive_eager_polls == 0
-
-        # Track sleep patterns to detect forced sleep intervals
-        sleep_pattern: list[tuple[float, int]] = []  # (sleep_seconds, poll_cycle_at_time)
-        consecutive_one_second_sleeps = 0
-
-        def mock_sleep(seconds: float) -> None:
-            nonlocal forced_sleep_intervals, consecutive_one_second_sleeps
-            sleep_pattern.append((seconds, poll_cycles))
-
-            # Count when we hit poll_interval consecutive 1-second sleeps
-            # This indicates a forced sleep interval after max_eager_iterations
-            if seconds == 1:
-                consecutive_one_second_sleeps += 1
-                if consecutive_one_second_sleeps >= config.poll_interval:
-                    forced_sleep_intervals += 1
-                    consecutive_one_second_sleeps = 0
-            else:
-                consecutive_one_second_sleeps = 0
-
-            # Minimal actual sleep to prevent tight loops (using real_sleep, not the mocked one)
-            real_sleep(0.001)
-
-        def mock_signal(signum: int, handler: Any) -> Any:
-            """Mock signal.signal to avoid threading issues.
-
-            The handler parameter is intentionally ignored. Installing real signal
-            handlers from a non-main thread raises an error, and we don't need the
-            actual signal handling behavior in these tests - we use request_shutdown()
-            to stop the sentinel instead.
-            """
-            return None
-
-        # Run the sentinel's run() method in a thread with mocked sleep and signal
-        sentinel_exception: Exception | None = None
-
-        def run_sentinel() -> None:
-            nonlocal sentinel_exception
-            try:
-                with patch("time.sleep", side_effect=mock_sleep), \
-                     patch("signal.signal", side_effect=mock_signal):
-                    sentinel.run()
-            except Exception as e:
-                sentinel_exception = e
-
-        # Start sentinel in background thread
-        sentinel_thread = threading.Thread(target=run_sentinel, daemon=True)
-        sentinel_thread.start()
-
-        # Wait for enough poll cycles (using real_sleep)
-        for _ in range(50):  # Up to 5 seconds
-            if poll_cycles >= max_poll_cycles:
-                break
-            real_sleep(0.1)
-
-        # Request shutdown
-        sentinel.request_shutdown()
-        sentinel_thread.join(timeout=5)
-
-        # Verify no exceptions occurred
-        assert sentinel_exception is None, f"Sentinel raised exception: {sentinel_exception}"
-
-        # Verify we had enough poll cycles to observe the behavior
-        assert poll_cycles >= 6, f"Expected at least 6 poll cycles, got {poll_cycles}"
-
-        # Verify we saw at least one forced sleep interval
-        # With max_eager_iterations=3 and 6+ poll cycles, we should have hit the limit twice
-        # Each time the limit is hit, the sentinel sleeps for poll_interval seconds (in 1-second increments)
-        assert forced_sleep_intervals >= 1, (
-            f"Expected at least 1 forced sleep interval after reaching max_eager_iterations, "
-            f"got {forced_sleep_intervals}. Sleep pattern: {sleep_pattern[:20]}"
-        )
-
-    def test_eager_counter_resets_when_no_work_submitted(self) -> None:
-        """Integration test: verify eager counter resets when no work is found (DS-101).
-
-        This verifies that the counter properly resets to 0 when a poll cycle
-        returns no work (submitted_count == 0), ensuring the eager polling
-        limit only applies to consecutive cycles with work.
-
-        Uses run() to test the full run loop behavior.
-        """
-        # Save original sleep function before patching
-        real_sleep = time.sleep
-
-        # Track poll cycles and counter values
-        poll_cycles = 0
-
-        class AlternatingWorkJiraClient(MockJiraClient):
-            """Jira client that alternates between returning work and no work."""
-
-            def __init__(self, tag_client: MockTagClient, max_polls: int = 8) -> None:
-                super().__init__(issues=[], tag_client=tag_client)
-                self.max_polls = max_polls
-
-            def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
-                nonlocal poll_cycles
-                self.search_calls.append((jql, max_results))
-                poll_cycles += 1
-
-                # Stop after max_polls
-                if poll_cycles > self.max_polls:
-                    return []
-
-                # Return work on odd polls, no work on even polls
-                if poll_cycles % 2 == 1:
-                    return [
-                        {
-                            "key": f"TEST-{poll_cycles}",
-                            "fields": {"summary": f"Issue {poll_cycles}", "labels": ["review"]},
-                        }
-                    ]
-                return []
-
-        tag_client = MockTagClient()
-        jira_client = AlternatingWorkJiraClient(tag_client=tag_client)
-        agent_client = MockAgentClient(responses=["SUCCESS: Done"])
-
-        config = make_config(
-            poll_interval=1,
-            max_eager_iterations=5,  # Higher than we'll reach
-            max_concurrent_executions=1,
-        )
-        orchestrations = [make_orchestration(tags=["review"])]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
-            tag_client=tag_client,
-        )
-
-        # Capture counter values by wrapping the run loop's sleep handling
-        original_counter_values: list[int] = []
-
-        def mock_sleep(seconds: float) -> None:
-            # Capture counter value at each sleep
-            original_counter_values.append(sentinel._consecutive_eager_polls)
-            real_sleep(0.001)
-
-        def mock_signal(signum: int, handler: Any) -> Any:
-            """Mock signal.signal to avoid threading issues.
-
-            The handler parameter is intentionally ignored. Installing real signal
-            handlers from a non-main thread raises an error, and we don't need the
-            actual signal handling behavior in these tests - we use request_shutdown()
-            to stop the sentinel instead.
-            """
-            return None
-
-        sentinel_exception: Exception | None = None
-
-        def run_sentinel() -> None:
-            nonlocal sentinel_exception
-            try:
-                with patch("time.sleep", side_effect=mock_sleep), \
-                     patch("signal.signal", side_effect=mock_signal):
-                    sentinel.run()
-            except Exception as e:
-                sentinel_exception = e
-
-        sentinel_thread = threading.Thread(target=run_sentinel, daemon=True)
-        sentinel_thread.start()
-
-        # Wait for enough poll cycles (using real_sleep)
-        for _ in range(30):
-            if poll_cycles >= 8:
-                break
-            real_sleep(0.1)
-
-        sentinel.request_shutdown()
-        sentinel_thread.join(timeout=5)
-
-        assert sentinel_exception is None, f"Sentinel raised exception: {sentinel_exception}"
-        assert poll_cycles >= 6, f"Expected at least 6 poll cycles, got {poll_cycles}"
-
-        # With alternating work/no-work, counter should oscillate between 0 and 1
-        # and never reach max_eager_iterations (5)
-        # Counter values captured during sleeps show the reset behavior
-        # After no work (even polls), counter should be 0
-        # After work (odd polls), counter should be 1
-        assert all(v <= 1 for v in original_counter_values), (
-            f"Counter should never exceed 1 with alternating work pattern, "
-            f"got values: {original_counter_values}"
-        )
-
-    def test_eager_iterations_counter_increments_with_continuous_work(self) -> None:
-        """Integration test: verify counter increments correctly with continuous work (DS-101).
-
-        This tests that when work is continuously submitted, the _consecutive_eager_polls
-        counter increments properly until it reaches max_eager_iterations.
-        """
-        # Save original sleep function before patching
-        real_sleep = time.sleep
-
-        poll_cycles = 0
-        max_polls = 8
-
-        class ContinuousWorkJiraClient(MockJiraClient):
-            """Jira client that returns work for first N polls, then stops."""
-
-            def __init__(self, tag_client: MockTagClient) -> None:
-                super().__init__(issues=[], tag_client=tag_client)
-                self.issue_counter = 0
-
-            def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
-                nonlocal poll_cycles
-                self.search_calls.append((jql, max_results))
-                poll_cycles += 1
-
-                if poll_cycles > max_polls:
-                    return []
-
-                self.issue_counter += 1
-                return [
-                    {
-                        "key": f"TEST-{self.issue_counter}",
-                        "fields": {"summary": f"Issue {self.issue_counter}", "labels": ["review"]},
-                    }
-                ]
-
-        tag_client = MockTagClient()
-        jira_client = ContinuousWorkJiraClient(tag_client=tag_client)
+        jira_client = ControlledWorkJiraClient(tag_client=tag_client)
         agent_client = MockAgentClient(responses=["SUCCESS: Done"])
 
         config = make_config(
             poll_interval=2,
-            max_eager_iterations=3,  # Counter resets every 3 polls with work
             max_concurrent_executions=1,
         )
         orchestrations = [make_orchestration(tags=["review"])]
@@ -629,21 +372,96 @@ class TestSentinelEagerPolling:
             tag_client=tag_client,
         )
 
-        # Track counter values at each sleep
-        counter_at_sleep: list[int] = []
-
         def mock_sleep(seconds: float) -> None:
-            counter_at_sleep.append(sentinel._consecutive_eager_polls)
             real_sleep(0.001)
 
         def mock_signal(signum: int, handler: Any) -> Any:
-            """Mock signal.signal to avoid threading issues.
+            """Mock signal.signal to avoid threading issues."""
+            return None
 
-            The handler parameter is intentionally ignored. Installing real signal
-            handlers from a non-main thread raises an error, and we don't need the
-            actual signal handling behavior in these tests - we use request_shutdown()
-            to stop the sentinel instead.
-            """
+        # Patch the wait function to track calls
+        original_wait = __import__("concurrent.futures").futures.wait
+
+        def mock_wait(futures: Any, timeout: float | None = None, return_when: str = "ALL_COMPLETED") -> Any:
+            wait_calls.append(len(futures) if futures else 0)
+            return original_wait(futures, timeout=timeout, return_when=return_when)
+
+        sentinel_exception: Exception | None = None
+
+        def run_sentinel() -> None:
+            nonlocal sentinel_exception
+            try:
+                with patch("time.sleep", side_effect=mock_sleep), \
+                     patch("signal.signal", side_effect=mock_signal), \
+                     patch("sentinel.main.wait", side_effect=mock_wait):
+                    sentinel.run()
+            except Exception as e:
+                sentinel_exception = e
+
+        sentinel_thread = threading.Thread(target=run_sentinel, daemon=True)
+        sentinel_thread.start()
+
+        # Wait for enough poll cycles
+        for _ in range(50):
+            if poll_cycles >= max_poll_cycles:
+                break
+            real_sleep(0.1)
+
+        sentinel.request_shutdown()
+        sentinel_thread.join(timeout=5)
+
+        assert sentinel_exception is None, f"Sentinel raised exception: {sentinel_exception}"
+        assert poll_cycles >= 4, f"Expected at least 4 poll cycles, got {poll_cycles}"
+
+        # Verify that wait() was called when there were pending tasks
+        # The wait_calls list should show non-zero values when tasks were pending
+        assert any(w > 0 for w in wait_calls), (
+            f"Expected wait() to be called with pending futures, "
+            f"but wait_calls were: {wait_calls}"
+        )
+
+    def test_polling_sleeps_when_no_work_found(self) -> None:
+        """Integration test: verify polling sleeps when no work is found (DS-133).
+
+        This verifies that when a poll cycle returns no work and there are
+        no pending tasks, the sentinel sleeps for poll_interval before polling again.
+        """
+        real_sleep = time.sleep
+        poll_cycles = 0
+        sleep_intervals: list[float] = []
+
+        class EmptyJiraClient(MockJiraClient):
+            """Jira client that never returns work."""
+
+            def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
+                nonlocal poll_cycles
+                self.search_calls.append((jql, max_results))
+                poll_cycles += 1
+                return []  # No work
+
+        tag_client = MockTagClient()
+        jira_client = EmptyJiraClient(issues=[], tag_client=tag_client)
+        agent_client = MockAgentClient()
+
+        config = make_config(
+            poll_interval=2,
+            max_concurrent_executions=1,
+        )
+        orchestrations = [make_orchestration(tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        def mock_sleep(seconds: float) -> None:
+            sleep_intervals.append(seconds)
+            real_sleep(0.001)
+
+        def mock_signal(signum: int, handler: Any) -> Any:
             return None
 
         sentinel_exception: Exception | None = None
@@ -660,9 +478,9 @@ class TestSentinelEagerPolling:
         sentinel_thread = threading.Thread(target=run_sentinel, daemon=True)
         sentinel_thread.start()
 
-        # Wait for enough poll cycles (using real_sleep)
-        for _ in range(50):
-            if poll_cycles >= max_polls:
+        # Wait for a few poll cycles
+        for _ in range(30):
+            if poll_cycles >= 3:
                 break
             real_sleep(0.1)
 
@@ -670,21 +488,14 @@ class TestSentinelEagerPolling:
         sentinel_thread.join(timeout=5)
 
         assert sentinel_exception is None, f"Sentinel raised exception: {sentinel_exception}"
-        assert poll_cycles >= 6, f"Expected at least 6 poll cycles, got {poll_cycles}"
+        assert poll_cycles >= 2, f"Expected at least 2 poll cycles, got {poll_cycles}"
 
-        # With max_eager_iterations=3, we expect:
-        # Polls 1, 2 -> counter at 1, 2 (no sleep, immediate poll)
-        # Poll 3 -> counter hits 3, forced sleep (counter resets to 0)
-        # Polls 4, 5 -> counter at 1, 2
-        # Poll 6 -> counter hits 3, forced sleep again
-
-        # The counter values captured at sleep should show the pattern
-        # Sleep happens when counter >= max_eager_iterations (forced) or when no work (counter reset)
-        # Look for the pattern of counter values including 0 (after forced sleep reset)
-        zeros_count = sum(1 for v in counter_at_sleep if v == 0)
-        assert zeros_count >= 2, (
-            f"Expected at least 2 counter resets (from forced sleeps), "
-            f"got {zeros_count} zeros in counter values: {counter_at_sleep}"
+        # When no work is found, the sentinel should sleep for poll_interval (in 1-second chunks)
+        # Count total 1-second sleeps which indicates normal poll intervals
+        one_second_sleeps = sum(1 for s in sleep_intervals if s == 1)
+        assert one_second_sleeps >= config.poll_interval, (
+            f"Expected at least {config.poll_interval} 1-second sleeps (one full poll interval), "
+            f"got {one_second_sleeps}. Sleep intervals: {sleep_intervals}"
         )
 
 

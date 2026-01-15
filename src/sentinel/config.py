@@ -24,7 +24,7 @@ class Config:
     # Polling configuration
     poll_interval: int = 60  # seconds
     max_issues_per_poll: int = 50
-    max_eager_iterations: int = 10  # Limit consecutive immediate polls
+    max_eager_iterations: int = 10  # Deprecated (DS-133): No longer used, kept for backward compatibility
 
     # Concurrent execution
     max_concurrent_executions: int = 1  # Number of orchestrations to run in parallel
