@@ -174,7 +174,6 @@ class DashboardServer:
         self._port = port
         self._server: Any = None
         self._thread: threading.Thread | None = None
-        self._started = threading.Event()
 
     def start(self, app: Any) -> None:
         """Start the dashboard server in a background thread.
@@ -217,7 +216,6 @@ class DashboardServer:
 
         if self._server.started:
             logger.info(f"Dashboard server started at http://{self._host}:{self._port}")
-        self._started.set()
 
     def shutdown(self) -> None:
         """Shutdown the dashboard server gracefully."""
