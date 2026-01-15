@@ -295,7 +295,7 @@ class SentinelStateAccessor:
 
         # Create a preview of the agent prompt (first 100 chars)
         prompt_preview = orch.agent.prompt[:100] if orch.agent.prompt else ""
-        if len(orch.agent.prompt) > 100:
+        if orch.agent.prompt and len(orch.agent.prompt) > 100:
             prompt_preview += "..."
 
         return OrchestrationInfo(
