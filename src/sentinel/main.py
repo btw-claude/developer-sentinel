@@ -428,12 +428,20 @@ class Sentinel:
         of dropping the new one. This ensures the dashboard shows the most recently
         queued issues rather than the oldest ones.
 
+        DS-158: Enhanced logging to include the evicted item's key for better
+        debugging and observability in production.
+
         Args:
             issue_key: The key of the issue being queued.
             orchestration_name: The name of the orchestration the issue matched.
         """
         with self._queue_lock:
-            was_full = len(self._issue_queue) == self._issue_queue.maxlen
+            evicted_item: QueuedIssueInfo | None = None
+            # DS-158: Capture the item that will be evicted before appending
+            # since deque.append() doesn't return the evicted item
+            if len(self._issue_queue) == self._issue_queue.maxlen:
+                evicted_item = self._issue_queue[0]  # Oldest item (leftmost)
+
             self._issue_queue.append(
                 QueuedIssueInfo(
                     issue_key=issue_key,
@@ -441,10 +449,12 @@ class Sentinel:
                     queued_at=datetime.now(),
                 )
             )
-            if was_full:
+
+            if evicted_item is not None:
                 logger.debug(
                     f"Issue queue at capacity ({self._issue_queue.maxlen}), "
-                    f"evicted oldest item to add {issue_key} for '{orchestration_name}'"
+                    f"evicted '{evicted_item.issue_key}' (orchestration: '{evicted_item.orchestration_name}') "
+                    f"to add {issue_key} for '{orchestration_name}'"
                 )
 
     def _get_and_increment_attempt_count(
