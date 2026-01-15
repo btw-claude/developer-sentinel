@@ -24,7 +24,8 @@
  *          DS-163 (axis-specific spacing, extended scale, text-accent),
  *          DS-164 (CSS logical properties, my-auto documentation),
  *          DS-165 (RTL layout examples for logical property utilities),
- *          DS-166 (MDN documentation links for CSS logical properties)
+ *          DS-166 (MDN documentation links for CSS logical properties),
+ *          DS-167 (MDN documentation links for CSS block-level logical properties)
  */
 
 /* =============================================================================
@@ -235,7 +236,8 @@
    - padding-inline-end:
      https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-end
 
-   See: DS-164 for implementation details, DS-165 for RTL examples, DS-166 for MDN links
+   See: DS-164 for implementation details, DS-165 for RTL examples, DS-166 for MDN links,
+        DS-167 for block-level property MDN links
 
    -----------------------------------------------------------------------------
    RTL/LTR LAYOUT EXAMPLES
@@ -401,6 +403,64 @@
 .pe-3 { padding-inline-end: 1rem; }
 .pe-4 { padding-inline-end: 1.5rem; }
 .pe-5 { padding-inline-end: 3rem; }
+
+/* =============================================================================
+   CSS LOGICAL PROPERTIES - BLOCK AXIS (Vertical in horizontal writing modes)
+   Uses margin-block-start/end and padding-block-start/end for proper
+   support of different writing modes. These properties adapt to the document's
+   writing mode (horizontal-tb, vertical-rl, vertical-lr).
+
+   - mbs-* = margin-block-start (top in horizontal-tb, right in vertical-rl)
+   - mbe-* = margin-block-end (bottom in horizontal-tb, left in vertical-rl)
+   - pbs-* = padding-block-start (top in horizontal-tb, right in vertical-rl)
+   - pbe-* = padding-block-end (bottom in horizontal-tb, left in vertical-rl)
+
+   MDN Documentation:
+   - margin-block-start:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block-start
+   - margin-block-end:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block-end
+   - padding-block-start:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block-start
+   - padding-block-end:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block-end
+
+   See: DS-167 for block-level MDN documentation links
+   ============================================================================= */
+
+/* Margin block-start utilities (mbs-*) */
+.mbs-0 { margin-block-start: 0; }
+.mbs-1 { margin-block-start: 0.25rem; }
+.mbs-2 { margin-block-start: 0.5rem; }
+.mbs-3 { margin-block-start: 1rem; }
+.mbs-4 { margin-block-start: 1.5rem; }
+.mbs-5 { margin-block-start: 3rem; }
+.mbs-auto { margin-block-start: auto; }
+
+/* Margin block-end utilities (mbe-*) */
+.mbe-0 { margin-block-end: 0; }
+.mbe-1 { margin-block-end: 0.25rem; }
+.mbe-2 { margin-block-end: 0.5rem; }
+.mbe-3 { margin-block-end: 1rem; }
+.mbe-4 { margin-block-end: 1.5rem; }
+.mbe-5 { margin-block-end: 3rem; }
+.mbe-auto { margin-block-end: auto; }
+
+/* Padding block-start utilities (pbs-*) */
+.pbs-0 { padding-block-start: 0; }
+.pbs-1 { padding-block-start: 0.25rem; }
+.pbs-2 { padding-block-start: 0.5rem; }
+.pbs-3 { padding-block-start: 1rem; }
+.pbs-4 { padding-block-start: 1.5rem; }
+.pbs-5 { padding-block-start: 3rem; }
+
+/* Padding block-end utilities (pbe-*) */
+.pbe-0 { padding-block-end: 0; }
+.pbe-1 { padding-block-end: 0.25rem; }
+.pbe-2 { padding-block-end: 0.5rem; }
+.pbe-3 { padding-block-end: 1rem; }
+.pbe-4 { padding-block-end: 1.5rem; }
+.pbe-5 { padding-block-end: 3rem; }
 
 /* =============================================================================
    LAYOUT UTILITIES
