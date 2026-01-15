@@ -1,0 +1,25 @@
+/**
+ * CSS Utility Classes
+ *
+ * This file contains reusable utility classes for the Developer Sentinel dashboard.
+ * These are extracted from base.html for better organization and maintainability.
+ *
+ * Note: These classes depend on CSS custom properties defined in base.html:
+ * - --text-secondary: Secondary text color (typically #aaa)
+ *
+ * Usage:
+ * - Apply these classes directly to HTML elements for quick styling
+ * - Prefer utility classes over inline styles for consistency
+ *
+ * Related: DS-154 (original implementation), DS-159 (extraction to this file)
+ */
+
+/* Text utilities */
+.text-secondary {
+    color: var(--text-secondary);
+}
+
+.text-secondary-small {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+}
