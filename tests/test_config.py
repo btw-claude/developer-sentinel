@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from sentinel.config import (
+    MAX_PORT,
+    MIN_PORT,
     VALID_LOG_LEVELS,
     Config,
     _parse_bool,
@@ -267,44 +269,56 @@ class TestParseBool:
         assert _parse_bool("anything") is False
 
 
+class TestPortConstants:
+    """Tests for port validation constants (DS-148)."""
+
+    def test_min_port_value(self) -> None:
+        """Test that MIN_PORT is 1."""
+        assert MIN_PORT == 1
+
+    def test_max_port_value(self) -> None:
+        """Test that MAX_PORT is 65535."""
+        assert MAX_PORT == 65535
+
+
 class TestParsePort:
-    """Tests for _parse_port helper function (DS-135)."""
+    """Tests for _parse_port helper function (DS-135, DS-148)."""
 
     def test_valid_port_numbers(self) -> None:
         """Test parsing valid port numbers within range."""
-        assert _parse_port("1", "TEST_VAR", 8080) == 1
+        assert _parse_port(str(MIN_PORT), "TEST_VAR", 8080) == MIN_PORT
         assert _parse_port("80", "TEST_VAR", 8080) == 80
         assert _parse_port("443", "TEST_VAR", 8080) == 443
         assert _parse_port("8080", "TEST_VAR", 8080) == 8080
-        assert _parse_port("65535", "TEST_VAR", 8080) == 65535
+        assert _parse_port(str(MAX_PORT), "TEST_VAR", 8080) == MAX_PORT
 
     def test_invalid_port_zero(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that port 0 is rejected."""
         with caplog.at_level(logging.WARNING):
             result = _parse_port("0", "TEST_VAR", 8080)
         assert result == 8080
-        assert "Invalid TEST_VAR: 0 is not a valid port (must be 1-65535)" in caplog.text
+        assert f"Invalid TEST_VAR: 0 is not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_port_negative(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that negative port numbers are rejected."""
         with caplog.at_level(logging.WARNING):
             result = _parse_port("-1", "TEST_VAR", 8080)
         assert result == 8080
-        assert "Invalid TEST_VAR: -1 is not a valid port (must be 1-65535)" in caplog.text
+        assert f"Invalid TEST_VAR: -1 is not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_port_too_high(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that port numbers above 65535 are rejected."""
+        """Test that port numbers above MAX_PORT are rejected."""
         with caplog.at_level(logging.WARNING):
-            result = _parse_port("65536", "TEST_VAR", 8080)
+            result = _parse_port(str(MAX_PORT + 1), "TEST_VAR", 8080)
         assert result == 8080
-        assert "Invalid TEST_VAR: 65536 is not a valid port (must be 1-65535)" in caplog.text
+        assert f"Invalid TEST_VAR: {MAX_PORT + 1} is not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_port_way_too_high(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that very large port numbers are rejected."""
         with caplog.at_level(logging.WARNING):
             result = _parse_port("100000", "TEST_VAR", 8080)
         assert result == 8080
-        assert "Invalid TEST_VAR: 100000 is not a valid port (must be 1-65535)" in caplog.text
+        assert f"Invalid TEST_VAR: 100000 is not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_non_numeric(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that non-numeric values are rejected."""
@@ -328,7 +342,7 @@ class TestParsePort:
 
 
 class TestDashboardPortConfig:
-    """Tests for dashboard_port configuration with port range validation (DS-135)."""
+    """Tests for dashboard_port configuration with port range validation (DS-135, DS-148)."""
 
     def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that dashboard_port defaults to 8080."""
@@ -356,7 +370,7 @@ class TestDashboardPortConfig:
             config = load_config()
 
         assert config.dashboard_port == 8080
-        assert "not a valid port (must be 1-65535)" in caplog.text
+        assert f"not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_port_negative_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -368,19 +382,19 @@ class TestDashboardPortConfig:
             config = load_config()
 
         assert config.dashboard_port == 8080
-        assert "not a valid port (must be 1-65535)" in caplog.text
+        assert f"not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_port_too_high_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that ports above 65535 use the default."""
-        monkeypatch.setenv("SENTINEL_DASHBOARD_PORT", "65536")
+        """Test that ports above MAX_PORT use the default."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_PORT", str(MAX_PORT + 1))
 
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
         assert config.dashboard_port == 8080
-        assert "not a valid port (must be 1-65535)" in caplog.text
+        assert f"not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_non_numeric_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -395,20 +409,20 @@ class TestDashboardPortConfig:
         assert "Invalid SENTINEL_DASHBOARD_PORT" in caplog.text
 
     def test_valid_port_boundary_low(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that port 1 is accepted."""
-        monkeypatch.setenv("SENTINEL_DASHBOARD_PORT", "1")
+        """Test that MIN_PORT is accepted."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_PORT", str(MIN_PORT))
 
         config = load_config()
 
-        assert config.dashboard_port == 1
+        assert config.dashboard_port == MIN_PORT
 
     def test_valid_port_boundary_high(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that port 65535 is accepted."""
-        monkeypatch.setenv("SENTINEL_DASHBOARD_PORT", "65535")
+        """Test that MAX_PORT is accepted."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_PORT", str(MAX_PORT))
 
         config = load_config()
 
-        assert config.dashboard_port == 65535
+        assert config.dashboard_port == MAX_PORT
 
 
 class TestMaxEagerIterations:
