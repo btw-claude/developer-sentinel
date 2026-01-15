@@ -661,7 +661,10 @@ class AgentExecutor:
                         start_time,
                     )
                     # Cleanup workdir on success if enabled
-                    if self.cleanup_workdir_on_success:
+                    if self.cleanup_workdir_on_success and last_workdir:
+                        logger.debug(
+                            f"Cleaning up workdir after successful execution: {last_workdir}"
+                        )
                         cleanup_workdir(last_workdir)
                     return result
 
