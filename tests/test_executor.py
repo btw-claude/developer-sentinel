@@ -1,5 +1,6 @@
 """Tests for Claude Agent SDK executor module."""
 
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -1667,6 +1668,196 @@ class TestCleanupWorkdir:
                 result = cleanup_workdir(workdir)
 
             assert result is False
+
+    # Tests for force parameter
+
+    def test_cleanup_workdir_force_removes_directory(self) -> None:
+        """cleanup_workdir with force=True should remove the directory on first attempt."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+            (workdir / "test_file.txt").write_text("test content")
+
+            assert workdir.exists()
+            result = cleanup_workdir(workdir, force=True)
+
+            assert result is True
+            assert not workdir.exists()
+
+    def test_cleanup_workdir_force_none_returns_true(self) -> None:
+        """cleanup_workdir with force=True should return True when workdir is None."""
+        result = cleanup_workdir(None, force=True)
+        assert result is True
+
+    def test_cleanup_workdir_force_nonexistent_returns_true(self) -> None:
+        """cleanup_workdir with force=True should return True for non-existent directory."""
+        workdir = Path("/nonexistent/path/that/does/not/exist")
+        result = cleanup_workdir(workdir, force=True)
+        assert result is True
+
+    def test_cleanup_workdir_force_retries_on_permission_error(self) -> None:
+        """cleanup_workdir with force=True should retry on PermissionError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            call_count = 0
+            original_rmtree = shutil.rmtree
+
+            def mock_rmtree_side_effect(path: Any, **kwargs: Any) -> None:
+                nonlocal call_count
+                call_count += 1
+                if call_count < 2:
+                    raise PermissionError("Permission denied")
+                # Successful removal on second attempt - actually remove it
+                original_rmtree(path, **kwargs)
+
+            with patch("shutil.rmtree", side_effect=mock_rmtree_side_effect):
+                with patch("time.sleep"):  # Speed up test
+                    result = cleanup_workdir(workdir, force=True, max_retries=3)
+
+            assert result is True
+            assert call_count == 2
+
+    def test_cleanup_workdir_force_retries_on_os_error(self) -> None:
+        """cleanup_workdir with force=True should retry on OSError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            call_count = 0
+            original_rmtree = shutil.rmtree
+
+            def mock_rmtree_side_effect(path: Any, **kwargs: Any) -> None:
+                nonlocal call_count
+                call_count += 1
+                if call_count < 2:
+                    raise OSError("Resource busy")
+                # Successful removal on second attempt
+                original_rmtree(path, **kwargs)
+
+            with patch("shutil.rmtree", side_effect=mock_rmtree_side_effect):
+                with patch("time.sleep"):  # Speed up test
+                    result = cleanup_workdir(workdir, force=True, max_retries=3)
+
+            assert result is True
+            assert call_count == 2
+
+    def test_cleanup_workdir_force_uses_ignore_errors_on_final_attempt(self) -> None:
+        """cleanup_workdir with force=True should use ignore_errors on final attempt."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            rmtree_calls: list[tuple[Any, dict[str, Any]]] = []
+            original_rmtree = shutil.rmtree
+
+            def mock_rmtree_side_effect(path: Any, **kwargs: Any) -> None:
+                rmtree_calls.append((path, kwargs))
+                if not kwargs.get("ignore_errors", False):
+                    raise PermissionError("Permission denied")
+                # When ignore_errors=True, actually remove the directory
+                original_rmtree(path, ignore_errors=True)
+
+            with patch("shutil.rmtree", side_effect=mock_rmtree_side_effect):
+                with patch("time.sleep"):  # Speed up test
+                    result = cleanup_workdir(workdir, force=True, max_retries=3)
+
+            assert result is True
+            assert len(rmtree_calls) == 3
+            # First two calls should not have ignore_errors
+            assert rmtree_calls[0][1].get("ignore_errors", False) is False
+            assert rmtree_calls[1][1].get("ignore_errors", False) is False
+            # Final call should have ignore_errors=True
+            assert rmtree_calls[2][1].get("ignore_errors") is True
+
+    def test_cleanup_workdir_force_returns_false_if_directory_remains(self) -> None:
+        """cleanup_workdir with force=True should return False if directory still exists after all attempts."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            def mock_rmtree_side_effect(path: Any, **kwargs: Any) -> None:
+                # Always fail (even with ignore_errors, directory persists)
+                if not kwargs.get("ignore_errors", False):
+                    raise PermissionError("Permission denied")
+                # With ignore_errors, just do nothing (directory remains)
+
+            with patch("shutil.rmtree", side_effect=mock_rmtree_side_effect):
+                with patch("time.sleep"):  # Speed up test
+                    result = cleanup_workdir(workdir, force=True, max_retries=3)
+
+            assert result is False
+            assert workdir.exists()
+
+    def test_cleanup_workdir_force_no_retry_on_unexpected_error(self) -> None:
+        """cleanup_workdir with force=True should not retry on unexpected exceptions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            call_count = 0
+
+            def mock_rmtree_side_effect(path: Any, **kwargs: Any) -> None:
+                nonlocal call_count
+                call_count += 1
+                raise RuntimeError("Unexpected error")
+
+            with patch("shutil.rmtree", side_effect=mock_rmtree_side_effect):
+                result = cleanup_workdir(workdir, force=True, max_retries=3)
+
+            assert result is False
+            assert call_count == 1  # Should not retry
+
+    def test_cleanup_workdir_force_custom_max_retries(self) -> None:
+        """cleanup_workdir with force=True should respect custom max_retries."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            call_count = 0
+
+            def mock_rmtree_side_effect(path: Any, **kwargs: Any) -> None:
+                nonlocal call_count
+                call_count += 1
+                if not kwargs.get("ignore_errors", False):
+                    raise PermissionError("Permission denied")
+                # With ignore_errors, just do nothing (directory remains)
+
+            with patch("shutil.rmtree", side_effect=mock_rmtree_side_effect):
+                with patch("time.sleep"):  # Speed up test
+                    result = cleanup_workdir(workdir, force=True, max_retries=5)
+
+            assert result is False
+            assert call_count == 5  # Should retry 5 times
+
+    def test_cleanup_workdir_force_respects_retry_delay(self) -> None:
+        """cleanup_workdir with force=True should sleep between retries."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workdir = Path(tmpdir) / "test_workdir"
+            workdir.mkdir()
+
+            call_count = 0
+            original_rmtree = shutil.rmtree
+
+            def mock_rmtree_side_effect(path: Any, **kwargs: Any) -> None:
+                nonlocal call_count
+                call_count += 1
+                if call_count < 3:
+                    raise PermissionError("Permission denied")
+                # Successful on third attempt
+                original_rmtree(path, **kwargs)
+
+            with patch("shutil.rmtree", side_effect=mock_rmtree_side_effect):
+                with patch("time.sleep") as mock_sleep:
+                    result = cleanup_workdir(
+                        workdir, force=True, max_retries=3, retry_delay=1.5
+                    )
+
+            assert result is True
+            # Should have slept twice (after first and second failures)
+            assert mock_sleep.call_count == 2
+            mock_sleep.assert_called_with(1.5)
 
 
 class TestAgentExecutorWorkdirCleanup:

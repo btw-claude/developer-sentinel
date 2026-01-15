@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -38,7 +39,12 @@ class AgentRunResult:
     workdir: Path | None = None
 
 
-def cleanup_workdir(workdir: Path | None) -> bool:
+def cleanup_workdir(
+    workdir: Path | None,
+    force: bool = False,
+    max_retries: int = 3,
+    retry_delay: float = 0.5,
+) -> bool:
     """Clean up an agent's working directory.
 
     Safely removes the working directory and all its contents using shutil.rmtree().
@@ -46,6 +52,13 @@ def cleanup_workdir(workdir: Path | None) -> bool:
 
     Args:
         workdir: Path to the working directory to clean up. If None, returns True.
+        force: If True, enables aggressive cleanup with retries on recoverable errors
+            (PermissionError, OSError) and uses ignore_errors on final attempt.
+            Useful for handling transient file locks or permission issues.
+        max_retries: Maximum number of retry attempts when force=True. Default is 3.
+            Only applies when force=True.
+        retry_delay: Delay in seconds between retry attempts when force=True.
+            Default is 0.5 seconds. Only applies when force=True.
 
     Returns:
         True if cleanup was successful or workdir was None, False if an error occurred.
@@ -53,20 +66,66 @@ def cleanup_workdir(workdir: Path | None) -> bool:
     if workdir is None:
         return True
 
-    try:
-        if workdir.exists():
-            shutil.rmtree(workdir)
-            logger.debug(f"Cleaned up working directory: {workdir}")
-        return True
-    except PermissionError as e:
-        logger.warning(f"Permission denied while cleaning up workdir {workdir}: {e}")
-        return False
-    except OSError as e:
-        logger.warning(f"OS error while cleaning up workdir {workdir}: {e}")
-        return False
-    except Exception as e:
-        logger.warning(f"Unexpected error while cleaning up workdir {workdir}: {e}")
-        return False
+    if not force:
+        # Original non-force behavior: single attempt with specific error handling
+        try:
+            if workdir.exists():
+                shutil.rmtree(workdir)
+                logger.debug(f"Cleaned up working directory: {workdir}")
+            return True
+        except PermissionError as e:
+            logger.warning(f"Permission denied while cleaning up workdir {workdir}: {e}")
+            return False
+        except OSError as e:
+            logger.warning(f"OS error while cleaning up workdir {workdir}: {e}")
+            return False
+        except Exception as e:
+            logger.warning(f"Unexpected error while cleaning up workdir {workdir}: {e}")
+            return False
+
+    # Force mode: retry on recoverable errors, use ignore_errors on final attempt
+    for attempt in range(1, max_retries + 1):
+        try:
+            if not workdir.exists():
+                return True
+
+            is_final_attempt = attempt == max_retries
+            if is_final_attempt:
+                # On final attempt, use ignore_errors to remove as much as possible
+                shutil.rmtree(workdir, ignore_errors=True)
+                if workdir.exists():
+                    logger.warning(
+                        f"Force cleanup could not fully remove workdir {workdir} "
+                        f"after {max_retries} attempts (some files may remain)"
+                    )
+                    return False
+            else:
+                shutil.rmtree(workdir)
+
+            logger.debug(f"Cleaned up working directory: {workdir} (force mode, attempt {attempt})")
+            return True
+
+        except (PermissionError, OSError) as e:
+            if attempt < max_retries:
+                logger.debug(
+                    f"Recoverable error on cleanup attempt {attempt}/{max_retries} "
+                    f"for {workdir}: {e}. Retrying in {retry_delay}s..."
+                )
+                time.sleep(retry_delay)
+            else:
+                # Final attempt already uses ignore_errors, so this shouldn't happen
+                # but handle it just in case
+                logger.warning(
+                    f"Force cleanup failed for workdir {workdir} after {max_retries} "
+                    f"attempts: {e}"
+                )
+                return False
+        except Exception as e:
+            # Non-recoverable error, don't retry
+            logger.warning(f"Unexpected error while cleaning up workdir {workdir}: {e}")
+            return False
+
+    return False
 
 
 class ExecutionStatus(Enum):
