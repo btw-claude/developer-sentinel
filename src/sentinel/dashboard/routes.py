@@ -20,8 +20,6 @@ from sse_starlette.sse import EventSourceResponse
 if TYPE_CHECKING:
     from sentinel.dashboard.state import SentinelStateAccessor
 
-router = APIRouter()
-
 
 def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
     """Create dashboard routes with the given state accessor.

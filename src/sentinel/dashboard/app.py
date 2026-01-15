@@ -97,10 +97,11 @@ def create_app(
     if templates_dir is None:
         templates_dir = Path(__file__).parent / "templates"
 
-    # Ensure templates directory exists
+    # Ensure templates directory and required subdirectories exist.
+    # Note: This creates directories as a side effect if they don't exist.
+    # This is intentional for development convenience but callers should be
+    # aware that file system modifications occur during app initialization.
     templates_dir.mkdir(parents=True, exist_ok=True)
-
-    # Create subdirectories for partials
     (templates_dir / "partials").mkdir(exist_ok=True)
 
     # Create Jinja2 environment with autoescape for security
