@@ -535,3 +535,59 @@ class TestAttemptCountsTtlConfig:
 
         assert config.attempt_counts_ttl == 3600
         assert "not positive" in caplog.text
+
+
+class TestMaxQueueSizeConfig:
+    """Tests for max_queue_size configuration (DS-153)."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that max_queue_size defaults to 100."""
+        monkeypatch.delenv("SENTINEL_MAX_QUEUE_SIZE", raising=False)
+
+        config = load_config()
+
+        assert config.max_queue_size == 100
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that max_queue_size loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_MAX_QUEUE_SIZE", "200")
+
+        config = load_config()
+
+        assert config.max_queue_size == 200
+
+    def test_invalid_value_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid values use the default."""
+        monkeypatch.setenv("SENTINEL_MAX_QUEUE_SIZE", "not-a-number")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.max_queue_size == 100
+        assert "Invalid SENTINEL_MAX_QUEUE_SIZE" in caplog.text
+
+    def test_zero_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that zero uses the default (must be positive)."""
+        monkeypatch.setenv("SENTINEL_MAX_QUEUE_SIZE", "0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.max_queue_size == 100
+        assert "not positive" in caplog.text
+
+    def test_negative_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that negative values use the default."""
+        monkeypatch.setenv("SENTINEL_MAX_QUEUE_SIZE", "-50")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.max_queue_size == 100
+        assert "not positive" in caplog.text
