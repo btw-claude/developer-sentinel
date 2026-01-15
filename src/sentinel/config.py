@@ -59,6 +59,11 @@ class Config:
     # Via SENTINEL_KEEP_WORKDIR (inverted)
     cleanup_workdir_on_success: bool = True  # Whether to cleanup workdir after successful execution
 
+    # Dashboard configuration
+    dashboard_enabled: bool = False  # Whether to enable the web dashboard
+    dashboard_port: int = 8080  # Port for the dashboard server
+    dashboard_host: str = "127.0.0.1"  # Host to bind the dashboard server
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -197,6 +202,15 @@ def load_config(env_file: Path | None = None) -> Config:
     keep_workdir = _parse_bool(os.getenv("SENTINEL_KEEP_WORKDIR", ""))
     cleanup_workdir_on_success = not keep_workdir
 
+    # Parse dashboard configuration
+    dashboard_enabled = _parse_bool(os.getenv("SENTINEL_DASHBOARD_ENABLED", ""))
+    dashboard_port = _parse_positive_int(
+        os.getenv("SENTINEL_DASHBOARD_PORT", "8080"),
+        "SENTINEL_DASHBOARD_PORT",
+        8080,
+    )
+    dashboard_host = os.getenv("SENTINEL_DASHBOARD_HOST", "127.0.0.1")
+
     # Parse MCP server args (comma-separated)
     def parse_args(env_var: str) -> list[str]:
         value = os.getenv(env_var, "")
@@ -224,4 +238,7 @@ def load_config(env_file: Path | None = None) -> Config:
         github_token=os.getenv("GITHUB_TOKEN", ""),
         github_api_url=os.getenv("GITHUB_API_URL", ""),
         cleanup_workdir_on_success=cleanup_workdir_on_success,
+        dashboard_enabled=dashboard_enabled,
+        dashboard_port=dashboard_port,
+        dashboard_host=dashboard_host,
     )
