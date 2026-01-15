@@ -7,7 +7,7 @@ import signal
 import sys
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import replace
 from pathlib import Path
 from types import FrameType
@@ -250,9 +250,8 @@ class Sentinel:
         self._orchestrations_unloaded_total: int = 0
         self._orchestrations_reloaded_total: int = 0
 
-        # Eager polling iteration counter (DS-98)
-        # Tracks consecutive immediate polls to prevent runaway polling
-        self._consecutive_eager_polls: int = 0
+        # Note: DS-133 removed _consecutive_eager_polls counter
+        # Polling is now driven by task completion events, not submission counts
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
@@ -1126,36 +1125,41 @@ class Sentinel:
                     logger.error(f"Error in polling cycle: {e}")
                     submitted_count = 0  # On error, use normal poll interval
 
-                # Eager polling: skip sleep if work was submitted, poll immediately for more
-                # DS-98: Limit consecutive eager polls to prevent runaway polling
+                # DS-133: Completion-driven polling - wait for task completion, not submission
+                # Only sleep poll_interval when no work is found; otherwise wait for completion
                 if not self._shutdown_requested:
-                    if submitted_count > 0:
-                        self._consecutive_eager_polls += 1
-                        if self._consecutive_eager_polls >= self.config.max_eager_iterations:
-                            logger.info(
-                                f"Reached max_eager_iterations ({self.config.max_eager_iterations}), "
-                                f"forcing sleep interval"
-                            )
-                            self._consecutive_eager_polls = 0
-                            logger.debug(f"Sleeping for {self.config.poll_interval}s")
-                            for _ in range(self.config.poll_interval):
-                                if self._shutdown_requested:
-                                    break
-                                time.sleep(1)
-                        else:
+                    with self._futures_lock:
+                        pending_futures = [f for f in self._active_futures if not f.done()]
+
+                    if pending_futures:
+                        # Wait for at least one task to complete before polling again
+                        logger.debug(
+                            f"Waiting for completion of {len(pending_futures)} task(s) before next poll"
+                        )
+                        # Use wait() with FIRST_COMPLETED to efficiently wait for any completion
+                        # Add a small timeout to allow periodic shutdown checks
+                        done, _ = wait(pending_futures, timeout=1.0, return_when=FIRST_COMPLETED)
+                        while not done and not self._shutdown_requested:
+                            with self._futures_lock:
+                                pending_futures = [f for f in self._active_futures if not f.done()]
+                            if not pending_futures:
+                                break
+                            done, _ = wait(pending_futures, timeout=1.0, return_when=FIRST_COMPLETED)
+
+                        if done:
                             logger.debug(
-                                f"Submitted {submitted_count} task(s), polling immediately for more work "
-                                f"(eager iteration {self._consecutive_eager_polls}/{self.config.max_eager_iterations})"
+                                f"{len(done)} task(s) completed, polling immediately for more work"
                             )
-                    else:
-                        # No work submitted, reset eager counter and sleep
-                        self._consecutive_eager_polls = 0
+                    elif submitted_count == 0:
+                        # No work found and no pending tasks, sleep before next poll
                         logger.debug(f"Sleeping for {self.config.poll_interval}s")
                         # Sleep in small increments to allow quick shutdown
                         for _ in range(self.config.poll_interval):
                             if self._shutdown_requested:
                                 break
                             time.sleep(1)
+                    # If submitted_count > 0 but no pending futures, poll immediately
+                    # (edge case: tasks completed very quickly)
 
             # Wait for active tasks to complete
             logger.info("Waiting for active executions to complete...")
