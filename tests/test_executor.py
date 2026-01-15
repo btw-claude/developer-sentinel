@@ -1901,8 +1901,14 @@ class TestAgentExecutorWorkdirCleanup:
             assert result.succeeded is True
             assert not workdir.exists()
 
-    def test_no_cleanup_when_disabled(self) -> None:
-        """Should preserve workdir when cleanup_workdir_on_success is False."""
+    def test_no_cleanup_when_disabled(self, caplog: Any) -> None:
+        """Should preserve workdir when cleanup_workdir_on_success is False.
+
+        Also verifies that the appropriate debug log message is emitted
+        indicating the workdir was preserved.
+        """
+        import logging
+
         with tempfile.TemporaryDirectory() as tmpdir:
             workdir = Path(tmpdir) / "test_workdir"
             workdir.mkdir()
@@ -1916,10 +1922,19 @@ class TestAgentExecutorWorkdirCleanup:
             issue = make_issue()
             orch = make_orchestration()
 
-            result = executor.execute(issue, orch)
+            with caplog.at_level(logging.DEBUG):
+                result = executor.execute(issue, orch)
 
             assert result.succeeded is True
             assert workdir.exists()  # Workdir should be preserved
+
+            # Verify the debug log message was emitted
+            assert any(
+                "Workdir preserved at" in record.message
+                and "(cleanup_workdir_on_success=False)" in record.message
+                and record.levelno == logging.DEBUG
+                for record in caplog.records
+            ), "Expected debug log message about workdir preservation was not emitted"
 
     def test_no_cleanup_on_failure(self) -> None:
         """Should preserve workdir on failed execution for debugging.
