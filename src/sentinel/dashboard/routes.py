@@ -160,6 +160,27 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
             context={"state": state},
         )
 
+    @dashboard_router.get("/partials/running_steps", response_class=HTMLResponse)
+    async def partial_running_steps(request: Request) -> HTMLResponse:
+        """Render the running steps partial for HTMX updates (DS-122).
+
+        This endpoint returns the running steps section HTML for efficient
+        live updates without full page reloads. Auto-refreshes every 1s.
+
+        Args:
+            request: The incoming HTTP request.
+
+        Returns:
+            HTML response with the running steps partial.
+        """
+        state = state_accessor.get_state()
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/running_steps.html",
+            context={"state": state},
+        )
+
     @dashboard_router.get("/health")
     async def health() -> dict:
         """Health check endpoint.
