@@ -109,6 +109,40 @@ def _parse_positive_int(value: str, name: str, default: int) -> int:
         return default
 
 
+def _parse_port(value: str, name: str, default: int) -> int:
+    """Parse a string as a valid TCP port number with range validation.
+
+    Args:
+        value: The string value to parse.
+        name: The name of the setting (for error messages).
+        default: The default value to use if parsing fails.
+
+    Returns:
+        The parsed port number (1-65535), or the default if invalid.
+
+    Logs a warning if the value is invalid or out of range.
+    """
+    try:
+        parsed = int(value)
+        if parsed < 1 or parsed > 65535:
+            logging.warning(
+                "Invalid %s: %d is not a valid port (must be 1-65535), using default %d",
+                name,
+                parsed,
+                default,
+            )
+            return default
+        return parsed
+    except ValueError:
+        logging.warning(
+            "Invalid %s: '%s' is not a valid integer, using default %d",
+            name,
+            value,
+            default,
+        )
+        return default
+
+
 def _validate_log_level(value: str, default: str = "INFO") -> str:
     """Validate and normalize a log level string.
 
@@ -204,7 +238,7 @@ def load_config(env_file: Path | None = None) -> Config:
 
     # Parse dashboard configuration
     dashboard_enabled = _parse_bool(os.getenv("SENTINEL_DASHBOARD_ENABLED", ""))
-    dashboard_port = _parse_positive_int(
+    dashboard_port = _parse_port(
         os.getenv("SENTINEL_DASHBOARD_PORT", "8080"),
         "SENTINEL_DASHBOARD_PORT",
         8080,
