@@ -137,7 +137,7 @@ class DashboardState:
 
     # Polling state
     shutdown_requested: bool = False
-    pending_tasks: int = 0
+    active_incomplete_tasks: int = 0
 
     # System status (DS-124) - thread pool, poll times, uptime
     system_status: SystemStatusInfo | None = None
@@ -274,7 +274,7 @@ class SentinelStateAccessor:
             issue_queue=issue_queue_views,
             hot_reload_metrics=hot_reload_metrics,
             shutdown_requested=sentinel._shutdown_requested,
-            pending_tasks=pending_count,
+            active_incomplete_tasks=pending_count,
             system_status=system_status,
         )
 

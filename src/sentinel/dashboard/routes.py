@@ -112,7 +112,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
             "active_execution_count": state.active_execution_count,
             "available_slots": state.available_slots,
             "shutdown_requested": state.shutdown_requested,
-            "pending_tasks": state.pending_tasks,
+            "active_incomplete_tasks": state.active_incomplete_tasks,
             "hot_reload_metrics": (
                 {
                     "loaded_total": state.hot_reload_metrics.orchestrations_loaded_total,
