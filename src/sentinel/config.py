@@ -56,6 +56,7 @@ class Config:
     github_api_url: str = ""  # Custom API URL for GitHub Enterprise (empty = github.com)
 
     # Workdir cleanup configuration
+    # Via SENTINEL_KEEP_WORKDIR (inverted)
     cleanup_workdir_on_success: bool = True  # Whether to cleanup workdir after successful execution
 
     @property
