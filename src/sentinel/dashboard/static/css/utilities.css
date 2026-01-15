@@ -23,7 +23,8 @@
  *          DS-162 (CSS variable fallbacks and organization),
  *          DS-163 (axis-specific spacing, extended scale, text-accent),
  *          DS-164 (CSS logical properties, my-auto documentation),
- *          DS-165 (RTL layout examples for logical property utilities)
+ *          DS-165 (RTL layout examples for logical property utilities),
+ *          DS-166 (MDN documentation links for CSS logical properties)
  */
 
 /* =============================================================================
@@ -222,7 +223,19 @@
    - ps-* = padding-inline-start (left in LTR, right in RTL)
    - pe-* = padding-inline-end (right in LTR, left in RTL)
 
-   See: DS-164 for implementation details, DS-165 for RTL examples
+   MDN Documentation:
+   - CSS Logical Properties overview:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_logical_properties_and_values
+   - margin-inline-start:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline-start
+   - margin-inline-end:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline-end
+   - padding-inline-start:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-start
+   - padding-inline-end:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-end
+
+   See: DS-164 for implementation details, DS-165 for RTL examples, DS-166 for MDN links
 
    -----------------------------------------------------------------------------
    RTL/LTR LAYOUT EXAMPLES
