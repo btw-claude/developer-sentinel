@@ -272,6 +272,23 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         return state_accessor.get_log_files()
 
+    @dashboard_router.get("/api/logs/files")
+    async def api_logs_files() -> list[dict]:
+        """Return the list of available log files per orchestration (DS-125).
+
+        This endpoint discovers log files in the agent_logs_dir, grouped by
+        orchestration name. Files are sorted by modification time with most
+        recent logs first. Directory structure expected:
+        {base_dir}/{orchestration_name}/{timestamp}.log
+
+        Returns:
+            List of dictionaries containing orchestration name and log files.
+            Each entry has:
+            - orchestration: The orchestration name
+            - files: List of file info (filename, display_name, size, modified)
+        """
+        return state_accessor.get_log_files()
+
     @dashboard_router.get("/api/logs/stream/{orchestration}/{filename}")
     async def stream_log(
         request: Request,
