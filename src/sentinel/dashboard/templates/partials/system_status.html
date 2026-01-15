@@ -1,4 +1,29 @@
+{# DS-143: Macro to format relative time from a datetime object #}
+{% macro format_relative_time(dt, now) %}
+    {%- if dt %}
+        {%- set diff_seconds = (now - dt).total_seconds() | int %}
+        {%- if diff_seconds < 0 %}
+            just now
+        {%- elif diff_seconds < 60 %}
+            {{ diff_seconds }} second{{ 's' if diff_seconds != 1 else '' }} ago
+        {%- elif diff_seconds < 3600 %}
+            {%- set mins = diff_seconds // 60 %}
+            {{ mins }} minute{{ 's' if mins != 1 else '' }} ago
+        {%- elif diff_seconds < 86400 %}
+            {%- set hours = diff_seconds // 3600 %}
+            {{ hours }} hour{{ 's' if hours != 1 else '' }} ago
+        {%- else %}
+            {%- set days = diff_seconds // 86400 %}
+            {{ days }} day{{ 's' if days != 1 else '' }} ago
+        {%- endif %}
+    {%- else %}
+        Never
+    {%- endif %}
+{% endmacro %}
+
 {% if state.system_status %}
+{# DS-143: Cache current time for relative calculations #}
+{% set now = state.system_status.start_time.__class__.now() %}
 <table>
     <tr>
         <th>Metric</th>
@@ -7,21 +32,37 @@
     <tr>
         <td>Thread Pool Usage</td>
         <td>
-            <span class="{% if state.system_status.used_slots == state.system_status.max_slots %}status-warn{% elif state.system_status.used_slots > 0 %}status-ok{% endif %}">
-                {{ state.system_status.used_slots }}
+            {# DS-143: Edge case handling for None values #}
+            {% set used = state.system_status.used_slots if state.system_status.used_slots is not none else 0 %}
+            {% set max = state.system_status.max_slots if state.system_status.max_slots is not none else 0 %}
+            <span class="{% if used == max and max > 0 %}status-warn{% elif used > 0 %}status-ok{% endif %}">
+                {{ used }}
             </span>
-            / {{ state.system_status.max_slots }} slots
+            / {{ max }} slots
         </td>
     </tr>
     <tr>
         <td>Poll Interval</td>
-        <td>{{ state.system_status.poll_interval }}s</td>
+        <td>
+            {# DS-143: Edge case handling for None poll_interval #}
+            {% if state.system_status.poll_interval is not none %}
+            {{ state.system_status.poll_interval }}s
+            {% else %}
+            <span style="color: var(--text-secondary);">N/A</span>
+            {% endif %}
+        </td>
     </tr>
     <tr>
         <td>Last Jira Poll</td>
         <td>
             {% if state.system_status.last_jira_poll %}
-            {{ state.system_status.last_jira_poll.strftime('%H:%M:%S') }}
+            {# DS-143: Relative time with absolute time tooltip, timezone indicator #}
+            <span title="{{ state.system_status.last_jira_poll.strftime('%Y-%m-%d %H:%M:%S %Z') }}">
+                {{ format_relative_time(state.system_status.last_jira_poll, now) }}
+            </span>
+            <span style="color: var(--text-secondary); font-size: 0.85em;">
+                ({{ state.system_status.last_jira_poll.strftime('%H:%M:%S %Z') | replace(' ', '') or state.system_status.last_jira_poll.strftime('%H:%M:%S') }} local)
+            </span>
             {% else %}
             <span style="color: var(--text-secondary);">Never</span>
             {% endif %}
@@ -31,7 +72,13 @@
         <td>Last GitHub Poll</td>
         <td>
             {% if state.system_status.last_github_poll %}
-            {{ state.system_status.last_github_poll.strftime('%H:%M:%S') }}
+            {# DS-143: Relative time with absolute time tooltip, timezone indicator #}
+            <span title="{{ state.system_status.last_github_poll.strftime('%Y-%m-%d %H:%M:%S %Z') }}">
+                {{ format_relative_time(state.system_status.last_github_poll, now) }}
+            </span>
+            <span style="color: var(--text-secondary); font-size: 0.85em;">
+                ({{ state.system_status.last_github_poll.strftime('%H:%M:%S %Z') | replace(' ', '') or state.system_status.last_github_poll.strftime('%H:%M:%S') }} local)
+            </span>
             {% else %}
             <span style="color: var(--text-secondary);">Never</span>
             {% endif %}
@@ -40,6 +87,8 @@
     <tr>
         <td>Process Uptime</td>
         <td>
+            {# DS-143: Edge case handling for None uptime_seconds #}
+            {% if state.system_status.uptime_seconds is not none %}
             {% set total_seconds = state.system_status.uptime_seconds | int %}
             {% set hours = total_seconds // 3600 %}
             {% set minutes = (total_seconds % 3600) // 60 %}
@@ -51,11 +100,24 @@
             {% else %}
             {{ seconds }}s
             {% endif %}
+            {% else %}
+            <span style="color: var(--text-secondary);">N/A</span>
+            {% endif %}
         </td>
     </tr>
     <tr>
         <td>Started At</td>
-        <td>{{ state.system_status.start_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>
+            {# DS-143: Edge case handling for None start_time, timezone indicator #}
+            {% if state.system_status.start_time %}
+            {{ state.system_status.start_time.strftime('%Y-%m-%d %H:%M:%S') }}
+            <span style="color: var(--text-secondary); font-size: 0.85em;">
+                ({{ state.system_status.start_time.strftime('%Z') or 'local' }})
+            </span>
+            {% else %}
+            <span style="color: var(--text-secondary);">Unknown</span>
+            {% endif %}
+        </td>
     </tr>
 </table>
 {% else %}
