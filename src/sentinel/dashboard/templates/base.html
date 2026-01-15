@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Developer Sentinel Dashboard{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link rel="stylesheet" href="/static/css/utilities.css">
     <style>
         :root {
             --bg-primary: #1a1a2e;
@@ -209,15 +210,6 @@
             color: white;
         }
 
-        /* DS-154: Reusable text utility classes extracted from inline styles */
-        .text-secondary {
-            color: var(--text-secondary);
-        }
-
-        .text-secondary-small {
-            color: var(--text-secondary);
-            font-size: 0.85em;
-        }
     </style>
     <script>
         /**

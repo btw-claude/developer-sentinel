@@ -97,6 +97,10 @@ def create_app(
     if templates_dir is None:
         templates_dir = Path(__file__).parent / "templates"
 
+    # Configure static directory - defaults to static/ alongside templates/
+    if static_dir is None:
+        static_dir = Path(__file__).parent / "static"
+
     # Ensure templates directory and required subdirectories exist.
     # Note: This creates directories as a side effect if they don't exist.
     # This is intentional for development convenience but callers should be
