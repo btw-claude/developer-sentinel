@@ -1,5 +1,6 @@
 """Tests for Claude Agent SDK executor module."""
 
+import logging
 import shutil
 import tempfile
 from pathlib import Path
@@ -1907,8 +1908,6 @@ class TestAgentExecutorWorkdirCleanup:
         Also verifies that the appropriate debug log message is emitted
         indicating the workdir was preserved.
         """
-        import logging
-
         with tempfile.TemporaryDirectory() as tmpdir:
             workdir = Path(tmpdir) / "test_workdir"
             workdir.mkdir()
