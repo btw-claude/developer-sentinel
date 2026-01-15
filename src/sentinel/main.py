@@ -7,6 +7,7 @@ import signal
 import sys
 import threading
 import time
+from collections import deque
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -42,11 +43,6 @@ from sentinel.router import Router
 from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
-
-# DS-142: Maximum number of issues that can be held in the queue
-# This prevents unbounded memory growth in edge cases where Jira returns
-# unusually large numbers of matching issues
-MAX_QUEUE_SIZE = 100
 
 
 @dataclass
@@ -297,8 +293,10 @@ class Sentinel:
         self._attempt_counts_lock = threading.Lock()
 
         # Track queued issues waiting for execution slots (DS-123)
-        # List of QueuedIssueInfo for issues matched but waiting for slot
-        self._issue_queue: list[QueuedIssueInfo] = []
+        # DS-153: Use deque with maxlen for automatic oldest-item eviction when full.
+        # This provides FIFO behavior and prevents unbounded memory growth while
+        # keeping the most recent queued issues visible in the dashboard.
+        self._issue_queue: deque[QueuedIssueInfo] = deque(maxlen=config.max_queue_size)
         self._queue_lock = threading.Lock()
 
         # Track known orchestration files for hot-reload detection
@@ -424,21 +422,18 @@ class Sentinel:
     def _add_to_issue_queue(self, issue_key: str, orchestration_name: str) -> None:
         """Add an issue to the queue when no execution slot is available (DS-123).
 
-        DS-142: Queue size is limited to MAX_QUEUE_SIZE to prevent unbounded
-        memory growth in edge cases where Jira returns unusually large numbers
-        of matching issues.
+        DS-153: Queue uses collections.deque with maxlen for automatic oldest-item
+        eviction when full. This provides FIFO behavior - when the queue is at
+        capacity, adding a new item automatically evicts the oldest item instead
+        of dropping the new one. This ensures the dashboard shows the most recently
+        queued issues rather than the oldest ones.
 
         Args:
             issue_key: The key of the issue being queued.
             orchestration_name: The name of the orchestration the issue matched.
         """
         with self._queue_lock:
-            if len(self._issue_queue) >= MAX_QUEUE_SIZE:
-                logger.warning(
-                    f"Issue queue at maximum capacity ({MAX_QUEUE_SIZE}), "
-                    f"dropping issue {issue_key} for '{orchestration_name}'"
-                )
-                return
+            was_full = len(self._issue_queue) == self._issue_queue.maxlen
             self._issue_queue.append(
                 QueuedIssueInfo(
                     issue_key=issue_key,
@@ -446,6 +441,11 @@ class Sentinel:
                     queued_at=datetime.now(),
                 )
             )
+            if was_full:
+                logger.debug(
+                    f"Issue queue at capacity ({self._issue_queue.maxlen}), "
+                    f"evicted oldest item to add {issue_key} for '{orchestration_name}'"
+                )
 
     def _get_and_increment_attempt_count(
         self, issue_key: str, orchestration_name: str

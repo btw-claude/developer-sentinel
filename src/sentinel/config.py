@@ -72,6 +72,11 @@ class Config:
     # Time in seconds after which inactive attempt count entries are cleaned up
     attempt_counts_ttl: int = 3600  # 1 hour default
 
+    # Issue queue configuration (DS-153)
+    # Maximum number of issues that can be held in the queue
+    # When the queue is full, oldest items are evicted to make room for new ones
+    max_queue_size: int = 100
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -262,6 +267,13 @@ def load_config(env_file: Path | None = None) -> Config:
         3600,
     )
 
+    # Parse max queue size (DS-153)
+    max_queue_size = _parse_positive_int(
+        os.getenv("SENTINEL_MAX_QUEUE_SIZE", "100"),
+        "SENTINEL_MAX_QUEUE_SIZE",
+        100,
+    )
+
     # Parse MCP server args (comma-separated)
     def parse_args(env_var: str) -> list[str]:
         value = os.getenv(env_var, "")
@@ -293,4 +305,5 @@ def load_config(env_file: Path | None = None) -> Config:
         dashboard_port=dashboard_port,
         dashboard_host=dashboard_host,
         attempt_counts_ttl=attempt_counts_ttl,
+        max_queue_size=max_queue_size,
     )
