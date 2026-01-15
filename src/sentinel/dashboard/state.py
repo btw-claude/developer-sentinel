@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -323,3 +324,108 @@ class SentinelStateAccessor:
             loaded_at=version.loaded_at,
             active_executions=version.active_executions,
         )
+
+    def get_log_files(self) -> list[dict]:
+        """Get available log files grouped by orchestration (DS-127).
+
+        Discovers log files in the agent_logs_dir, grouped by orchestration
+        name, with files sorted by modification time (newest first).
+
+        Returns:
+            List of dictionaries with orchestration name and files.
+        """
+        logs_dir = self._sentinel.config.agent_logs_dir
+
+        if not logs_dir.exists():
+            return []
+
+        result = []
+
+        # Iterate through orchestration directories
+        for orch_dir in sorted(logs_dir.iterdir()):
+            if not orch_dir.is_dir():
+                continue
+
+            orchestration_name = orch_dir.name
+            files = []
+
+            # Get log files in this orchestration directory
+            for log_file in orch_dir.glob("*.log"):
+                if log_file.is_file():
+                    try:
+                        stat = log_file.stat()
+                        # Parse datetime from filename (YYYYMMDD_HHMMSS.log)
+                        display_name = self._format_log_display_name(log_file.name)
+                        files.append(
+                            {
+                                "filename": log_file.name,
+                                "display_name": display_name,
+                                "size": stat.st_size,
+                                "modified": datetime.fromtimestamp(
+                                    stat.st_mtime
+                                ).isoformat(),
+                            }
+                        )
+                    except Exception:
+                        # Skip files that can't be accessed
+                        pass
+
+            # Sort files by modified time (newest first)
+            files.sort(key=lambda f: f["modified"], reverse=True)
+
+            if files:
+                result.append(
+                    {
+                        "orchestration": orchestration_name,
+                        "files": files,
+                    }
+                )
+
+        # Sort orchestrations alphabetically
+        result.sort(key=lambda x: x["orchestration"])
+
+        return result
+
+    def _format_log_display_name(self, filename: str) -> str:
+        """Format a log filename for display (DS-127).
+
+        Converts YYYYMMDD_HHMMSS.log to a human-readable format.
+
+        Args:
+            filename: The log filename.
+
+        Returns:
+            Human-readable display name.
+        """
+        try:
+            # Remove .log extension
+            name = filename.rsplit(".", 1)[0]
+            # Parse datetime
+            dt = datetime.strptime(name, "%Y%m%d_%H%M%S")
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return filename
+
+    def get_log_file_path(self, orchestration: str, filename: str) -> Path | None:
+        """Get the full path to a log file (DS-127).
+
+        Args:
+            orchestration: The orchestration name.
+            filename: The log file name.
+
+        Returns:
+            Path to the log file, or None if not found.
+        """
+        logs_dir = self._sentinel.config.agent_logs_dir
+        log_path = logs_dir / orchestration / filename
+
+        # Security check: ensure path is within logs directory
+        try:
+            log_path.resolve().relative_to(logs_dir.resolve())
+        except ValueError:
+            return None
+
+        if log_path.exists() and log_path.is_file():
+            return log_path
+
+        return None
