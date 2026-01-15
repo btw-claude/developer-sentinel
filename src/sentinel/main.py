@@ -56,6 +56,19 @@ class RunningStepInfo:
     started_at: datetime
 
 
+@dataclass
+class QueuedIssueInfo:
+    """Metadata about an issue waiting in queue for an execution slot (DS-123).
+
+    This class tracks information about issues that matched orchestration triggers
+    but couldn't be executed immediately due to all execution slots being full.
+    """
+
+    issue_key: str
+    orchestration_name: str
+    queued_at: datetime
+
+
 class GitHubIssueWithRepo:
     """Wrapper for GitHubIssue that provides full key with repo context.
 
@@ -250,6 +263,11 @@ class Sentinel:
         # Maps future id() to RunningStepInfo for active executions
         self._running_steps: dict[int, RunningStepInfo] = {}
 
+        # Track queued issues waiting for execution slots (DS-123)
+        # List of QueuedIssueInfo for issues matched but waiting for slot
+        self._issue_queue: list[QueuedIssueInfo] = []
+        self._queue_lock = threading.Lock()
+
         # Track known orchestration files for hot-reload detection
         # Maps file path to its last known mtime
         self._known_orchestration_files: dict[Path, float] = {}
@@ -315,6 +333,44 @@ class Sentinel:
                     if future_id in self._running_steps:
                         running.append(self._running_steps[future_id])
             return running
+
+    def get_issue_queue(self) -> list[QueuedIssueInfo]:
+        """Get information about issues waiting in queue for execution slots (DS-123).
+
+        Returns a list of QueuedIssueInfo objects for issues that matched
+        orchestration triggers but couldn't be executed due to lack of slots.
+        This is used by the dashboard to display the issue queue.
+
+        Returns:
+            List of QueuedIssueInfo for queued issues.
+        """
+        with self._queue_lock:
+            return list(self._issue_queue)
+
+    def _clear_issue_queue(self) -> None:
+        """Clear the issue queue at the start of a new polling cycle (DS-123).
+
+        The queue is cleared each cycle because issues will be re-polled
+        and re-added if they still match and slots are still unavailable.
+        """
+        with self._queue_lock:
+            self._issue_queue.clear()
+
+    def _add_to_issue_queue(self, issue_key: str, orchestration_name: str) -> None:
+        """Add an issue to the queue when no execution slot is available (DS-123).
+
+        Args:
+            issue_key: The key of the issue being queued.
+            orchestration_name: The name of the orchestration the issue matched.
+        """
+        with self._queue_lock:
+            self._issue_queue.append(
+                QueuedIssueInfo(
+                    issue_key=issue_key,
+                    orchestration_name=orchestration_name,
+                    queued_at=datetime.now(),
+                )
+            )
 
     def _init_known_orchestration_files(self) -> None:
         """Initialize the set of known orchestration files with their mtimes.
@@ -771,6 +827,10 @@ class Sentinel:
             The submitted_count is used for eager polling - when > 0, the caller
             should skip the sleep interval and poll immediately for more work.
         """
+        # Clear the issue queue at the start of each cycle (DS-123)
+        # Issues will be re-added if they still match and slots are unavailable
+        self._clear_issue_queue()
+
         # Detect and load any new or modified orchestration files at the start of each cycle
         self._detect_and_load_new_orchestration_files()
 
@@ -1001,11 +1061,6 @@ class Sentinel:
                     logger.info("Shutdown requested, stopping execution")
                     return submitted_count
 
-                # Check if we have available slots
-                if self._get_available_slots() <= 0:
-                    logger.debug("No available slots, will process in next cycle")
-                    return submitted_count
-
                 issue_key = routing_result.issue.key
 
                 # DS-130, DS-131: Skip if this (issue_key, orchestration_name) pair was
@@ -1019,6 +1074,15 @@ class Sentinel:
                         )
                         continue
                     submitted_pairs.add(pair)
+
+                # Check if we have available slots
+                if self._get_available_slots() <= 0:
+                    # DS-123: Add to queue instead of silently skipping
+                    logger.debug(
+                        f"No available slots, queuing '{matched_orch.name}' for {issue_key}"
+                    )
+                    self._add_to_issue_queue(issue_key, matched_orch.name)
+                    continue
 
                 logger.info(f"Submitting '{matched_orch.name}' for {issue_key}")
 

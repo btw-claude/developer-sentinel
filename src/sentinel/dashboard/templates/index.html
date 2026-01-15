@@ -68,6 +68,27 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
+         hx-get="/partials/issue_queue"
+         hx-target="#issue-queue-content"
+         hx-swap="innerHTML"
+         hx-trigger="click[!document.querySelector('#issue-queue-content').classList.contains('expanded')]"
+         onclick="this.parentElement.querySelector('#issue-queue-content').classList.toggle('expanded'); this.querySelector('.collapse-icon').classList.toggle('rotated');">
+        <h2>
+            <span class="collapse-icon">&#9654;</span>
+            Issue Queue
+            <span class="badge">{{ state.issue_queue | length }}</span>
+        </h2>
+    </div>
+    <div id="issue-queue-content" class="collapsible-content"
+         hx-get="/partials/issue_queue"
+         hx-trigger="every 5s[document.querySelector('#issue-queue-content').classList.contains('expanded')]"
+         hx-swap="innerHTML">
+        <!-- Content loaded via HTMX when expanded, auto-refreshes every 5s -->
+    </div>
+</div>
+
+<div class="card collapsible-section">
+    <div class="collapsible-header"
          hx-get="/partials/orchestrations"
          hx-target="#orchestrations-content"
          hx-swap="innerHTML"
