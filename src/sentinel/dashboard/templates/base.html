@@ -217,7 +217,7 @@
          * @param {HTMLElement} headerElement - The .collapsible-header element that was clicked
          */
         function toggleCollapsibleSection(headerElement) {
-            const section = headerElement.parentElement;
+            const section = headerElement.closest('.collapsible-section');
             const content = section.querySelector('.collapsible-content');
             const icon = headerElement.querySelector('.collapse-icon');
 
