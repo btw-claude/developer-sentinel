@@ -261,18 +261,6 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
             context={"log_files": log_files},
         )
 
-    @dashboard_router.get("/api/logs")
-    async def api_logs() -> list[dict]:
-        """Return the list of available log files as JSON (DS-127).
-
-        This endpoint returns log files grouped by orchestration for the
-        log viewer dropdown.
-
-        Returns:
-            List of orchestration log file info.
-        """
-        return state_accessor.get_log_files()
-
     @dashboard_router.get("/api/logs/files")
     async def api_logs_files() -> list[dict]:
         """Return the list of available log files per orchestration (DS-125).
