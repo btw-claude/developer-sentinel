@@ -765,15 +765,24 @@ class Sentinel:
         # Track how many tasks we've submitted this cycle
         submitted_count = 0
 
+        # DS-129: Track submitted (issue_key, orchestration_name) pairs within this
+        # polling cycle to prevent duplicate agent spawns when the same issue matches
+        # multiple overlapping triggers before tag updates propagate.
+        submitted_pairs: set[tuple[str, str]] = set()
+
         # Poll Jira triggers
         if jira_orchestrations:
-            jira_submitted = self._poll_jira_triggers(jira_orchestrations, all_results)
+            jira_submitted = self._poll_jira_triggers(
+                jira_orchestrations, all_results, submitted_pairs
+            )
             submitted_count += jira_submitted
 
         # Poll GitHub triggers (if GitHub client is configured)
         if github_orchestrations:
             if self.github_poller:
-                github_submitted = self._poll_github_triggers(github_orchestrations, all_results)
+                github_submitted = self._poll_github_triggers(
+                    github_orchestrations, all_results, submitted_pairs
+                )
                 submitted_count += github_submitted
             else:
                 logger.warning(
@@ -790,12 +799,15 @@ class Sentinel:
         self,
         orchestrations: list[Orchestration],
         all_results: list[ExecutionResult],
+        submitted_pairs: set[tuple[str, str]],
     ) -> int:
         """Poll Jira for issues matching orchestration triggers.
 
         Args:
             orchestrations: List of Jira-triggered orchestrations.
             all_results: List to append synchronous results to.
+            submitted_pairs: Set of (issue_key, orchestration_name) pairs already
+                submitted in this polling cycle, used to prevent duplicate spawns.
 
         Returns:
             Number of tasks submitted to the thread pool.
@@ -830,7 +842,9 @@ class Sentinel:
             routing_results = self.router.route_matched_only(issues)
 
             # Submit execution tasks
-            submitted = self._submit_execution_tasks(routing_results, all_results)
+            submitted = self._submit_execution_tasks(
+                routing_results, all_results, submitted_pairs
+            )
             submitted_count += submitted
 
         return submitted_count
@@ -839,12 +853,15 @@ class Sentinel:
         self,
         orchestrations: list[Orchestration],
         all_results: list[ExecutionResult],
+        submitted_pairs: set[tuple[str, str]],
     ) -> int:
         """Poll GitHub for issues/PRs matching orchestration triggers.
 
         Args:
             orchestrations: List of GitHub-triggered orchestrations.
             all_results: List to append synchronous results to.
+            submitted_pairs: Set of (issue_key, orchestration_name) pairs already
+                submitted in this polling cycle, used to prevent duplicate spawns.
 
         Returns:
             Number of tasks submitted to the thread pool.
@@ -887,7 +904,9 @@ class Sentinel:
             routing_results = self.router.route_matched_only(issues_with_context)
 
             # Submit execution tasks
-            submitted = self._submit_execution_tasks(routing_results, all_results)
+            submitted = self._submit_execution_tasks(
+                routing_results, all_results, submitted_pairs
+            )
             submitted_count += submitted
 
         return submitted_count
@@ -915,6 +934,7 @@ class Sentinel:
         self,
         routing_results: list[Any],
         all_results: list[ExecutionResult],
+        submitted_pairs: set[tuple[str, str]] | None = None,
     ) -> int:
         """Submit execution tasks for routed issues.
 
@@ -924,6 +944,10 @@ class Sentinel:
         Args:
             routing_results: List of routing results from the router.
             all_results: List to append synchronous results to.
+            submitted_pairs: Optional set of (issue_key, orchestration_name) pairs
+                already submitted in this polling cycle. If provided, duplicates
+                are skipped to prevent spawning multiple agents for the same
+                issue/orchestration combination (DS-129).
 
         Returns:
             Number of tasks submitted to the thread pool.
@@ -942,6 +966,19 @@ class Sentinel:
                     return submitted_count
 
                 issue_key = routing_result.issue.key
+
+                # DS-129: Skip if this (issue_key, orchestration_name) pair was already
+                # submitted in this polling cycle to prevent duplicate agent spawns
+                if submitted_pairs is not None:
+                    pair = (issue_key, matched_orch.name)
+                    if pair in submitted_pairs:
+                        logger.debug(
+                            f"Skipping duplicate submission of '{matched_orch.name}' "
+                            f"for {issue_key} (already submitted this cycle)"
+                        )
+                        continue
+                    submitted_pairs.add(pair)
+
                 logger.info(f"Submitting '{matched_orch.name}' for {issue_key}")
 
                 # Get the version for this orchestration to track executions
