@@ -8,6 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from sentinel.executor import AgentClient, AgentRunResult
@@ -2610,6 +2611,10 @@ class TestQueueEvictionBehavior:
         This test verifies that when an item is evicted due to queue being at
         capacity, the log message includes the key of the evicted item for
         better debugging and observability.
+
+        DS-161: Improved to use structured logging assertions - instead of
+        string matching with 'evicted' in msg.lower(), we now verify the
+        logger name, log level, and use more robust content assertions.
         """
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -2636,19 +2641,33 @@ class TestQueueEvictionBehavior:
         with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
             sentinel._add_to_issue_queue("NEW-ITEM", "orch-new")
 
-        # Verify log message includes evicted item key
-        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
-        eviction_logs = [msg for msg in debug_messages if "evicted" in msg.lower()]
+        # DS-161: Use structured logging verification - check logger name,
+        # level, and presence of expected structured content in the message
+        eviction_records = [
+            r for r in caplog.records
+            if r.levelno == logging.DEBUG
+            and r.name == "sentinel.main"
+            and "capacity" in r.message
+            and "evicted" in r.message
+        ]
 
-        assert len(eviction_logs) == 1, f"Expected 1 eviction log, got: {eviction_logs}"
-        assert "EVICT-ME" in eviction_logs[0], (
-            f"Expected evicted key 'EVICT-ME' in log message: {eviction_logs[0]}"
+        assert len(eviction_records) == 1, (
+            f"Expected 1 eviction log record, got {len(eviction_records)}: "
+            f"{[r.message for r in eviction_records]}"
         )
-        assert "orch-old" in eviction_logs[0], (
-            f"Expected evicted orchestration 'orch-old' in log message: {eviction_logs[0]}"
+
+        eviction_record = eviction_records[0]
+        # Verify the evicted item's key is logged
+        assert "EVICT-ME" in eviction_record.message, (
+            f"Expected evicted key 'EVICT-ME' in log message: {eviction_record.message}"
         )
-        assert "NEW-ITEM" in eviction_logs[0], (
-            f"Expected new key 'NEW-ITEM' in log message: {eviction_logs[0]}"
+        # Verify the evicted item's orchestration is logged
+        assert "orch-old" in eviction_record.message, (
+            f"Expected evicted orchestration 'orch-old' in log message: {eviction_record.message}"
+        )
+        # Verify the new item's key is logged
+        assert "NEW-ITEM" in eviction_record.message, (
+            f"Expected new key 'NEW-ITEM' in log message: {eviction_record.message}"
         )
 
     def test_dashboard_shows_most_recent_queued_issues(self) -> None:
@@ -2693,6 +2712,9 @@ class TestQueueEvictionBehavior:
 
         This test ensures that eviction logging only occurs when an item is
         actually evicted, not on every add operation.
+
+        DS-161: Improved to use structured logging assertions - instead of
+        string matching, we verify using logger name and log level checks.
         """
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -2714,10 +2736,18 @@ class TestQueueEvictionBehavior:
             sentinel._add_to_issue_queue("TEST-2", "orch-2")
             sentinel._add_to_issue_queue("TEST-3", "orch-3")
 
-        # No eviction logs should be present
-        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
-        eviction_logs = [msg for msg in debug_messages if "evicted" in msg.lower()]
-        assert len(eviction_logs) == 0, f"Expected no eviction logs, got: {eviction_logs}"
+        # DS-161: Use structured logging verification - check for eviction logs
+        # by logger name, level, and presence of eviction-related keywords
+        eviction_records = [
+            r for r in caplog.records
+            if r.levelno == logging.DEBUG
+            and r.name == "sentinel.main"
+            and "capacity" in r.message
+            and "evicted" in r.message
+        ]
+        assert len(eviction_records) == 0, (
+            f"Expected no eviction logs, got: {[r.message for r in eviction_records]}"
+        )
 
     def test_multiple_evictions_log_each_evicted_item(
         self, caplog: pytest.LogCaptureFixture
@@ -2726,6 +2756,9 @@ class TestQueueEvictionBehavior:
 
         This test verifies that when multiple items are evicted in sequence,
         each eviction is logged with the correct evicted item's key.
+
+        DS-161: Improved to use structured logging assertions - instead of
+        string matching, we verify using logger name and log level checks.
         """
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -2751,19 +2784,28 @@ class TestQueueEvictionBehavior:
             # Add ITEM-D -> evicts ITEM-B
             sentinel._add_to_issue_queue("ITEM-D", "orch-d")
 
-        # Get eviction logs
-        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
-        eviction_logs = [msg for msg in debug_messages if "evicted" in msg.lower()]
+        # DS-161: Use structured logging verification - check logger name,
+        # level, and presence of expected structured content in the message
+        eviction_records = [
+            r for r in caplog.records
+            if r.levelno == logging.DEBUG
+            and r.name == "sentinel.main"
+            and "capacity" in r.message
+            and "evicted" in r.message
+        ]
 
-        assert len(eviction_logs) == 2, f"Expected 2 eviction logs, got: {eviction_logs}"
+        assert len(eviction_records) == 2, (
+            f"Expected 2 eviction log records, got {len(eviction_records)}: "
+            f"{[r.message for r in eviction_records]}"
+        )
 
         # First eviction should mention ITEM-A
-        assert "ITEM-A" in eviction_logs[0], (
-            f"Expected 'ITEM-A' in first eviction log: {eviction_logs[0]}"
+        assert "ITEM-A" in eviction_records[0].message, (
+            f"Expected 'ITEM-A' in first eviction log: {eviction_records[0].message}"
         )
         # Second eviction should mention ITEM-B
-        assert "ITEM-B" in eviction_logs[1], (
-            f"Expected 'ITEM-B' in second eviction log: {eviction_logs[1]}"
+        assert "ITEM-B" in eviction_records[1].message, (
+            f"Expected 'ITEM-B' in second eviction log: {eviction_records[1].message}"
         )
 
     def test_queue_clear_resets_for_new_cycle(self) -> None:
@@ -2808,9 +2850,11 @@ class TestQueueEvictionBehavior:
 
         This test verifies that the queued_at timestamp for each item is preserved
         after eviction, ensuring proper ordering for dashboard display.
-        """
-        import time
 
+        DS-161: Improved to use mocked datetime.now() instead of time.sleep()
+        for deterministic testing. The original implementation used time.sleep(0.01)
+        which could theoretically be flaky on heavily loaded CI systems.
+        """
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
@@ -2825,12 +2869,24 @@ class TestQueueEvictionBehavior:
             tag_client=tag_client,
         )
 
-        # Add items with small delays
-        sentinel._add_to_issue_queue("TEST-1", "orch-1")
-        time.sleep(0.01)  # Small delay to ensure different timestamps
-        sentinel._add_to_issue_queue("TEST-2", "orch-2")
-        time.sleep(0.01)
-        sentinel._add_to_issue_queue("TEST-3", "orch-3")  # Evicts TEST-1
+        # DS-161: Use deterministic timestamps via mocking instead of time.sleep()
+        # This ensures reliable test behavior regardless of system load
+        mock_times = [
+            datetime(2026, 1, 15, 10, 0, 0),  # TEST-1 timestamp (will be evicted)
+            datetime(2026, 1, 15, 10, 0, 1),  # TEST-2 timestamp
+            datetime(2026, 1, 15, 10, 0, 2),  # TEST-3 timestamp
+        ]
+        time_iterator = iter(mock_times)
+
+        with patch("sentinel.main.datetime") as mock_datetime:
+            mock_datetime.now.side_effect = lambda: next(time_iterator)
+            # Preserve datetime class for type checking
+            mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+
+            # Add items with mocked timestamps
+            sentinel._add_to_issue_queue("TEST-1", "orch-1")  # Gets mock_times[0]
+            sentinel._add_to_issue_queue("TEST-2", "orch-2")  # Gets mock_times[1]
+            sentinel._add_to_issue_queue("TEST-3", "orch-3")  # Gets mock_times[2], evicts TEST-1
 
         # Verify timestamps are in ascending order
         queue_items = list(sentinel._issue_queue)
@@ -2840,3 +2896,6 @@ class TestQueueEvictionBehavior:
         assert queue_items[0].issue_key == "TEST-2"
         assert queue_items[1].issue_key == "TEST-3"
         assert queue_items[0].queued_at < queue_items[1].queued_at
+        # DS-161: Verify exact timestamps for deterministic assertion
+        assert queue_items[0].queued_at == datetime(2026, 1, 15, 10, 0, 1)
+        assert queue_items[1].queued_at == datetime(2026, 1, 15, 10, 0, 2)
