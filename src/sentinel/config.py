@@ -12,6 +12,10 @@ from dotenv import load_dotenv
 # Valid log levels
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
+# Port validation bounds
+MIN_PORT = 1
+MAX_PORT = 65535
+
 
 @dataclass(frozen=True)
 class Config:
@@ -118,17 +122,19 @@ def _parse_port(value: str, name: str, default: int) -> int:
         default: The default value to use if parsing fails.
 
     Returns:
-        The parsed port number (1-65535), or the default if invalid.
+        The parsed port number (MIN_PORT-MAX_PORT), or the default if invalid.
 
     Logs a warning if the value is invalid or out of range.
     """
     try:
         parsed = int(value)
-        if parsed < 1 or parsed > 65535:
+        if parsed < MIN_PORT or parsed > MAX_PORT:
             logging.warning(
-                "Invalid %s: %d is not a valid port (must be 1-65535), using default %d",
+                "Invalid %s: %d is not a valid port (must be %d-%d), using default %d",
                 name,
                 parsed,
+                MIN_PORT,
+                MAX_PORT,
                 default,
             )
             return default
