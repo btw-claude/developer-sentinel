@@ -4,8 +4,21 @@
 # This file demonstrates the complete orchestration configuration schema.
 # Copy and modify this file to create your own orchestrations.
 #
+# Enable/Disable Flags:
+# ---------------------
+# Orchestrations can be disabled at two levels:
+#
+# 1. File-level: Add "enabled: false" at the root to disable ALL orchestrations
+#    in the file. This takes precedence over individual orchestration settings.
+#
+# 2. Orchestration-level: Add "enabled: false" within any orchestration to
+#    disable just that orchestration.
+#
+# Both default to true if not specified.
+#
 # Each orchestration defines:
 #   - name: Unique identifier for the orchestration
+#   - enabled: Whether this orchestration is active (optional, defaults to true)
 #   - trigger: What Jira issues to watch for
 #   - agent: How the Claude agent should process them
 #   - retry: How to handle failures and determine success
@@ -44,6 +57,25 @@
 #
 # This ensures issues are processed exactly once and failure states are visible.
 #
+# Enable/Disable Examples:
+# ------------------------
+# To disable the entire file:
+#
+#   enabled: false
+#   orchestrations:
+#     - name: "will-be-skipped"
+#       ...
+#
+# To disable a specific orchestration:
+#
+#   orchestrations:
+#     - name: "active-orchestration"
+#       enabled: true  # Optional, this is the default
+#       ...
+#     - name: "disabled-orchestration"
+#       enabled: false  # This orchestration will be skipped
+#       ...
+#
 # Outcome-based Tags:
 # -------------------
 # For more nuanced workflows, you can define multiple success outcomes with
@@ -51,12 +83,20 @@
 # "changes-requested", each adding a different label to the Jira issue.
 # See the "code-review-with-outcomes" example below.
 
+# File-level enable flag (optional, defaults to true)
+# Uncomment to disable ALL orchestrations in this file:
+# enabled: false
+
 orchestrations:
   # Code Review Orchestration
   # -------------------------
   # Watches for Jira issues tagged with "needs-code-review" and
   # sends them to a Claude agent for code review.
   - name: "code-review"
+
+    # Enable/disable this orchestration (optional, defaults to true)
+    # Set to false to temporarily disable without removing the configuration
+    enabled: true
 
     # Trigger configuration
     # Defines which Jira issues activate this orchestration
