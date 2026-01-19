@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,103 @@ from sentinel.poller import JiraClient, JiraClientError
 from sentinel.tag_manager import JiraTagClient, JiraTagClientError
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class TimingMetrics:
+    """Timing metrics for performance instrumentation.
+
+    Tracks key timing phases to help identify performance bottlenecks:
+    - Time from query() call to first message received
+    - Time between messages in the async loop
+    - Time spent in file I/O vs API wait
+    - Total elapsed time
+    """
+
+    query_start_time: float = 0.0
+    first_message_time: float | None = None
+    last_message_time: float | None = None
+    total_end_time: float = 0.0
+    message_count: int = 0
+    inter_message_times: list[float] = field(default_factory=list)
+    file_io_time: float = 0.0
+    api_wait_time: float = 0.0
+
+    def start_query(self) -> None:
+        """Mark the start of a query call."""
+        self.query_start_time = time.perf_counter()
+
+    def record_message_received(self) -> None:
+        """Record when a message is received from the API."""
+        now = time.perf_counter()
+        if self.first_message_time is None:
+            self.first_message_time = now
+        else:
+            if self.last_message_time is not None:
+                self.inter_message_times.append(now - self.last_message_time)
+        self.last_message_time = now
+        self.message_count += 1
+
+    def add_file_io_time(self, duration: float) -> None:
+        """Add time spent on file I/O operations."""
+        self.file_io_time += duration
+
+    def add_api_wait_time(self, duration: float) -> None:
+        """Add time spent waiting for API responses."""
+        self.api_wait_time += duration
+
+    def finish(self) -> None:
+        """Mark the end of the query execution."""
+        self.total_end_time = time.perf_counter()
+
+    @property
+    def time_to_first_message(self) -> float | None:
+        """Time from query start to first message received."""
+        if self.first_message_time is None:
+            return None
+        return self.first_message_time - self.query_start_time
+
+    @property
+    def total_elapsed_time(self) -> float:
+        """Total elapsed time from query start to finish."""
+        return self.total_end_time - self.query_start_time
+
+    @property
+    def avg_inter_message_time(self) -> float | None:
+        """Average time between messages."""
+        if not self.inter_message_times:
+            return None
+        return sum(self.inter_message_times) / len(self.inter_message_times)
+
+    def log_metrics(self, operation: str = "Query") -> None:
+        """Log the collected timing metrics."""
+        logger.info(f"[TIMING] {operation} Performance Metrics:")
+        logger.info(f"[TIMING]   Total elapsed time: {self.total_elapsed_time:.3f}s")
+        if self.time_to_first_message is not None:
+            logger.info(f"[TIMING]   Time to first message: {self.time_to_first_message:.3f}s")
+        logger.info(f"[TIMING]   Messages received: {self.message_count}")
+        if self.avg_inter_message_time is not None:
+            logger.info(f"[TIMING]   Avg inter-message time: {self.avg_inter_message_time:.3f}s")
+        if self.file_io_time > 0:
+            logger.info(f"[TIMING]   File I/O time: {self.file_io_time:.3f}s")
+        if self.api_wait_time > 0:
+            logger.info(f"[TIMING]   API wait time: {self.api_wait_time:.3f}s")
+        if self.inter_message_times:
+            min_time = min(self.inter_message_times)
+            max_time = max(self.inter_message_times)
+            logger.info(f"[TIMING]   Inter-message time range: {min_time:.3f}s - {max_time:.3f}s")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert metrics to dictionary for logging/reporting."""
+        return {
+            "total_elapsed_time": self.total_elapsed_time,
+            "time_to_first_message": self.time_to_first_message,
+            "message_count": self.message_count,
+            "avg_inter_message_time": self.avg_inter_message_time,
+            "file_io_time": self.file_io_time,
+            "api_wait_time": self.api_wait_time,
+            "inter_message_times": self.inter_message_times,
+        }
 
 # Module-level shutdown event for interrupting async operations
 _shutdown_event: asyncio.Event | None = None
@@ -70,6 +169,7 @@ async def _run_query(
     prompt: str,
     model: str | None = None,
     cwd: str | None = None,
+    collect_metrics: bool = True,
 ) -> str:
     """Run a query using the Claude Agent SDK.
 
@@ -77,6 +177,7 @@ async def _run_query(
         prompt: The prompt to send.
         model: Optional model identifier.
         cwd: Optional working directory.
+        collect_metrics: Whether to collect and log timing metrics.
 
     Returns:
         The response text.
@@ -84,6 +185,8 @@ async def _run_query(
     Raises:
         ClaudeProcessInterruptedError: If shutdown was requested.
     """
+    metrics = TimingMetrics() if collect_metrics else None
+
     options = ClaudeAgentOptions(
         permission_mode="bypassPermissions",
         model=model,
@@ -94,7 +197,17 @@ async def _run_query(
     shutdown_event = get_shutdown_event()
     response_text = ""
 
+    if metrics:
+        metrics.start_query()
+        logger.debug("[TIMING] Query started")
+
+    api_wait_start = time.perf_counter()
     async for message in query(prompt=prompt, options=options):
+        if metrics:
+            api_wait_end = time.perf_counter()
+            metrics.add_api_wait_time(api_wait_end - api_wait_start)
+            metrics.record_message_received()
+
         if shutdown_event.is_set():
             raise ClaudeProcessInterruptedError(
                 "Claude agent interrupted by shutdown request"
@@ -105,6 +218,13 @@ async def _run_query(
             for block in message.content:
                 if hasattr(block, "text"):
                     response_text = block.text
+
+        if metrics:
+            api_wait_start = time.perf_counter()
+
+    if metrics:
+        metrics.finish()
+        metrics.log_metrics("_run_query")
 
     return response_text
 
@@ -271,8 +391,13 @@ class ClaudeSdkAgentClient(AgentClient):
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / f"{start_time.strftime('%Y%m%d_%H%M%S')}.log"
 
+        # Initialize timing metrics
+        metrics = TimingMetrics()
+
         sep = "=" * 80
+        io_start = time.perf_counter()
         log_path.write_text(f"{sep}\nAGENT EXECUTION LOG\n{sep}\n\nIssue Key:      {issue_key}\nOrchestration:  {orch_name}\nStart Time:     {start_time.isoformat()}\n\n{sep}\nPROMPT\n{sep}\n\n{prompt}\n\n{sep}\nAGENT OUTPUT\n{sep}\n\n", encoding="utf-8")
+        metrics.add_file_io_time(time.perf_counter() - io_start)
         logger.info(f"Streaming log started: {log_path}")
 
         status = "ERROR"
@@ -287,8 +412,16 @@ class ClaudeSdkAgentClient(AgentClient):
 
             async def run_streaming() -> str:
                 response_text = ""
+                metrics.start_query()
+                logger.debug("[TIMING] Streaming query started")
+
                 with open(log_path, "a", encoding="utf-8") as f:
+                    api_wait_start = time.perf_counter()
                     async for message in query(prompt=prompt, options=options):
+                        api_wait_end = time.perf_counter()
+                        metrics.add_api_wait_time(api_wait_end - api_wait_start)
+                        metrics.record_message_received()
+
                         if shutdown_event.is_set():
                             raise ClaudeProcessInterruptedError("Interrupted by shutdown")
                         text = ""
@@ -299,27 +432,54 @@ class ClaudeSdkAgentClient(AgentClient):
                                 if hasattr(block, "text"):
                                     text = response_text = block.text
                         if text:
+                            io_start = time.perf_counter()
                             f.write(text)
                             f.flush()
+                            metrics.add_file_io_time(time.perf_counter() - io_start)
+
+                        api_wait_start = time.perf_counter()
                 return response_text
 
             response = await asyncio.wait_for(run_streaming(), timeout=timeout) if timeout else await run_streaming()
             status = "COMPLETED"
+            metrics.finish()
+            metrics.log_metrics(f"_run_with_log ({issue_key})")
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
         except ClaudeProcessInterruptedError:
             status = "INTERRUPTED"
+            metrics.finish()
+            metrics.log_metrics(f"_run_with_log ({issue_key}) - INTERRUPTED")
             raise
         except asyncio.TimeoutError:
             status = "TIMEOUT"
+            metrics.finish()
+            metrics.log_metrics(f"_run_with_log ({issue_key}) - TIMEOUT")
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s")
         except Exception as e:
+            metrics.finish()
+            metrics.log_metrics(f"_run_with_log ({issue_key}) - ERROR")
+            io_start = time.perf_counter()
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"\n[Error] {e}\n")
+            metrics.add_file_io_time(time.perf_counter() - io_start)
             raise AgentClientError(f"Agent execution failed: {e}") from e
         finally:
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
+            io_start = time.perf_counter()
             with open(log_path, "a", encoding="utf-8") as f:
+                # Write timing metrics to log
+                f.write(f"\n{sep}\nTIMING METRICS\n{sep}\n\n")
+                f.write(f"Total elapsed time:     {metrics.total_elapsed_time:.3f}s\n")
+                if metrics.time_to_first_message is not None:
+                    f.write(f"Time to first message:  {metrics.time_to_first_message:.3f}s\n")
+                f.write(f"Messages received:      {metrics.message_count}\n")
+                if metrics.avg_inter_message_time is not None:
+                    f.write(f"Avg inter-message time: {metrics.avg_inter_message_time:.3f}s\n")
+                f.write(f"File I/O time:          {metrics.file_io_time:.3f}s\n")
+                f.write(f"API wait time:          {metrics.api_wait_time:.3f}s\n")
+                # Write execution summary
                 f.write(f"\n{sep}\nEXECUTION SUMMARY\n{sep}\n\nStatus:         {status}\nEnd Time:       {end_time.isoformat()}\nDuration:       {duration:.2f}s\n\n{sep}\nEND OF LOG\n{sep}\n")
+            metrics.add_file_io_time(time.perf_counter() - io_start)
             logger.info(f"Streaming log completed: {log_path}")
