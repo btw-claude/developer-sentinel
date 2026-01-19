@@ -327,6 +327,12 @@ class Sentinel:
         # DS-138: Shared deduplication manager for preventing duplicate agent spawns
         self._dedup_manager = DeduplicationManager()
 
+        # DS-178: Track per-orchestration active execution counts
+        # Maps orchestration_name to active execution count for that orchestration.
+        # This enables per-orchestration slot limits in future work (DS-179, DS-180).
+        self._per_orch_active_counts: dict[str, int] = {}
+        self._per_orch_counts_lock = threading.Lock()
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
         logger.info("Shutdown requested")
@@ -520,6 +526,59 @@ class Sentinel:
             logger.debug(f"Attempt counts cleanup: no stale entries found (TTL: {ttl}s)")
 
         return cleaned_count
+
+    def _increment_per_orch_count(self, orchestration_name: str) -> int:
+        """Increment the active execution count for an orchestration (DS-178).
+
+        This method atomically increments the count of active executions for a
+        given orchestration and returns the new count. Used to track how many
+        concurrent executions are running for each orchestration, enabling
+        per-orchestration slot limits (DS-179, DS-180).
+
+        Args:
+            orchestration_name: The name of the orchestration being executed.
+
+        Returns:
+            The new active count for this orchestration after incrementing.
+        """
+        with self._per_orch_counts_lock:
+            current_count = self._per_orch_active_counts.get(orchestration_name, 0)
+            new_count = current_count + 1
+            self._per_orch_active_counts[orchestration_name] = new_count
+            logger.debug(
+                f"Incremented per-orch count for '{orchestration_name}': {current_count} -> {new_count}"
+            )
+            return new_count
+
+    def _decrement_per_orch_count(self, orchestration_name: str) -> int:
+        """Decrement the active execution count for an orchestration (DS-178).
+
+        This method atomically decrements the count of active executions for a
+        given orchestration and returns the new count. Called when an execution
+        completes (success or failure) to free up the slot for that orchestration.
+
+        If the count would go below zero (should not happen in normal operation),
+        it is clamped to zero and a warning is logged.
+
+        Args:
+            orchestration_name: The name of the orchestration that completed.
+
+        Returns:
+            The new active count for this orchestration after decrementing.
+        """
+        with self._per_orch_counts_lock:
+            current_count = self._per_orch_active_counts.get(orchestration_name, 0)
+            new_count = max(0, current_count - 1)
+            if current_count == 0:
+                logger.warning(
+                    f"Attempted to decrement per-orch count for '{orchestration_name}' "
+                    f"but count was already 0"
+                )
+            self._per_orch_active_counts[orchestration_name] = new_count
+            logger.debug(
+                f"Decremented per-orch count for '{orchestration_name}': {current_count} -> {new_count}"
+            )
+            return new_count
 
     def _init_known_orchestration_files(self) -> None:
         """Initialize the set of known orchestration files with their mtimes.
