@@ -103,8 +103,13 @@ AGENT OUTPUT (streaming)
         logger.info(f"Streaming log started: {self._log_path}")
         return self
 
+    def _get_timestamp(self) -> str:
+        """Get the current timestamp in [HH:MM:SS.mmm] format."""
+        now = datetime.now()
+        return now.strftime("[%H:%M:%S.") + f"{now.microsecond // 1000:03d}]"
+
     def write_line(self, line: str) -> None:
-        """Write a line of output to the log file.
+        """Write a line of output to the log file with timestamp.
 
         Args:
             line: The line to write (newline will be added if not present).
@@ -115,12 +120,13 @@ AGENT OUTPUT (streaming)
         if not line.endswith("\n"):
             line = line + "\n"
 
-        self._file.write(line)
+        timestamped_line = f"{self._get_timestamp()} {line}"
+        self._file.write(timestamped_line)
         self._file.flush()
         self._response_lines.append(line)
 
     def write(self, text: str) -> None:
-        """Write text to the log file without adding newline.
+        """Write text to the log file with timestamp, without adding newline.
 
         Args:
             text: The text to write.
@@ -128,7 +134,8 @@ AGENT OUTPUT (streaming)
         if self._file is None:
             return
 
-        self._file.write(text)
+        timestamped_text = f"{self._get_timestamp()} {text}"
+        self._file.write(timestamped_text)
         self._file.flush()
         self._response_lines.append(text)
 

@@ -258,7 +258,7 @@ class TestStreamingLogWriter:
             assert "Review this code" in content
 
     def test_write_line_appends_to_file(self, tmp_path: Path) -> None:
-        """Should append lines to log file immediately."""
+        """Should append lines to log file immediately with timestamps."""
         with StreamingLogWriter(
             base_dir=tmp_path,
             orchestration_name="test",
@@ -272,6 +272,10 @@ class TestStreamingLogWriter:
             content = writer.log_path.read_text()
             assert "First output line" in content
             assert "Second output line" in content
+            # Verify timestamps are present in [HH:MM:SS.mmm] format
+            import re
+            timestamp_pattern = r"\[\d{2}:\d{2}:\d{2}\.\d{3}\]"
+            assert re.search(timestamp_pattern, content) is not None
 
     def test_write_line_adds_newline_if_missing(self, tmp_path: Path) -> None:
         """Should add newline if not present in the line."""
@@ -289,8 +293,8 @@ class TestStreamingLogWriter:
             lines = content.split("\n")
             assert any("Line without newline" in line for line in lines)
 
-    def test_write_appends_without_newline(self, tmp_path: Path) -> None:
-        """Should append text without adding newline."""
+    def test_write_appends_with_timestamps(self, tmp_path: Path) -> None:
+        """Should append text with timestamp prefix."""
         with StreamingLogWriter(
             base_dir=tmp_path,
             orchestration_name="test",
@@ -302,7 +306,12 @@ class TestStreamingLogWriter:
 
             assert writer.log_path is not None
             content = writer.log_path.read_text()
-            assert "partial text" in content
+            assert "partial" in content
+            assert " text" in content
+            # Verify timestamps are present in [HH:MM:SS.mmm] format
+            import re
+            timestamp_pattern = r"\[\d{2}:\d{2}:\d{2}\.\d{3}\]"
+            assert re.search(timestamp_pattern, content) is not None
 
     def test_get_response_returns_accumulated_output(self, tmp_path: Path) -> None:
         """Should return all accumulated output from write/write_line calls."""
@@ -429,3 +438,36 @@ class TestStreamingLogWriter:
             prompt="Test",
         )
         assert writer.log_path is None
+
+    def test_timestamp_format_for_tail_monitoring(self, tmp_path: Path) -> None:
+        """Should add [HH:MM:SS.mmm] timestamps for tail -f monitoring."""
+        import re
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            writer.write_line("Test message for monitoring")
+
+            assert writer.log_path is not None
+            content = writer.log_path.read_text()
+
+            # Verify timestamp format matches [HH:MM:SS.mmm]
+            timestamp_pattern = r"\[\d{2}:\d{2}:\d{2}\.\d{3}\] Test message for monitoring"
+            assert re.search(timestamp_pattern, content) is not None
+
+    def test_get_response_excludes_timestamps(self, tmp_path: Path) -> None:
+        """get_response should return original content without timestamp prefixes."""
+        with StreamingLogWriter(
+            base_dir=tmp_path,
+            orchestration_name="test",
+            issue_key="DS-123",
+            prompt="Test",
+        ) as writer:
+            writer.write_line("Line 1")
+            writer.write("partial")
+
+            response = writer.get_response()
+            # Response should contain original text without timestamps
+            assert response == "Line 1\npartial"
