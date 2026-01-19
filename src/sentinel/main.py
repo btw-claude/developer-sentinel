@@ -580,6 +580,50 @@ class Sentinel:
             )
             return new_count
 
+    def _get_available_slots_for_orchestration(self, orchestration: Orchestration) -> int:
+        """Get available slots for a specific orchestration considering both limits (DS-179).
+
+        This method calculates the number of available execution slots for a given
+        orchestration by considering both:
+        1. Global available slots (max_concurrent_executions - total active executions)
+        2. Per-orchestration available slots (max_concurrent - orchestration active count)
+
+        The returned value is the minimum of these two limits, ensuring that neither
+        the global nor the per-orchestration limit is exceeded.
+
+        If the orchestration has no per-orchestration limit (max_concurrent is None),
+        only the global limit is considered.
+
+        Args:
+            orchestration: The orchestration to check available slots for.
+
+        Returns:
+            The number of available execution slots for this orchestration.
+            Returns 0 if no slots are available.
+        """
+        # Get global available slots
+        global_available = self._get_available_slots()
+
+        # If orchestration has no per-orchestration limit, use global only
+        if orchestration.max_concurrent is None:
+            return global_available
+
+        # Calculate per-orchestration available slots
+        with self._per_orch_counts_lock:
+            current_orch_count = self._per_orch_active_counts.get(orchestration.name, 0)
+            per_orch_available = orchestration.max_concurrent - current_orch_count
+
+        # Return the minimum of global and per-orchestration limits
+        available = min(global_available, per_orch_available)
+
+        logger.debug(
+            f"Available slots for '{orchestration.name}': {available} "
+            f"(global: {global_available}, per-orch: {per_orch_available}, "
+            f"max_concurrent: {orchestration.max_concurrent})"
+        )
+
+        return max(0, available)
+
     def _init_known_orchestration_files(self) -> None:
         """Initialize the set of known orchestration files with their mtimes.
 
