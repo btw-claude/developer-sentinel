@@ -1070,6 +1070,8 @@ class Sentinel:
             # Decrement the version's active execution count when done
             if version is not None:
                 version.decrement_executions()
+            # DS-180: Decrement per-orchestration active count on completion
+            self._decrement_per_orch_count(orchestration.name)
 
     def run_once(self) -> tuple[list[ExecutionResult], int]:
         """Run a single polling cycle.
@@ -1329,11 +1331,11 @@ class Sentinel:
                     ):
                         continue
 
-                # Check if we have available slots
-                if self._get_available_slots() <= 0:
+                # DS-180: Check if we have available slots using per-orchestration limits
+                if self._get_available_slots_for_orchestration(matched_orch) <= 0:
                     # DS-123: Add to queue instead of silently skipping
                     logger.debug(
-                        f"No available slots, queuing '{matched_orch.name}' for {issue_key}"
+                        f"No available slots for '{matched_orch.name}', queuing {issue_key}"
                     )
                     self._add_to_issue_queue(issue_key, matched_orch.name)
                     continue
@@ -1344,6 +1346,9 @@ class Sentinel:
                 version = self._get_version_for_orchestration(matched_orch)
                 if version is not None:
                     version.increment_executions()
+
+                # DS-180: Increment per-orchestration active count on submission
+                self._increment_per_orch_count(matched_orch.name)
 
                 try:
                     # Mark issue as being processed (remove trigger tags, add in-progress tag)
@@ -1385,6 +1390,8 @@ class Sentinel:
                     # Decrement version count on submission failure
                     if version is not None:
                         version.decrement_executions()
+                    # DS-180: Decrement per-orchestration count on submission failure
+                    self._decrement_per_orch_count(matched_orch.name)
                     logger.error(
                         f"Failed to submit '{matched_orch.name}' for {issue_key}: {e}"
                     )
