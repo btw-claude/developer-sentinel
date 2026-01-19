@@ -591,3 +591,63 @@ class TestMaxQueueSizeConfig:
 
         assert config.max_queue_size == 100
         assert "not positive" in caplog.text
+
+
+class TestDisableStreamingLogsConfig:
+    """Tests for disable_streaming_logs configuration (DS-170)."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that disable_streaming_logs defaults to False."""
+        monkeypatch.delenv("SENTINEL_DISABLE_STREAMING_LOGS", raising=False)
+
+        config = load_config()
+
+        assert config.disable_streaming_logs is False
+
+    def test_enabled_with_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that disable_streaming_logs can be enabled with 'true'."""
+        monkeypatch.setenv("SENTINEL_DISABLE_STREAMING_LOGS", "true")
+
+        config = load_config()
+
+        assert config.disable_streaming_logs is True
+
+    def test_enabled_with_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that disable_streaming_logs can be enabled with '1'."""
+        monkeypatch.setenv("SENTINEL_DISABLE_STREAMING_LOGS", "1")
+
+        config = load_config()
+
+        assert config.disable_streaming_logs is True
+
+    def test_enabled_with_yes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that disable_streaming_logs can be enabled with 'yes'."""
+        monkeypatch.setenv("SENTINEL_DISABLE_STREAMING_LOGS", "yes")
+
+        config = load_config()
+
+        assert config.disable_streaming_logs is True
+
+    def test_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that disable_streaming_logs parsing is case-insensitive."""
+        monkeypatch.setenv("SENTINEL_DISABLE_STREAMING_LOGS", "TRUE")
+
+        config = load_config()
+
+        assert config.disable_streaming_logs is True
+
+    def test_false_for_other_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that disable_streaming_logs is False for other values."""
+        monkeypatch.setenv("SENTINEL_DISABLE_STREAMING_LOGS", "false")
+
+        config = load_config()
+
+        assert config.disable_streaming_logs is False
+
+    def test_false_for_empty_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that disable_streaming_logs is False for empty value."""
+        monkeypatch.setenv("SENTINEL_DISABLE_STREAMING_LOGS", "")
+
+        config = load_config()
+
+        assert config.disable_streaming_logs is False

@@ -573,3 +573,143 @@ class TestClaudeSdkAgentClientStreaming:
         log_files = list((log_dir / "test").glob("*.log"))
         content = log_files[0].read_text()
         assert "Status:         ERROR" in content
+
+
+class TestDisableStreamingLogs:
+    """Tests for disable_streaming_logs functionality (DS-170)."""
+
+    def test_constructor_accepts_disable_streaming_logs(
+        self, mock_config: Config
+    ) -> None:
+        """Should accept disable_streaming_logs parameter in constructor."""
+        client = ClaudeSdkAgentClient(mock_config, disable_streaming_logs=True)
+        assert client._disable_streaming_logs is True
+
+    def test_constructor_defaults_to_config_value(self) -> None:
+        """Should default to config value when not explicitly provided."""
+        config = Config(disable_streaming_logs=True)
+        client = ClaudeSdkAgentClient(config)
+        assert client._disable_streaming_logs is True
+
+    def test_constructor_defaults_false_when_not_set(
+        self, mock_config: Config
+    ) -> None:
+        """Should default to False when config has default value."""
+        client = ClaudeSdkAgentClient(mock_config)
+        assert client._disable_streaming_logs is False
+
+    def test_explicit_param_overrides_config(self) -> None:
+        """Should use explicit parameter over config value."""
+        config = Config(disable_streaming_logs=True)
+        client = ClaudeSdkAgentClient(config, disable_streaming_logs=False)
+        assert client._disable_streaming_logs is False
+
+    def test_disabled_streaming_uses_simple_path(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should use _run_simple when streaming is disabled."""
+        log_dir = tmp_path / "logs"
+
+        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+            client = ClaudeSdkAgentClient(
+                mock_config,
+                log_base_dir=log_dir,
+                disable_streaming_logs=True,
+            )
+            result = client.run_agent(
+                "Test prompt",
+                [],
+                issue_key="DS-123",
+                orchestration_name="test-orch",
+            )
+
+        assert result.response == "done"
+        # Log file should still be created (non-streaming mode writes after completion)
+        log_files = list((log_dir / "test-orch").glob("*.log"))
+        assert len(log_files) == 1
+
+    def test_disabled_streaming_writes_log_after_completion(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should write complete log file after execution when streaming is disabled."""
+        log_dir = tmp_path / "logs"
+
+        with patch(
+            "sentinel.sdk_clients.query",
+            create_mock_query("Agent completed task successfully"),
+        ):
+            client = ClaudeSdkAgentClient(
+                mock_config,
+                log_base_dir=log_dir,
+                disable_streaming_logs=True,
+            )
+            client.run_agent(
+                "Test prompt",
+                [],
+                issue_key="DS-123",
+                orchestration_name="test-orch",
+            )
+
+        # Check log file content
+        log_files = list((log_dir / "test-orch").glob("*.log"))
+        assert len(log_files) == 1
+        content = log_files[0].read_text()
+        # Should contain non-streaming mode indicator
+        assert "non-streaming mode" in content
+        assert "SENTINEL_DISABLE_STREAMING_LOGS" in content
+        # Should contain prompt and response
+        assert "Test prompt" in content
+        assert "Agent completed task successfully" in content
+        # Should contain status
+        assert "Status:         COMPLETED" in content
+        assert "END OF LOG" in content
+
+    def test_disabled_streaming_no_log_without_params(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should not write log when streaming disabled but params missing."""
+        log_dir = tmp_path / "logs"
+
+        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+            client = ClaudeSdkAgentClient(
+                mock_config,
+                log_base_dir=log_dir,
+                disable_streaming_logs=True,
+            )
+            # Missing issue_key
+            client.run_agent(
+                "Test prompt",
+                [],
+                orchestration_name="test-orch",
+            )
+
+        # No log should be created
+        assert not log_dir.exists()
+
+    def test_enabled_streaming_uses_streaming_path(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should use streaming logs when not disabled."""
+        log_dir = tmp_path / "logs"
+
+        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+            client = ClaudeSdkAgentClient(
+                mock_config,
+                log_base_dir=log_dir,
+                disable_streaming_logs=False,
+            )
+            client.run_agent(
+                "Test prompt",
+                [],
+                issue_key="DS-123",
+                orchestration_name="test-orch",
+            )
+
+        # Log file should be created with streaming format
+        log_files = list((log_dir / "test-orch").glob("*.log"))
+        assert len(log_files) == 1
+        content = log_files[0].read_text()
+        # Should NOT contain non-streaming mode indicator
+        assert "non-streaming mode" not in content
+        # Should have streaming format markers
+        assert "AGENT EXECUTION LOG" in content
