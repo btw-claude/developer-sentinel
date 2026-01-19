@@ -122,7 +122,8 @@ class JiraClient(ABC):
     """Abstract interface for Jira operations.
 
     This allows the poller to work with different implementations:
-    - MCP-based client (production)
+    - SDK-based client (Claude Agent SDK)
+    - REST client (direct HTTP)
     - Mock client (testing)
     """
 

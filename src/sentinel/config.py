@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -46,14 +46,6 @@ class Config:
     jira_base_url: str = ""  # e.g., "https://yoursite.atlassian.net"
     jira_email: str = ""  # User email for authentication
     jira_api_token: str = ""  # API token for authentication
-
-    # MCP Server Configuration
-    mcp_jira_command: str = ""
-    mcp_jira_args: list[str] = field(default_factory=list)
-    mcp_confluence_command: str = ""
-    mcp_confluence_args: list[str] = field(default_factory=list)
-    mcp_github_command: str = ""
-    mcp_github_args: list[str] = field(default_factory=list)
 
     # GitHub REST API configuration
     github_token: str = ""  # Personal access token or app token
@@ -292,12 +284,6 @@ def load_config(env_file: Path | None = None) -> Config:
         jira_base_url=os.getenv("JIRA_BASE_URL", ""),
         jira_email=os.getenv("JIRA_EMAIL", ""),
         jira_api_token=os.getenv("JIRA_API_TOKEN", ""),
-        mcp_jira_command=os.getenv("MCP_JIRA_COMMAND", ""),
-        mcp_jira_args=parse_args("MCP_JIRA_ARGS"),
-        mcp_confluence_command=os.getenv("MCP_CONFLUENCE_COMMAND", ""),
-        mcp_confluence_args=parse_args("MCP_CONFLUENCE_ARGS"),
-        mcp_github_command=os.getenv("MCP_GITHUB_COMMAND", ""),
-        mcp_github_args=parse_args("MCP_GITHUB_ARGS"),
         github_token=os.getenv("GITHUB_TOKEN", ""),
         github_api_url=os.getenv("GITHUB_API_URL", ""),
         cleanup_workdir_on_success=cleanup_workdir_on_success,

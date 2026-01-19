@@ -30,7 +30,7 @@ class JiraToolClient(ABC):
     """Abstract interface for Jira operations.
 
     This allows tools to work with different implementations:
-    - MCP-based client (production)
+    - SDK-based client (Claude Agent SDK)
     - Mock client (testing)
     """
 

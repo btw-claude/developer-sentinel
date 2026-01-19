@@ -22,13 +22,11 @@ from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
 from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubIssueProtocol, GitHubPoller
 from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
 from sentinel.logging import get_logger, setup_logging
-from sentinel.mcp_clients import (
-    ClaudeMcpAgentClient,
+from sentinel.sdk_clients import (
     ClaudeProcessInterruptedError,
-    JiraMcpClient,
-    JiraMcpTagClient,
-)
-from sentinel.mcp_clients import (
+    ClaudeSdkAgentClient,
+    JiraSdkClient,
+    JiraSdkTagClient,
     request_shutdown as request_claude_shutdown,
 )
 from sentinel.orchestration import (
@@ -1553,7 +1551,7 @@ def main(args: list[str] | None = None) -> int:
 
     # Initialize clients
     # Use REST clients for Jira when configured (faster, no Claude invocations)
-    # Fall back to MCP clients if Jira REST is not configured
+    # Fall back to SDK clients if Jira REST is not configured
     jira_client: JiraClient
     tag_client: JiraTagClient
 
@@ -1570,13 +1568,13 @@ def main(args: list[str] | None = None) -> int:
             api_token=config.jira_api_token,
         )
     else:
-        logger.info("Using Jira MCP clients (via Claude Agent SDK)")
+        logger.info("Using Jira SDK clients (via Claude Agent SDK)")
         logger.warning(
             "Jira REST API not configured. Set JIRA_BASE_URL, JIRA_EMAIL, "
             "and JIRA_API_TOKEN for faster polling."
         )
-        jira_client = JiraMcpClient(config)
-        tag_client = JiraMcpTagClient(config)
+        jira_client = JiraSdkClient(config)
+        tag_client = JiraSdkTagClient(config)
 
     # Initialize GitHub clients if configured
     github_client: GitHubClient | None = None
@@ -1603,7 +1601,7 @@ def main(args: list[str] | None = None) -> int:
 
     # Agent client always uses Claude Agent SDK (that's the whole point)
     # Pass log_base_dir to enable streaming logs during agent execution
-    agent_client = ClaudeMcpAgentClient(
+    agent_client = ClaudeSdkAgentClient(
         config=config,
         base_workdir=config.agent_workdir,
         log_base_dir=config.agent_logs_dir,

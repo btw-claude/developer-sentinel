@@ -55,7 +55,7 @@ SENTINEL_AGENT_LOGS_DIR=./logs
 
 #### Jira REST API (Recommended)
 
-Configure these for direct REST API access, which is faster than MCP-based polling:
+Configure these for direct REST API access, which is faster than SDK-based polling:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -63,7 +63,7 @@ Configure these for direct REST API access, which is faster than MCP-based polli
 | `JIRA_EMAIL` | No* | - | Email address for Jira authentication |
 | `JIRA_API_TOKEN` | No* | - | Jira API token ([create one here](https://id.atlassian.com/manage-profile/security/api-tokens)) |
 
-*All three Jira variables must be set together. If not configured, falls back to MCP-based Jira access via Claude Code CLI.
+*All three Jira variables must be set together. If not configured, falls back to SDK-based Jira access via Claude Agent SDK.
 
 **Rate Limiting**: The Jira REST client automatically handles rate limiting with exponential backoff and jitter per [Atlassian's recommendations](https://developer.atlassian.com/cloud/jira/platform/rate-limiting/). When a 429 (Too Many Requests) response is received, the client retries up to 4 times with increasing delays (max 30 seconds).
 

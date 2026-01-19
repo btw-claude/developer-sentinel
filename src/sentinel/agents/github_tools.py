@@ -28,7 +28,7 @@ class GitHubToolClient(ABC):
     """Abstract interface for GitHub operations.
 
     This allows tools to work with different implementations:
-    - MCP-based client (production)
+    - SDK-based client (Claude Agent SDK)
     - Mock client (testing)
 
     All methods operate on a specific repository configured in the client.
