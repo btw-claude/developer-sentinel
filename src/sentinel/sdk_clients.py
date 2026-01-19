@@ -324,10 +324,17 @@ class ClaudeSdkAgentClient(AgentClient):
         config: Config,
         base_workdir: Path | None = None,
         log_base_dir: Path | None = None,
+        disable_streaming_logs: bool | None = None,
     ) -> None:
         self.config = config
         self.base_workdir = base_workdir
         self.log_base_dir = log_base_dir
+        # Use explicit parameter if provided, otherwise fall back to config
+        self._disable_streaming_logs = (
+            disable_streaming_logs
+            if disable_streaming_logs is not None
+            else config.disable_streaming_logs
+        )
 
     def _create_workdir(self, issue_key: str) -> Path:
         if self.base_workdir is None:
@@ -359,12 +366,19 @@ class ClaudeSdkAgentClient(AgentClient):
         if context:
             full_prompt += "\n\nContext:\n" + "".join(f"- {k}: {v}\n" for k, v in context.items())
 
-        use_streaming = self.log_base_dir and issue_key and orchestration_name
+        # Determine whether to use streaming logs
+        # Use streaming if: log_base_dir and issue_key and orchestration_name are all provided
+        # AND streaming is not disabled via config (DS-170)
+        can_stream = bool(self.log_base_dir and issue_key and orchestration_name)
+        use_streaming = can_stream and not self._disable_streaming_logs
 
         if use_streaming:
             response = asyncio.run(self._run_with_log(full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name))  # type: ignore
         else:
             response = asyncio.run(self._run_simple(full_prompt, tools, timeout_seconds, workdir, model))
+            # When streaming is disabled but we have logging params, write full response after completion (DS-170)
+            if can_stream and self._disable_streaming_logs:
+                self._write_simple_log(full_prompt, response, issue_key, orchestration_name)  # type: ignore
         return AgentRunResult(response=response, workdir=workdir)
 
     async def _run_simple(
@@ -381,6 +395,62 @@ class ClaudeSdkAgentClient(AgentClient):
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s")
         except Exception as e:
             raise AgentClientError(f"Agent execution failed: {e}") from e
+
+    def _write_simple_log(
+        self, prompt: str, response: str, issue_key: str, orch_name: str
+    ) -> None:
+        """Write a simple (non-streaming) log file after execution completes (DS-170).
+
+        This is used when streaming logs are disabled via SENTINEL_DISABLE_STREAMING_LOGS.
+        Instead of writing incrementally during execution, this writes the full response
+        after completion.
+
+        Args:
+            prompt: The prompt sent to the agent.
+            response: The complete response from the agent.
+            issue_key: The issue key for the log file.
+            orch_name: The orchestration name for organizing logs.
+        """
+        if self.log_base_dir is None:
+            return
+
+        start_time = datetime.now()
+        log_dir = self.log_base_dir / orch_name
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{start_time.strftime('%Y%m%d_%H%M%S')}.log"
+
+        sep = "=" * 80
+        log_content = (
+            f"{sep}\n"
+            f"AGENT EXECUTION LOG (non-streaming mode)\n"
+            f"{sep}\n\n"
+            f"Issue Key:      {issue_key}\n"
+            f"Orchestration:  {orch_name}\n"
+            f"Time:           {start_time.isoformat()}\n"
+            f"Mode:           Non-streaming (SENTINEL_DISABLE_STREAMING_LOGS=true)\n\n"
+            f"{sep}\n"
+            f"PROMPT\n"
+            f"{sep}\n\n"
+            f"{prompt}\n\n"
+            f"{sep}\n"
+            f"AGENT OUTPUT\n"
+            f"{sep}\n\n"
+            f"{response}\n\n"
+            f"{sep}\n"
+            f"EXECUTION SUMMARY\n"
+            f"{sep}\n\n"
+            f"Status:         COMPLETED\n"
+            f"End Time:       {datetime.now().isoformat()}\n\n"
+            f"{sep}\n"
+            f"END OF LOG\n"
+            f"{sep}\n"
+        )
+
+        try:
+            log_path.write_text(log_content, encoding="utf-8")
+            logger.info(f"Non-streaming log written: {log_path}")
+        except Exception as e:
+            logger.warning(f"Failed to write non-streaming log to {log_path}: {e}")
 
     async def _run_with_log(
         self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None, issue_key: str, orch_name: str

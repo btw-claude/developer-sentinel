@@ -69,6 +69,11 @@ class Config:
     # When the queue is full, oldest items are evicted to make room for new ones
     max_queue_size: int = 100
 
+    # Streaming logs configuration (DS-170)
+    # When True, disables streaming log writes during agent execution
+    # Uses _run_simple() path and writes full response after completion
+    disable_streaming_logs: bool = False
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -266,6 +271,9 @@ def load_config(env_file: Path | None = None) -> Config:
         100,
     )
 
+    # Parse disable streaming logs option (DS-170)
+    disable_streaming_logs = _parse_bool(os.getenv("SENTINEL_DISABLE_STREAMING_LOGS", ""))
+
     # Parse MCP server args (comma-separated)
     def parse_args(env_var: str) -> list[str]:
         value = os.getenv(env_var, "")
@@ -292,4 +300,5 @@ def load_config(env_file: Path | None = None) -> Config:
         dashboard_host=dashboard_host,
         attempt_counts_ttl=attempt_counts_ttl,
         max_queue_size=max_queue_size,
+        disable_streaming_logs=disable_streaming_logs,
     )
