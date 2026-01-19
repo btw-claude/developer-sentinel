@@ -230,6 +230,9 @@ class Orchestration:
         on_failure: Actions to take after failed processing.
         enabled: Whether this orchestration is enabled. Defaults to True for backwards
             compatibility. When False, this orchestration will be skipped during loading.
+        max_concurrent: Maximum number of concurrent slots this orchestration can use.
+            If None, no per-orchestration limit is applied (uses global limit only).
+            Must be a positive integer if provided.
     """
 
     name: str
@@ -241,6 +244,7 @@ class Orchestration:
     on_complete: OnCompleteConfig = field(default_factory=OnCompleteConfig)
     on_failure: OnFailureConfig = field(default_factory=OnFailureConfig)
     enabled: bool = True
+    max_concurrent: int | None = None
 
 
 class OrchestrationError(Exception):
@@ -598,6 +602,15 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
             f"Orchestration '{name}' has invalid 'enabled' value: must be a boolean"
         )
 
+    # Parse max_concurrent field (defaults to None for no per-orchestration limit)
+    max_concurrent = data.get("max_concurrent")
+    if max_concurrent is not None:
+        if not isinstance(max_concurrent, int) or max_concurrent <= 0:
+            raise OrchestrationError(
+                f"Orchestration '{name}' has invalid 'max_concurrent' value: "
+                "must be a positive integer"
+            )
+
     return Orchestration(
         name=name,
         trigger=_parse_trigger(trigger_data),
@@ -608,6 +621,7 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
         on_complete=_parse_on_complete(data.get("on_complete")),
         on_failure=_parse_on_failure(data.get("on_failure")),
         enabled=enabled,
+        max_concurrent=max_concurrent,
     )
 
 
