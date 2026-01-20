@@ -41,6 +41,7 @@ class Config:
     orchestrations_dir: Path = Path("./orchestrations")
     agent_workdir: Path = Path("./workdir")  # Base directory for agent working directories
     agent_logs_dir: Path = Path("./logs")  # Base directory for agent execution logs
+    orchestration_logs_dir: Path | None = None  # Per-orchestration log directory (optional)
 
     # Jira REST API configuration
     jira_base_url: str = ""  # e.g., "https://yoursite.atlassian.net"
@@ -274,6 +275,10 @@ def load_config(env_file: Path | None = None) -> Config:
     # Parse disable streaming logs option (DS-170)
     disable_streaming_logs = _parse_bool(os.getenv("SENTINEL_DISABLE_STREAMING_LOGS", ""))
 
+    # Parse orchestration logs dir (DS-182)
+    orchestration_logs_dir_str = os.getenv("SENTINEL_ORCHESTRATION_LOGS_DIR", "")
+    orchestration_logs_dir = Path(orchestration_logs_dir_str) if orchestration_logs_dir_str else None
+
     # Parse MCP server args (comma-separated)
     def parse_args(env_var: str) -> list[str]:
         value = os.getenv(env_var, "")
@@ -289,6 +294,7 @@ def load_config(env_file: Path | None = None) -> Config:
         orchestrations_dir=Path(os.getenv("SENTINEL_ORCHESTRATIONS_DIR", "./orchestrations")),
         agent_workdir=Path(os.getenv("SENTINEL_AGENT_WORKDIR", "./workdir")),
         agent_logs_dir=Path(os.getenv("SENTINEL_AGENT_LOGS_DIR", "./logs")),
+        orchestration_logs_dir=orchestration_logs_dir,
         jira_base_url=os.getenv("JIRA_BASE_URL", ""),
         jira_email=os.getenv("JIRA_EMAIL", ""),
         jira_api_token=os.getenv("JIRA_API_TOKEN", ""),
