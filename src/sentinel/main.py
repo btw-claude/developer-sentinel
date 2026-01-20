@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import signal
 import sys
 import threading
@@ -21,14 +22,7 @@ from sentinel.deduplication import DeduplicationManager
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
 from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubIssueProtocol, GitHubPoller
 from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
-from sentinel.logging import get_logger, setup_logging
-from sentinel.sdk_clients import (
-    ClaudeProcessInterruptedError,
-    ClaudeSdkAgentClient,
-    JiraSdkClient,
-    JiraSdkTagClient,
-    request_shutdown as request_claude_shutdown,
-)
+from sentinel.logging import OrchestrationLogManager, get_logger, setup_logging
 from sentinel.orchestration import (
     Orchestration,
     OrchestrationVersion,
@@ -38,6 +32,15 @@ from sentinel.orchestration import (
 from sentinel.poller import JiraClient, JiraIssue, JiraPoller
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.router import Router
+from sentinel.sdk_clients import (
+    ClaudeProcessInterruptedError,
+    ClaudeSdkAgentClient,
+    JiraSdkClient,
+    JiraSdkTagClient,
+)
+from sentinel.sdk_clients import (
+    request_shutdown as request_claude_shutdown,
+)
 from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
@@ -333,10 +336,43 @@ class Sentinel:
         self._per_orch_active_counts: dict[str, int] = {}
         self._per_orch_counts_lock = threading.Lock()
 
+        # DS-184: Per-orchestration logging manager for isolated log files
+        # Initialized only if config.orchestration_logs_dir is set
+        self._orch_log_manager: OrchestrationLogManager | None = None
+        if config.orchestration_logs_dir is not None:
+            self._orch_log_manager = OrchestrationLogManager(config.orchestration_logs_dir)
+            logger.info(
+                f"Per-orchestration logging enabled, logs will be written to: "
+                f"{config.orchestration_logs_dir}"
+            )
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
         logger.info("Shutdown requested")
         self._shutdown_requested = True
+
+    def _log_for_orchestration(
+        self, orchestration_name: str, level: int, message: str, **kwargs: Any
+    ) -> None:
+        """Log a message to the orchestration-specific log file if configured (DS-184).
+
+        This helper method writes logs to both the main logger and the per-orchestration
+        log file (if enabled). This enables better log isolation and organization when
+        debugging specific orchestrations.
+
+        Args:
+            orchestration_name: The name of the orchestration to log for.
+            level: The logging level (e.g., logging.INFO, logging.DEBUG).
+            message: The log message to write.
+            **kwargs: Additional context fields to include in the log record.
+        """
+        # Always log to the main logger
+        logger.log(level, message, extra=kwargs)
+
+        # Additionally log to the orchestration-specific log file if enabled
+        if self._orch_log_manager is not None:
+            orch_logger = self._orch_log_manager.get_logger(orchestration_name)
+            orch_logger.log(level, message, extra=kwargs)
 
     def get_hot_reload_metrics(self) -> dict[str, int]:
         """Get observability metrics for hot-reload operations.
@@ -1044,23 +1080,54 @@ class Sentinel:
         issue_key = issue.key
         try:
             if self._shutdown_requested:
-                logger.info(f"Shutdown requested, skipping {issue_key}")
+                # DS-184: Log to orchestration-specific log file
+                self._log_for_orchestration(
+                    orchestration.name,
+                    logging.INFO,
+                    f"Shutdown requested, skipping {issue_key}",
+                )
                 self.tag_manager.apply_failure_tags(issue_key, orchestration)
                 return None
 
+            # DS-184: Log execution start to orchestration-specific log file
+            self._log_for_orchestration(
+                orchestration.name,
+                logging.INFO,
+                f"Starting execution of '{orchestration.name}' for {issue_key}",
+            )
+
             result = self.executor.execute(issue, orchestration)
             self.tag_manager.update_tags(result, orchestration)
+
+            # DS-184: Log execution result to orchestration-specific log file
+            status = "succeeded" if result.succeeded else "failed"
+            self._log_for_orchestration(
+                orchestration.name,
+                logging.INFO if result.succeeded else logging.WARNING,
+                f"Execution of '{orchestration.name}' for {issue_key} {status}",
+            )
+
             return result
 
         except ClaudeProcessInterruptedError:
-            logger.info(f"Claude process interrupted for {issue_key}")
+            # DS-184: Log to orchestration-specific log file
+            self._log_for_orchestration(
+                orchestration.name,
+                logging.INFO,
+                f"Claude process interrupted for {issue_key}",
+            )
             try:
                 self.tag_manager.apply_failure_tags(issue_key, orchestration)
             except Exception as tag_error:
                 logger.error(f"Failed to apply failure tags: {tag_error}")
             return None
         except Exception as e:
-            logger.error(f"Failed to execute '{orchestration.name}' for {issue_key}: {e}")
+            # DS-184: Log to orchestration-specific log file
+            self._log_for_orchestration(
+                orchestration.name,
+                logging.ERROR,
+                f"Failed to execute '{orchestration.name}' for {issue_key}: {e}",
+            )
             try:
                 self.tag_manager.apply_failure_tags(issue_key, orchestration)
             except Exception as tag_error:
@@ -1187,12 +1254,22 @@ class Sentinel:
                 logger.info("Shutdown requested, stopping polling")
                 return submitted_count
 
-            logger.info(f"Polling Jira for orchestration '{orch.name}'")
+            # DS-184: Log polling to orchestration-specific log file
+            self._log_for_orchestration(
+                orch.name,
+                logging.INFO,
+                f"Polling Jira for orchestration '{orch.name}'",
+            )
             # DS-124: Update last Jira poll time for system status display
             self._last_jira_poll = datetime.now()
             try:
                 issues = self.jira_poller.poll(trigger, self.config.max_issues_per_poll)
-                logger.info(f"Found {len(issues)} Jira issues for '{orch.name}'")
+                # DS-184: Log issue count to orchestration-specific log file
+                self._log_for_orchestration(
+                    orch.name,
+                    logging.INFO,
+                    f"Found {len(issues)} Jira issues for '{orch.name}'",
+                )
             except Exception as e:
                 logger.error(f"Failed to poll Jira for '{orch.name}': {e}")
                 continue
@@ -1246,12 +1323,22 @@ class Sentinel:
                 logger.info("Shutdown requested, stopping polling")
                 return submitted_count
 
-            logger.info(f"Polling GitHub for orchestration '{orch.name}'")
+            # DS-184: Log polling to orchestration-specific log file
+            self._log_for_orchestration(
+                orch.name,
+                logging.INFO,
+                f"Polling GitHub for orchestration '{orch.name}'",
+            )
             # DS-124: Update last GitHub poll time for system status display
             self._last_github_poll = datetime.now()
             try:
                 issues = self.github_poller.poll(trigger, self.config.max_issues_per_poll)
-                logger.info(f"Found {len(issues)} GitHub issues/PRs for '{orch.name}'")
+                # DS-184: Log issue count to orchestration-specific log file
+                self._log_for_orchestration(
+                    orch.name,
+                    logging.INFO,
+                    f"Found {len(issues)} GitHub issues/PRs for '{orch.name}'",
+                )
             except Exception as e:
                 logger.error(f"Failed to poll GitHub for '{orch.name}': {e}")
                 continue
@@ -1334,13 +1421,21 @@ class Sentinel:
                 # DS-180: Check if we have available slots using per-orchestration limits
                 if self._get_available_slots_for_orchestration(matched_orch) <= 0:
                     # DS-123: Add to queue instead of silently skipping
-                    logger.debug(
-                        f"No available slots for '{matched_orch.name}', queuing {issue_key}"
+                    # DS-184: Log to orchestration-specific log file
+                    self._log_for_orchestration(
+                        matched_orch.name,
+                        logging.DEBUG,
+                        f"No available slots for '{matched_orch.name}', queuing {issue_key}",
                     )
                     self._add_to_issue_queue(issue_key, matched_orch.name)
                     continue
 
-                logger.info(f"Submitting '{matched_orch.name}' for {issue_key}")
+                # DS-184: Log submission to orchestration-specific log file
+                self._log_for_orchestration(
+                    matched_orch.name,
+                    logging.INFO,
+                    f"Submitting '{matched_orch.name}' for {issue_key}",
+                )
 
                 # Get the version for this orchestration to track executions
                 version = self._get_version_for_orchestration(matched_orch)
@@ -1462,6 +1557,10 @@ class Sentinel:
                 self._thread_pool.shutdown(wait=True, cancel_futures=False)
                 self._thread_pool = None
 
+            # DS-184: Close per-orchestration log manager to ensure all logs are flushed
+            if self._orch_log_manager is not None:
+                self._orch_log_manager.close_all()
+
     def run(self) -> None:
         """Run the main polling loop until shutdown is requested."""
 
@@ -1562,6 +1661,11 @@ class Sentinel:
                 logger.info("Shutting down thread pool...")
                 self._thread_pool.shutdown(wait=True, cancel_futures=False)
                 self._thread_pool = None
+
+            # DS-184: Close per-orchestration log manager to ensure all logs are flushed
+            if self._orch_log_manager is not None:
+                logger.info("Closing per-orchestration log files...")
+                self._orch_log_manager.close_all()
 
         logger.info("Sentinel shutdown complete")
 
