@@ -11,6 +11,8 @@ from typing import Any
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.main import Sentinel, parse_args, setup_logging
 from sentinel.orchestration import Orchestration
@@ -3450,3 +3452,258 @@ class TestQueueEvictionBehavior:
         # DS-161: Verify exact timestamps for deterministic assertion
         assert queue_items[0].queued_at == datetime(2026, 1, 15, 10, 0, 1)
         assert queue_items[1].queued_at == datetime(2026, 1, 15, 10, 0, 2)
+
+
+class TestSentinelOrchestrationLogging:
+    """Tests for Sentinel integration with per-orchestration logging (DS-185)."""
+
+    def test_sentinel_initializes_orch_log_manager_when_configured(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that Sentinel initializes OrchestrationLogManager when orchestration_logs_dir is set."""
+        from dataclasses import replace
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        logs_dir = tmp_path / "orch_logs"
+        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        assert sentinel._orch_log_manager is not None
+        sentinel.run_once_and_wait()  # Clean up
+
+    def test_sentinel_does_not_initialize_orch_log_manager_when_not_configured(
+        self,
+    ) -> None:
+        """Test that Sentinel does not initialize OrchestrationLogManager when orchestration_logs_dir is None."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        # orchestration_logs_dir defaults to None
+        assert config.orchestration_logs_dir is None
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        assert sentinel._orch_log_manager is None
+
+    def test_sentinel_creates_log_files_via_log_for_orchestration(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that _log_for_orchestration creates log files for orchestrations."""
+        from dataclasses import replace
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        logs_dir = tmp_path / "orch_logs"
+        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        orchestrations = [make_orchestration(name="test-orchestration", tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Use _log_for_orchestration to trigger log file creation
+        sentinel._log_for_orchestration("test-orchestration", logging.INFO, "Test log entry")
+
+        # Close the log manager to flush
+        sentinel._orch_log_manager.close_all()
+
+        # Log file should be created for the orchestration
+        log_file = logs_dir / "test-orchestration.log"
+        assert log_file.exists()
+
+    def test_sentinel_logs_contain_orchestration_activity(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that orchestration log files contain relevant execution activity via _log_for_orchestration."""
+        from dataclasses import replace
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        logs_dir = tmp_path / "orch_logs"
+        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        orchestrations = [make_orchestration(name="log-test-orch", tags=["review"])]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Simulate logging calls that would happen during orchestration execution
+        sentinel._log_for_orchestration("log-test-orch", logging.INFO, "Polling Jira for orchestration 'log-test-orch'")
+        sentinel._log_for_orchestration("log-test-orch", logging.INFO, "Submitting 'log-test-orch' for TEST-1")
+
+        # Close the log manager to flush
+        sentinel._orch_log_manager.close_all()
+
+        # Read the log file and verify it contains expected content
+        log_file = logs_dir / "log-test-orch.log"
+        content = log_file.read_text()
+
+        # Should contain polling activity
+        assert "Polling Jira" in content
+        # Should contain issue/execution activity
+        assert "TEST-1" in content or "log-test-orch" in content
+
+    def test_sentinel_separate_orchestrations_have_separate_logs(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that different orchestrations write to separate log files via _log_for_orchestration."""
+        from dataclasses import replace
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        logs_dir = tmp_path / "orch_logs"
+        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        orchestrations = [
+            make_orchestration(name="orch-alpha", tags=["alpha"]),
+            make_orchestration(name="orch-beta", tags=["beta"]),
+        ]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Log to each orchestration's log file
+        sentinel._log_for_orchestration("orch-alpha", logging.INFO, "Message for orch-alpha")
+        sentinel._log_for_orchestration("orch-beta", logging.INFO, "Message for orch-beta")
+
+        # Close the log manager to flush
+        sentinel._orch_log_manager.close_all()
+
+        # Both log files should exist
+        log_alpha = logs_dir / "orch-alpha.log"
+        log_beta = logs_dir / "orch-beta.log"
+        assert log_alpha.exists()
+        assert log_beta.exists()
+
+        # Each log should contain its orchestration name
+        content_alpha = log_alpha.read_text()
+        content_beta = log_beta.read_text()
+
+        assert "orch-alpha" in content_alpha
+        assert "orch-beta" in content_beta
+        # Verify separation - alpha's log shouldn't contain beta's message
+        assert "Message for orch-beta" not in content_alpha
+        assert "Message for orch-alpha" not in content_beta
+
+    def test_sentinel_closes_log_manager_on_run_once_and_wait(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that run_once_and_wait properly closes the log manager."""
+        from dataclasses import replace
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        logs_dir = tmp_path / "orch_logs"
+        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Access the logger to initialize it
+        assert sentinel._orch_log_manager is not None
+        sentinel._orch_log_manager.get_logger("test-orch")
+
+        # After run_once_and_wait, handlers should be cleaned up
+        sentinel.run_once_and_wait()
+
+        # Handlers and loggers should be cleared
+        assert len(sentinel._orch_log_manager._handlers) == 0
+        assert len(sentinel._orch_log_manager._loggers) == 0
+
+    def test_log_for_orchestration_logs_to_main_logger(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that _log_for_orchestration logs to the main logger."""
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        # No orchestration_logs_dir set - only main logger
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        with caplog.at_level(logging.INFO):
+            sentinel._log_for_orchestration("test-orch", logging.INFO, "Test log message")
+
+        assert "Test log message" in caplog.text
+
+    def test_log_for_orchestration_logs_to_both_when_configured(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that _log_for_orchestration logs to both main logger and orchestration file."""
+        from dataclasses import replace
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        logs_dir = tmp_path / "orch_logs"
+        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        with caplog.at_level(logging.INFO):
+            sentinel._log_for_orchestration("dual-log-test", logging.INFO, "Dual log message")
+
+        # Should be in main logger
+        assert "Dual log message" in caplog.text
+
+        # Should also be in orchestration log file
+        sentinel.run_once_and_wait()  # This closes the log manager and flushes
+        log_file = logs_dir / "dual-log-test.log"
+        assert log_file.exists()
+        content = log_file.read_text()
+        assert "Dual log message" in content
