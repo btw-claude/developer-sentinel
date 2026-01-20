@@ -1332,7 +1332,17 @@ orchestrations:
 
 
 class TestMaxConcurrent:
-    """Tests for per-orchestration max_concurrent configuration (DS-181)."""
+    """Tests for max_concurrent field validation in _parse_orchestration().
+
+    These tests verify the max_concurrent field handling as specified in DS-186:
+    - Orchestration loads without max_concurrent field (backwards compatible)
+    - Orchestration loads with valid max_concurrent value
+    - OrchestrationError is raised for zero value
+    - OrchestrationError is raised for negative values
+    - OrchestrationError is raised for non-integer values (string, float)
+
+    Related: DS-181 (per-orchestration concurrency limits)
+    """
 
     def test_orchestration_max_concurrent_defaults_to_none(self) -> None:
         """Orchestration max_concurrent should default to None."""
