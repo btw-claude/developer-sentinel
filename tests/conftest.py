@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +96,104 @@ class MockTagClient(JiraTagClient):
 
     def remove_label(self, issue_key: str, label: str) -> None:
         self.remove_calls.append((issue_key, label))
+
+
+class TrackingAgentClient(AgentClient):
+    """Agent client that tracks concurrent executions for testing.
+
+    DS-188: Extracted from duplicate inner classes in TestPerOrchestrationConcurrencyLimits
+    to reduce code duplication and improve maintainability.
+
+    This class provides flexible tracking of concurrent executions with support for:
+    - Global execution count tracking
+    - Per-orchestration execution count tracking
+    - Configurable execution delay
+    - Optional execution order tracking
+
+    Attributes:
+        execution_count: Current number of concurrent executions (global).
+        max_concurrent_seen: Maximum concurrent executions observed (global).
+        orch_execution_counts: Per-orchestration current execution counts.
+        orch_max_concurrent: Per-orchestration maximum concurrent executions observed.
+        execution_order: List of execution events (if track_order is True).
+        execution_delay: Time to sleep during each execution (simulates work).
+        track_order: Whether to track execution order events.
+        track_per_orch: Whether to track per-orchestration counts.
+        lock: Thread lock for safe concurrent access.
+    """
+
+    def __init__(
+        self,
+        execution_delay: float = 0.05,
+        track_order: bool = False,
+        track_per_orch: bool = False,
+    ) -> None:
+        """Initialize the tracking agent client.
+
+        Args:
+            execution_delay: Time in seconds to sleep during each execution.
+            track_order: If True, track start/end events in execution_order list.
+            track_per_orch: If True, track per-orchestration execution counts.
+        """
+        self.lock = threading.Lock()
+        self.execution_count = 0
+        self.max_concurrent_seen = 0
+        self.orch_execution_counts: dict[str, int] = {}
+        self.orch_max_concurrent: dict[str, int] = {}
+        self.execution_order: list[str] = []
+        self.execution_delay = execution_delay
+        self.track_order = track_order
+        self.track_per_orch = track_per_orch
+
+    def run_agent(
+        self,
+        prompt: str,
+        tools: list[str],
+        context: dict[str, Any] | None = None,
+        timeout_seconds: int | None = None,
+        issue_key: str | None = None,
+        model: str | None = None,
+        orchestration_name: str | None = None,
+    ) -> AgentRunResult:
+        with self.lock:
+            # Track global execution count
+            self.execution_count += 1
+            if self.execution_count > self.max_concurrent_seen:
+                self.max_concurrent_seen = self.execution_count
+
+            # Track per-orchestration count if enabled
+            if self.track_per_orch:
+                orch_name = orchestration_name or "unknown"
+                self.orch_execution_counts[orch_name] = (
+                    self.orch_execution_counts.get(orch_name, 0) + 1
+                )
+                current = self.orch_execution_counts[orch_name]
+                if current > self.orch_max_concurrent.get(orch_name, 0):
+                    self.orch_max_concurrent[orch_name] = current
+
+            # Track execution order if enabled
+            if self.track_order:
+                self.execution_order.append(f"start:{issue_key}")
+
+        # Simulate work
+        time.sleep(self.execution_delay)
+
+        with self.lock:
+            # Track execution order if enabled
+            if self.track_order:
+                self.execution_order.append(f"end:{issue_key}")
+
+            # Decrement global execution count
+            self.execution_count -= 1
+
+            # Decrement per-orchestration count if enabled
+            if self.track_per_orch:
+                orch_name = orchestration_name or "unknown"
+                self.orch_execution_counts[orch_name] = (
+                    self.orch_execution_counts.get(orch_name, 0) - 1
+                )
+
+        return AgentRunResult(response="SUCCESS: Done", workdir=None)
 
 
 def make_config(
@@ -219,3 +319,37 @@ def hot_reload_sentinel(
     )
 
     return sentinel
+
+
+@pytest.fixture
+def tracking_agent_client_factory():
+    """Factory fixture for creating TrackingAgentClient instances.
+
+    DS-188: Provides a factory function to create TrackingAgentClient instances
+    with different configurations, allowing tests to customize tracking behavior.
+
+    Returns:
+        A factory function that accepts optional parameters:
+        - execution_delay: Time in seconds to sleep during each execution (default: 0.05)
+        - track_order: If True, track start/end events in execution_order list
+        - track_per_orch: If True, track per-orchestration execution counts
+
+    Example:
+        def test_concurrent_execution(tracking_agent_client_factory):
+            client = tracking_agent_client_factory(track_order=True)
+            # ... use client in test ...
+            assert client.max_concurrent_seen <= expected_limit
+    """
+
+    def factory(
+        execution_delay: float = 0.05,
+        track_order: bool = False,
+        track_per_orch: bool = False,
+    ) -> TrackingAgentClient:
+        return TrackingAgentClient(
+            execution_delay=execution_delay,
+            track_order=track_order,
+            track_per_orch=track_per_orch,
+        )
+
+    return factory

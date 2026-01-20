@@ -21,10 +21,12 @@ from sentinel.orchestration import Orchestration
 # DS-100: Import shared fixtures and helpers from conftest.py
 # These provide MockJiraClient, MockAgentClient, MockTagClient,
 # make_config, make_orchestration, and set_mtime_in_future
+# DS-188: Added TrackingAgentClient for concurrency tracking tests
 from tests.conftest import (
     MockJiraClient,
     MockAgentClient,
     MockTagClient,
+    TrackingAgentClient,
     make_config,
     make_orchestration,
     set_mtime_in_future,
@@ -820,26 +822,8 @@ class TestSentinelConcurrentExecution:
 
     def test_concurrent_execution_with_thread_pool(self) -> None:
         """Test that run() uses thread pool correctly."""
-        execution_order: list[str] = []
-        lock = threading.Lock()
-
-        class OrderTrackingAgentClient(AgentClient):
-            def run_agent(
-                self,
-                prompt: str,
-                tools: list[str],
-                context: dict[str, Any] | None = None,
-                timeout_seconds: int | None = None,
-                issue_key: str | None = None,
-                model: str | None = None,
-                orchestration_name: str | None = None,
-            ) -> AgentRunResult:
-                with lock:
-                    execution_order.append(f"start:{issue_key}")
-                time.sleep(0.05)
-                with lock:
-                    execution_order.append(f"end:{issue_key}")
-                return AgentRunResult(response="SUCCESS: Done", workdir=None)
+        # DS-188: Use shared TrackingAgentClient with order tracking enabled
+        agent_client = TrackingAgentClient(execution_delay=0.05, track_order=True)
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
@@ -849,7 +833,6 @@ class TestSentinelConcurrentExecution:
             ],
             tag_client=tag_client,
         )
-        agent_client = OrderTrackingAgentClient()
         config = make_config(poll_interval=1, max_concurrent_executions=2)
         orchestrations = [make_orchestration(tags=["review"])]
 
@@ -868,6 +851,7 @@ class TestSentinelConcurrentExecution:
 
         # With concurrent execution, both should start before either ends
         # (since we have 2 slots and 2 issues)
+        execution_order = agent_client.execution_order
         start_indices = [i for i, x in enumerate(execution_order) if x.startswith("start:")]
         end_indices = [i for i, x in enumerate(execution_order) if x.startswith("end:")]
 
@@ -890,33 +874,8 @@ class TestPerOrchestrationConcurrencyLimits:
 
     def test_orchestration_without_max_concurrent_uses_global_limit(self) -> None:
         """Test that orchestrations without max_concurrent use only global limit."""
-        max_concurrent_seen = 0
-        execution_count = 0
-        lock = threading.Lock()
-
-        class TrackingAgentClient(AgentClient):
-            def run_agent(
-                self,
-                prompt: str,
-                tools: list[str],
-                context: dict[str, Any] | None = None,
-                timeout_seconds: int | None = None,
-                issue_key: str | None = None,
-                model: str | None = None,
-                orchestration_name: str | None = None,
-            ) -> AgentRunResult:
-                nonlocal execution_count, max_concurrent_seen
-                with lock:
-                    execution_count += 1
-                    if execution_count > max_concurrent_seen:
-                        max_concurrent_seen = execution_count
-
-                time.sleep(0.05)
-
-                with lock:
-                    execution_count -= 1
-
-                return AgentRunResult(response="SUCCESS: Done", workdir=None)
+        # DS-188: Use shared TrackingAgentClient for concurrent execution tracking
+        agent_client = TrackingAgentClient(execution_delay=0.05)
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
@@ -927,7 +886,6 @@ class TestPerOrchestrationConcurrencyLimits:
             ],
             tag_client=tag_client,
         )
-        agent_client = TrackingAgentClient()
         config = make_config(max_concurrent_executions=2)
         # Orchestration without max_concurrent (uses None by default)
         orchestrations = [make_orchestration(tags=["review"], max_concurrent=None)]
@@ -945,39 +903,12 @@ class TestPerOrchestrationConcurrencyLimits:
         assert len(results) == 3
         assert all(r.succeeded for r in results)
         # Global limit of 2 should allow up to 2 concurrent
-        assert max_concurrent_seen <= 2
+        assert agent_client.max_concurrent_seen <= 2
 
     def test_per_orch_limit_stricter_than_global(self) -> None:
         """Test per-orchestration limit is respected when stricter than global."""
-        execution_count = 0
-        max_concurrent_seen = 0
-        lock = threading.Lock()
-
-        class TrackingAgentClient(AgentClient):
-            """Agent client that tracks concurrent executions per orchestration."""
-
-            def run_agent(
-                self,
-                prompt: str,
-                tools: list[str],
-                context: dict[str, Any] | None = None,
-                timeout_seconds: int | None = None,
-                issue_key: str | None = None,
-                model: str | None = None,
-                orchestration_name: str | None = None,
-            ) -> AgentRunResult:
-                nonlocal execution_count, max_concurrent_seen
-                with lock:
-                    execution_count += 1
-                    if execution_count > max_concurrent_seen:
-                        max_concurrent_seen = execution_count
-
-                time.sleep(0.1)
-
-                with lock:
-                    execution_count -= 1
-
-                return AgentRunResult(response="SUCCESS: Done", workdir=None)
+        # DS-188: Use shared TrackingAgentClient for concurrent execution tracking
+        agent_client = TrackingAgentClient(execution_delay=0.1)
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
@@ -988,7 +919,6 @@ class TestPerOrchestrationConcurrencyLimits:
             ],
             tag_client=tag_client,
         )
-        agent_client = TrackingAgentClient()
         # Global limit of 5, but orchestration limit of 1
         config = make_config(max_concurrent_executions=5)
         orchestrations = [make_orchestration(name="limited-orch", tags=["review"], max_concurrent=1)]
@@ -1005,37 +935,12 @@ class TestPerOrchestrationConcurrencyLimits:
 
         assert len(results) == 3
         # Per-orch limit of 1 should cap concurrent executions
-        assert max_concurrent_seen == 1
+        assert agent_client.max_concurrent_seen == 1
 
     def test_global_limit_stricter_than_per_orch(self) -> None:
         """Test global limit is respected when stricter than per-orchestration."""
-        execution_count = 0
-        max_concurrent_seen = 0
-        lock = threading.Lock()
-
-        class TrackingAgentClient(AgentClient):
-            def run_agent(
-                self,
-                prompt: str,
-                tools: list[str],
-                context: dict[str, Any] | None = None,
-                timeout_seconds: int | None = None,
-                issue_key: str | None = None,
-                model: str | None = None,
-                orchestration_name: str | None = None,
-            ) -> AgentRunResult:
-                nonlocal execution_count, max_concurrent_seen
-                with lock:
-                    execution_count += 1
-                    if execution_count > max_concurrent_seen:
-                        max_concurrent_seen = execution_count
-
-                time.sleep(0.1)
-
-                with lock:
-                    execution_count -= 1
-
-                return AgentRunResult(response="SUCCESS: Done", workdir=None)
+        # DS-188: Use shared TrackingAgentClient for concurrent execution tracking
+        agent_client = TrackingAgentClient(execution_delay=0.1)
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
@@ -1046,7 +951,6 @@ class TestPerOrchestrationConcurrencyLimits:
             ],
             tag_client=tag_client,
         )
-        agent_client = TrackingAgentClient()
         # Global limit of 1, per-orch limit of 10
         config = make_config(max_concurrent_executions=1)
         orchestrations = [make_orchestration(name="high-limit-orch", tags=["review"], max_concurrent=10)]
@@ -1063,39 +967,12 @@ class TestPerOrchestrationConcurrencyLimits:
 
         assert len(results) == 3
         # Global limit of 1 should cap concurrent executions
-        assert max_concurrent_seen == 1
+        assert agent_client.max_concurrent_seen == 1
 
     def test_multiple_orchestrations_with_different_limits(self) -> None:
         """Test multiple orchestrations respect their individual limits."""
-        orch_execution_counts: dict[str, int] = {}
-        orch_max_concurrent: dict[str, int] = {}
-        lock = threading.Lock()
-
-        class TrackingAgentClient(AgentClient):
-            def run_agent(
-                self,
-                prompt: str,
-                tools: list[str],
-                context: dict[str, Any] | None = None,
-                timeout_seconds: int | None = None,
-                issue_key: str | None = None,
-                model: str | None = None,
-                orchestration_name: str | None = None,
-            ) -> AgentRunResult:
-                with lock:
-                    orch_name = orchestration_name or "unknown"
-                    orch_execution_counts[orch_name] = orch_execution_counts.get(orch_name, 0) + 1
-                    current = orch_execution_counts[orch_name]
-                    if current > orch_max_concurrent.get(orch_name, 0):
-                        orch_max_concurrent[orch_name] = current
-
-                time.sleep(0.05)
-
-                with lock:
-                    orch_name = orchestration_name or "unknown"
-                    orch_execution_counts[orch_name] = orch_execution_counts.get(orch_name, 0) - 1
-
-                return AgentRunResult(response="SUCCESS: Done", workdir=None)
+        # DS-188: Use shared TrackingAgentClient with per-orchestration tracking enabled
+        agent_client = TrackingAgentClient(execution_delay=0.05, track_per_orch=True)
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
@@ -1109,7 +986,6 @@ class TestPerOrchestrationConcurrencyLimits:
             ],
             tag_client=tag_client,
         )
-        agent_client = TrackingAgentClient()
         # High global limit, different per-orch limits
         config = make_config(max_concurrent_executions=10)
         orchestrations = [
@@ -1130,26 +1006,14 @@ class TestPerOrchestrationConcurrencyLimits:
         # All issues should be processed
         assert len(results) == 4
         # orch-1 should never exceed its limit of 1
-        assert orch_max_concurrent.get("orch-1", 0) <= 1
+        assert agent_client.orch_max_concurrent.get("orch-1", 0) <= 1
         # orch-2 should never exceed its limit of 2
-        assert orch_max_concurrent.get("orch-2", 0) <= 2
+        assert agent_client.orch_max_concurrent.get("orch-2", 0) <= 2
 
     def test_per_orch_count_increment_and_decrement(self) -> None:
         """Test that per-orchestration counts are properly tracked."""
-
-        class SlowAgentClient(AgentClient):
-            def run_agent(
-                self,
-                prompt: str,
-                tools: list[str],
-                context: dict[str, Any] | None = None,
-                timeout_seconds: int | None = None,
-                issue_key: str | None = None,
-                model: str | None = None,
-                orchestration_name: str | None = None,
-            ) -> AgentRunResult:
-                time.sleep(0.05)
-                return AgentRunResult(response="SUCCESS: Done", workdir=None)
+        # DS-188: Use shared TrackingAgentClient for consistent test behavior
+        agent_client = TrackingAgentClient(execution_delay=0.05)
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
@@ -1158,7 +1022,6 @@ class TestPerOrchestrationConcurrencyLimits:
             ],
             tag_client=tag_client,
         )
-        agent_client = SlowAgentClient()
         config = make_config(max_concurrent_executions=5)
         orchestrations = [make_orchestration(name="test-orch", tags=["review"], max_concurrent=2)]
 
