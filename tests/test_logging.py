@@ -617,3 +617,62 @@ class TestOrchestrationLogManager:
         # Both messages should be in the file (append mode is default for FileHandler)
         assert "First message" in content
         assert "Second message" in content
+
+    def test_context_manager_basic_usage(self, tmp_path: Path) -> None:
+        """Test that OrchestrationLogManager works as a context manager."""
+        with OrchestrationLogManager(tmp_path) as manager:
+            logger = manager.get_logger("context-manager-test")
+            logger.info("Message inside context")
+
+        # After exiting context, handlers should be closed
+        assert len(manager._handlers) == 0
+        assert len(manager._loggers) == 0
+
+        # But the log file should contain the message
+        log_file = tmp_path / "context-manager-test.log"
+        content = log_file.read_text()
+        assert "Message inside context" in content
+
+    def test_context_manager_returns_self(self, tmp_path: Path) -> None:
+        """Test that __enter__ returns the manager instance."""
+        manager = OrchestrationLogManager(tmp_path)
+        with manager as ctx_manager:
+            assert ctx_manager is manager
+        manager.close_all()
+
+    def test_context_manager_closes_on_exception(self, tmp_path: Path) -> None:
+        """Test that handlers are closed even when an exception occurs."""
+        try:
+            with OrchestrationLogManager(tmp_path) as manager:
+                logger = manager.get_logger("exception-test")
+                logger.info("Message before exception")
+                raise ValueError("Test exception")
+        except ValueError:
+            pass
+
+        # Handlers should still be closed after exception
+        assert len(manager._handlers) == 0
+        assert len(manager._loggers) == 0
+
+        # Log file should contain the message written before exception
+        log_file = tmp_path / "exception-test.log"
+        content = log_file.read_text()
+        assert "Message before exception" in content
+
+    def test_context_manager_multiple_loggers(self, tmp_path: Path) -> None:
+        """Test context manager with multiple orchestration loggers."""
+        with OrchestrationLogManager(tmp_path) as manager:
+            logger_a = manager.get_logger("orch-a")
+            logger_b = manager.get_logger("orch-b")
+            logger_a.info("Message A")
+            logger_b.info("Message B")
+
+        # All handlers should be closed
+        assert len(manager._handlers) == 0
+        assert len(manager._loggers) == 0
+
+        # Both log files should exist with correct content
+        file_a = tmp_path / "orch-a.log"
+        file_b = tmp_path / "orch-b.log"
+        assert "Message A" in file_a.read_text()
+        assert "Message B" in file_b.read_text()

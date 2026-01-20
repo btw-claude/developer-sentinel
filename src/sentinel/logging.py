@@ -251,6 +251,12 @@ class OrchestrationLogManager:
         logger.info("Processing started")
         # ... later ...
         log_manager.close_all()
+
+    Context manager usage:
+        with OrchestrationLogManager(Path("./logs")) as manager:
+            logger = manager.get_logger("my-orchestration")
+            logger.info("Processing started")
+            # ... logs automatically closed on exit
     """
 
     def __init__(self, base_dir: Path) -> None:
@@ -321,3 +327,26 @@ class OrchestrationLogManager:
 
         self._handlers.clear()
         self._loggers.clear()
+
+    def __enter__(self) -> "OrchestrationLogManager":
+        """Enter the context manager.
+
+        Returns:
+            Self for use in with statements.
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
+        """Exit the context manager and close all handlers.
+
+        Args:
+            exc_type: Exception type if an exception was raised.
+            exc_val: Exception value if an exception was raised.
+            exc_tb: Exception traceback if an exception was raised.
+        """
+        self.close_all()
