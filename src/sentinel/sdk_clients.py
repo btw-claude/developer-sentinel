@@ -539,7 +539,7 @@ class ClaudeSdkAgentClient(AgentClient):
             duration = (end_time - start_time).total_seconds()
             io_start = time.perf_counter()
             with open(log_path, "a", encoding="utf-8") as f:
-                # Write timing metrics to log
+                # Write timing metrics to log (human-readable format)
                 f.write(f"\n{sep}\nTIMING METRICS\n{sep}\n\n")
                 f.write(f"Total elapsed time:     {metrics.total_elapsed_time:.3f}s\n")
                 if metrics.time_to_first_message is not None:
@@ -549,6 +549,15 @@ class ClaudeSdkAgentClient(AgentClient):
                     f.write(f"Avg inter-message time: {metrics.avg_inter_message_time:.3f}s\n")
                 f.write(f"File I/O time:          {metrics.file_io_time:.3f}s\n")
                 f.write(f"API wait time:          {metrics.api_wait_time:.3f}s\n")
+            # Track the file I/O time for writing timing metrics BEFORE writing final summary
+            # This ensures the JSON metrics export includes complete I/O timing (DS-173)
+            metrics.add_file_io_time(time.perf_counter() - io_start)
+            io_start = time.perf_counter()
+            with open(log_path, "a", encoding="utf-8") as f:
+                # Write JSON metrics export for programmatic access (DS-173)
+                f.write(f"\n{sep}\nMETRICS JSON\n{sep}\n\n")
+                f.write(json.dumps(metrics.to_dict(), indent=2))
+                f.write("\n")
                 # Write execution summary
                 f.write(f"\n{sep}\nEXECUTION SUMMARY\n{sep}\n\nStatus:         {status}\nEnd Time:       {end_time.isoformat()}\nDuration:       {duration:.2f}s\n\n{sep}\nEND OF LOG\n{sep}\n")
             metrics.add_file_io_time(time.perf_counter() - io_start)
