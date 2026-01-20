@@ -121,12 +121,24 @@ def make_orchestration(
     name: str = "test-orch",
     project: str = "TEST",
     tags: list[str] | None = None,
+    max_concurrent: int | None = None,
 ) -> Orchestration:
-    """Helper to create an Orchestration for testing."""
+    """Helper to create an Orchestration for testing.
+
+    Args:
+        name: The orchestration name.
+        project: The Jira project key.
+        tags: List of tags to trigger on.
+        max_concurrent: Optional per-orchestration concurrency limit (DS-181).
+
+    Returns:
+        An Orchestration instance configured for testing.
+    """
     return Orchestration(
         name=name,
         trigger=TriggerConfig(project=project, tags=tags or []),
         agent=AgentConfig(prompt="Test prompt", tools=["jira"]),
+        max_concurrent=max_concurrent,
     )
 
 

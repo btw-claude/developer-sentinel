@@ -1329,3 +1329,255 @@ orchestrations:
 
         orchestrations = load_orchestration_file(file_path)
         assert len(orchestrations) == 0
+
+
+class TestMaxConcurrent:
+    """Tests for per-orchestration max_concurrent configuration (DS-181)."""
+
+    def test_orchestration_max_concurrent_defaults_to_none(self) -> None:
+        """Orchestration max_concurrent should default to None."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        assert orch.max_concurrent is None
+
+    def test_orchestration_max_concurrent_can_be_set(self) -> None:
+        """Orchestration max_concurrent can be set to a positive integer."""
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+            max_concurrent=5,
+        )
+        assert orch.max_concurrent == 5
+
+    def test_load_file_with_max_concurrent(self, tmp_path: Path) -> None:
+        """Should load orchestration with max_concurrent specified."""
+        yaml_content = """
+orchestrations:
+  - name: "limited-orch"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+    max_concurrent: 3
+"""
+        file_path = tmp_path / "max_concurrent.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].max_concurrent == 3
+
+    def test_load_file_without_max_concurrent_uses_none(self, tmp_path: Path) -> None:
+        """Should default to None when max_concurrent is not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "unlimited-orch"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "no_max_concurrent.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].max_concurrent is None
+
+    def test_invalid_max_concurrent_zero_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when max_concurrent is zero."""
+        yaml_content = """
+orchestrations:
+  - name: "zero-limit"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+    max_concurrent: 0
+"""
+        file_path = tmp_path / "zero_max_concurrent.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="invalid 'max_concurrent' value"):
+            load_orchestration_file(file_path)
+
+    def test_invalid_max_concurrent_negative_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when max_concurrent is negative."""
+        yaml_content = """
+orchestrations:
+  - name: "negative-limit"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+    max_concurrent: -1
+"""
+        file_path = tmp_path / "negative_max_concurrent.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="invalid 'max_concurrent' value"):
+            load_orchestration_file(file_path)
+
+    def test_invalid_max_concurrent_string_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when max_concurrent is not an integer."""
+        yaml_content = """
+orchestrations:
+  - name: "string-limit"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+    max_concurrent: "five"
+"""
+        file_path = tmp_path / "string_max_concurrent.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="invalid 'max_concurrent' value"):
+            load_orchestration_file(file_path)
+
+    def test_invalid_max_concurrent_float_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when max_concurrent is a float."""
+        yaml_content = """
+orchestrations:
+  - name: "float-limit"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+    max_concurrent: 2.5
+"""
+        file_path = tmp_path / "float_max_concurrent.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="invalid 'max_concurrent' value"):
+            load_orchestration_file(file_path)
+
+    def test_max_concurrent_with_value_one(self, tmp_path: Path) -> None:
+        """Should allow max_concurrent of 1 (minimum valid value)."""
+        yaml_content = """
+orchestrations:
+  - name: "single-slot"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+    max_concurrent: 1
+"""
+        file_path = tmp_path / "single_slot.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].max_concurrent == 1
+
+    def test_max_concurrent_with_large_value(self, tmp_path: Path) -> None:
+        """Should allow large max_concurrent values."""
+        yaml_content = """
+orchestrations:
+  - name: "many-slots"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+    max_concurrent: 100
+"""
+        file_path = tmp_path / "many_slots.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].max_concurrent == 100
+
+    def test_multiple_orchestrations_with_different_max_concurrent(self, tmp_path: Path) -> None:
+        """Should load multiple orchestrations with different max_concurrent values."""
+        yaml_content = """
+orchestrations:
+  - name: "limited-one"
+    trigger:
+      source: jira
+      tags: ["review"]
+    agent:
+      prompt: "Review"
+    max_concurrent: 2
+  - name: "limited-two"
+    trigger:
+      source: jira
+      tags: ["deploy"]
+    agent:
+      prompt: "Deploy"
+    max_concurrent: 5
+  - name: "unlimited"
+    trigger:
+      source: jira
+      tags: ["triage"]
+    agent:
+      prompt: "Triage"
+"""
+        file_path = tmp_path / "multiple.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 3
+        orch_by_name = {o.name: o for o in orchestrations}
+        assert orch_by_name["limited-one"].max_concurrent == 2
+        assert orch_by_name["limited-two"].max_concurrent == 5
+        assert orch_by_name["unlimited"].max_concurrent is None
+
+    def test_max_concurrent_with_all_other_config_options(self, tmp_path: Path) -> None:
+        """Should load max_concurrent along with all other configuration options."""
+        yaml_content = """
+orchestrations:
+  - name: "full-config"
+    enabled: true
+    max_concurrent: 3
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["review"]
+    agent:
+      prompt: "Review the code"
+      tools:
+        - jira
+        - github
+      timeout_seconds: 300
+      model: "claude-sonnet-4-20250514"
+    retry:
+      max_attempts: 5
+      default_status: failure
+    on_start:
+      add_tag: "processing"
+    on_complete:
+      remove_tag: "review"
+      add_tag: "reviewed"
+    on_failure:
+      add_tag: "review-failed"
+"""
+        file_path = tmp_path / "full_config.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.name == "full-config"
+        assert orch.enabled is True
+        assert orch.max_concurrent == 3
+        assert orch.trigger.project == "TEST"
+        assert orch.agent.timeout_seconds == 300
+        assert orch.retry.max_attempts == 5
+        assert orch.on_start.add_tag == "processing"
+        assert orch.on_complete.remove_tag == "review"
+        assert orch.on_failure.add_tag == "review-failed"
