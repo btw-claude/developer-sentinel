@@ -519,7 +519,7 @@ class ClaudeSdkAgentClient(AgentClient):
             f"{sep}\n\n"
             f"Status:         COMPLETED\n"
             f"End Time:       {end_time.isoformat()}\n"
-            f"Elapsed Time:   {elapsed_time:.2f}s\n\n"
+            f"Duration:       {elapsed_time:.2f}s\n\n"
             f"{sep}\n"
             f"END OF LOG\n"
             f"{sep}\n"
