@@ -128,6 +128,10 @@ AGENT OUTPUT (streaming)
     def write(self, text: str) -> None:
         """Write text to the log file with timestamp, without adding newline.
 
+        Each call to this method adds its own timestamp prefix. This is intentional
+        for monitoring purposes (e.g., tail -f), as each write represents a distinct
+        event in the agent output stream.
+
         Args:
             text: The text to write.
         """
