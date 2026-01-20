@@ -502,6 +502,40 @@ class TestSdkStreamingVsNonStreaming:
             assert "File I/O time" in log_content
             assert "API wait time" in log_content
 
+    def test_streaming_log_contains_json_metrics_export(
+        self, mock_config: Config, temp_dirs: tuple[Path, Path]
+    ) -> None:
+        """Streaming logs should contain JSON metrics export for programmatic access (DS-173)."""
+        workdir, logs = temp_dirs
+
+        with patch("sentinel.sdk_clients.query", create_timed_mock_query(["response"])):
+            client = ClaudeSdkAgentClient(
+                mock_config,
+                base_workdir=workdir,
+                log_base_dir=logs,
+                disable_streaming_logs=False,
+            )
+
+            client.run_agent(
+                prompt="test prompt",
+                tools=[],
+                issue_key="TEST-1",
+                orchestration_name="test_orch",
+            )
+
+            log_files = list(logs.glob("test_orch/*.log"))
+            assert len(log_files) == 1
+
+            log_content = log_files[0].read_text()
+            assert "METRICS JSON" in log_content
+            # Verify the JSON contains the expected keys from to_dict()
+            assert '"total_elapsed_time"' in log_content
+            assert '"time_to_first_message"' in log_content
+            assert '"message_count"' in log_content
+            assert '"file_io_time"' in log_content
+            assert '"api_wait_time"' in log_content
+            assert '"inter_message_times"' in log_content
+
     def test_non_streaming_log_format(
         self, mock_config: Config, temp_dirs: tuple[Path, Path]
     ) -> None:
