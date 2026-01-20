@@ -4,6 +4,37 @@ This module provides reusable test fixtures extracted from test_main.py to reduc
 code duplication, particularly in the hot-reload tests.
 
 DS-97: Refactored test setup code into shared fixtures.
+
+TrackingAgentClient Usage Guidelines (DS-196)
+=============================================
+
+The TrackingAgentClient can be instantiated in two ways:
+
+1. **Direct instantiation** (PREFERRED for most tests):
+   ```python
+   from tests.conftest import TrackingAgentClient
+   agent_client = TrackingAgentClient(execution_delay=0.05, track_order=True)
+   ```
+
+2. **Factory fixture** (for dependency injection scenarios):
+   ```python
+   def test_example(tracking_agent_client_factory):
+       client = tracking_agent_client_factory(track_order=True)
+   ```
+
+**Recommended Approach**: Use direct instantiation for most tests.
+
+Rationale:
+- Direct instantiation is explicit and makes test setup clearer
+- Tests don't need to rely on pytest's fixture dependency injection
+- The class parameters (execution_delay, track_order, track_per_orch) are
+  immediately visible at the call site
+- Existing tests in test_main.py follow this pattern consistently
+
+The factory fixture is available for cases where:
+- You need pytest's automatic cleanup/teardown behavior
+- You're building higher-level fixtures that compose multiple components
+- You prefer dependency injection patterns in your test suite
 """
 
 from __future__ import annotations
