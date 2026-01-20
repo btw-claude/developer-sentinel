@@ -419,6 +419,8 @@ class ClaudeSdkAgentClient(AgentClient):
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / f"{start_time.strftime('%Y%m%d_%H%M%S')}.log"
 
+        end_time = datetime.now()
+        elapsed_time = (end_time - start_time).total_seconds()
         sep = "=" * 80
         log_content = (
             f"{sep}\n"
@@ -440,7 +442,8 @@ class ClaudeSdkAgentClient(AgentClient):
             f"EXECUTION SUMMARY\n"
             f"{sep}\n\n"
             f"Status:         COMPLETED\n"
-            f"End Time:       {datetime.now().isoformat()}\n\n"
+            f"End Time:       {end_time.isoformat()}\n"
+            f"Elapsed Time:   {elapsed_time:.2f}s\n\n"
             f"{sep}\n"
             f"END OF LOG\n"
             f"{sep}\n"
