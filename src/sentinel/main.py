@@ -580,11 +580,10 @@ class Sentinel:
             The new active count for this orchestration after incrementing.
         """
         with self._per_orch_counts_lock:
-            current_count = self._per_orch_active_counts[orchestration_name]
             self._per_orch_active_counts[orchestration_name] += 1
             new_count = self._per_orch_active_counts[orchestration_name]
             logger.debug(
-                f"Incremented per-orch count for '{orchestration_name}': {current_count} -> {new_count}"
+                f"Incremented per-orch count for '{orchestration_name}': {new_count - 1} -> {new_count}"
             )
             return new_count
 
