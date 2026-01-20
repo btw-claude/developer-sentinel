@@ -73,3 +73,6 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "integration: marks tests as integration tests requiring external services (deselect with '-m \"not integration\"')",
+]
