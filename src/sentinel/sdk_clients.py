@@ -104,10 +104,20 @@ class TimingMetrics:
 
         Args:
             data: Sorted list of float values.
-            percentile: Percentile to calculate (0-100).
+            percentile: Percentile to calculate (0-100). Note: This parameter
+                expects values in the range 0-100 (e.g., 50 for median, 95 for
+                95th percentile), NOT 0-1. This follows the common convention
+                used by most statistical libraries and tools.
 
         Returns:
             The percentile value.
+
+        Note:
+            For very large datasets, consider using statistics.quantiles() from
+            the standard library (Python 3.8+) as an alternative. The current
+            implementation is optimized for the expected data sizes in typical
+            agent operations but may benefit from the standard library for
+            significantly larger datasets.
         """
         if not data:
             return 0.0
