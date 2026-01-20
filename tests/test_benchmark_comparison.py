@@ -409,6 +409,15 @@ class TestTimingMetrics:
         first_message_time will be set but query_start_time will be 0.0,
         resulting in potentially invalid time_to_first_message calculations.
         This test documents the current behavior.
+
+        TODO: Consider whether TimingMetrics should raise an error or warning when
+        record_message_received() is called before start_query(). The current behavior
+        silently accepts this out-of-order call sequence, which could lead to misleading
+        metrics. Options to consider:
+        1. Raise ValueError if query_start_time is 0.0 (strict validation)
+        2. Log a warning but continue (lenient with feedback)
+        3. Keep current behavior if there's a valid use case for this pattern
+        See: https://github.com/btw-claude/developer-sentinel/pull/178 for context.
         """
         metrics = TimingMetrics()
         # Call record_message_received without calling start_query first
@@ -481,6 +490,20 @@ class TestTimingMetrics:
 
         The add_file_io_time and add_api_wait_time methods do not validate
         input values. This test documents that negative values are accepted.
+
+        Design Note: Negative time values are intentionally accepted without validation.
+        This design choice supports the following use cases:
+        1. Clock adjustment corrections - When system clock adjustments occur during
+           timing measurements, negative deltas may be legitimate.
+        2. Time correction offsets - Callers may need to subtract previously added
+           time to correct erroneous measurements.
+        3. Simplicity - Adding validation would add complexity for an edge case that
+           is unlikely to occur in normal operation.
+
+        If input validation is desired in the future, consider:
+        - Raising ValueError for negative values (strict)
+        - Clamping to zero with a warning (lenient)
+        - Adding a separate subtract_*_time() method for corrections
         """
         metrics = TimingMetrics()
         metrics.add_file_io_time(-0.1)
@@ -1130,13 +1153,16 @@ class TestCliSubprocessIntegration:
             pytest.skip("claude CLI not available")
 
         # Test that timeout mechanism works correctly
+        # Note: Using 0.01s timeout instead of 0.001s for better CI stability.
+        # The subprocess needs a small amount of time to start, so extremely
+        # short timeouts may flake on slow CI runners.
         with pytest.raises(subprocess.TimeoutExpired):
             subprocess.run(
                 # Use a prompt that would take a long time
                 ["claude", "--print", "Write a 10000 word essay"],
                 capture_output=True,
                 text=True,
-                timeout=0.001,  # Very short timeout to force expiration
+                timeout=0.01,  # Short timeout to force expiration (CI-stable)
             )
 
     @pytest.mark.integration
