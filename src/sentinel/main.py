@@ -37,8 +37,6 @@ from sentinel.sdk_clients import (
     ClaudeSdkAgentClient,
     JiraSdkClient,
     JiraSdkTagClient,
-)
-from sentinel.sdk_clients import (
     request_shutdown as request_claude_shutdown,
 )
 from sentinel.tag_manager import JiraTagClient, TagManager
