@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from datetime import datetime
@@ -3460,9 +3461,7 @@ class TestSentinelOrchestrationLogging:
     def test_sentinel_initializes_orch_log_manager_when_configured(
         self, tmp_path: Path
     ) -> None:
-        """Test that Sentinel initializes OrchestrationLogManager when orchestration_logs_dir is set."""
-        from dataclasses import replace
-
+        """Test Sentinel initializes OrchestrationLogManager when configured."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
@@ -3484,7 +3483,7 @@ class TestSentinelOrchestrationLogging:
     def test_sentinel_does_not_initialize_orch_log_manager_when_not_configured(
         self,
     ) -> None:
-        """Test that Sentinel does not initialize OrchestrationLogManager when orchestration_logs_dir is None."""
+        """Test Sentinel doesn't initialize OrchestrationLogManager when not set."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
@@ -3507,14 +3506,14 @@ class TestSentinelOrchestrationLogging:
         self, tmp_path: Path
     ) -> None:
         """Test that _log_for_orchestration creates log files for orchestrations."""
-        from dataclasses import replace
-
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
         config = replace(make_config(), orchestration_logs_dir=logs_dir)
-        orchestrations = [make_orchestration(name="test-orchestration", tags=["review"])]
+        orchestrations = [
+            make_orchestration(name="test-orchestration", tags=["review"])
+        ]
 
         sentinel = Sentinel(
             config=config,
@@ -3525,7 +3524,9 @@ class TestSentinelOrchestrationLogging:
         )
 
         # Use _log_for_orchestration to trigger log file creation
-        sentinel._log_for_orchestration("test-orchestration", logging.INFO, "Test log entry")
+        sentinel._log_for_orchestration(
+            "test-orchestration", logging.INFO, "Test log entry"
+        )
 
         # Close the log manager to flush
         sentinel._orch_log_manager.close_all()
@@ -3537,9 +3538,7 @@ class TestSentinelOrchestrationLogging:
     def test_sentinel_logs_contain_orchestration_activity(
         self, tmp_path: Path
     ) -> None:
-        """Test that orchestration log files contain relevant execution activity via _log_for_orchestration."""
-        from dataclasses import replace
-
+        """Test orchestration logs contain relevant execution activity."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
@@ -3556,8 +3555,14 @@ class TestSentinelOrchestrationLogging:
         )
 
         # Simulate logging calls that would happen during orchestration execution
-        sentinel._log_for_orchestration("log-test-orch", logging.INFO, "Polling Jira for orchestration 'log-test-orch'")
-        sentinel._log_for_orchestration("log-test-orch", logging.INFO, "Submitting 'log-test-orch' for TEST-1")
+        sentinel._log_for_orchestration(
+            "log-test-orch",
+            logging.INFO,
+            "Polling Jira for orchestration 'log-test-orch'",
+        )
+        sentinel._log_for_orchestration(
+            "log-test-orch", logging.INFO, "Submitting 'log-test-orch' for TEST-1"
+        )
 
         # Close the log manager to flush
         sentinel._orch_log_manager.close_all()
@@ -3574,9 +3579,7 @@ class TestSentinelOrchestrationLogging:
     def test_sentinel_separate_orchestrations_have_separate_logs(
         self, tmp_path: Path
     ) -> None:
-        """Test that different orchestrations write to separate log files via _log_for_orchestration."""
-        from dataclasses import replace
-
+        """Test different orchestrations write to separate log files."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
@@ -3596,8 +3599,12 @@ class TestSentinelOrchestrationLogging:
         )
 
         # Log to each orchestration's log file
-        sentinel._log_for_orchestration("orch-alpha", logging.INFO, "Message for orch-alpha")
-        sentinel._log_for_orchestration("orch-beta", logging.INFO, "Message for orch-beta")
+        sentinel._log_for_orchestration(
+            "orch-alpha", logging.INFO, "Message for orch-alpha"
+        )
+        sentinel._log_for_orchestration(
+            "orch-beta", logging.INFO, "Message for orch-beta"
+        )
 
         # Close the log manager to flush
         sentinel._orch_log_manager.close_all()
@@ -3622,8 +3629,6 @@ class TestSentinelOrchestrationLogging:
         self, tmp_path: Path
     ) -> None:
         """Test that run_once_and_wait properly closes the log manager."""
-        from dataclasses import replace
-
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
@@ -3670,16 +3675,16 @@ class TestSentinelOrchestrationLogging:
         )
 
         with caplog.at_level(logging.INFO):
-            sentinel._log_for_orchestration("test-orch", logging.INFO, "Test log message")
+            sentinel._log_for_orchestration(
+                "test-orch", logging.INFO, "Test log message"
+            )
 
         assert "Test log message" in caplog.text
 
     def test_log_for_orchestration_logs_to_both_when_configured(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that _log_for_orchestration logs to both main logger and orchestration file."""
-        from dataclasses import replace
-
+        """Test _log_for_orchestration logs to both main logger and orch file."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
@@ -3696,7 +3701,9 @@ class TestSentinelOrchestrationLogging:
         )
 
         with caplog.at_level(logging.INFO):
-            sentinel._log_for_orchestration("dual-log-test", logging.INFO, "Dual log message")
+            sentinel._log_for_orchestration(
+                "dual-log-test", logging.INFO, "Dual log message"
+            )
 
         # Should be in main logger
         assert "Dual log message" in caplog.text
