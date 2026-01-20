@@ -1269,6 +1269,93 @@ class TestPerOrchestrationConcurrencyLimits:
         count = sentinel._decrement_per_orch_count("test-orch")
         assert count == 0
 
+    def test_decrement_per_orch_count_cleans_up_at_zero(self) -> None:
+        """Test _decrement_per_orch_count removes entry when count reaches 0 (DS-187)."""
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        config = make_config()
+        orchestrations: list[Orchestration] = []
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Increment to 1
+        sentinel._increment_per_orch_count("test-orch")
+        assert "test-orch" in sentinel._per_orch_active_counts
+
+        # Decrement to 0 - should clean up entry
+        count = sentinel._decrement_per_orch_count("test-orch")
+        assert count == 0
+        # DS-187: Entry should be removed when count reaches 0
+        assert "test-orch" not in sentinel._per_orch_active_counts
+
+    def test_get_per_orch_count_returns_count(self) -> None:
+        """Test get_per_orch_count returns the current count for observability (DS-187)."""
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        config = make_config()
+        orchestrations: list[Orchestration] = []
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Initially should return 0 for unknown orchestration
+        assert sentinel.get_per_orch_count("test-orch") == 0
+
+        # After incrementing, should return the count
+        sentinel._increment_per_orch_count("test-orch")
+        assert sentinel.get_per_orch_count("test-orch") == 1
+
+        sentinel._increment_per_orch_count("test-orch")
+        assert sentinel.get_per_orch_count("test-orch") == 2
+
+        # Check a different orchestration
+        assert sentinel.get_per_orch_count("other-orch") == 0
+
+    def test_get_all_per_orch_counts_returns_all_counts(self) -> None:
+        """Test get_all_per_orch_counts returns all counts for observability (DS-187)."""
+        tag_client = MockTagClient()
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        config = make_config()
+        orchestrations: list[Orchestration] = []
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Initially should return empty dict
+        counts = sentinel.get_all_per_orch_counts()
+        assert counts == {}
+
+        # After incrementing multiple orchestrations
+        sentinel._increment_per_orch_count("orch-a")
+        sentinel._increment_per_orch_count("orch-a")
+        sentinel._increment_per_orch_count("orch-b")
+
+        counts = sentinel.get_all_per_orch_counts()
+        assert counts == {"orch-a": 2, "orch-b": 1}
+
+        # Verify it returns a copy (not the original dict)
+        counts["orch-c"] = 99
+        assert "orch-c" not in sentinel.get_all_per_orch_counts()
+
     def test_get_available_slots_for_orchestration_no_limit(self) -> None:
         """Test _get_available_slots_for_orchestration with no per-orch limit."""
         tag_client = MockTagClient()

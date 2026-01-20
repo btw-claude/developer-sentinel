@@ -8,7 +8,7 @@ import signal
 import sys
 import threading
 import time
-from collections import deque
+from collections import defaultdict, deque
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -333,7 +333,9 @@ class Sentinel:
         # DS-178: Track per-orchestration active execution counts
         # Maps orchestration_name to active execution count for that orchestration.
         # This enables per-orchestration slot limits in future work (DS-179, DS-180).
-        self._per_orch_active_counts: dict[str, int] = {}
+        # DS-187: Use defaultdict(int) to simplify get-or-default pattern in
+        # _increment_per_orch_count and _decrement_per_orch_count methods.
+        self._per_orch_active_counts: defaultdict[str, int] = defaultdict(int)
         self._per_orch_counts_lock = threading.Lock()
 
         # DS-184: Per-orchestration logging manager for isolated log files
@@ -571,6 +573,8 @@ class Sentinel:
         concurrent executions are running for each orchestration, enabling
         per-orchestration slot limits (DS-179, DS-180).
 
+        DS-187: Simplified using defaultdict(int) to eliminate the get-or-default pattern.
+
         Args:
             orchestration_name: The name of the orchestration being executed.
 
@@ -578,9 +582,9 @@ class Sentinel:
             The new active count for this orchestration after incrementing.
         """
         with self._per_orch_counts_lock:
-            current_count = self._per_orch_active_counts.get(orchestration_name, 0)
-            new_count = current_count + 1
-            self._per_orch_active_counts[orchestration_name] = new_count
+            current_count = self._per_orch_active_counts[orchestration_name]
+            self._per_orch_active_counts[orchestration_name] += 1
+            new_count = self._per_orch_active_counts[orchestration_name]
             logger.debug(
                 f"Incremented per-orch count for '{orchestration_name}': {current_count} -> {new_count}"
             )
@@ -596,6 +600,9 @@ class Sentinel:
         If the count would go below zero (should not happen in normal operation),
         it is clamped to zero and a warning is logged.
 
+        DS-187: Simplified using defaultdict(int) and added cleanup of entries
+        when count reaches 0 to prevent unbounded memory growth.
+
         Args:
             orchestration_name: The name of the orchestration that completed.
 
@@ -603,18 +610,56 @@ class Sentinel:
             The new active count for this orchestration after decrementing.
         """
         with self._per_orch_counts_lock:
-            current_count = self._per_orch_active_counts.get(orchestration_name, 0)
-            new_count = max(0, current_count - 1)
+            current_count = self._per_orch_active_counts[orchestration_name]
             if current_count == 0:
                 logger.warning(
                     f"Attempted to decrement per-orch count for '{orchestration_name}' "
                     f"but count was already 0"
                 )
-            self._per_orch_active_counts[orchestration_name] = new_count
+                return 0
+            new_count = current_count - 1
+            if new_count == 0:
+                # DS-187: Clean up entry when count reaches 0 to prevent unbounded
+                # memory growth if many unique orchestration names are used over time
+                del self._per_orch_active_counts[orchestration_name]
+            else:
+                self._per_orch_active_counts[orchestration_name] = new_count
             logger.debug(
                 f"Decremented per-orch count for '{orchestration_name}': {current_count} -> {new_count}"
             )
             return new_count
+
+    def get_per_orch_count(self, orchestration_name: str) -> int:
+        """Get the active execution count for a specific orchestration (DS-187).
+
+        This method provides observability into the per-orchestration execution counts
+        for debugging and monitoring purposes. It returns the current count of active
+        executions for the specified orchestration.
+
+        Args:
+            orchestration_name: The name of the orchestration to query.
+
+        Returns:
+            The current active execution count for the orchestration.
+            Returns 0 if no active executions exist for this orchestration.
+        """
+        # Note: Use .get() to avoid creating entries in defaultdict for read-only checks
+        with self._per_orch_counts_lock:
+            return self._per_orch_active_counts.get(orchestration_name, 0)
+
+    def get_all_per_orch_counts(self) -> dict[str, int]:
+        """Get all per-orchestration active execution counts (DS-187).
+
+        This method provides observability into all per-orchestration execution counts
+        for debugging, monitoring, and dashboard display purposes. It returns a copy
+        of the current counts dictionary to prevent external modification.
+
+        Returns:
+            A dictionary mapping orchestration names to their active execution counts.
+            Only includes orchestrations with non-zero counts.
+        """
+        with self._per_orch_counts_lock:
+            return dict(self._per_orch_active_counts)
 
     def _get_available_slots_for_orchestration(self, orchestration: Orchestration) -> int:
         """Get available slots for a specific orchestration considering both limits (DS-179).
@@ -645,6 +690,7 @@ class Sentinel:
             return global_available
 
         # Calculate per-orchestration available slots
+        # Note: Use .get() to avoid creating entries in defaultdict for read-only checks
         with self._per_orch_counts_lock:
             current_orch_count = self._per_orch_active_counts.get(orchestration.name, 0)
             per_orch_available = orchestration.max_concurrent - current_orch_count
