@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import logging
 from io import StringIO
+from pathlib import Path
 
 import pytest
 
 from sentinel.logging import (
     ContextAdapter,
     JSONFormatter,
+    OrchestrationLogManager,
     SentinelLogger,
     StructuredFormatter,
     get_logger,
@@ -467,3 +469,151 @@ class TestLoggingIntegration:
             assert data["issue_key"] == "JSON-1"
         finally:
             logger.removeHandler(handler)
+
+
+class TestOrchestrationLogManager:
+    """Tests for OrchestrationLogManager."""
+
+    def test_creates_base_directory(self, tmp_path: Path) -> None:
+        """Test that base directory is created when getting a logger."""
+        base_dir = tmp_path / "logs" / "orchestrations"
+        assert not base_dir.exists()
+
+        manager = OrchestrationLogManager(base_dir)
+        manager.get_logger("test-orch")
+
+        assert base_dir.exists()
+        manager.close_all()
+
+    def test_creates_log_file_for_orchestration(self, tmp_path: Path) -> None:
+        """Test that a log file is created for each orchestration."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        manager.get_logger("my-orchestration")
+
+        log_file = tmp_path / "my-orchestration.log"
+        assert log_file.exists()
+        manager.close_all()
+
+    def test_returns_same_logger_for_same_orchestration(self, tmp_path: Path) -> None:
+        """Test that requesting the same orchestration returns the same logger."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        logger1 = manager.get_logger("orch-a")
+        logger2 = manager.get_logger("orch-a")
+
+        assert logger1 is logger2
+        manager.close_all()
+
+    def test_returns_different_loggers_for_different_orchestrations(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that different orchestrations get different loggers."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        logger1 = manager.get_logger("orch-a")
+        logger2 = manager.get_logger("orch-b")
+
+        assert logger1 is not logger2
+        manager.close_all()
+
+    def test_logger_writes_to_correct_file(self, tmp_path: Path) -> None:
+        """Test that logs are written to the correct orchestration log file."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        logger = manager.get_logger("write-test")
+        logger.info("Test message for write-test")
+
+        # Flush and close to ensure write
+        manager.close_all()
+
+        log_file = tmp_path / "write-test.log"
+        content = log_file.read_text()
+        assert "Test message for write-test" in content
+
+    def test_separate_orchestrations_have_separate_logs(self, tmp_path: Path) -> None:
+        """Test that different orchestrations write to separate files."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        logger_a = manager.get_logger("orch-a")
+        logger_b = manager.get_logger("orch-b")
+
+        logger_a.info("Message for A")
+        logger_b.info("Message for B")
+
+        manager.close_all()
+
+        file_a = tmp_path / "orch-a.log"
+        file_b = tmp_path / "orch-b.log"
+
+        content_a = file_a.read_text()
+        content_b = file_b.read_text()
+
+        assert "Message for A" in content_a
+        assert "Message for B" not in content_a
+        assert "Message for B" in content_b
+        assert "Message for A" not in content_b
+
+    def test_close_all_clears_handlers(self, tmp_path: Path) -> None:
+        """Test that close_all clears all handlers and loggers."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        manager.get_logger("orch-1")
+        manager.get_logger("orch-2")
+
+        manager.close_all()
+
+        assert len(manager._handlers) == 0
+        assert len(manager._loggers) == 0
+
+    def test_logger_uses_structured_formatter(self, tmp_path: Path) -> None:
+        """Test that loggers use StructuredFormatter."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        manager.get_logger("format-test")
+
+        handler = manager._handlers["format-test"]
+        assert isinstance(handler.formatter, StructuredFormatter)
+        manager.close_all()
+
+    def test_logger_is_sentinel_logger_type(self, tmp_path: Path) -> None:
+        """Test that returned logger is a SentinelLogger."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        logger = manager.get_logger("type-test")
+
+        assert isinstance(logger, SentinelLogger)
+        manager.close_all()
+
+    def test_logger_supports_with_context(self, tmp_path: Path) -> None:
+        """Test that the logger supports with_context for adding context."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        logger = manager.get_logger("context-test")
+        ctx_logger = logger.with_context(issue_key="TEST-123")
+        ctx_logger.info("Contextual message")
+
+        manager.close_all()
+
+        log_file = tmp_path / "context-test.log"
+        content = log_file.read_text()
+        assert "issue_key=TEST-123" in content
+        assert "Contextual message" in content
+
+    def test_can_reopen_after_close_all(self, tmp_path: Path) -> None:
+        """Test that new loggers can be created after close_all."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        logger1 = manager.get_logger("reopen-test")
+        logger1.info("First message")
+        manager.close_all()
+
+        logger2 = manager.get_logger("reopen-test")
+        logger2.info("Second message")
+        manager.close_all()
+
+        log_file = tmp_path / "reopen-test.log"
+        content = log_file.read_text()
+        # Both messages should be in the file (append mode is default for FileHandler)
+        assert "First message" in content
+        assert "Second message" in content

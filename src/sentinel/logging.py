@@ -7,6 +7,7 @@ import logging
 import sys
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 
@@ -236,3 +237,87 @@ def log_agent_summary(
             "response_summary": response_summary,
         },
     )
+
+
+class OrchestrationLogManager:
+    """Manager for per-orchestration log files.
+
+    Creates and manages separate log files for each orchestration,
+    allowing for better log organization and isolation.
+
+    Usage:
+        log_manager = OrchestrationLogManager(Path("./logs"))
+        logger = log_manager.get_logger("my-orchestration")
+        logger.info("Processing started")
+        # ... later ...
+        log_manager.close_all()
+    """
+
+    def __init__(self, base_dir: Path) -> None:
+        """Initialize the orchestration log manager.
+
+        Args:
+            base_dir: Base directory where orchestration log files will be created.
+                     Each orchestration gets its own log file in this directory.
+        """
+        self._base_dir = base_dir
+        self._loggers: dict[str, SentinelLogger] = {}
+        self._handlers: dict[str, logging.FileHandler] = {}
+
+    def get_logger(self, orchestration_name: str) -> SentinelLogger:
+        """Get or create a logger for the specified orchestration.
+
+        Creates a logger that writes to a dedicated log file for the orchestration.
+        The log file is created at {base_dir}/{orchestration_name}.log.
+
+        Args:
+            orchestration_name: Name of the orchestration (used for logger name
+                               and log file name).
+
+        Returns:
+            SentinelLogger instance configured to write to the orchestration's
+            log file.
+        """
+        if orchestration_name in self._loggers:
+            return self._loggers[orchestration_name]
+
+        # Ensure base directory exists
+        self._base_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create logger with a unique name
+        logger_name = f"sentinel.orchestration.{orchestration_name}"
+        logger: SentinelLogger = logging.getLogger(logger_name)  # type: ignore[assignment]
+
+        # Create file handler for this orchestration
+        log_file = self._base_dir / f"{orchestration_name}.log"
+        handler = logging.FileHandler(log_file, encoding="utf-8")
+        handler.setFormatter(StructuredFormatter())
+        handler.setLevel(logging.DEBUG)
+
+        # Configure logger
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+        # Prevent propagation to root logger to avoid duplicate logs
+        logger.propagate = False
+
+        # Store references for cleanup
+        self._loggers[orchestration_name] = logger
+        self._handlers[orchestration_name] = handler
+
+        return logger
+
+    def close_all(self) -> None:
+        """Close all log file handlers and release resources.
+
+        Should be called when shutting down to ensure all log files are
+        properly flushed and closed.
+        """
+        for orchestration_name, handler in self._handlers.items():
+            handler.flush()
+            handler.close()
+            # Remove handler from logger
+            if orchestration_name in self._loggers:
+                self._loggers[orchestration_name].removeHandler(handler)
+
+        self._handlers.clear()
+        self._loggers.clear()
