@@ -268,6 +268,138 @@ class TestTimingMetrics:
         assert "api_wait_time" in result
         assert "inter_message_times" in result
 
+    # DS-189: Optimize inter_message_times storage for long-running operations
+
+    def test_inter_message_times_below_threshold_returns_raw_array(self) -> None:
+        """Should return raw inter_message_times array when below threshold (DS-189)."""
+        metrics = TimingMetrics()
+        # Add fewer times than the threshold
+        metrics.inter_message_times = [0.1, 0.2, 0.3, 0.15, 0.25]
+
+        result = metrics.to_dict()
+
+        assert "inter_message_times" in result
+        assert "inter_message_times_summary" not in result
+        assert result["inter_message_times"] == [0.1, 0.2, 0.3, 0.15, 0.25]
+
+    def test_inter_message_times_above_threshold_returns_summary(self) -> None:
+        """Should return summary when inter_message_times exceeds threshold (DS-189)."""
+        metrics = TimingMetrics()
+        # Add more times than the threshold (default is 100)
+        metrics.inter_message_times = [0.1 * i for i in range(1, 102)]  # 101 items
+
+        result = metrics.to_dict()
+
+        assert "inter_message_times_summary" in result
+        assert "inter_message_times" not in result
+        summary = result["inter_message_times_summary"]
+        assert summary["count"] == 101
+        assert "min" in summary
+        assert "max" in summary
+        assert "avg" in summary
+        assert "p50" in summary
+        assert "p95" in summary
+        assert "p99" in summary
+
+    def test_inter_message_times_at_threshold_returns_raw_array(self) -> None:
+        """Should return raw array when exactly at threshold (DS-189)."""
+        metrics = TimingMetrics()
+        # Add exactly threshold number of items
+        metrics.inter_message_times = [0.1] * TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD
+
+        result = metrics.to_dict()
+
+        # At threshold, should still return raw array (only exceeding triggers summary)
+        assert "inter_message_times" in result
+        assert "inter_message_times_summary" not in result
+
+    def test_get_inter_message_times_summary_empty_data(self) -> None:
+        """Should return appropriate summary for empty data (DS-189)."""
+        metrics = TimingMetrics()
+
+        summary = metrics.get_inter_message_times_summary()
+
+        assert summary["count"] == 0
+        assert summary["min"] is None
+        assert summary["max"] is None
+        assert summary["avg"] is None
+        assert summary["p50"] is None
+        assert summary["p95"] is None
+        assert summary["p99"] is None
+
+    def test_get_inter_message_times_summary_single_value(self) -> None:
+        """Should handle single value correctly (DS-189)."""
+        metrics = TimingMetrics()
+        metrics.inter_message_times = [0.5]
+
+        summary = metrics.get_inter_message_times_summary()
+
+        assert summary["count"] == 1
+        assert summary["min"] == 0.5
+        assert summary["max"] == 0.5
+        assert summary["avg"] == 0.5
+        assert summary["p50"] == 0.5
+        assert summary["p95"] == 0.5
+        assert summary["p99"] == 0.5
+
+    def test_get_inter_message_times_summary_known_values(self) -> None:
+        """Should calculate correct statistics for known values (DS-189)."""
+        metrics = TimingMetrics()
+        # Create a list with known statistical properties
+        # Values 1-100 (so p50=50.5, min=1, max=100)
+        metrics.inter_message_times = [float(i) for i in range(1, 101)]
+
+        summary = metrics.get_inter_message_times_summary()
+
+        assert summary["count"] == 100
+        assert summary["min"] == 1.0
+        assert summary["max"] == 100.0
+        assert summary["avg"] == 50.5
+        # p50 should be around 50.5 (median of 1-100)
+        assert 50 <= summary["p50"] <= 51
+        # p95 should be around 95
+        assert 94 <= summary["p95"] <= 96
+        # p99 should be around 99
+        assert 98 <= summary["p99"] <= 100
+
+    def test_calculate_percentile_edge_cases(self) -> None:
+        """Should calculate percentiles correctly for edge cases (DS-189)."""
+        metrics = TimingMetrics()
+
+        # Empty data should return 0.0
+        assert metrics._calculate_percentile([], 50) == 0.0
+
+        # Single element
+        assert metrics._calculate_percentile([5.0], 0) == 5.0
+        assert metrics._calculate_percentile([5.0], 50) == 5.0
+        assert metrics._calculate_percentile([5.0], 100) == 5.0
+
+        # Two elements - interpolation test
+        data = [1.0, 3.0]
+        assert metrics._calculate_percentile(data, 0) == 1.0
+        assert metrics._calculate_percentile(data, 50) == 2.0  # interpolated
+        assert metrics._calculate_percentile(data, 100) == 3.0
+
+    def test_threshold_is_configurable(self) -> None:
+        """Should respect the INTER_MESSAGE_TIMES_THRESHOLD value (DS-189)."""
+        # Verify the default threshold value
+        assert TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD == 100
+
+        # Temporarily modify the threshold for this test
+        original_threshold = TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD
+        try:
+            TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD = 5
+            # Create metrics AFTER modifying threshold (dataclass copies class attr to instance)
+            metrics = TimingMetrics()
+            metrics.inter_message_times = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]  # 6 items > 5
+
+            result = metrics.to_dict()
+
+            assert "inter_message_times_summary" in result
+            assert "inter_message_times" not in result
+        finally:
+            TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD = original_threshold
+
     # Error scenario tests (DS-176 improvement #3)
 
     def test_record_message_before_start_query(self) -> None:

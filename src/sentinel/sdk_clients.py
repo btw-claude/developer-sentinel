@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from claude_agent_sdk import ClaudeAgentOptions, query
 
@@ -34,7 +34,15 @@ class TimingMetrics:
     - Time between messages in the async loop
     - Time spent in file I/O vs API wait
     - Total elapsed time
+
+    For long-running operations (DS-189), inter_message_times can be summarized
+    to statistical values (min, max, p50, p95, p99) to reduce log file size
+    while preserving meaningful performance insights.
     """
+
+    # Threshold for summarizing inter_message_times (DS-189)
+    # When message count exceeds this, store statistical summary instead of raw data
+    INTER_MESSAGE_TIMES_THRESHOLD: ClassVar[int] = 100
 
     query_start_time: float = 0.0
     first_message_time: float | None = None
@@ -91,6 +99,56 @@ class TimingMetrics:
             return None
         return sum(self.inter_message_times) / len(self.inter_message_times)
 
+    def _calculate_percentile(self, data: list[float], percentile: float) -> float:
+        """Calculate a percentile value from sorted data.
+
+        Args:
+            data: Sorted list of float values.
+            percentile: Percentile to calculate (0-100).
+
+        Returns:
+            The percentile value.
+        """
+        if not data:
+            return 0.0
+        n = len(data)
+        idx = (percentile / 100.0) * (n - 1)
+        lower = int(idx)
+        upper = min(lower + 1, n - 1)
+        weight = idx - lower
+        return data[lower] * (1 - weight) + data[upper] * weight
+
+    def get_inter_message_times_summary(self) -> dict[str, Any]:
+        """Get statistical summary of inter_message_times (DS-189).
+
+        Returns a dictionary with min, max, p50, p95, p99 statistics
+        for inter_message_times data.
+
+        Returns:
+            Dictionary with statistical summary.
+        """
+        if not self.inter_message_times:
+            return {
+                "count": 0,
+                "min": None,
+                "max": None,
+                "avg": None,
+                "p50": None,
+                "p95": None,
+                "p99": None,
+            }
+
+        sorted_times = sorted(self.inter_message_times)
+        return {
+            "count": len(sorted_times),
+            "min": sorted_times[0],
+            "max": sorted_times[-1],
+            "avg": sum(sorted_times) / len(sorted_times),
+            "p50": self._calculate_percentile(sorted_times, 50),
+            "p95": self._calculate_percentile(sorted_times, 95),
+            "p99": self._calculate_percentile(sorted_times, 99),
+        }
+
     def log_metrics(self, operation: str = "Query") -> None:
         """Log the collected timing metrics."""
         logger.info(f"[TIMING] {operation} Performance Metrics:")
@@ -110,16 +168,34 @@ class TimingMetrics:
             logger.info(f"[TIMING]   Inter-message time range: {min_time:.3f}s - {max_time:.3f}s")
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert metrics to dictionary for logging/reporting."""
-        return {
+        """Convert metrics to dictionary for logging/reporting.
+
+        For long-running operations (DS-189), when the number of inter_message_times
+        exceeds INTER_MESSAGE_TIMES_THRESHOLD, statistical summaries are stored
+        instead of the raw array to reduce log file size while preserving
+        meaningful performance insights.
+
+        The output format changes based on the data size:
+        - Below threshold: "inter_message_times" contains the raw array
+        - Above threshold: "inter_message_times_summary" contains statistical summary
+                          (min, max, avg, p50, p95, p99, count)
+        """
+        result: dict[str, Any] = {
             "total_elapsed_time": self.total_elapsed_time,
             "time_to_first_message": self.time_to_first_message,
             "message_count": self.message_count,
             "avg_inter_message_time": self.avg_inter_message_time,
             "file_io_time": self.file_io_time,
             "api_wait_time": self.api_wait_time,
-            "inter_message_times": self.inter_message_times,
         }
+
+        # DS-189: Optimize storage for long-running operations
+        if len(self.inter_message_times) > self.INTER_MESSAGE_TIMES_THRESHOLD:
+            result["inter_message_times_summary"] = self.get_inter_message_times_summary()
+        else:
+            result["inter_message_times"] = self.inter_message_times
+
+        return result
 
 # Module-level shutdown event for interrupting async operations
 _shutdown_event: asyncio.Event | None = None
