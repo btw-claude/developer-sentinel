@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import types
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -340,7 +341,7 @@ class OrchestrationLogManager:
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: Any,
+        exc_tb: types.TracebackType | None,
     ) -> None:
         """Exit the context manager and close all handlers.
 
