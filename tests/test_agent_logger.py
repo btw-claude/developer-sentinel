@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -273,7 +274,6 @@ class TestStreamingLogWriter:
             assert "First output line" in content
             assert "Second output line" in content
             # Verify timestamps are present in [HH:MM:SS.mmm] format
-            import re
             timestamp_pattern = r"\[\d{2}:\d{2}:\d{2}\.\d{3}\]"
             assert re.search(timestamp_pattern, content) is not None
 
@@ -309,7 +309,6 @@ class TestStreamingLogWriter:
             assert "partial" in content
             assert " text" in content
             # Verify timestamps are present in [HH:MM:SS.mmm] format
-            import re
             timestamp_pattern = r"\[\d{2}:\d{2}:\d{2}\.\d{3}\]"
             assert re.search(timestamp_pattern, content) is not None
 
@@ -441,7 +440,6 @@ class TestStreamingLogWriter:
 
     def test_timestamp_format_for_tail_monitoring(self, tmp_path: Path) -> None:
         """Should add [HH:MM:SS.mmm] timestamps for tail -f monitoring."""
-        import re
         with StreamingLogWriter(
             base_dir=tmp_path,
             orchestration_name="test",
