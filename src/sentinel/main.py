@@ -44,6 +44,12 @@ from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
 
+# DS-210: Module-level constant for GitHub issue/PR URL parsing
+# This pattern extracts the owner/repo from GitHub URLs like:
+# - https://github.com/owner/repo/issues/123
+# - https://github.com/owner/repo/pull/456
+GITHUB_ISSUE_PR_URL_PATTERN = r"https?://[^/]+/([^/]+/[^/]+)/(?:issues|pull)/\d+"
+
 
 @dataclass
 class AttemptCountEntry:
@@ -185,9 +191,7 @@ def extract_repo_from_url(url: str) -> str | None:
     if not url:
         return None
 
-    # Pattern matches: https://github.com/owner/repo/issues/123 or /pull/123
-    pattern = r"https?://[^/]+/([^/]+/[^/]+)/(?:issues|pull)/\d+"
-    match = re.match(pattern, url)
+    match = re.match(GITHUB_ISSUE_PR_URL_PATTERN, url)
     if match:
         return match.group(1)
     return None
