@@ -998,6 +998,91 @@ class TestGitHubIssueRepoUrl:
         assert issue.repo_url == "https://github.com/my-org/my-repo/pull/123"
 
 
+class TestGitHubPollerClearProjectIdCache:
+    """Tests for GitHubPoller.clear_project_id_cache (DS-212)."""
+
+    def test_cache_is_cleared_after_calling_method(self) -> None:
+        """Test that cache is cleared after calling clear_project_id_cache."""
+        client = MockGitHubClient(project_items=[])
+        poller = GitHubPoller(client)
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+        )
+
+        # First poll to populate the cache
+        poller.poll(trigger)
+        assert len(client.get_project_calls) == 1
+
+        # Second poll should use cached project ID
+        poller.poll(trigger)
+        assert len(client.get_project_calls) == 1  # Still 1, using cache
+
+        # Clear the cache
+        poller.clear_project_id_cache()
+
+        # Third poll should fetch project ID again since cache was cleared
+        poller.poll(trigger)
+        assert len(client.get_project_calls) == 2  # Now 2, cache was cleared
+
+    def test_method_can_be_called_multiple_times_without_error(self) -> None:
+        """Test that clear_project_id_cache can be called multiple times without error."""
+        client = MockGitHubClient(project_items=[])
+        poller = GitHubPoller(client)
+
+        # Should not raise any errors when called multiple times
+        poller.clear_project_id_cache()
+        poller.clear_project_id_cache()
+        poller.clear_project_id_cache()
+
+        # Also test calling on empty cache after populating and clearing
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+        )
+        poller.poll(trigger)  # Populate cache
+        poller.clear_project_id_cache()
+        poller.clear_project_id_cache()  # Clear already empty cache
+
+    def test_cache_is_properly_repopulated_after_clearing(self) -> None:
+        """Test that cache is properly repopulated after clearing."""
+        client = MockGitHubClient(project_items=[])
+        poller = GitHubPoller(client)
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+        )
+
+        # First poll to populate the cache
+        poller.poll(trigger)
+        assert len(client.get_project_calls) == 1
+
+        # Verify cache is being used
+        poller.poll(trigger)
+        assert len(client.get_project_calls) == 1  # Still 1
+
+        # Clear cache
+        poller.clear_project_id_cache()
+
+        # Poll again to repopulate cache
+        poller.poll(trigger)
+        assert len(client.get_project_calls) == 2  # Fetched again
+
+        # Verify repopulated cache is being used
+        poller.poll(trigger)
+        assert len(client.get_project_calls) == 2  # Still 2, using repopulated cache
+
+        # Poll once more to confirm cache is stable
+        poller.poll(trigger)
+        assert len(client.get_project_calls) == 2  # Still 2
+
+
 class TestGitHubPollerBuildQueryDeprecation:
     """Tests for build_query deprecation."""
 
