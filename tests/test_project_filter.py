@@ -8,6 +8,7 @@ from sentinel.project_filter import (
     FilterExpression,
     Operator,
     ProjectFilterParser,
+    parse_and_evaluate,
 )
 
 
@@ -100,6 +101,13 @@ class TestFilterExpression:
         left = FilterExpression(condition=cond)
         with pytest.raises(ValueError, match="must have either"):
             FilterExpression(left=left)  # Missing right and bool_operator
+
+    def test_filter_expression_is_frozen(self) -> None:
+        """FilterExpression should be immutable (frozen)."""
+        cond = Condition(field="Status", operator=Operator.EQUALS, values=("Ready",))
+        expr = FilterExpression(condition=cond)
+        with pytest.raises(Exception):  # FrozenInstanceError
+            expr.condition = None  # type: ignore[misc]
 
 
 class TestProjectFilterParserTokenization:
@@ -550,3 +558,43 @@ class TestProjectFilterParserIntegration:
         assert len(matches) == 2
         assert matches[0]["Status"] == "Ready"
         assert matches[1]["Status"] == "Blocked"
+
+
+class TestParseAndEvaluate:
+    """Tests for the parse_and_evaluate convenience function."""
+
+    def test_parse_and_evaluate_simple_match(self) -> None:
+        """Test simple matching query."""
+        result = parse_and_evaluate('Status = "Ready"', {"Status": "Ready"})
+        assert result is True
+
+    def test_parse_and_evaluate_simple_no_match(self) -> None:
+        """Test simple non-matching query."""
+        result = parse_and_evaluate('Status = "Ready"', {"Status": "Done"})
+        assert result is False
+
+    def test_parse_and_evaluate_complex_query(self) -> None:
+        """Test complex query with AND operator."""
+        result = parse_and_evaluate(
+            'Status = "Ready" AND Priority = "High"',
+            {"Status": "Ready", "Priority": "High"},
+        )
+        assert result is True
+
+    def test_parse_and_evaluate_in_operator(self) -> None:
+        """Test IN operator."""
+        result = parse_and_evaluate(
+            'Status IN ("Ready", "In Progress")',
+            {"Status": "In Progress"},
+        )
+        assert result is True
+
+    def test_parse_and_evaluate_invalid_query(self) -> None:
+        """Test that invalid queries raise ValueError."""
+        with pytest.raises(ValueError):
+            parse_and_evaluate("", {"Status": "Ready"})
+
+    def test_parse_and_evaluate_case_insensitive(self) -> None:
+        """Test case-insensitive matching."""
+        result = parse_and_evaluate('Status = "ready"', {"Status": "READY"})
+        assert result is True

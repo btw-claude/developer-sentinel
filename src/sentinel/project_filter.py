@@ -20,6 +20,15 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+__all__ = [
+    "Operator",
+    "BooleanOperator",
+    "Condition",
+    "FilterExpression",
+    "ProjectFilterParser",
+    "parse_and_evaluate",
+]
+
 
 class Operator(Enum):
     """Operators supported in filter conditions."""
@@ -67,7 +76,7 @@ class Condition:
         return self.values[0]
 
 
-@dataclass
+@dataclass(frozen=True)
 class FilterExpression:
     """An AST node for filter expressions.
 
@@ -111,6 +120,32 @@ class FilterExpression:
         return self.condition is not None
 
 
+def parse_and_evaluate(query: str, fields: dict[str, Any]) -> bool:
+    """Convenience function to parse a query and evaluate it in one step.
+
+    This function combines parsing and evaluation for common use cases
+    where you don't need to reuse the parsed expression.
+
+    Args:
+        query: The query string to parse (e.g., 'Status = "Ready"').
+        fields: Dictionary mapping field names to their values.
+
+    Returns:
+        True if the fields match the query expression, False otherwise.
+
+    Raises:
+        ValueError: If the query is invalid or malformed.
+
+    Example:
+        >>> result = parse_and_evaluate('Status = "Ready"', {"Status": "Ready"})
+        >>> print(result)
+        True
+    """
+    parser = ProjectFilterParser()
+    expression = parser.parse(query)
+    return parser.evaluate(expression, fields)
+
+
 class ProjectFilterParser:
     """Parser for JQL-like filter expressions.
 
@@ -131,9 +166,6 @@ class ProjectFilterParser:
 
     # Token patterns
     _STRING_PATTERN = r'"([^"]*)"'
-    # Identifier pattern - matches field names but stops before keywords
-    # Uses negative lookahead to not consume reserved words
-    _IDENTIFIER_PATTERN = r"[a-zA-Z_][a-zA-Z0-9_\-]*"
 
     def __init__(self) -> None:
         """Initialize the parser."""
