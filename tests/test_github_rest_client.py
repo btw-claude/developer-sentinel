@@ -582,3 +582,522 @@ class TestGitHubRestTagClient:
         client = GitHubRestTagClient(token="test-token")
         with pytest.raises(GitHubTagClientError, match="timed out"):
             client.add_label("owner", "repo", 123, "bug")
+
+
+class TestGitHubRestClientGraphQL:
+    """Tests for GitHubRestClient GraphQL methods."""
+
+    def test_graphql_url_default(self) -> None:
+        """Test default GraphQL URL for github.com."""
+        client = GitHubRestClient(token="test-token")
+        assert client._graphql_url == "https://api.github.com/graphql"
+
+    def test_graphql_url_enterprise(self) -> None:
+        """Test GraphQL URL for GitHub Enterprise."""
+        client = GitHubRestClient(
+            token="test-token", base_url="https://github.example.com/api/v3"
+        )
+        assert client._graphql_url == "https://github.example.com/api/graphql"
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_execute_graphql_success(self, mock_client_class: MagicMock) -> None:
+        """Test successful GraphQL query execution."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"X-RateLimit-Remaining": "100"}
+        mock_response.json.return_value = {
+            "data": {"viewer": {"login": "testuser"}}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        result = client._execute_graphql("query { viewer { login } }")
+
+        assert result == {"viewer": {"login": "testuser"}}
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_execute_graphql_with_variables(self, mock_client_class: MagicMock) -> None:
+        """Test GraphQL query with variables."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {"data": {"user": {"name": "Test"}}}
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        client._execute_graphql(
+            "query($login: String!) { user(login: $login) { name } }",
+            variables={"login": "testuser"},
+        )
+
+        # Verify variables were passed
+        call_args = mock_http_client.post.call_args
+        assert call_args[1]["json"]["variables"] == {"login": "testuser"}
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_execute_graphql_handles_errors(self, mock_client_class: MagicMock) -> None:
+        """Test GraphQL error handling."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "errors": [{"message": "Field 'foo' doesn't exist"}]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        from sentinel.github_poller import GitHubClientError
+
+        with pytest.raises(GitHubClientError, match="GraphQL errors"):
+            client._execute_graphql("query { foo }")
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_get_project_organization(self, mock_client_class: MagicMock) -> None:
+        """Test getting an organization project."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": {
+                "organization": {
+                    "projectV2": {
+                        "id": "PVT_kwDOA12345",
+                        "title": "Sprint Board",
+                        "url": "https://github.com/orgs/myorg/projects/1",
+                        "fields": {
+                            "nodes": [
+                                {"id": "PVTF_123", "name": "Title", "dataType": "TITLE"},
+                                {
+                                    "id": "PVTSSF_456",
+                                    "name": "Status",
+                                    "dataType": "SINGLE_SELECT",
+                                    "options": [
+                                        {"id": "opt1", "name": "Todo"},
+                                        {"id": "opt2", "name": "Done"},
+                                    ],
+                                },
+                            ]
+                        },
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        result = client.get_project("myorg", 1, scope="organization")
+
+        assert result["id"] == "PVT_kwDOA12345"
+        assert result["title"] == "Sprint Board"
+        assert len(result["fields"]) == 2
+        assert result["fields"][1]["name"] == "Status"
+        assert result["fields"][1]["options"] == [
+            {"id": "opt1", "name": "Todo"},
+            {"id": "opt2", "name": "Done"},
+        ]
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_get_project_user(self, mock_client_class: MagicMock) -> None:
+        """Test getting a user project."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": {
+                "user": {
+                    "projectV2": {
+                        "id": "PVT_kwDOB67890",
+                        "title": "Personal Tasks",
+                        "url": "https://github.com/users/testuser/projects/2",
+                        "fields": {"nodes": []},
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        result = client.get_project("testuser", 2, scope="user")
+
+        assert result["id"] == "PVT_kwDOB67890"
+        assert result["title"] == "Personal Tasks"
+
+    def test_get_project_invalid_scope(self) -> None:
+        """Test get_project with invalid scope."""
+        client = GitHubRestClient(token="test-token")
+        from sentinel.github_poller import GitHubClientError
+
+        with pytest.raises(GitHubClientError, match="Invalid scope"):
+            client.get_project("owner", 1, scope="invalid")
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_get_project_not_found(self, mock_client_class: MagicMock) -> None:
+        """Test get_project when project doesn't exist."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": {"organization": {"projectV2": None}}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        from sentinel.github_poller import GitHubClientError
+
+        with pytest.raises(GitHubClientError, match="not found"):
+            client.get_project("myorg", 999, scope="organization")
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_list_project_items_success(self, mock_client_class: MagicMock) -> None:
+        """Test listing project items."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [
+                            {
+                                "id": "PVTI_item1",
+                                "content": {
+                                    "__typename": "Issue",
+                                    "number": 42,
+                                    "title": "Test Issue",
+                                    "state": "OPEN",
+                                    "url": "https://github.com/org/repo/issues/42",
+                                    "body": "Issue body",
+                                    "labels": {"nodes": [{"name": "bug"}]},
+                                    "assignees": {"nodes": [{"login": "dev1"}]},
+                                    "author": {"login": "reporter"},
+                                },
+                                "fieldValues": {
+                                    "nodes": [
+                                        {
+                                            "name": "In Progress",
+                                            "field": {"name": "Status"},
+                                        },
+                                    ]
+                                },
+                            },
+                            {
+                                "id": "PVTI_item2",
+                                "content": {
+                                    "__typename": "PullRequest",
+                                    "number": 99,
+                                    "title": "Fix bug",
+                                    "state": "OPEN",
+                                    "url": "https://github.com/org/repo/pull/99",
+                                    "body": "PR body",
+                                    "isDraft": False,
+                                    "headRefName": "fix-branch",
+                                    "baseRefName": "main",
+                                    "labels": {"nodes": []},
+                                    "assignees": {"nodes": []},
+                                    "author": {"login": "dev1"},
+                                },
+                                "fieldValues": {"nodes": []},
+                            },
+                        ],
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        result = client.list_project_items("PVT_test123")
+
+        assert len(result) == 2
+
+        # Verify first item (Issue)
+        assert result[0]["id"] == "PVTI_item1"
+        assert result[0]["content"]["type"] == "Issue"
+        assert result[0]["content"]["number"] == 42
+        assert result[0]["content"]["title"] == "Test Issue"
+        assert result[0]["content"]["labels"] == ["bug"]
+        assert result[0]["content"]["assignees"] == ["dev1"]
+        assert result[0]["content"]["author"] == "reporter"
+        assert result[0]["fieldValues"][0] == {"field": "Status", "value": "In Progress"}
+
+        # Verify second item (PR)
+        assert result[1]["id"] == "PVTI_item2"
+        assert result[1]["content"]["type"] == "PullRequest"
+        assert result[1]["content"]["isDraft"] is False
+        assert result[1]["content"]["headRefName"] == "fix-branch"
+        assert result[1]["content"]["baseRefName"] == "main"
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_list_project_items_pagination(self, mock_client_class: MagicMock) -> None:
+        """Test pagination in list_project_items."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        # First page response
+        page1_response = MagicMock()
+        page1_response.status_code = 200
+        page1_response.headers = {}
+        page1_response.json.return_value = {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": True, "endCursor": "cursor123"},
+                        "nodes": [
+                            {
+                                "id": "PVTI_item1",
+                                "content": None,
+                                "fieldValues": {"nodes": []},
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+        page1_response.raise_for_status = MagicMock()
+
+        # Second page response
+        page2_response = MagicMock()
+        page2_response.status_code = 200
+        page2_response.headers = {}
+        page2_response.json.return_value = {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [
+                            {
+                                "id": "PVTI_item2",
+                                "content": None,
+                                "fieldValues": {"nodes": []},
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+        page2_response.raise_for_status = MagicMock()
+
+        mock_http_client.post.side_effect = [page1_response, page2_response]
+
+        client = GitHubRestClient(token="test-token")
+        result = client.list_project_items("PVT_test123")
+
+        assert len(result) == 2
+        assert result[0]["id"] == "PVTI_item1"
+        assert result[1]["id"] == "PVTI_item2"
+
+        # Verify pagination cursor was used
+        assert mock_http_client.post.call_count == 2
+        second_call_json = mock_http_client.post.call_args_list[1][1]["json"]
+        assert second_call_json["variables"]["cursor"] == "cursor123"
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_list_project_items_respects_max_results(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test that list_project_items respects max_results limit."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        # Response with more items than max_results
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": True, "endCursor": "cursor"},
+                        "nodes": [
+                            {"id": f"PVTI_item{i}", "content": None, "fieldValues": {"nodes": []}}
+                            for i in range(50)
+                        ],
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        result = client.list_project_items("PVT_test123", max_results=25)
+
+        assert len(result) == 25
+        # Should not make a second request since we hit max_results
+        assert mock_http_client.post.call_count == 1
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_list_project_items_draft_issue(self, mock_client_class: MagicMock) -> None:
+        """Test handling of draft issues in project items."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [
+                            {
+                                "id": "PVTI_draft",
+                                "content": {
+                                    "__typename": "DraftIssue",
+                                    "title": "Draft Title",
+                                    "body": "Draft body text",
+                                },
+                                "fieldValues": {"nodes": []},
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        result = client.list_project_items("PVT_test123")
+
+        assert len(result) == 1
+        assert result[0]["content"]["type"] == "DraftIssue"
+        assert result[0]["content"]["title"] == "Draft Title"
+        # Draft issues don't have number, state, url, etc.
+        assert "number" not in result[0]["content"]
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_list_project_items_null_content(self, mock_client_class: MagicMock) -> None:
+        """Test handling of items with null content."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [
+                            {
+                                "id": "PVTI_nocontent",
+                                "content": None,
+                                "fieldValues": {"nodes": []},
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        result = client.list_project_items("PVT_test123")
+
+        assert len(result) == 1
+        assert result[0]["content"] is None
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_list_project_items_project_not_found(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test list_project_items when project doesn't exist."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {"data": {"node": None}}
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        from sentinel.github_poller import GitHubClientError
+
+        with pytest.raises(GitHubClientError, match="not found"):
+            client.list_project_items("PVT_invalid")
+
+    @patch("sentinel.github_rest_client.httpx.Client")
+    def test_normalize_project_item_all_field_types(
+        self, mock_client_class: MagicMock
+    ) -> None:
+        """Test normalization handles all field value types."""
+        mock_http_client = MagicMock()
+        mock_client_class.return_value = mock_http_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "data": {
+                "node": {
+                    "items": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [
+                            {
+                                "id": "PVTI_item",
+                                "content": None,
+                                "fieldValues": {
+                                    "nodes": [
+                                        {"text": "Text value", "field": {"name": "TextF"}},
+                                        {"number": 42.5, "field": {"name": "NumF"}},
+                                        {"date": "2024-01-15", "field": {"name": "DateF"}},
+                                        {"name": "Option A", "field": {"name": "SelectF"}},
+                                        {"title": "Sprint 1", "field": {"name": "IterF"}},
+                                        None,  # Null field value
+                                        {"field": {}},  # Missing field name
+                                    ]
+                                },
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_http_client.post.return_value = mock_response
+
+        client = GitHubRestClient(token="test-token")
+        result = client.list_project_items("PVT_test123")
+
+        field_values = result[0]["fieldValues"]
+        assert len(field_values) == 5  # Null and missing-name are skipped
+        assert {"field": "TextF", "value": "Text value"} in field_values
+        assert {"field": "NumF", "value": 42.5} in field_values
+        assert {"field": "DateF", "value": "2024-01-15"} in field_values
+        assert {"field": "SelectF", "value": "Option A"} in field_values
+        assert {"field": "IterF", "value": "Sprint 1"} in field_values

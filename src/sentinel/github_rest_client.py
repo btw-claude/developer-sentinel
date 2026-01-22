@@ -313,7 +313,12 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
     Supports both GitHub.com and GitHub Enterprise via configurable base URL.
     Uses connection pooling via a reusable httpx.Client for better performance
     in high-volume scenarios.
+
+    Also supports GitHub Projects (v2) via GraphQL API for project-based polling.
     """
+
+    # GitHub GraphQL API endpoint
+    GRAPHQL_URL = "https://api.github.com/graphql"
 
     def __init__(
         self,
@@ -342,6 +347,13 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        # Derive GraphQL URL from base_url for GitHub Enterprise support
+        if base_url and "api.github.com" not in base_url:
+            # GitHub Enterprise: https://your-ghe-host/api/graphql
+            ghe_host = base_url.replace("/api/v3", "").rstrip("/")
+            self._graphql_url = f"{ghe_host}/api/graphql"
+        else:
+            self._graphql_url = self.GRAPHQL_URL
 
     def search_issues(
         self, query: str, max_results: int = 50
@@ -394,6 +406,443 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             raise GitHubClientError(error_msg) from e
         except httpx.RequestError as e:
             raise GitHubClientError(f"GitHub search request failed: {e}") from e
+
+    def _execute_graphql(
+        self, query: str, variables: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Execute a GraphQL query against the GitHub API.
+
+        Args:
+            query: The GraphQL query string.
+            variables: Optional variables for the query.
+
+        Returns:
+            The 'data' portion of the GraphQL response.
+
+        Raises:
+            GitHubClientError: If the query fails or returns errors.
+        """
+        payload: dict[str, Any] = {"query": query}
+        if variables:
+            payload["variables"] = variables
+
+        def do_graphql() -> dict[str, Any]:
+            client = self._get_client()
+            response = client.post(self._graphql_url, json=payload)
+            _check_rate_limit_warning(response)
+            response.raise_for_status()
+            result: dict[str, Any] = response.json()
+
+            # Check for GraphQL errors
+            if "errors" in result:
+                errors = result["errors"]
+                error_messages = [e.get("message", str(e)) for e in errors]
+                raise GitHubClientError(f"GraphQL errors: {'; '.join(error_messages)}")
+
+            return result.get("data", {})
+
+        try:
+            return _execute_with_retry(do_graphql, self.retry_config, GitHubClientError)
+        except httpx.TimeoutException as e:
+            raise GitHubClientError(f"GraphQL request timed out: {e}") from e
+        except httpx.HTTPStatusError as e:
+            error_msg = f"GraphQL request failed with status {e.response.status_code}"
+            try:
+                error_data = e.response.json()
+                if "message" in error_data:
+                    error_msg += f": {error_data['message']}"
+            except Exception:
+                pass
+            raise GitHubClientError(error_msg) from e
+        except httpx.RequestError as e:
+            raise GitHubClientError(f"GraphQL request failed: {e}") from e
+
+    def get_project(
+        self, owner: str, project_number: int, scope: str = "organization"
+    ) -> dict[str, Any]:
+        """Query a GitHub Project (v2) by number.
+
+        Args:
+            owner: The organization or user that owns the project.
+            project_number: The project number (visible in project URL).
+            scope: Either "organization" or "user" depending on project ownership.
+
+        Returns:
+            Dictionary containing:
+                - id: The project's global node ID (used for other operations)
+                - title: The project title
+                - url: The project URL
+                - fields: List of field definitions with id, name, and dataType
+
+        Raises:
+            GitHubClientError: If the query fails or project is not found.
+        """
+        # GraphQL query differs based on scope (org vs user)
+        if scope == "organization":
+            query = """
+            query($owner: String!, $number: Int!) {
+              organization(login: $owner) {
+                projectV2(number: $number) {
+                  id
+                  title
+                  url
+                  fields(first: 50) {
+                    nodes {
+                      ... on ProjectV2Field {
+                        id
+                        name
+                        dataType
+                      }
+                      ... on ProjectV2IterationField {
+                        id
+                        name
+                        dataType
+                      }
+                      ... on ProjectV2SingleSelectField {
+                        id
+                        name
+                        dataType
+                        options {
+                          id
+                          name
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """
+            owner_key = "organization"
+        elif scope == "user":
+            query = """
+            query($owner: String!, $number: Int!) {
+              user(login: $owner) {
+                projectV2(number: $number) {
+                  id
+                  title
+                  url
+                  fields(first: 50) {
+                    nodes {
+                      ... on ProjectV2Field {
+                        id
+                        name
+                        dataType
+                      }
+                      ... on ProjectV2IterationField {
+                        id
+                        name
+                        dataType
+                      }
+                      ... on ProjectV2SingleSelectField {
+                        id
+                        name
+                        dataType
+                        options {
+                          id
+                          name
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """
+            owner_key = "user"
+        else:
+            raise GitHubClientError(f"Invalid scope: {scope}. Must be 'organization' or 'user'.")
+
+        variables = {"owner": owner, "number": project_number}
+
+        logger.debug(f"Fetching {scope} project: {owner}/project/{project_number}")
+
+        data = self._execute_graphql(query, variables)
+
+        # Extract project data from response
+        owner_data = data.get(owner_key)
+        if not owner_data:
+            raise GitHubClientError(f"{scope.capitalize()} '{owner}' not found")
+
+        project = owner_data.get("projectV2")
+        if not project:
+            raise GitHubClientError(
+                f"Project #{project_number} not found for {scope} '{owner}'"
+            )
+
+        # Normalize the response
+        fields = []
+        for field_node in project.get("fields", {}).get("nodes", []):
+            if field_node:  # Skip null nodes
+                field_info: dict[str, Any] = {
+                    "id": field_node.get("id"),
+                    "name": field_node.get("name"),
+                    "dataType": field_node.get("dataType"),
+                }
+                # Include options for single select fields
+                if "options" in field_node:
+                    field_info["options"] = field_node["options"]
+                fields.append(field_info)
+
+        result: dict[str, Any] = {
+            "id": project.get("id"),
+            "title": project.get("title"),
+            "url": project.get("url"),
+            "fields": fields,
+        }
+
+        logger.info(f"Retrieved project '{result['title']}' with {len(fields)} fields")
+        return result
+
+    def list_project_items(
+        self, project_id: str, max_results: int = 100
+    ) -> list[dict[str, Any]]:
+        """List items in a GitHub Project (v2) with pagination.
+
+        Args:
+            project_id: The project's global node ID (from get_project).
+            max_results: Maximum number of items to retrieve.
+
+        Returns:
+            List of project items, each containing:
+                - id: Item node ID
+                - content: The linked Issue or PR with details (number, title,
+                  state, url, labels, assignees) or None for draft items
+                - fieldValues: List of field values for this item
+
+        Raises:
+            GitHubClientError: If the query fails.
+        """
+        query = """
+        query($projectId: ID!, $cursor: String) {
+          node(id: $projectId) {
+            ... on ProjectV2 {
+              items(first: 50, after: $cursor) {
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+                nodes {
+                  id
+                  content {
+                    ... on Issue {
+                      __typename
+                      number
+                      title
+                      state
+                      url
+                      body
+                      labels(first: 20) {
+                        nodes {
+                          name
+                        }
+                      }
+                      assignees(first: 10) {
+                        nodes {
+                          login
+                        }
+                      }
+                      author {
+                        login
+                      }
+                    }
+                    ... on PullRequest {
+                      __typename
+                      number
+                      title
+                      state
+                      url
+                      body
+                      isDraft
+                      headRefName
+                      baseRefName
+                      labels(first: 20) {
+                        nodes {
+                          name
+                        }
+                      }
+                      assignees(first: 10) {
+                        nodes {
+                          login
+                        }
+                      }
+                      author {
+                        login
+                      }
+                    }
+                    ... on DraftIssue {
+                      __typename
+                      title
+                      body
+                    }
+                  }
+                  fieldValues(first: 20) {
+                    nodes {
+                      ... on ProjectV2ItemFieldTextValue {
+                        text
+                        field {
+                          ... on ProjectV2Field {
+                            name
+                          }
+                        }
+                      }
+                      ... on ProjectV2ItemFieldNumberValue {
+                        number
+                        field {
+                          ... on ProjectV2Field {
+                            name
+                          }
+                        }
+                      }
+                      ... on ProjectV2ItemFieldDateValue {
+                        date
+                        field {
+                          ... on ProjectV2Field {
+                            name
+                          }
+                        }
+                      }
+                      ... on ProjectV2ItemFieldSingleSelectValue {
+                        name
+                        field {
+                          ... on ProjectV2SingleSelectField {
+                            name
+                          }
+                        }
+                      }
+                      ... on ProjectV2ItemFieldIterationValue {
+                        title
+                        field {
+                          ... on ProjectV2IterationField {
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+
+        all_items: list[dict[str, Any]] = []
+        cursor: str | None = None
+
+        logger.debug(f"Fetching project items for project ID: {project_id}")
+
+        while len(all_items) < max_results:
+            variables: dict[str, Any] = {"projectId": project_id}
+            if cursor:
+                variables["cursor"] = cursor
+
+            data = self._execute_graphql(query, variables)
+
+            node = data.get("node")
+            if not node:
+                raise GitHubClientError(f"Project with ID '{project_id}' not found")
+
+            items_data = node.get("items", {})
+            nodes = items_data.get("nodes", [])
+
+            for item_node in nodes:
+                if len(all_items) >= max_results:
+                    break
+                if item_node:  # Skip null nodes
+                    all_items.append(self._normalize_project_item(item_node))
+
+            # Check for more pages
+            page_info = items_data.get("pageInfo", {})
+            if not page_info.get("hasNextPage") or len(all_items) >= max_results:
+                break
+
+            cursor = page_info.get("endCursor")
+
+        logger.info(f"Retrieved {len(all_items)} project items")
+        return all_items
+
+    def _normalize_project_item(self, item_node: dict[str, Any]) -> dict[str, Any]:
+        """Normalize a project item node from GraphQL response.
+
+        Args:
+            item_node: Raw item node from GraphQL response.
+
+        Returns:
+            Normalized item dictionary with consistent structure.
+        """
+        item: dict[str, Any] = {
+            "id": item_node.get("id"),
+            "content": None,
+            "fieldValues": [],
+        }
+
+        # Process content (Issue, PR, or DraftIssue)
+        content = item_node.get("content")
+        if content:
+            content_type = content.get("__typename")
+            normalized_content: dict[str, Any] = {
+                "type": content_type,
+                "title": content.get("title"),
+                "body": content.get("body", ""),
+            }
+
+            if content_type in ("Issue", "PullRequest"):
+                normalized_content["number"] = content.get("number")
+                normalized_content["state"] = content.get("state")
+                normalized_content["url"] = content.get("url")
+
+                # Extract labels
+                labels_data = content.get("labels", {}).get("nodes", [])
+                normalized_content["labels"] = [
+                    label.get("name") for label in labels_data if label
+                ]
+
+                # Extract assignees
+                assignees_data = content.get("assignees", {}).get("nodes", [])
+                normalized_content["assignees"] = [
+                    assignee.get("login") for assignee in assignees_data if assignee
+                ]
+
+                # Extract author
+                author_data = content.get("author")
+                normalized_content["author"] = author_data.get("login") if author_data else ""
+
+                # PR-specific fields
+                if content_type == "PullRequest":
+                    normalized_content["isDraft"] = content.get("isDraft", False)
+                    normalized_content["headRefName"] = content.get("headRefName", "")
+                    normalized_content["baseRefName"] = content.get("baseRefName", "")
+
+            item["content"] = normalized_content
+
+        # Process field values
+        field_values = item_node.get("fieldValues", {}).get("nodes", [])
+        for fv in field_values:
+            if not fv:
+                continue
+
+            field_data = fv.get("field", {})
+            field_name = field_data.get("name")
+            if not field_name:
+                continue
+
+            value: Any = None
+            if "text" in fv:
+                value = fv["text"]
+            elif "number" in fv:
+                value = fv["number"]
+            elif "date" in fv:
+                value = fv["date"]
+            elif "name" in fv:  # Single select
+                value = fv["name"]
+            elif "title" in fv:  # Iteration
+                value = fv["title"]
+
+            if value is not None:
+                item["fieldValues"].append({"field": field_name, "value": value})
+
+        return item
 
 
 class GitHubTagClient(ABC):
