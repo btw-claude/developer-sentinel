@@ -293,6 +293,145 @@ class TestProjectFilterParserEdgeCases:
             parser.parse('Status "Ready"')
 
 
+class TestProjectFilterParserInvalidSyntaxErrors:
+    """Tests for invalid filter syntax error handling (DS-211).
+
+    Verifies that ProjectFilterParser raises appropriate errors with helpful
+    messages for various malformed filter expressions.
+    """
+
+    def test_empty_string_raises_with_helpful_message(self) -> None:
+        """Test that empty query string raises ValueError with 'Empty query' message."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse("")
+        assert "Empty query" in str(exc_info.value)
+
+    def test_whitespace_only_raises_with_helpful_message(self) -> None:
+        """Test that whitespace-only query raises ValueError."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse("   ")
+        assert "Empty query" in str(exc_info.value)
+
+    def test_unterminated_string_raises_with_position(self) -> None:
+        """Test that unterminated string raises error indicating position."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('Status = "unterminated')
+        error_msg = str(exc_info.value)
+        assert "Unterminated string" in error_msg
+        assert "position" in error_msg.lower()
+
+    def test_missing_operator_raises_with_helpful_message(self) -> None:
+        """Test missing operator between field and value raises clear error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('Status "Ready"')
+        assert "Expected operator" in str(exc_info.value)
+
+    def test_missing_value_after_equals_raises(self) -> None:
+        """Test missing value after = operator raises error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse("Status =")
+        assert "Expected" in str(exc_info.value)
+
+    def test_missing_value_after_not_equals_raises(self) -> None:
+        """Test missing value after != operator raises error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse("Status !=")
+        assert "Expected" in str(exc_info.value)
+
+    def test_unquoted_value_raises(self) -> None:
+        """Test that unquoted string values raise helpful error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse("Status = Ready")
+        assert "Expected" in str(exc_info.value) or "quoted" in str(exc_info.value).lower()
+
+    def test_unclosed_parenthesis_raises(self) -> None:
+        """Test unclosed parenthesis raises clear error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('(Status = "Ready"')
+        assert "closing parenthesis" in str(exc_info.value).lower()
+
+    def test_extra_closing_parenthesis_raises(self) -> None:
+        """Test extra closing parenthesis raises error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('Status = "Ready")')
+        assert "Unexpected" in str(exc_info.value)
+
+    def test_missing_right_operand_for_and_raises(self) -> None:
+        """Test missing operand after AND raises error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('Status = "Ready" AND')
+        assert "Expected" in str(exc_info.value)
+
+    def test_missing_right_operand_for_or_raises(self) -> None:
+        """Test missing operand after OR raises error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('Status = "Ready" OR')
+        assert "Expected" in str(exc_info.value)
+
+    def test_in_without_parentheses_raises(self) -> None:
+        """Test IN operator without parenthesized list raises error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('Status IN "Ready"')
+        assert "(" in str(exc_info.value) or "value list" in str(exc_info.value).lower()
+
+    def test_in_with_unclosed_list_raises(self) -> None:
+        """Test IN operator with unclosed value list raises error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('Status IN ("Ready", "Done"')
+        assert ")" in str(exc_info.value) or "close" in str(exc_info.value).lower()
+
+    def test_in_with_empty_list_raises(self) -> None:
+        """Test IN operator with empty list raises error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse("Status IN ()")
+        assert "Expected" in str(exc_info.value)
+
+    def test_unexpected_token_after_complete_expression_raises(self) -> None:
+        """Test trailing tokens after valid expression raises error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('Status = "Ready" garbage')
+        error_msg = str(exc_info.value)
+        assert "Unexpected" in error_msg
+        assert "garbage" in error_msg
+
+    def test_double_operator_raises(self) -> None:
+        """Test double operators raise error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('Status = = "Ready"')
+        # Should fail because = is not a valid field name
+        assert "Expected" in str(exc_info.value) or "Unexpected" in str(exc_info.value)
+
+    def test_special_character_in_wrong_place_raises(self) -> None:
+        """Test special characters in wrong places raise errors."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('@Status = "Ready"')
+        assert "Unexpected character" in str(exc_info.value)
+
+    def test_nested_unclosed_parentheses_raises(self) -> None:
+        """Test deeply nested unclosed parentheses raise error."""
+        parser = ProjectFilterParser()
+        with pytest.raises(ValueError) as exc_info:
+            parser.parse('((Status = "Ready")')
+        assert "closing parenthesis" in str(exc_info.value).lower()
+
+
 class TestProjectFilterParserEvaluateEquals:
     """Tests for evaluating EQUALS conditions."""
 

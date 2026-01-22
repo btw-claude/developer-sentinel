@@ -2,6 +2,30 @@
 
 This guide explains how to migrate from the deprecated repository-based GitHub triggers to the new project-based triggers introduced in Developer Sentinel.
 
+## Quick Start
+
+Minimal configuration to migrate an existing GitHub trigger:
+
+```yaml
+orchestrations:
+  - name: "my-orchestration"
+    trigger:
+      source: github
+      project_number: 42              # From your project URL
+      project_owner: "my-org"         # Your org or username
+      project_filter: 'Status = "Ready"'  # Optional: filter items
+    agent:
+      prompt: "Process the issue"
+      tools:
+        - github
+      github:
+        host: "github.com"
+        org: "my-org"
+        repo: "my-repo"
+```
+
+For advanced options, see [Filter Expression Syntax](#filter-expression-syntax) and [Multi-Repository Support](#multi-repository-support).
+
 ## Overview of Changes
 
 Developer Sentinel now uses **GitHub Projects (v2)** as the source for GitHub-triggered orchestrations. This provides several advantages:
