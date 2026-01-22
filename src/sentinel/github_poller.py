@@ -159,6 +159,9 @@ class GitHubClient(ABC):
     This allows the poller to work with different implementations:
     - REST API client (production)
     - Mock client (testing)
+
+    Includes both REST API methods (search_issues) and GraphQL methods
+    (get_project, list_project_items) for GitHub Projects (v2) support.
     """
 
     @abstractmethod
@@ -176,6 +179,51 @@ class GitHubClient(ABC):
 
         Raises:
             GitHubClientError: If the search fails.
+        """
+        pass
+
+    @abstractmethod
+    def get_project(
+        self, owner: str, project_number: int, scope: str = "organization"
+    ) -> dict[str, Any]:
+        """Query a GitHub Project (v2) by number.
+
+        Args:
+            owner: The organization or user that owns the project.
+            project_number: The project number (visible in project URL).
+            scope: Either "organization" or "user" depending on project ownership.
+
+        Returns:
+            Dictionary containing:
+                - id: The project's global node ID (used for other operations)
+                - title: The project title
+                - url: The project URL
+                - fields: List of field definitions with id, name, and dataType
+
+        Raises:
+            GitHubClientError: If the query fails or project is not found.
+        """
+        pass
+
+    @abstractmethod
+    def list_project_items(
+        self, project_id: str, max_results: int = 100
+    ) -> list[dict[str, Any]]:
+        """List items in a GitHub Project (v2) with pagination.
+
+        Args:
+            project_id: The project's global node ID (from get_project).
+            max_results: Maximum number of items to retrieve.
+
+        Returns:
+            List of project items, each containing:
+                - id: Item node ID
+                - content: The linked Issue or PR with details (number, title,
+                  state, url, labels, assignees) or None for draft items
+                - fieldValues: List of field values for this item
+
+        Raises:
+            GitHubClientError: If the query fails.
         """
         pass
 
