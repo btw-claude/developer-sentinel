@@ -32,6 +32,196 @@ DEFAULT_GITHUB_API_URL = "https://api.github.com"
 # Type variable for generic retry function
 T = TypeVar("T")
 
+# GraphQL query for fetching organization-owned GitHub Projects (v2)
+# Returns project metadata and field definitions including single-select options
+GRAPHQL_QUERY_ORG_PROJECT = """
+query($owner: String!, $number: Int!) {
+  organization(login: $owner) {
+    projectV2(number: $number) {
+      id
+      title
+      url
+      fields(first: 50) {
+        nodes {
+          ... on ProjectV2Field {
+            id
+            name
+            dataType
+          }
+          ... on ProjectV2IterationField {
+            id
+            name
+            dataType
+          }
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            dataType
+            options {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+# GraphQL query for fetching user-owned GitHub Projects (v2)
+# Returns project metadata and field definitions including single-select options
+GRAPHQL_QUERY_USER_PROJECT = """
+query($owner: String!, $number: Int!) {
+  user(login: $owner) {
+    projectV2(number: $number) {
+      id
+      title
+      url
+      fields(first: 50) {
+        nodes {
+          ... on ProjectV2Field {
+            id
+            name
+            dataType
+          }
+          ... on ProjectV2IterationField {
+            id
+            name
+            dataType
+          }
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            dataType
+            options {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+# GraphQL query for paginating through GitHub Project (v2) items
+# Returns Issues, PRs, and DraftIssues with their field values
+GRAPHQL_QUERY_PROJECT_ITEMS = """
+query($projectId: ID!, $cursor: String) {
+  node(id: $projectId) {
+    ... on ProjectV2 {
+      items(first: 50, after: $cursor) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          id
+          content {
+            ... on Issue {
+              __typename
+              number
+              title
+              state
+              url
+              body
+              labels(first: 20) {
+                nodes {
+                  name
+                }
+              }
+              assignees(first: 10) {
+                nodes {
+                  login
+                }
+              }
+              author {
+                login
+              }
+            }
+            ... on PullRequest {
+              __typename
+              number
+              title
+              state
+              url
+              body
+              isDraft
+              headRefName
+              baseRefName
+              labels(first: 20) {
+                nodes {
+                  name
+                }
+              }
+              assignees(first: 10) {
+                nodes {
+                  login
+                }
+              }
+              author {
+                login
+              }
+            }
+            ... on DraftIssue {
+              __typename
+              title
+              body
+            }
+          }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldTextValue {
+                text
+                field {
+                  ... on ProjectV2Field {
+                    name
+                  }
+                }
+              }
+              ... on ProjectV2ItemFieldNumberValue {
+                number
+                field {
+                  ... on ProjectV2Field {
+                    name
+                  }
+                }
+              }
+              ... on ProjectV2ItemFieldDateValue {
+                date
+                field {
+                  ... on ProjectV2Field {
+                    name
+                  }
+                }
+              }
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name
+                field {
+                  ... on ProjectV2SingleSelectField {
+                    name
+                  }
+                }
+              }
+              ... on ProjectV2ItemFieldIterationValue {
+                title
+                field {
+                  ... on ProjectV2IterationField {
+                    name
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
 
 @dataclass(frozen=True)
 class GitHubRetryConfig:
@@ -320,6 +510,9 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
     # GitHub GraphQL API endpoint
     GRAPHQL_URL = "https://api.github.com/graphql"
 
+    # Default maximum number of results for paginated queries
+    DEFAULT_MAX_RESULTS = 100
+
     def __init__(
         self,
         token: str,
@@ -347,9 +540,14 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
-        # Derive GraphQL URL from base_url for GitHub Enterprise support
+        # Derive GraphQL URL from base_url for GitHub Enterprise support.
+        # GitHub.com uses separate domains for REST (api.github.com) and GraphQL
+        # (api.github.com/graphql), while GitHub Enterprise Server (GHE) uses a
+        # different URL structure: REST API is at <host>/api/v3 and GraphQL is at
+        # <host>/api/graphql. We detect GHE by checking if the base_url is NOT the
+        # standard api.github.com, then strip the "/api/v3" suffix to get the host
+        # and append "/api/graphql" for the GraphQL endpoint.
         if base_url and "api.github.com" not in base_url:
-            # GitHub Enterprise: https://your-ghe-host/api/graphql
             ghe_host = base_url.replace("/api/v3", "").rstrip("/")
             self._graphql_url = f"{ghe_host}/api/graphql"
         else:
@@ -477,78 +675,12 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
         Raises:
             GitHubClientError: If the query fails or project is not found.
         """
-        # GraphQL query differs based on scope (org vs user)
+        # Select appropriate GraphQL query based on scope (org vs user)
         if scope == "organization":
-            query = """
-            query($owner: String!, $number: Int!) {
-              organization(login: $owner) {
-                projectV2(number: $number) {
-                  id
-                  title
-                  url
-                  fields(first: 50) {
-                    nodes {
-                      ... on ProjectV2Field {
-                        id
-                        name
-                        dataType
-                      }
-                      ... on ProjectV2IterationField {
-                        id
-                        name
-                        dataType
-                      }
-                      ... on ProjectV2SingleSelectField {
-                        id
-                        name
-                        dataType
-                        options {
-                          id
-                          name
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            """
+            query = GRAPHQL_QUERY_ORG_PROJECT
             owner_key = "organization"
         elif scope == "user":
-            query = """
-            query($owner: String!, $number: Int!) {
-              user(login: $owner) {
-                projectV2(number: $number) {
-                  id
-                  title
-                  url
-                  fields(first: 50) {
-                    nodes {
-                      ... on ProjectV2Field {
-                        id
-                        name
-                        dataType
-                      }
-                      ... on ProjectV2IterationField {
-                        id
-                        name
-                        dataType
-                      }
-                      ... on ProjectV2SingleSelectField {
-                        id
-                        name
-                        dataType
-                        options {
-                          id
-                          name
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            """
+            query = GRAPHQL_QUERY_USER_PROJECT
             owner_key = "user"
         else:
             raise GitHubClientError(f"Invalid scope: {scope}. Must be 'organization' or 'user'.")
@@ -595,13 +727,14 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
         return result
 
     def list_project_items(
-        self, project_id: str, max_results: int = 100
+        self, project_id: str, max_results: int | None = None
     ) -> list[dict[str, Any]]:
         """List items in a GitHub Project (v2) with pagination.
 
         Args:
             project_id: The project's global node ID (from get_project).
-            max_results: Maximum number of items to retrieve.
+            max_results: Maximum number of items to retrieve. Defaults to
+                DEFAULT_MAX_RESULTS (100) if not specified.
 
         Returns:
             List of project items, each containing:
@@ -613,119 +746,8 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
         Raises:
             GitHubClientError: If the query fails.
         """
-        query = """
-        query($projectId: ID!, $cursor: String) {
-          node(id: $projectId) {
-            ... on ProjectV2 {
-              items(first: 50, after: $cursor) {
-                pageInfo {
-                  hasNextPage
-                  endCursor
-                }
-                nodes {
-                  id
-                  content {
-                    ... on Issue {
-                      __typename
-                      number
-                      title
-                      state
-                      url
-                      body
-                      labels(first: 20) {
-                        nodes {
-                          name
-                        }
-                      }
-                      assignees(first: 10) {
-                        nodes {
-                          login
-                        }
-                      }
-                      author {
-                        login
-                      }
-                    }
-                    ... on PullRequest {
-                      __typename
-                      number
-                      title
-                      state
-                      url
-                      body
-                      isDraft
-                      headRefName
-                      baseRefName
-                      labels(first: 20) {
-                        nodes {
-                          name
-                        }
-                      }
-                      assignees(first: 10) {
-                        nodes {
-                          login
-                        }
-                      }
-                      author {
-                        login
-                      }
-                    }
-                    ... on DraftIssue {
-                      __typename
-                      title
-                      body
-                    }
-                  }
-                  fieldValues(first: 20) {
-                    nodes {
-                      ... on ProjectV2ItemFieldTextValue {
-                        text
-                        field {
-                          ... on ProjectV2Field {
-                            name
-                          }
-                        }
-                      }
-                      ... on ProjectV2ItemFieldNumberValue {
-                        number
-                        field {
-                          ... on ProjectV2Field {
-                            name
-                          }
-                        }
-                      }
-                      ... on ProjectV2ItemFieldDateValue {
-                        date
-                        field {
-                          ... on ProjectV2Field {
-                            name
-                          }
-                        }
-                      }
-                      ... on ProjectV2ItemFieldSingleSelectValue {
-                        name
-                        field {
-                          ... on ProjectV2SingleSelectField {
-                            name
-                          }
-                        }
-                      }
-                      ... on ProjectV2ItemFieldIterationValue {
-                        title
-                        field {
-                          ... on ProjectV2IterationField {
-                            name
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-        """
+        if max_results is None:
+            max_results = self.DEFAULT_MAX_RESULTS
 
         all_items: list[dict[str, Any]] = []
         cursor: str | None = None
@@ -737,7 +759,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             if cursor:
                 variables["cursor"] = cursor
 
-            data = self._execute_graphql(query, variables)
+            data = self._execute_graphql(GRAPHQL_QUERY_PROJECT_ITEMS, variables)
 
             node = data.get("node")
             if not node:
