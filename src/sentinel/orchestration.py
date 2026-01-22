@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
@@ -13,6 +14,14 @@ import yaml
 from sentinel.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+# Deprecation warning message template for GitHub trigger fields
+_GITHUB_FIELD_DEPRECATION_MSG = (
+    "The '{field}' field is deprecated for GitHub triggers. "
+    "Use project-based configuration (project_number, project_scope, project_owner, "
+    "project_filter) instead. This field will be removed in a future version."
+)
 
 
 # Pre-compiled regex patterns for GitHub repository validation
@@ -75,17 +84,24 @@ class TriggerConfig:
 
     **Common fields (used by both sources):**
         - source: The source system ("jira" or "github")
-        - tags: List of tags/labels to filter by (case-insensitive matching)
 
     **Jira-specific fields (ignored when source="github"):**
         - project: Jira project key (e.g., "PROJ")
         - jql_filter: Additional JQL filter conditions
+        - tags: List of tags/labels to filter by (case-insensitive matching)
 
-    **GitHub-specific fields (ignored when source="jira"):**
-        - repo: Repository in "owner/repo-name" format (e.g., "octocat/hello-world")
-        - query_filter: Additional GitHub search syntax (e.g., "is:pr draft:false")
+    **GitHub Project-based fields (preferred for source="github"):**
+        - project_number: The GitHub project number (required for GitHub triggers)
+        - project_scope: Whether the project belongs to "org" or "user"
+        - project_owner: The organization name or username that owns the project
+        - project_filter: JQL-like query for filtering by project field values
 
-    **Tag matching behavior:**
+    **Deprecated GitHub fields (use project-based fields instead):**
+        - repo: Repository in "owner/repo-name" format (DEPRECATED for GitHub)
+        - query_filter: Additional GitHub search syntax (DEPRECATED for GitHub)
+        - tags: List of tags/labels (DEPRECATED for GitHub, still used for Jira)
+
+    **Tag matching behavior (Jira only):**
         When multiple tags are specified, issues must have ALL tags to match (AND logic).
         For example, tags: ["needs-review", "priority-high"] will only match issues
         that have both labels applied.
@@ -96,21 +112,33 @@ class TriggerConfig:
             Ignored when source is "github".
         jql_filter: JQL filter for Jira queries. Only used when source is "jira".
             Ignored when source is "github".
-        tags: List of tags/labels to filter by. Used by both Jira and GitHub.
-            Issues must have ALL specified tags to match (AND logic).
-        repo: GitHub repository in "owner/repo-name" format. Only used when
-            source is "github". Ignored when source is "jira".
-        query_filter: GitHub search syntax filter. Only used when source is "github".
-            Ignored when source is "jira". Supports GitHub search qualifiers like
-            "is:pr", "is:issue", "draft:false", "author:username", etc.
+        tags: List of tags/labels to filter by. Used by Jira. DEPRECATED for GitHub
+            triggers - use project_filter instead.
+        repo: GitHub repository in "owner/repo-name" format. DEPRECATED: Use
+            project-based configuration instead. Will be removed in future version.
+        query_filter: GitHub search syntax filter. DEPRECATED: Use project_filter
+            instead. Will be removed in future version.
+        project_number: The GitHub project number. Required when source is "github".
+        project_scope: Whether the project belongs to an "org" or "user".
+            Only used when source is "github".
+        project_owner: The organization name or username that owns the project.
+            Required when source is "github".
+        project_filter: JQL-like query for filtering items by project field values.
+            Only used when source is "github". Example: "Status = 'In Progress'"
     """
 
     source: Literal["jira", "github"] = "jira"
     project: str = ""
     jql_filter: str = ""
     tags: list[str] = field(default_factory=list)
+    # Deprecated GitHub fields (still supported for backwards compatibility)
     repo: str = ""
     query_filter: str = ""
+    # New GitHub Project-based fields
+    project_number: int | None = None
+    project_scope: Literal["org", "user"] = "org"
+    project_owner: str = ""
+    project_filter: str = ""
 
 
 @dataclass
@@ -443,7 +471,10 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
 
     Supports both Jira and GitHub triggers:
     - Jira triggers use: source="jira", project, jql_filter, tags
-    - GitHub triggers use: source="github", repo, query_filter, tags
+    - GitHub triggers use: source="github", project_number, project_scope,
+      project_owner, project_filter (preferred)
+    - Legacy GitHub triggers use: source="github", repo, query_filter, tags
+      (deprecated, will log warnings)
 
     Raises:
         OrchestrationError: If trigger configuration is invalid.
@@ -453,20 +484,69 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
         raise OrchestrationError(f"Invalid trigger source '{source}': must be 'jira' or 'github'")
 
     repo = data.get("repo", "")
+    query_filter = data.get("query_filter", "")
+    tags = data.get("tags", [])
 
-    # Validate repo format for GitHub triggers
-    if source == "github" and repo:
-        is_valid, error_message = _validate_github_repo_format(repo)
-        if not is_valid:
-            raise OrchestrationError(f"Invalid GitHub repo format '{repo}': {error_message}")
+    # New GitHub Project-based fields
+    project_number = data.get("project_number")
+    project_scope = data.get("project_scope", "org")
+    project_owner = data.get("project_owner", "")
+    project_filter = data.get("project_filter", "")
+
+    # Validation for GitHub triggers
+    if source == "github":
+        # Validate project_number is set for GitHub triggers
+        if project_number is None:
+            raise OrchestrationError(
+                "GitHub triggers require 'project_number' to be set. "
+                "Please configure project_number, project_scope, and project_owner "
+                "for GitHub Project-based polling."
+            )
+
+        # Validate project_number is a positive integer
+        if not isinstance(project_number, int) or project_number <= 0:
+            raise OrchestrationError(
+                f"Invalid project_number '{project_number}': must be a positive integer"
+            )
+
+        # Validate project_scope
+        if project_scope not in ("org", "user"):
+            raise OrchestrationError(
+                f"Invalid project_scope '{project_scope}': must be 'org' or 'user'"
+            )
+
+        # Validate project_owner is set
+        if not project_owner:
+            raise OrchestrationError(
+                "GitHub triggers require 'project_owner' to be set "
+                "(organization name or username)"
+            )
+
+        # Log deprecation warnings for legacy GitHub fields
+        if repo:
+            logger.warning(_GITHUB_FIELD_DEPRECATION_MSG.format(field="repo"))
+        if query_filter:
+            logger.warning(_GITHUB_FIELD_DEPRECATION_MSG.format(field="query_filter"))
+        if tags:
+            logger.warning(_GITHUB_FIELD_DEPRECATION_MSG.format(field="tags"))
+
+        # Validate repo format if provided (for backwards compatibility)
+        if repo:
+            is_valid, error_message = _validate_github_repo_format(repo)
+            if not is_valid:
+                raise OrchestrationError(f"Invalid GitHub repo format '{repo}': {error_message}")
 
     return TriggerConfig(
         source=source,
         project=data.get("project", ""),
         jql_filter=data.get("jql_filter", ""),
-        tags=data.get("tags", []),
+        tags=tags,
         repo=repo,
-        query_filter=data.get("query_filter", ""),
+        query_filter=query_filter,
+        project_number=project_number,
+        project_scope=project_scope,
+        project_owner=project_owner,
+        project_filter=project_filter,
     )
 
 
