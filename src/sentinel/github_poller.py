@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import re
 import time
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from sentinel.logging import get_logger
 from sentinel.orchestration import TriggerConfig
+from sentinel.project_filter import ProjectFilterParser
 
 logger = get_logger(__name__)
 
@@ -146,6 +149,76 @@ class GitHubIssue:
             draft=draft,
         )
 
+    @classmethod
+    def from_project_item(cls, item: dict[str, Any]) -> GitHubIssue | None:
+        """Create a GitHubIssue from a GitHub Project item.
+
+        Parses the project item structure returned by the GraphQL API,
+        extracting content details (Issue or PullRequest) and converting
+        to a GitHubIssue object.
+
+        Args:
+            item: Normalized project item from list_project_items(), containing:
+                - id: Item node ID
+                - content: The linked Issue/PR with details, or None for drafts
+                - fieldValues: List of field values for this item
+
+        Returns:
+            GitHubIssue instance if the item contains an Issue or PullRequest,
+            None if the item is a DraftIssue or has no content.
+        """
+        content = item.get("content")
+        if not content:
+            # No content - possibly a draft or deleted item
+            return None
+
+        content_type = content.get("type")
+
+        # Skip DraftIssue items - they don't have issue numbers
+        if content_type == "DraftIssue":
+            return None
+
+        # Determine if this is a pull request
+        is_pull_request = content_type == "PullRequest"
+
+        # Extract labels from nested nodes structure
+        labels: list[str] = content.get("labels", [])
+
+        # Extract assignees from nested nodes structure
+        assignees: list[str] = content.get("assignees", [])
+
+        # Extract author
+        author = content.get("author", "")
+
+        # Map state - GraphQL returns OPEN/CLOSED/MERGED for PRs
+        state = content.get("state", "OPEN").lower()
+        if state == "merged":
+            state = "closed"  # Normalize to REST API convention
+
+        # Extract PR-specific fields
+        head_ref = ""
+        base_ref = ""
+        draft = False
+
+        if is_pull_request:
+            head_ref = content.get("headRefName", "")
+            base_ref = content.get("baseRefName", "")
+            draft = content.get("isDraft", False)
+
+        return cls(
+            number=content.get("number", 0),
+            title=content.get("title", ""),
+            body=content.get("body", "") or "",
+            state=state,
+            author=author,
+            assignees=assignees,
+            labels=labels,
+            is_pull_request=is_pull_request,
+            head_ref=head_ref,
+            base_ref=base_ref,
+            draft=draft,
+        )
+
 
 class GitHubClientError(Exception):
     """Raised when a GitHub API operation fails."""
@@ -229,7 +302,13 @@ class GitHubClient(ABC):
 
 
 class GitHubPoller:
-    """Polls GitHub for issues and PRs matching orchestration triggers."""
+    """Polls GitHub for issues and PRs matching orchestration triggers.
+
+    Supports project-based polling using GitHub Projects (v2) GraphQL API.
+    The poll() method uses the trigger's project configuration to fetch
+    items from a GitHub Project and optionally filter them using a
+    JQL-like project_filter expression.
+    """
 
     def __init__(
         self,
@@ -247,9 +326,97 @@ class GitHubPoller:
         self.client = client
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        # Cache for project IDs: key is "owner/project_number", value is project_id
+        self._project_id_cache: dict[str, str] = {}
+        # Filter parser for project_filter expressions
+        self._filter_parser = ProjectFilterParser()
+
+    def _get_project_id(self, owner: str, project_number: int, scope: str) -> str:
+        """Get the project ID, using cache to avoid repeated lookups.
+
+        Args:
+            owner: The organization or user that owns the project.
+            project_number: The project number.
+            scope: Either "org" or "user" depending on project ownership.
+
+        Returns:
+            The project's global node ID.
+
+        Raises:
+            GitHubClientError: If the project lookup fails.
+        """
+        cache_key = f"{owner}/{project_number}"
+        if cache_key in self._project_id_cache:
+            logger.debug(f"Using cached project ID for {cache_key}")
+            return self._project_id_cache[cache_key]
+
+        # Map scope from config format to API format
+        api_scope = "organization" if scope == "org" else "user"
+
+        logger.debug(f"Fetching project ID for {cache_key} (scope={api_scope})")
+        project = self.client.get_project(owner, project_number, api_scope)
+        project_id = project["id"]
+
+        self._project_id_cache[cache_key] = project_id
+        logger.info(f"Cached project ID for {cache_key}: {project_id[:20]}...")
+        return project_id
+
+    def _extract_field_values(self, item: dict[str, Any]) -> dict[str, Any]:
+        """Extract field values from a project item into a flat dictionary.
+
+        Args:
+            item: Project item with fieldValues list.
+
+        Returns:
+            Dictionary mapping field names to their values.
+        """
+        fields: dict[str, Any] = {}
+        for fv in item.get("fieldValues", []):
+            field_name = fv.get("field")
+            value = fv.get("value")
+            if field_name:
+                fields[field_name] = value
+        return fields
+
+    def _apply_filter(
+        self, items: list[dict[str, Any]], filter_expr: str
+    ) -> list[dict[str, Any]]:
+        """Apply a project_filter expression to filter items.
+
+        Args:
+            items: List of project items to filter.
+            filter_expr: JQL-like filter expression.
+
+        Returns:
+            Filtered list of items matching the expression.
+        """
+        if not filter_expr:
+            return items
+
+        try:
+            parsed_filter = self._filter_parser.parse(filter_expr)
+        except ValueError as e:
+            logger.error(f"Invalid project_filter expression: {e}")
+            raise GitHubClientError(f"Invalid project_filter: {e}") from e
+
+        filtered: list[dict[str, Any]] = []
+        for item in items:
+            fields = self._extract_field_values(item)
+            if self._filter_parser.evaluate(parsed_filter, fields):
+                filtered.append(item)
+
+        logger.debug(
+            f"Filter '{filter_expr}' matched {len(filtered)}/{len(items)} items"
+        )
+        return filtered
 
     def build_query(self, trigger: TriggerConfig) -> str:
         """Build a GitHub search query from trigger configuration.
+
+        .. deprecated::
+            This method is deprecated for GitHub triggers. Use project-based
+            configuration (project_number, project_scope, project_owner,
+            project_filter) instead. This method will be removed in a future version.
 
         Args:
             trigger: Trigger configuration from orchestration.
@@ -257,6 +424,13 @@ class GitHubPoller:
         Returns:
             GitHub search query string.
         """
+        warnings.warn(
+            "build_query() is deprecated for GitHub triggers. "
+            "Use project-based polling with project_number, project_scope, "
+            "project_owner, and project_filter instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         conditions: list[str] = []
 
         # Repository filter
@@ -280,30 +454,65 @@ class GitHubPoller:
     def poll(self, trigger: TriggerConfig, max_results: int = 50) -> list[GitHubIssue]:
         """Poll GitHub for issues/PRs matching the trigger configuration.
 
+        Uses project-based polling via GitHub Projects (v2) GraphQL API.
+        Fetches items from the configured project and filters them using
+        the optional project_filter expression.
+
         Args:
-            trigger: Trigger configuration from orchestration.
+            trigger: Trigger configuration from orchestration. Must have
+                project_number, project_scope, and project_owner set.
             max_results: Maximum number of issues to return.
 
         Returns:
-            List of matching GitHubIssue objects.
+            List of matching GitHubIssue objects. Draft issues are skipped.
 
         Raises:
             GitHubClientError: If polling fails after retries.
         """
-        query = self.build_query(trigger)
-        if not query:
-            logger.warning("Empty query generated from trigger config")
-            return []
+        # Validate project configuration
+        if trigger.project_number is None:
+            raise GitHubClientError(
+                "GitHub trigger requires project_number to be configured"
+            )
+        if not trigger.project_owner:
+            raise GitHubClientError(
+                "GitHub trigger requires project_owner to be configured"
+            )
 
-        logger.info(f"Polling GitHub with query: {query}")
+        logger.info(
+            f"Polling GitHub project: {trigger.project_owner}/project/{trigger.project_number}"
+        )
 
         last_error: Exception | None = None
         for attempt in range(self.max_retries):
             try:
-                raw_issues = self.client.search_issues(query, max_results)
-                issues = [GitHubIssue.from_api_response(issue) for issue in raw_issues]
-                logger.info(f"Found {len(issues)} matching issues/PRs")
+                # Get project ID (cached)
+                project_id = self._get_project_id(
+                    trigger.project_owner,
+                    trigger.project_number,
+                    trigger.project_scope,
+                )
+
+                # Fetch project items
+                raw_items = self.client.list_project_items(project_id, max_results)
+                logger.debug(f"Fetched {len(raw_items)} items from project")
+
+                # Apply filter if configured
+                filtered_items = self._apply_filter(raw_items, trigger.project_filter)
+
+                # Convert to GitHubIssue objects, skipping drafts
+                issues: list[GitHubIssue] = []
+                for item in filtered_items:
+                    issue = GitHubIssue.from_project_item(item)
+                    if issue is not None:
+                        issues.append(issue)
+
+                logger.info(
+                    f"Found {len(issues)} matching issues/PRs "
+                    f"(filtered from {len(raw_items)} project items)"
+                )
                 return issues
+
             except GitHubClientError as e:
                 last_error = e
                 if attempt < self.max_retries - 1:
