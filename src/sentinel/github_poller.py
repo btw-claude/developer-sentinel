@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import time
 import warnings
 from abc import ABC, abstractmethod
@@ -367,6 +366,16 @@ class GitHubPoller:
         self._project_id_cache[cache_key] = project_id
         logger.info(f"Cached project ID for {cache_key}: {project_id[:20]}...")
         return project_id
+
+    def clear_project_id_cache(self) -> None:
+        """Clear the cached project IDs.
+
+        Useful for testing scenarios or long-running processes that may need
+        to refresh the project ID cache (e.g., if a project is deleted and
+        recreated with a new ID).
+        """
+        self._project_id_cache.clear()
+        logger.debug("Project ID cache cleared")
 
     def _extract_field_values(self, item: dict[str, Any]) -> dict[str, Any]:
         """Extract field values from a project item into a flat dictionary.
