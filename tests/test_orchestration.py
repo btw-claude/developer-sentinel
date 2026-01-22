@@ -1,5 +1,6 @@
 """Tests for orchestration configuration loading."""
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from sentinel.orchestration import (
     RetryConfig,
     TriggerConfig,
     ValidationResult,
+    _GITHUB_FIELD_DEPRECATION_MSG,
     _validate_github_repo_format,
     load_orchestration_file,
     load_orchestrations,
@@ -34,14 +36,51 @@ class TestDataclasses:
         assert trigger.tags == []
         assert trigger.repo == ""
         assert trigger.query_filter == ""
+        # New GitHub Project-based fields
+        assert trigger.project_number is None
+        assert trigger.project_scope == "org"
+        assert trigger.project_owner == ""
+        assert trigger.project_filter == ""
 
     def test_trigger_config_github_source(self) -> None:
-        """TriggerConfig should support github source."""
+        """TriggerConfig should support github source with project-based config."""
+        trigger = TriggerConfig(
+            source="github",
+            project_number=42,
+            project_scope="org",
+            project_owner="my-org",
+            project_filter="Status = 'In Progress'",
+        )
+        assert trigger.source == "github"
+        assert trigger.project_number == 42
+        assert trigger.project_scope == "org"
+        assert trigger.project_owner == "my-org"
+        assert trigger.project_filter == "Status = 'In Progress'"
+
+    def test_trigger_config_github_user_scope(self) -> None:
+        """TriggerConfig should support user-scoped GitHub projects."""
+        trigger = TriggerConfig(
+            source="github",
+            project_number=5,
+            project_scope="user",
+            project_owner="myusername",
+            project_filter="Priority = 'High'",
+        )
+        assert trigger.source == "github"
+        assert trigger.project_number == 5
+        assert trigger.project_scope == "user"
+        assert trigger.project_owner == "myusername"
+        assert trigger.project_filter == "Priority = 'High'"
+
+    def test_trigger_config_github_legacy_fields(self) -> None:
+        """TriggerConfig should still support legacy GitHub fields."""
         trigger = TriggerConfig(
             source="github",
             repo="org/repo-name",
             query_filter="is:issue is:open label:bug",
             tags=["needs-triage"],
+            project_number=1,
+            project_owner="org",
         )
         assert trigger.source == "github"
         assert trigger.repo == "org/repo-name"
@@ -607,10 +646,10 @@ orchestrations:
   - name: "github-issue-triage"
     trigger:
       source: github
-      repo: "org/repo-name"
-      query_filter: "is:issue is:open label:needs-triage"
-      tags:
-        - "auto-process"
+      project_number: 42
+      project_scope: org
+      project_owner: "my-organization"
+      project_filter: "Status = 'Needs Triage'"
     agent:
       prompt: "Triage the GitHub issue"
       tools:
@@ -625,9 +664,10 @@ orchestrations:
         orch = orchestrations[0]
         assert orch.name == "github-issue-triage"
         assert orch.trigger.source == "github"
-        assert orch.trigger.repo == "org/repo-name"
-        assert orch.trigger.query_filter == "is:issue is:open label:needs-triage"
-        assert orch.trigger.tags == ["auto-process"]
+        assert orch.trigger.project_number == 42
+        assert orch.trigger.project_scope == "org"
+        assert orch.trigger.project_owner == "my-organization"
+        assert orch.trigger.project_filter == "Status = 'Needs Triage'"
 
     def test_invalid_trigger_source_raises_error(self, tmp_path: Path) -> None:
         """Should raise error for invalid trigger source value."""
@@ -1009,14 +1049,15 @@ class TestInvalidGitHubRepoFormat:
     """Tests for invalid GitHub repo format validation in trigger parsing."""
 
     def test_invalid_repo_format_raises_error(self, tmp_path: Path) -> None:
-        """Should raise error for invalid GitHub repo format."""
+        """Should raise error for invalid GitHub repo format when repo is provided."""
         yaml_content = """
 orchestrations:
   - name: "invalid-repo"
     trigger:
       source: github
+      project_number: 42
+      project_owner: "my-org"
       repo: "invalid-format"
-      tags: ["test"]
     agent:
       prompt: "Test"
 """
@@ -1033,8 +1074,9 @@ orchestrations:
   - name: "too-many-slashes"
     trigger:
       source: github
+      project_number: 42
+      project_owner: "my-org"
       repo: "org/repo/extra"
-      tags: ["test"]
     agent:
       prompt: "Test"
 """
@@ -1045,13 +1087,14 @@ orchestrations:
             load_orchestration_file(file_path)
 
     def test_empty_repo_is_allowed(self, tmp_path: Path) -> None:
-        """Empty repo should be allowed (triggers all repos if combined with tags)."""
+        """Empty repo should be allowed when using project-based triggers."""
         yaml_content = """
 orchestrations:
   - name: "empty-repo"
     trigger:
       source: github
-      tags: ["needs-review"]
+      project_number: 42
+      project_owner: "my-org"
     agent:
       prompt: "Test"
 """
@@ -1082,6 +1125,357 @@ orchestrations:
         orchestrations = load_orchestration_file(file_path)
         assert len(orchestrations) == 1
         assert orchestrations[0].trigger.source == "jira"
+
+
+class TestGitHubProjectTrigger:
+    """Tests for GitHub Project-based trigger configuration (DS-201).
+
+    These tests verify the new GitHub Project-based polling fields:
+    - project_number: Required positive integer for GitHub triggers
+    - project_scope: "org" or "user" scope for the project
+    - project_owner: Required organization name or username
+    - project_filter: JQL-like query for filtering by project field values
+
+    Also tests deprecation warnings for legacy GitHub fields (repo, query_filter, tags).
+    """
+
+    def test_github_trigger_with_project_config(self, tmp_path: Path) -> None:
+        """Should load GitHub trigger with project-based configuration."""
+        yaml_content = """
+orchestrations:
+  - name: "github-project-trigger"
+    trigger:
+      source: github
+      project_number: 123
+      project_scope: org
+      project_owner: "my-organization"
+      project_filter: "Status = 'Ready for Review'"
+    agent:
+      prompt: "Process project item"
+"""
+        file_path = tmp_path / "project_trigger.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.trigger.source == "github"
+        assert orch.trigger.project_number == 123
+        assert orch.trigger.project_scope == "org"
+        assert orch.trigger.project_owner == "my-organization"
+        assert orch.trigger.project_filter == "Status = 'Ready for Review'"
+
+    def test_github_trigger_user_scope(self, tmp_path: Path) -> None:
+        """Should load GitHub trigger with user-scoped project."""
+        yaml_content = """
+orchestrations:
+  - name: "user-project-trigger"
+    trigger:
+      source: github
+      project_number: 5
+      project_scope: user
+      project_owner: "myusername"
+      project_filter: "Priority = 'High'"
+    agent:
+      prompt: "Process user project item"
+"""
+        file_path = tmp_path / "user_project.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.trigger.project_scope == "user"
+        assert orch.trigger.project_owner == "myusername"
+
+    def test_github_trigger_missing_project_number_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when GitHub trigger is missing project_number."""
+        yaml_content = """
+orchestrations:
+  - name: "missing-project-number"
+    trigger:
+      source: github
+      project_owner: "my-org"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "missing_project_number.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="require 'project_number' to be set"):
+            load_orchestration_file(file_path)
+
+    def test_github_trigger_invalid_project_number_zero(self, tmp_path: Path) -> None:
+        """Should raise error when project_number is zero."""
+        yaml_content = """
+orchestrations:
+  - name: "zero-project-number"
+    trigger:
+      source: github
+      project_number: 0
+      project_owner: "my-org"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "zero_project_number.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid project_number"):
+            load_orchestration_file(file_path)
+
+    def test_github_trigger_invalid_project_number_negative(self, tmp_path: Path) -> None:
+        """Should raise error when project_number is negative."""
+        yaml_content = """
+orchestrations:
+  - name: "negative-project-number"
+    trigger:
+      source: github
+      project_number: -5
+      project_owner: "my-org"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "negative_project_number.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid project_number"):
+            load_orchestration_file(file_path)
+
+    def test_github_trigger_invalid_project_number_string(self, tmp_path: Path) -> None:
+        """Should raise error when project_number is not an integer."""
+        yaml_content = """
+orchestrations:
+  - name: "string-project-number"
+    trigger:
+      source: github
+      project_number: "forty-two"
+      project_owner: "my-org"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "string_project_number.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid project_number"):
+            load_orchestration_file(file_path)
+
+    def test_github_trigger_invalid_project_scope(self, tmp_path: Path) -> None:
+        """Should raise error when project_scope is invalid."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-scope"
+    trigger:
+      source: github
+      project_number: 42
+      project_scope: "team"
+      project_owner: "my-org"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "invalid_scope.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid project_scope"):
+            load_orchestration_file(file_path)
+
+    def test_github_trigger_missing_project_owner_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when GitHub trigger is missing project_owner."""
+        yaml_content = """
+orchestrations:
+  - name: "missing-owner"
+    trigger:
+      source: github
+      project_number: 42
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "missing_owner.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="require 'project_owner' to be set"):
+            load_orchestration_file(file_path)
+
+    def test_github_trigger_empty_project_filter_allowed(self, tmp_path: Path) -> None:
+        """Should allow empty project_filter (no filtering)."""
+        yaml_content = """
+orchestrations:
+  - name: "no-filter"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+    agent:
+      prompt: "Process all items"
+"""
+        file_path = tmp_path / "no_filter.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.project_filter == ""
+
+    def test_github_trigger_default_project_scope_is_org(self, tmp_path: Path) -> None:
+        """Should default project_scope to 'org' when not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "default-scope"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "default_scope.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.project_scope == "org"
+
+    def test_github_trigger_with_deprecated_repo_logs_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should log deprecation warning when using deprecated repo field."""
+        yaml_content = """
+orchestrations:
+  - name: "deprecated-repo"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      repo: "my-org/old-repo"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "deprecated_repo.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        # Check that deprecation warning was logged
+        assert "repo" in caplog.text
+        assert "deprecated" in caplog.text.lower()
+
+    def test_github_trigger_with_deprecated_query_filter_logs_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should log deprecation warning when using deprecated query_filter field."""
+        yaml_content = """
+orchestrations:
+  - name: "deprecated-query-filter"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      query_filter: "is:issue is:open"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "deprecated_query_filter.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        # Check that deprecation warning was logged
+        assert "query_filter" in caplog.text
+        assert "deprecated" in caplog.text.lower()
+
+    def test_github_trigger_with_deprecated_tags_logs_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should log deprecation warning when using deprecated tags field for GitHub."""
+        yaml_content = """
+orchestrations:
+  - name: "deprecated-tags"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      tags:
+        - "old-style-tag"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "deprecated_tags.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        # Check that deprecation warning was logged
+        assert "tags" in caplog.text
+        assert "deprecated" in caplog.text.lower()
+
+    def test_jira_trigger_does_not_require_project_number(self, tmp_path: Path) -> None:
+        """Jira triggers should not require GitHub project fields."""
+        yaml_content = """
+orchestrations:
+  - name: "jira-trigger"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["review"]
+    agent:
+      prompt: "Process Jira issue"
+"""
+        file_path = tmp_path / "jira_trigger.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.source == "jira"
+        assert orchestrations[0].trigger.project_number is None
+
+    def test_github_trigger_with_complex_project_filter(self, tmp_path: Path) -> None:
+        """Should support complex project_filter expressions."""
+        yaml_content = """
+orchestrations:
+  - name: "complex-filter"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      project_filter: "Status = 'In Progress' AND Priority = 'High' AND Assignee != null"
+    agent:
+      prompt: "Process high priority items"
+"""
+        file_path = tmp_path / "complex_filter.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.project_filter == (
+            "Status = 'In Progress' AND Priority = 'High' AND Assignee != null"
+        )
+
+    def test_github_trigger_project_number_one_is_valid(self, tmp_path: Path) -> None:
+        """Should allow project_number of 1 (minimum valid value)."""
+        yaml_content = """
+orchestrations:
+  - name: "min-project-number"
+    trigger:
+      source: github
+      project_number: 1
+      project_owner: "my-org"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "min_project_number.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.project_number == 1
 
 
 class TestOrchestrationEnabled:
