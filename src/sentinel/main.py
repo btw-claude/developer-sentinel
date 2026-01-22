@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import signal
 import sys
 import threading
@@ -161,6 +162,35 @@ class GitHubIssueWithRepo:
     def draft(self) -> bool:
         """Return whether this PR is a draft."""
         return self._issue.draft
+
+    @property
+    def repo_url(self) -> str:
+        """Return the full URL to the issue/PR."""
+        return self._issue.repo_url
+
+
+def extract_repo_from_url(url: str) -> str | None:
+    """Extract owner/repo from a GitHub issue or PR URL.
+
+    Parses GitHub URLs to extract the repository in "owner/repo" format.
+    Handles both issue URLs (/issues/) and pull request URLs (/pull/).
+
+    Args:
+        url: GitHub URL, e.g., "https://github.com/org/repo/issues/123"
+            or "https://github.com/org/repo/pull/456"
+
+    Returns:
+        Repository in "owner/repo" format, or None if URL is invalid.
+    """
+    if not url:
+        return None
+
+    # Pattern matches: https://github.com/owner/repo/issues/123 or /pull/123
+    pattern = r"https?://[^/]+/([^/]+/[^/]+)/(?:issues|pull)/\d+"
+    match = re.match(pattern, url)
+    if match:
+        return match.group(1)
+    return None
 
 
 class DashboardServer:
@@ -1336,6 +1366,10 @@ class Sentinel:
     ) -> int:
         """Poll GitHub for issues/PRs matching orchestration triggers.
 
+        Uses project-based polling via GitHub Projects (v2) GraphQL API.
+        Deduplication is based on project_owner/project_number to avoid
+        polling the same project multiple times with different filters.
+
         Args:
             orchestrations: List of GitHub-triggered orchestrations.
             all_results: List to append synchronous results to.
@@ -1349,11 +1383,15 @@ class Sentinel:
             return 0
 
         # Collect unique trigger configs to avoid duplicate polling
+        # DS-204: Use project_owner/project_number for deduplication key
         seen_triggers: set[str] = set()
         triggers_to_poll: list[tuple[Orchestration, Any]] = []
 
         for orch in orchestrations:
-            trigger_key = f"github:{orch.trigger.repo}:{','.join(orch.trigger.tags)}"
+            # Build deduplication key from project configuration
+            trigger_key = (
+                f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+            )
             if trigger_key not in seen_triggers:
                 seen_triggers.add(trigger_key)
                 triggers_to_poll.append((orch, orch.trigger))
@@ -1386,10 +1424,9 @@ class Sentinel:
                 logger.error(f"Failed to poll GitHub for '{orch.name}': {e}")
                 continue
 
-            # Convert GitHub issues to include repo context for tag operations
-            # The GitHubIssue.key property returns "#123" format, but we need "org/repo#123"
-            # for tag operations to work correctly
-            issues_with_context = self._add_repo_context_to_github_issues(issues, trigger.repo)
+            # DS-204: Convert GitHub issues to include repo context for tag operations
+            # Extract repo from each issue's repo_url field instead of trigger.repo
+            issues_with_context = self._add_repo_context_from_urls(issues)
 
             # Route issues to matching orchestrations
             routing_results = self.router.route_matched_only(issues_with_context)
@@ -1402,24 +1439,37 @@ class Sentinel:
 
         return submitted_count
 
-    def _add_repo_context_to_github_issues(
+    def _add_repo_context_from_urls(
         self,
         issues: list[GitHubIssue],
-        repo: str,
     ) -> list[GitHubIssueProtocol]:
-        """Add repository context to GitHub issues for proper key formatting.
+        """Add repository context to GitHub issues by extracting repo from URLs.
+
+        DS-204: Extract repo from each issue's repo_url field instead of using
+        a single repo from the trigger config. This is necessary for project-based
+        polling where a single project can contain issues from multiple repositories.
 
         The GitHubIssue.key property returns "#123" but tag operations need "org/repo#123".
         This wraps GitHubIssue objects with the GitHubIssueWithRepo class.
 
         Args:
             issues: List of GitHubIssue objects from the poller.
-            repo: Repository in "org/repo" format.
 
         Returns:
             List of GitHubIssueWithRepo objects with updated keys.
+            Issues without valid repo URLs are skipped with a warning.
         """
-        return [GitHubIssueWithRepo(issue, repo) for issue in issues]
+        result: list[GitHubIssueProtocol] = []
+        for issue in issues:
+            repo = extract_repo_from_url(issue.repo_url)
+            if repo:
+                result.append(GitHubIssueWithRepo(issue, repo))
+            else:
+                logger.warning(
+                    f"Could not extract repo from URL for issue #{issue.number}: "
+                    f"{issue.repo_url!r}"
+                )
+        return result
 
     def _submit_execution_tasks(
         self,
