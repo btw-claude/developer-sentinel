@@ -326,3 +326,143 @@ orchestrations:
 
     on_failure:
       add_tag: "review-failed"
+
+  # GitHub Project-Based Trigger
+  # ----------------------------
+  # This example shows how to use GitHub Projects (v2) as a trigger source.
+  # Instead of polling Jira, this orchestration polls a GitHub Project board
+  # and processes items matching the filter criteria.
+  #
+  # MIGRATION NOTE: This replaces the deprecated repo/tags/query_filter fields.
+  # See docs/GITHUB_TRIGGER_MIGRATION.md for migration guide.
+  - name: "github-project-code-review"
+
+    trigger:
+      source: github              # Use GitHub as the trigger source
+
+      # GitHub Project Configuration (required for GitHub triggers)
+      # ----------------------------------------------------------
+      # project_number: The project number from the GitHub project URL
+      #   e.g., https://github.com/orgs/your-org/projects/42 -> project_number: 42
+      project_number: 42
+
+      # project_owner: The organization or user that owns the project
+      project_owner: "your-org"
+
+      # project_scope: Either "org" (organization project) or "user" (personal project)
+      project_scope: "org"
+
+      # project_filter: JQL-like filter expression to select items from the project
+      # Supports:
+      #   - Equality: Status = "Ready for Review"
+      #   - Inequality: Status != "Done"
+      #   - AND/OR: Status = "Ready" AND Priority = "High"
+      #   - Parentheses: (Status = "Ready" OR Status = "In Progress") AND Priority = "High"
+      # Field names must match the project's custom fields exactly (case-sensitive)
+      project_filter: 'Status = "Ready for Review"'
+
+    agent:
+      prompt: |
+        You are a code review assistant processing GitHub issues and PRs from a project board.
+
+        ## Your Task
+        1. Fetch the issue/PR details from GitHub
+        2. Review any associated code changes
+        3. Post review comments on the PR
+        4. Update the project item status
+
+        End your response with:
+        - "APPROVED: [summary]" if the code looks good
+        - "CHANGES REQUESTED: [what to fix]" if changes are needed
+        - "FAILURE: [reason]" if you couldn't complete the review
+
+      tools:
+        - github
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"  # Default repo for cloning operations
+
+      timeout_seconds: 600  # 10 minutes for complex reviews
+
+    retry:
+      max_attempts: 3
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR"
+        - "API error"
+        - "could not"
+
+    outcomes:
+      - name: approved
+        patterns:
+          - "APPROVED"
+          - "LGTM"
+        add_tag: "reviewed"  # GitHub label to add
+
+      - name: changes-requested
+        patterns:
+          - "CHANGES REQUESTED"
+          - "needs changes"
+        add_tag: "changes-requested"
+
+    on_start:
+      add_tag: "sentinel-processing"
+
+    on_failure:
+      add_tag: "review-failed"
+
+  # GitHub Project with Multiple Repository Support
+  # -----------------------------------------------
+  # GitHub Projects (v2) can contain issues and PRs from multiple repositories.
+  # Sentinel automatically extracts the correct repository context from each
+  # item's URL, enabling operations across different repos in a single project.
+  - name: "github-cross-repo-triage"
+
+    trigger:
+      source: github
+      project_number: 10
+      project_owner: "your-org"
+      project_scope: "org"
+      # Process items in "Needs Triage" status from any repo in the project
+      project_filter: 'Status = "Needs Triage"'
+
+    agent:
+      prompt: |
+        You are a triage assistant. For each issue/PR:
+        1. Read the issue description and labels
+        2. Determine the appropriate priority and assignee
+        3. Add relevant labels
+        4. Move the item to the appropriate status
+
+        The item may be from any repository in the project - the system will
+        automatically handle the correct repository context for GitHub operations.
+
+        End with SUCCESS when triage is complete.
+
+      tools:
+        - github
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "default-repo"  # Default repo (actual repo extracted from each item)
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+        - "triage complete"
+      failure_patterns:
+        - "FAILURE"
+        - "error"
+
+    on_start:
+      add_tag: "sentinel-triaging"
+
+    on_complete:
+      add_tag: "triaged"
+
+    on_failure:
+      add_tag: "triage-failed"

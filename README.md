@@ -9,8 +9,10 @@ Developer Sentinel monitors Jira for issues with specific tags (e.g., `@code-rev
 ## Features
 
 - **Tag-based routing**: Configure which agent handles issues based on Jira labels
+- **GitHub Project polling**: Poll GitHub Projects (v2) with JQL-like filter expressions
 - **YAML orchestration configs**: Define agent behavior, tools, and prompts in YAML files
 - **Multiple tool integrations**: Jira, Confluence, and GitHub tools available to agents
+- **Multi-repository support**: GitHub Projects can contain issues/PRs from multiple repos
 - **Configurable polling**: Adjustable poll intervals and issue limits
 - **Structured logging**: JSON-formatted logs with context for debugging
 - **Hot-reload orchestrations**: Automatically load, reload, and unload orchestration files without restart
@@ -121,6 +123,35 @@ orchestrations:
 ```
 
 See `orchestrations/README.md` for full configuration reference.
+
+### GitHub Project Triggers
+
+Sentinel also supports GitHub Projects (v2) as a trigger source:
+
+```yaml
+orchestrations:
+  - name: "github-code-review"
+    trigger:
+      source: github
+      project_number: 42          # Project number from URL
+      project_owner: "your-org"   # Organization or username
+      project_scope: "org"        # "org" or "user"
+      project_filter: 'Status = "Ready for Review"'
+    agent:
+      prompt: |
+        Review the code changes for this item.
+        End with APPROVED or CHANGES REQUESTED.
+      tools:
+        - github
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+    on_complete:
+      add_tag: "reviewed"
+```
+
+See [docs/GITHUB_TRIGGER_MIGRATION.md](docs/GITHUB_TRIGGER_MIGRATION.md) for the migration guide from deprecated GitHub trigger fields.
 
 ## Dynamic Orchestration Management
 
