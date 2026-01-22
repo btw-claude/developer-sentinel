@@ -38,6 +38,7 @@ class GitHubIssueProtocol(Protocol):
     head_ref: str
     base_ref: str
     draft: bool
+    repo_url: str
 
     @property
     def key(self) -> str:
@@ -61,6 +62,7 @@ class GitHubIssue:
         head_ref: The head branch reference (for PRs).
         base_ref: The base branch reference (for PRs).
         draft: Whether this PR is a draft (for PRs).
+        repo_url: The full URL to the issue/PR (used to extract repo context).
     """
 
     number: int
@@ -74,6 +76,7 @@ class GitHubIssue:
     head_ref: str = ""
     base_ref: str = ""
     draft: bool = False
+    repo_url: str = ""
 
     @property
     def key(self) -> str:
@@ -205,6 +208,9 @@ class GitHubIssue:
             base_ref = content.get("baseRefName", "")
             draft = content.get("isDraft", False)
 
+        # Extract URL for repo context extraction
+        repo_url = content.get("url", "")
+
         return cls(
             number=content.get("number", 0),
             title=content.get("title", ""),
@@ -217,6 +223,7 @@ class GitHubIssue:
             head_ref=head_ref,
             base_ref=base_ref,
             draft=draft,
+            repo_url=repo_url,
         )
 
 

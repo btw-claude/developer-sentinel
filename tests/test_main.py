@@ -3664,3 +3664,244 @@ class TestSentinelOrchestrationLogging:
         assert log_file.exists()
         content = log_file.read_text()
         assert "Dual log message" in content
+
+
+class TestExtractRepoFromUrl:
+    """Tests for extract_repo_from_url function (DS-204)."""
+
+    def test_extracts_from_issue_url(self) -> None:
+        """Test extraction from GitHub issue URL."""
+        from sentinel.main import extract_repo_from_url
+
+        url = "https://github.com/org/repo/issues/123"
+        result = extract_repo_from_url(url)
+        assert result == "org/repo"
+
+    def test_extracts_from_pull_url(self) -> None:
+        """Test extraction from GitHub pull request URL."""
+        from sentinel.main import extract_repo_from_url
+
+        url = "https://github.com/my-org/my-repo/pull/456"
+        result = extract_repo_from_url(url)
+        assert result == "my-org/my-repo"
+
+    def test_handles_empty_url(self) -> None:
+        """Test that empty URL returns None."""
+        from sentinel.main import extract_repo_from_url
+
+        assert extract_repo_from_url("") is None
+        assert extract_repo_from_url(None) is None  # type: ignore[arg-type]
+
+    def test_handles_invalid_url(self) -> None:
+        """Test that invalid URLs return None."""
+        from sentinel.main import extract_repo_from_url
+
+        assert extract_repo_from_url("not a url") is None
+        assert extract_repo_from_url("https://github.com/org/repo") is None
+        assert extract_repo_from_url("https://github.com/org/repo/commits/abc") is None
+
+    def test_handles_enterprise_github_url(self) -> None:
+        """Test extraction from GitHub Enterprise URLs."""
+        from sentinel.main import extract_repo_from_url
+
+        url = "https://github.enterprise.com/org/repo/issues/123"
+        result = extract_repo_from_url(url)
+        assert result == "org/repo"
+
+    def test_handles_http_url(self) -> None:
+        """Test extraction from HTTP URL (no HTTPS)."""
+        from sentinel.main import extract_repo_from_url
+
+        url = "http://github.com/org/repo/pull/789"
+        result = extract_repo_from_url(url)
+        assert result == "org/repo"
+
+    def test_handles_complex_repo_names(self) -> None:
+        """Test extraction with complex org/repo names."""
+        from sentinel.main import extract_repo_from_url
+
+        url = "https://github.com/my-org-123/my-repo-name/issues/1"
+        result = extract_repo_from_url(url)
+        assert result == "my-org-123/my-repo-name"
+
+
+class TestGitHubIssueWithRepo:
+    """Tests for GitHubIssueWithRepo class (DS-204)."""
+
+    def test_key_includes_repo_context(self) -> None:
+        """Test that key property includes full repo context."""
+        from sentinel.github_poller import GitHubIssue
+        from sentinel.main import GitHubIssueWithRepo
+
+        issue = GitHubIssue(number=123, title="Test")
+        wrapper = GitHubIssueWithRepo(issue, "org/repo")
+
+        assert wrapper.key == "org/repo#123"
+
+    def test_delegates_all_properties(self) -> None:
+        """Test that all properties are properly delegated."""
+        from sentinel.github_poller import GitHubIssue
+        from sentinel.main import GitHubIssueWithRepo
+
+        issue = GitHubIssue(
+            number=42,
+            title="Test Title",
+            body="Test Body",
+            state="open",
+            author="testuser",
+            assignees=["user1", "user2"],
+            labels=["bug", "urgent"],
+            is_pull_request=True,
+            head_ref="feature-branch",
+            base_ref="main",
+            draft=False,
+            repo_url="https://github.com/org/repo/pull/42",
+        )
+        wrapper = GitHubIssueWithRepo(issue, "org/repo")
+
+        assert wrapper.number == 42
+        assert wrapper.title == "Test Title"
+        assert wrapper.body == "Test Body"
+        assert wrapper.state == "open"
+        assert wrapper.author == "testuser"
+        assert wrapper.assignees == ["user1", "user2"]
+        assert wrapper.labels == ["bug", "urgent"]
+        assert wrapper.is_pull_request is True
+        assert wrapper.head_ref == "feature-branch"
+        assert wrapper.base_ref == "main"
+        assert wrapper.draft is False
+        assert wrapper.repo_url == "https://github.com/org/repo/pull/42"
+
+
+class TestAddRepoContextFromUrls:
+    """Tests for _add_repo_context_from_urls method (DS-204)."""
+
+    def test_wraps_issues_with_repo_context(self) -> None:
+        """Test that issues are wrapped with repo context from URL."""
+        from sentinel.github_poller import GitHubIssue
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        issues = [
+            GitHubIssue(
+                number=1,
+                title="Issue 1",
+                repo_url="https://github.com/org1/repo1/issues/1",
+            ),
+            GitHubIssue(
+                number=2,
+                title="Issue 2",
+                repo_url="https://github.com/org2/repo2/pull/2",
+            ),
+        ]
+
+        result = sentinel._add_repo_context_from_urls(issues)
+
+        assert len(result) == 2
+        assert result[0].key == "org1/repo1#1"
+        assert result[1].key == "org2/repo2#2"
+
+    def test_skips_issues_with_invalid_urls(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that issues with invalid URLs are skipped with warning."""
+        from sentinel.github_poller import GitHubIssue
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        issues = [
+            GitHubIssue(
+                number=1,
+                title="Valid Issue",
+                repo_url="https://github.com/org/repo/issues/1",
+            ),
+            GitHubIssue(
+                number=2,
+                title="Invalid Issue",
+                repo_url="invalid-url",
+            ),
+            GitHubIssue(
+                number=3,
+                title="Empty URL Issue",
+                repo_url="",
+            ),
+        ]
+
+        with caplog.at_level(logging.WARNING):
+            result = sentinel._add_repo_context_from_urls(issues)
+
+        # Only valid issue should be returned
+        assert len(result) == 1
+        assert result[0].key == "org/repo#1"
+
+        # Warnings should be logged for invalid URLs
+        assert "Could not extract repo from URL for issue #2" in caplog.text
+        assert "Could not extract repo from URL for issue #3" in caplog.text
+
+    def test_handles_mixed_repos_in_project(self) -> None:
+        """Test handling of issues from multiple repos in a single project."""
+        from sentinel.github_poller import GitHubIssue
+
+        jira_client = MockJiraClient(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_client=jira_client,
+            agent_client=agent_client,
+            tag_client=tag_client,
+        )
+
+        # A project can contain issues from multiple repositories
+        issues = [
+            GitHubIssue(
+                number=10,
+                title="From repo-a",
+                repo_url="https://github.com/org/repo-a/issues/10",
+            ),
+            GitHubIssue(
+                number=20,
+                title="From repo-b",
+                repo_url="https://github.com/org/repo-b/pull/20",
+            ),
+            GitHubIssue(
+                number=30,
+                title="From repo-c",
+                repo_url="https://github.com/different-org/repo-c/issues/30",
+            ),
+        ]
+
+        result = sentinel._add_repo_context_from_urls(issues)
+
+        assert len(result) == 3
+        assert result[0].key == "org/repo-a#10"
+        assert result[1].key == "org/repo-b#20"
+        assert result[2].key == "different-org/repo-c#30"

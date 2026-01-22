@@ -929,6 +929,75 @@ class TestGitHubPollerProjectBased:
         assert len(client.get_project_calls) == 3
 
 
+class TestGitHubIssueRepoUrl:
+    """Tests for repo_url field in GitHubIssue (DS-204)."""
+
+    def test_from_project_item_extracts_url(self) -> None:
+        """Test that from_project_item extracts repo_url from content."""
+        item = {
+            "id": "PVTI_123",
+            "content": {
+                "type": "Issue",
+                "number": 42,
+                "title": "Test issue",
+                "state": "OPEN",
+                "url": "https://github.com/org/repo/issues/42",
+                "body": "Issue description",
+                "labels": [],
+                "assignees": [],
+                "author": "testuser",
+            },
+            "fieldValues": [],
+        }
+        issue = GitHubIssue.from_project_item(item)
+        assert issue is not None
+        assert issue.repo_url == "https://github.com/org/repo/issues/42"
+
+    def test_from_project_item_handles_missing_url(self) -> None:
+        """Test that from_project_item handles missing URL gracefully."""
+        item = {
+            "id": "PVTI_456",
+            "content": {
+                "type": "Issue",
+                "number": 99,
+                "title": "No URL issue",
+                "state": "OPEN",
+                "body": "",
+                "labels": [],
+                "assignees": [],
+                "author": "author",
+            },
+            "fieldValues": [],
+        }
+        issue = GitHubIssue.from_project_item(item)
+        assert issue is not None
+        assert issue.repo_url == ""
+
+    def test_from_project_item_pr_url(self) -> None:
+        """Test that from_project_item extracts URL for pull requests."""
+        item = {
+            "id": "PVTI_789",
+            "content": {
+                "type": "PullRequest",
+                "number": 123,
+                "title": "Test PR",
+                "state": "OPEN",
+                "url": "https://github.com/my-org/my-repo/pull/123",
+                "body": "",
+                "labels": [],
+                "assignees": [],
+                "author": "prauthor",
+                "isDraft": False,
+                "headRefName": "feature",
+                "baseRefName": "main",
+            },
+            "fieldValues": [],
+        }
+        issue = GitHubIssue.from_project_item(item)
+        assert issue is not None
+        assert issue.repo_url == "https://github.com/my-org/my-repo/pull/123"
+
+
 class TestGitHubPollerBuildQueryDeprecation:
     """Tests for build_query deprecation."""
 
