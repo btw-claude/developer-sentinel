@@ -48,7 +48,8 @@ logger = get_logger(__name__)
 # This pattern extracts the owner/repo from GitHub URLs like:
 # - https://github.com/owner/repo/issues/123
 # - https://github.com/owner/repo/pull/456
-GITHUB_ISSUE_PR_URL_PATTERN = r"https?://[^/]+/([^/]+/[^/]+)/(?:issues|pull)/\d+"
+# DS-213: Pre-compiled for performance - avoids re-compilation on each call
+GITHUB_ISSUE_PR_URL_PATTERN = re.compile(r"https?://[^/]+/([^/]+/[^/]+)/(?:issues|pull)/\d+")
 
 
 @dataclass
@@ -191,7 +192,7 @@ def extract_repo_from_url(url: str) -> str | None:
     if not url:
         return None
 
-    match = re.match(GITHUB_ISSUE_PR_URL_PATTERN, url)
+    match = GITHUB_ISSUE_PR_URL_PATTERN.match(url)
     if match:
         return match.group(1)
     return None
