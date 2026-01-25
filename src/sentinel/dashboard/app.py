@@ -37,7 +37,7 @@ class TemplateEnvironmentWrapper:
         """
         self._env = env
 
-    def template_response(
+    async def template_response(
         self,
         *,
         request: object,
@@ -57,7 +57,7 @@ class TemplateEnvironmentWrapper:
         template = self._env.get_template(name)
         context = context or {}
         context["request"] = request
-        content = template.render(**context)
+        content = await template.render_async(**context)
         return HTMLResponse(content=content)
 
     # Alias for backwards compatibility with the expected interface
