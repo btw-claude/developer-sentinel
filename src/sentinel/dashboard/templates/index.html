@@ -51,7 +51,8 @@
          hx-target="#system-status-content"
          hx-swap="innerHTML"
          hx-trigger="click[!document.querySelector('#system-status-content').classList.contains('expanded')]"
-         onclick="toggleCollapsibleSection(this)">
+         hx-on::after-request="toggleCollapsibleSection(this)"
+         onclick="if(document.querySelector('#system-status-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             System Status
@@ -71,7 +72,8 @@
          hx-target="#running-steps-content"
          hx-swap="innerHTML"
          hx-trigger="click[!document.querySelector('#running-steps-content').classList.contains('expanded')]"
-         onclick="toggleCollapsibleSection(this)">
+         hx-on::after-request="toggleCollapsibleSection(this)"
+         onclick="if(document.querySelector('#running-steps-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Running Steps
@@ -92,7 +94,8 @@
          hx-target="#issue-queue-content"
          hx-swap="innerHTML"
          hx-trigger="click[!document.querySelector('#issue-queue-content').classList.contains('expanded')]"
-         onclick="toggleCollapsibleSection(this)">
+         hx-on::after-request="toggleCollapsibleSection(this)"
+         onclick="if(document.querySelector('#issue-queue-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Issue Queue
@@ -113,7 +116,8 @@
          hx-target="#orchestrations-content"
          hx-swap="innerHTML"
          hx-trigger="click[!document.querySelector('#orchestrations-content').classList.contains('expanded')]"
-         onclick="toggleCollapsibleSection(this)">
+         hx-on::after-request="toggleCollapsibleSection(this)"
+         onclick="if(document.querySelector('#orchestrations-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Orchestrations
