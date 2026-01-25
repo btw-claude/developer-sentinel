@@ -44,7 +44,7 @@ class TemplateEnvironmentWrapper:
         name: str,
         context: dict | None = None,
     ) -> HTMLResponse:
-        """Render a template and return an HTML response.
+        """Asynchronously render a template and return an HTML response.
 
         This method is async and must be awaited. It uses Jinja2's async
         template rendering (render_async) which is required when the
