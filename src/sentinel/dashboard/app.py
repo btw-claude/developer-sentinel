@@ -69,6 +69,12 @@ class TemplateEnvironmentWrapper:
             synchronous code, you must run it within an async context (e.g.,
             using asyncio.run() or from within another async function).
 
+            Example::
+
+                # Calling from synchronous code:
+                import asyncio
+                response = asyncio.run(templates.template_response(request=req, name='index.html'))
+
             For more information on async/await patterns, see:
             https://docs.python.org/3/library/asyncio-task.html
 
