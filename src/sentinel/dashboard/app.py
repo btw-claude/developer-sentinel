@@ -46,6 +46,11 @@ class TemplateEnvironmentWrapper:
     ) -> HTMLResponse:
         """Render a template and return an HTML response.
 
+        This method is async and must be awaited. It uses Jinja2's async
+        template rendering (render_async) which is required when the
+        Environment is created with enable_async=True. Calling this method
+        without awaiting will not render the template correctly.
+
         Args:
             request: The incoming HTTP request.
             name: The template name to render.
