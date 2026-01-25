@@ -535,8 +535,13 @@
 .overflow-scroll { overflow: scroll; }
 
 /* =============================================================================
-   NESTED ACCORDION UTILITIES (DS-224)
-   Styles for nested accordions used in grouped orchestrations display
+   NESTED ACCORDION UTILITIES (DS-224, DS-227)
+   Styles for nested accordions used in grouped orchestrations display.
+
+   DS-227: Template updates for grouped orchestrations display including:
+   - Nested accordion structure for project/repo groupings
+   - Proper indentation for child items
+   - Expansion/collapse visual feedback
    ============================================================================= */
 
 /* Container for nested accordion items */
