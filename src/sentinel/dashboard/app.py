@@ -64,6 +64,14 @@ class TemplateEnvironmentWrapper:
                 response = templates.template_response(...)
                 # Returns: <coroutine object template_response at 0x...>
 
+        Note:
+            This method uses Python's async/await pattern. When calling from
+            synchronous code, you must run it within an async context (e.g.,
+            using asyncio.run() or from within another async function).
+
+            For more information on async/await patterns, see:
+            https://docs.python.org/3/library/asyncio-task.html
+
         Args:
             request: The incoming HTTP request.
             name: The template name to render.
