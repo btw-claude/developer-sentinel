@@ -7,6 +7,7 @@ internal state while still providing access to monitoring data.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -363,20 +364,14 @@ class SentinelStateAccessor:
             A tuple of (jira_projects, github_repos) where each is a list of
             ProjectOrchestrations grouped by project key or repo name.
         """
-        jira_groups: dict[str, list[OrchestrationInfo]] = {}
-        github_groups: dict[str, list[OrchestrationInfo]] = {}
+        jira_groups: dict[str, list[OrchestrationInfo]] = defaultdict(list)
+        github_groups: dict[str, list[OrchestrationInfo]] = defaultdict(list)
 
         for orch in orchestrations:
             if orch.trigger_source == "jira" and orch.trigger_project:
-                key = orch.trigger_project
-                if key not in jira_groups:
-                    jira_groups[key] = []
-                jira_groups[key].append(orch)
+                jira_groups[orch.trigger_project].append(orch)
             elif orch.trigger_source == "github" and orch.trigger_repo:
-                key = orch.trigger_repo
-                if key not in github_groups:
-                    github_groups[key] = []
-                github_groups[key].append(orch)
+                github_groups[orch.trigger_repo].append(orch)
 
         # Convert to sorted lists of ProjectOrchestrations
         jira_projects = [

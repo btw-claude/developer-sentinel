@@ -10,6 +10,7 @@
  * - --text-primary: Primary text color (#eee)
  * - --text-secondary: Secondary text color (#aaa)
  * - --accent: Accent color (#0f3460)
+ * - --accent-hover: Accent color with transparency for hover effects (rgba(15, 52, 96, 0.3))
  * - --success: Success state color (#00d26a)
  * - --warning: Warning state color (#f9c74f)
  * - --danger: Danger state color (#e63946)
@@ -624,7 +625,7 @@
 }
 
 .nested-table tr:hover td {
-    background-color: rgba(15, 52, 96, 0.3);
+    background-color: var(--accent-hover, rgba(15, 52, 96, 0.3));
 }
 
 /* =============================================================================
