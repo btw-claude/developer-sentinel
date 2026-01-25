@@ -52,6 +52,15 @@ class ProjectOrchestrations:
                   __version__ = "1.0.0"
                   # ... fields ...
 
+          .. note:: Dataclass Behavior
+              The ``__version__`` attribute is a class attribute, not a dataclass
+              field. As such, it will **not** be included in the automatically
+              generated ``__repr__``, ``__eq__``, ``__hash__``, or ``__init__``
+              methods. This is intentional—version metadata is class-level, not
+              instance-level. To access it, use ``ProjectOrchestrations.__version__``
+              rather than ``instance.__version__`` (though both work, the former
+              is more explicit about the class-level nature).
+
         - Document any planned changes in a CHANGELOG
         - Use ``warnings.warn()`` with ``DeprecationWarning`` for deprecated
           attributes or methods
