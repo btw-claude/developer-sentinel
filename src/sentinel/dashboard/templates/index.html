@@ -59,7 +59,7 @@
     </div>
     <div id="system-status-content" class="collapsible-content"
          hx-get="/partials/system_status"
-         hx-trigger="every 5s[document.querySelector('#system-status-content').classList.contains('expanded')]"
+         hx-trigger="every 5s[isExpanded('system-status-content')]"
          hx-swap="innerHTML">
         <!-- Content loaded via HTMX when expanded, auto-refreshes every 5s -->
     </div>
@@ -80,7 +80,7 @@
     </div>
     <div id="running-steps-content" class="collapsible-content"
          hx-get="/partials/running_steps"
-         hx-trigger="every 1s[document.querySelector('#running-steps-content').classList.contains('expanded')]"
+         hx-trigger="every 1s[isExpanded('running-steps-content')]"
          hx-swap="innerHTML">
         <!-- Content loaded via HTMX when expanded, auto-refreshes every 1s -->
     </div>
@@ -101,7 +101,7 @@
     </div>
     <div id="issue-queue-content" class="collapsible-content"
          hx-get="/partials/issue_queue"
-         hx-trigger="every 5s[document.querySelector('#issue-queue-content').classList.contains('expanded')]"
+         hx-trigger="every 5s[isExpanded('issue-queue-content')]"
          hx-swap="innerHTML">
         <!-- Content loaded via HTMX when expanded, auto-refreshes every 5s -->
     </div>
