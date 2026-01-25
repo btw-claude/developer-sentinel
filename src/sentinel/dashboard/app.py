@@ -48,8 +48,11 @@ class TemplateEnvironmentWrapper:
 
         This method is async and must be awaited. It uses Jinja2's async
         template rendering (render_async) which is required when the
-        Environment is created with enable_async=True. Calling this method
-        without awaiting will not render the template correctly.
+        Environment is created with enable_async=True.
+
+        Warning:
+            This method must be awaited. Calling without await returns a
+            coroutine object instead of the expected HTMLResponse.
 
         Args:
             request: The incoming HTTP request.
