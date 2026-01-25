@@ -246,7 +246,11 @@
          */
         function isExpanded(contentId) {
             const element = document.querySelector('#' + contentId);
-            return element && element.classList.contains('expanded');
+            if (!element) {
+                console.warn('isExpanded: Element not found: ' + contentId);
+                return false;
+            }
+            return element.classList.contains('expanded');
         }
     </script>
     {% block extra_head %}{% endblock %}
