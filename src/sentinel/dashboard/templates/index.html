@@ -112,19 +112,38 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
-         hx-get="/partials/orchestrations"
-         hx-target="#orchestrations-content"
+         hx-get="/partials/orchestrations?source=jira"
+         hx-target="#jira-projects-content"
          hx-swap="innerHTML"
-         hx-trigger="click[!document.querySelector('#orchestrations-content').classList.contains('expanded')]"
+         hx-trigger="click[!document.querySelector('#jira-projects-content').classList.contains('expanded')]"
          hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(document.querySelector('#orchestrations-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
+         onclick="if(document.querySelector('#jira-projects-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
-            Orchestrations
-            <span class="badge">{{ state.orchestrations | length }}</span>
+            Jira Projects
+            <span class="badge">{{ state.jira_projects | length }}</span>
         </h2>
     </div>
-    <div id="orchestrations-content" class="collapsible-content">
+    <div id="jira-projects-content" class="collapsible-content">
+        <!-- Content loaded via HTMX when expanded -->
+    </div>
+</div>
+
+<div class="card collapsible-section">
+    <div class="collapsible-header"
+         hx-get="/partials/orchestrations?source=github"
+         hx-target="#github-repos-content"
+         hx-swap="innerHTML"
+         hx-trigger="click[!document.querySelector('#github-repos-content').classList.contains('expanded')]"
+         hx-on::after-request="toggleCollapsibleSection(this)"
+         onclick="if(document.querySelector('#github-repos-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
+        <h2>
+            <span class="collapse-icon">&#9654;</span>
+            GitHub Repos
+            <span class="badge">{{ state.github_repos | length }}</span>
+        </h2>
+    </div>
+    <div id="github-repos-content" class="collapsible-content">
         <!-- Content loaded via HTMX when expanded -->
     </div>
 </div>

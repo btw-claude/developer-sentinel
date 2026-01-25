@@ -149,21 +149,31 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         )
 
     @dashboard_router.get("/partials/orchestrations", response_class=HTMLResponse)
-    async def partial_orchestrations(request: Request) -> HTMLResponse:
-        """Render the orchestrations partial for HTMX updates.
+    async def partial_orchestrations(request: Request, source: str = "jira") -> HTMLResponse:
+        """Render the orchestrations partial for HTMX updates (DS-224).
 
         Args:
             request: The incoming HTTP request.
+            source: Filter by source type - "jira" or "github".
 
         Returns:
             HTML response with the orchestrations partial.
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
+
+        # Select the appropriate grouped data based on source
+        if source == "github":
+            projects = state.github_repos
+            source_type = "github"
+        else:
+            projects = state.jira_projects
+            source_type = "jira"
+
         return await templates.TemplateResponse(
             request=request,
             name="partials/orchestrations.html",
-            context={"state": state},
+            context={"projects": projects, "source_type": source_type, "state": state},
         )
 
     @dashboard_router.get("/partials/running_steps", response_class=HTMLResponse)

@@ -226,6 +226,16 @@
             content.classList.toggle('expanded');
             icon.classList.toggle('rotated');
         }
+
+        /**
+         * Toggle a nested accordion item's expanded state (DS-224).
+         * Used for project/repo groupings within orchestrations sections.
+         * @param {HTMLElement} headerElement - The .nested-accordion-header element that was clicked
+         */
+        function toggleNestedAccordion(headerElement) {
+            const item = headerElement.closest('.nested-accordion-item');
+            item.classList.toggle('expanded');
+        }
     </script>
     {% block extra_head %}{% endblock %}
 </head>

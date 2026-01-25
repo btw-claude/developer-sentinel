@@ -31,6 +31,23 @@ class OrchestrationInfo:
 
 
 @dataclass(frozen=True)
+class ProjectOrchestrations:
+    """Orchestrations grouped by project or repository (DS-224).
+
+    This groups orchestrations by their trigger project (for Jira) or
+    repository (for GitHub) for a more organized dashboard display.
+    """
+
+    project_key: str  # e.g., "DS" for Jira or "org/repo" for GitHub
+    orchestrations: list[OrchestrationInfo]
+
+    @property
+    def count(self) -> int:
+        """Return the number of orchestrations in this project."""
+        return len(self.orchestrations)
+
+
+@dataclass(frozen=True)
 class OrchestrationVersionInfo:
     """Read-only orchestration version information for the dashboard."""
 
@@ -122,6 +139,10 @@ class DashboardState:
     active_versions: list[OrchestrationVersionInfo] = field(default_factory=list)
     pending_removal_versions: list[OrchestrationVersionInfo] = field(default_factory=list)
 
+    # Grouped orchestrations (DS-224)
+    jira_projects: list[ProjectOrchestrations] = field(default_factory=list)
+    github_repos: list[ProjectOrchestrations] = field(default_factory=list)
+
     # Execution state
     active_execution_count: int = 0
     available_slots: int = 0
@@ -194,6 +215,9 @@ class SentinelStateAccessor:
         orchestration_infos = [
             self._orchestration_to_info(orch) for orch in sentinel.orchestrations
         ]
+
+        # Group orchestrations by project/repo (DS-224)
+        jira_projects, github_repos = self._group_orchestrations(orchestration_infos)
 
         # Extract version info (thread-safe access)
         active_version_infos: list[OrchestrationVersionInfo] = []
@@ -268,6 +292,8 @@ class SentinelStateAccessor:
             orchestrations=orchestration_infos,
             active_versions=active_version_infos,
             pending_removal_versions=pending_removal_version_infos,
+            jira_projects=jira_projects,
+            github_repos=github_repos,
             active_execution_count=active_count,
             available_slots=available_slots,
             running_steps=running_step_views,
@@ -324,6 +350,45 @@ class SentinelStateAccessor:
             loaded_at=version.loaded_at,
             active_executions=version.active_executions,
         )
+
+    def _group_orchestrations(
+        self, orchestrations: list[OrchestrationInfo]
+    ) -> tuple[list[ProjectOrchestrations], list[ProjectOrchestrations]]:
+        """Group orchestrations by Jira project and GitHub repository (DS-224).
+
+        Args:
+            orchestrations: List of orchestration info objects to group.
+
+        Returns:
+            A tuple of (jira_projects, github_repos) where each is a list of
+            ProjectOrchestrations grouped by project key or repo name.
+        """
+        jira_groups: dict[str, list[OrchestrationInfo]] = {}
+        github_groups: dict[str, list[OrchestrationInfo]] = {}
+
+        for orch in orchestrations:
+            if orch.trigger_source == "jira" and orch.trigger_project:
+                key = orch.trigger_project
+                if key not in jira_groups:
+                    jira_groups[key] = []
+                jira_groups[key].append(orch)
+            elif orch.trigger_source == "github" and orch.trigger_repo:
+                key = orch.trigger_repo
+                if key not in github_groups:
+                    github_groups[key] = []
+                github_groups[key].append(orch)
+
+        # Convert to sorted lists of ProjectOrchestrations
+        jira_projects = [
+            ProjectOrchestrations(project_key=key, orchestrations=sorted(orchs, key=lambda o: o.name))
+            for key, orchs in sorted(jira_groups.items())
+        ]
+        github_repos = [
+            ProjectOrchestrations(project_key=key, orchestrations=sorted(orchs, key=lambda o: o.name))
+            for key, orchs in sorted(github_groups.items())
+        ]
+
+        return jira_projects, github_repos
 
     def get_log_files(self) -> list[dict]:
         """Get available log files grouped by orchestration (DS-127).
