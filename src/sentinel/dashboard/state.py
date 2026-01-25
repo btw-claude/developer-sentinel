@@ -44,6 +44,14 @@ class ProjectOrchestrations:
         consider the following deprecation and versioning practices:
 
         - Add a ``__version__`` attribute or use semantic versioning
+
+          Example::
+
+              @dataclass(frozen=True)
+              class ProjectOrchestrations:
+                  __version__ = "1.0.0"
+                  # ... fields ...
+
         - Document any planned changes in a CHANGELOG
         - Use ``warnings.warn()`` with ``DeprecationWarning`` for deprecated
           attributes or methods
