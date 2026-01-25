@@ -37,6 +37,19 @@ class ProjectOrchestrations:
 
     This groups orchestrations by their trigger project (for Jira) or
     repository (for GitHub) for a more organized dashboard display.
+
+    .. note:: API Stability (DS-231)
+        This class is currently intended for internal dashboard use only.
+        If this class is exposed as part of a public API in the future,
+        consider the following deprecation and versioning practices:
+
+        - Add a ``__version__`` attribute or use semantic versioning
+        - Document any planned changes in a CHANGELOG
+        - Use ``warnings.warn()`` with ``DeprecationWarning`` for deprecated
+          attributes or methods
+        - Provide a migration path for breaking changes
+        - Consider using ``typing_extensions.deprecated`` decorator (Python 3.13+)
+          or a backport for earlier versions
     """
 
     identifier: str  # Project key or repo name, e.g., "DS" for Jira or "org/repo" for GitHub
