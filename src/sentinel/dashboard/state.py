@@ -32,13 +32,13 @@ class OrchestrationInfo:
 
 @dataclass(frozen=True)
 class ProjectOrchestrations:
-    """Orchestrations grouped by project or repository (DS-224).
+    """Orchestrations grouped by project or repository (DS-224, DS-226).
 
     This groups orchestrations by their trigger project (for Jira) or
     repository (for GitHub) for a more organized dashboard display.
     """
 
-    project_key: str  # e.g., "DS" for Jira or "org/repo" for GitHub
+    identifier: str  # Project key or repo name, e.g., "DS" for Jira or "org/repo" for GitHub
     orchestrations: list[OrchestrationInfo]
 
     @property
@@ -380,11 +380,11 @@ class SentinelStateAccessor:
 
         # Convert to sorted lists of ProjectOrchestrations
         jira_projects = [
-            ProjectOrchestrations(project_key=key, orchestrations=sorted(orchs, key=lambda o: o.name))
+            ProjectOrchestrations(identifier=key, orchestrations=sorted(orchs, key=lambda o: o.name))
             for key, orchs in sorted(jira_groups.items())
         ]
         github_repos = [
-            ProjectOrchestrations(project_key=key, orchestrations=sorted(orchs, key=lambda o: o.name))
+            ProjectOrchestrations(identifier=key, orchestrations=sorted(orchs, key=lambda o: o.name))
             for key, orchs in sorted(github_groups.items())
         ]
 
