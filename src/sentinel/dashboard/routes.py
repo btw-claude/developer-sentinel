@@ -50,7 +50,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return templates.TemplateResponse(
+        return await templates.TemplateResponse(
             request=request,
             name="index.html",
             context={"state": state},
@@ -68,7 +68,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return templates.TemplateResponse(
+        return await templates.TemplateResponse(
             request=request,
             name="orchestrations.html",
             context={"state": state},
@@ -86,7 +86,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return templates.TemplateResponse(
+        return await templates.TemplateResponse(
             request=request,
             name="metrics.html",
             context={"state": state},
@@ -142,7 +142,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return templates.TemplateResponse(
+        return await templates.TemplateResponse(
             request=request,
             name="partials/status.html",
             context={"state": state},
@@ -160,7 +160,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return templates.TemplateResponse(
+        return await templates.TemplateResponse(
             request=request,
             name="partials/orchestrations.html",
             context={"state": state},
@@ -181,7 +181,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return templates.TemplateResponse(
+        return await templates.TemplateResponse(
             request=request,
             name="partials/running_steps.html",
             context={"state": state},
@@ -203,7 +203,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return templates.TemplateResponse(
+        return await templates.TemplateResponse(
             request=request,
             name="partials/issue_queue.html",
             context={"state": state},
@@ -225,7 +225,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return templates.TemplateResponse(
+        return await templates.TemplateResponse(
             request=request,
             name="partials/system_status.html",
             context={"state": state},
@@ -255,7 +255,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         """
         log_files = state_accessor.get_log_files()
         templates = request.app.state.templates
-        return templates.TemplateResponse(
+        return await templates.TemplateResponse(
             request=request,
             name="log_viewer.html",
             context={"log_files": log_files},
