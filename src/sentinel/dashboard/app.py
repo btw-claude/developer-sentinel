@@ -54,6 +54,16 @@ class TemplateEnvironmentWrapper:
             This method must be awaited. Calling without await returns a
             coroutine object instead of the expected HTMLResponse.
 
+            Example::
+
+                # Correct usage:
+                response = await templates.template_response(...)
+                # Returns: <HTMLResponse status_code=200 ...>
+
+                # Incorrect (returns coroutine object):
+                response = templates.template_response(...)
+                # Returns: <coroutine object template_response at 0x...>
+
         Args:
             request: The incoming HTTP request.
             name: The template name to render.
