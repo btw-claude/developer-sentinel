@@ -4,7 +4,7 @@
     <div class="nested-accordion-item">
         <div class="nested-accordion-header" onclick="toggleNestedAccordion(this)">
             <span class="collapse-icon">&#9654;</span>
-            <strong>{{ project.project_key }}</strong>
+            <strong>{{ project.identifier }}</strong>
             <span class="badge ml-2">{{ project.count }} orchestration{% if project.count != 1 %}s{% endif %}</span>
         </div>
         <div class="nested-accordion-content">
