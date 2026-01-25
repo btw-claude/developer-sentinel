@@ -50,9 +50,8 @@
          hx-get="/partials/system_status"
          hx-target="#system-status-content"
          hx-swap="innerHTML"
-         hx-trigger="click[!document.querySelector('#system-status-content').classList.contains('expanded')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(document.querySelector('#system-status-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
+         hx-trigger="click"
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             System Status
@@ -71,9 +70,8 @@
          hx-get="/partials/running_steps"
          hx-target="#running-steps-content"
          hx-swap="innerHTML"
-         hx-trigger="click[!document.querySelector('#running-steps-content').classList.contains('expanded')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(document.querySelector('#running-steps-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
+         hx-trigger="click"
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Running Steps
@@ -93,9 +91,8 @@
          hx-get="/partials/issue_queue"
          hx-target="#issue-queue-content"
          hx-swap="innerHTML"
-         hx-trigger="click[!document.querySelector('#issue-queue-content').classList.contains('expanded')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(document.querySelector('#issue-queue-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
+         hx-trigger="click"
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Issue Queue
@@ -115,9 +112,8 @@
          hx-get="/partials/orchestrations?source=jira"
          hx-target="#jira-projects-content"
          hx-swap="innerHTML"
-         hx-trigger="click[!document.querySelector('#jira-projects-content').classList.contains('expanded')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(document.querySelector('#jira-projects-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
+         hx-trigger="click"
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Jira Projects
@@ -134,9 +130,8 @@
          hx-get="/partials/orchestrations?source=github"
          hx-target="#github-repos-content"
          hx-swap="innerHTML"
-         hx-trigger="click[!document.querySelector('#github-repos-content').classList.contains('expanded')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(document.querySelector('#github-repos-content').classList.contains('expanded')) toggleCollapsibleSection(this)">
+         hx-trigger="click"
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             GitHub Repos
