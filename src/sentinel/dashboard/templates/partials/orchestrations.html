@@ -1,44 +1,45 @@
-{% if state.orchestrations %}
-<table>
-    <tr>
-        <th>Name</th>
-        <th>Source</th>
-        <th>Project/Repo</th>
-        <th>Trigger Info</th>
-        <th>Status</th>
-    </tr>
-    {% for orch in state.orchestrations %}
-    <tr>
-        <td><strong>{{ orch.name }}</strong></td>
-        <td>
-            {% if orch.trigger_source == 'jira' %}
-            <span class="source-badge jira">Jira</span>
-            {% elif orch.trigger_source == 'github' %}
-            <span class="source-badge github">GitHub</span>
-            {% else %}
-            <span class="source-badge">{{ orch.trigger_source }}</span>
-            {% endif %}
-        </td>
-        <td>{{ orch.trigger_project or orch.trigger_repo or '-' }}</td>
-        <td>
-            {% if orch.trigger_tags %}
-                {% for tag in orch.trigger_tags %}
-                <span class="tag">{{ tag }}</span>
+{% if projects %}
+<div class="nested-accordion">
+    {% for project in projects %}
+    <div class="nested-accordion-item">
+        <div class="nested-accordion-header" onclick="toggleNestedAccordion(this)">
+            <span class="collapse-icon">&#9654;</span>
+            <strong>{{ project.project_key }}</strong>
+            <span class="badge ml-2">{{ project.count }} orchestration{% if project.count != 1 %}s{% endif %}</span>
+        </div>
+        <div class="nested-accordion-content">
+            <table class="nested-table">
+                <tr>
+                    <th>Name</th>
+                    <th>Trigger Tags</th>
+                    <th>Status</th>
+                </tr>
+                {% for orch in project.orchestrations %}
+                <tr>
+                    <td><strong>{{ orch.name }}</strong></td>
+                    <td>
+                        {% if orch.trigger_tags %}
+                            {% for tag in orch.trigger_tags %}
+                            <span class="tag">{{ tag }}</span>
+                            {% endfor %}
+                        {% else %}
+                        <span style="color: var(--text-secondary);">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if orch.enabled %}
+                        <span class="status-ok">Enabled</span>
+                        {% else %}
+                        <span class="status-warn">Disabled</span>
+                        {% endif %}
+                    </td>
+                </tr>
                 {% endfor %}
-            {% else %}
-            <span style="color: var(--text-secondary);">-</span>
-            {% endif %}
-        </td>
-        <td>
-            {% if orch.enabled %}
-            <span class="status-ok">Enabled</span>
-            {% else %}
-            <span class="status-warn">Disabled</span>
-            {% endif %}
-        </td>
-    </tr>
+            </table>
+        </div>
+    </div>
     {% endfor %}
-</table>
+</div>
 {% else %}
-<p style="color: var(--text-secondary);">No orchestrations loaded</p>
+<p style="color: var(--text-secondary);">No {% if source_type == 'github' %}GitHub repositories{% else %}Jira projects{% endif %} with orchestrations</p>
 {% endif %}

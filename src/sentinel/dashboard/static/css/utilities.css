@@ -535,6 +535,94 @@
 .overflow-scroll { overflow: scroll; }
 
 /* =============================================================================
+   NESTED ACCORDION UTILITIES (DS-224)
+   Styles for nested accordions used in grouped orchestrations display
+   ============================================================================= */
+
+/* Container for nested accordion items */
+.nested-accordion {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Individual accordion item */
+.nested-accordion-item {
+    border: 1px solid var(--accent, #0f3460);
+    border-radius: 0.25rem;
+    overflow: hidden;
+}
+
+/* Accordion header - clickable to expand/collapse */
+.nested-accordion-header {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background-color: var(--bg-secondary, #16213e);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.nested-accordion-header:hover {
+    background-color: var(--accent, #0f3460);
+}
+
+/* Collapse icon in nested accordion */
+.nested-accordion-header .collapse-icon {
+    display: inline-block;
+    margin-right: 0.5rem;
+    font-size: 0.75rem;
+    transition: transform 0.2s ease;
+}
+
+/* Rotate icon when expanded */
+.nested-accordion-item.expanded .nested-accordion-header .collapse-icon {
+    transform: rotate(90deg);
+}
+
+/* Accordion content - hidden by default */
+.nested-accordion-content {
+    display: none;
+    padding: 0;
+    background-color: var(--bg-primary, #1a1a2e);
+}
+
+/* Show content when expanded */
+.nested-accordion-item.expanded .nested-accordion-content {
+    display: block;
+}
+
+/* Table inside nested accordion */
+.nested-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+}
+
+.nested-table th,
+.nested-table td {
+    padding: 0.5rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--accent, #0f3460);
+}
+
+.nested-table th {
+    background-color: var(--bg-secondary, #16213e);
+    font-weight: 600;
+    font-size: 0.85em;
+    color: var(--text-secondary, #aaa);
+}
+
+.nested-table tr:last-child td {
+    border-bottom: none;
+}
+
+.nested-table tr:hover td {
+    background-color: rgba(15, 52, 96, 0.3);
+}
+
+/* =============================================================================
    RESPONSIVE UTILITIES (Future Consideration)
 
    TODO: Consider adding breakpoint prefixes for responsive variants:
