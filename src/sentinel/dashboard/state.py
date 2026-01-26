@@ -29,6 +29,7 @@ class OrchestrationInfo:
     trigger_repo: str | None
     trigger_tags: list[str]
     agent_prompt_preview: str
+    source_file: str
 
 
 @dataclass(frozen=True)
@@ -242,9 +243,17 @@ class SentinelStateAccessor:
         sentinel = self._sentinel
         config = sentinel.config
 
+        # Build a mapping from orchestration to source_file for lookup
+        # This is needed because source_file is stored in OrchestrationVersion
+        orch_to_source_file: dict[int, str] = {}
+        with sentinel._versions_lock:
+            for version in sentinel._active_versions:
+                orch_to_source_file[id(version.orchestration)] = str(version.source_file)
+
         # Extract orchestration info
         orchestration_infos = [
-            self._orchestration_to_info(orch) for orch in sentinel.orchestrations
+            self._orchestration_to_info(orch, orch_to_source_file.get(id(orch), ""))
+            for orch in sentinel.orchestrations
         ]
 
         # Group orchestrations by project/repo (DS-224)
@@ -335,11 +344,12 @@ class SentinelStateAccessor:
             system_status=system_status,
         )
 
-    def _orchestration_to_info(self, orch: Orchestration) -> OrchestrationInfo:
+    def _orchestration_to_info(self, orch: Orchestration, source_file: str) -> OrchestrationInfo:
         """Convert an Orchestration to OrchestrationInfo.
 
         Args:
             orch: The orchestration to convert.
+            source_file: Path to the source file this orchestration was loaded from.
 
         Returns:
             An OrchestrationInfo object with read-only data.
@@ -363,6 +373,7 @@ class SentinelStateAccessor:
             trigger_repo=trigger_repo,
             trigger_tags=trigger_tags,
             agent_prompt_preview=prompt_preview,
+            source_file=source_file,
         )
 
     def _version_to_info(self, version: OrchestrationVersion) -> OrchestrationVersionInfo:
