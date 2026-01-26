@@ -133,6 +133,42 @@ orchestrations:
       add_tag: "reviewed"
 ```
 
+### Agent Type Selection
+
+You can select which AI agent to use for each orchestration:
+
+```yaml
+orchestrations:
+  - name: "cursor-code-review"
+    trigger:
+      source: jira
+      project: "DEV"
+      tags:
+        - "cursor-review"
+    agent:
+      # Use Cursor instead of Claude (default: config.default_agent_type)
+      agent_type: cursor
+
+      # Cursor-specific mode (only valid when agent_type is "cursor")
+      # Values: "agent" (default), "plan", "ask"
+      cursor_mode: agent
+
+      prompt: |
+        Review the code changes for {jira_issue_key}.
+      tools:
+        - jira
+        - github
+```
+
+**Agent Types:**
+- `claude` - Use Claude AI agent (default)
+- `cursor` - Use Cursor AI agent
+
+**Cursor Modes (only valid when `agent_type: cursor`):**
+- `agent` - Full autonomous agent mode (default)
+- `plan` - Planning mode - creates plans without executing
+- `ask` - Ask mode - waits for user confirmation before actions
+
 See `orchestrations/README.md` for full configuration reference.
 
 ### GitHub Project Triggers
