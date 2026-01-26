@@ -1326,3 +1326,69 @@ orchestrations:
         """Writer should default retry interval to None (uses constant)."""
         writer = OrchestrationYamlWriter()
         assert writer._retry_interval_seconds is None
+
+
+class TestDS259Enhancements:
+    """Tests for DS-259 enhancements from code review."""
+
+    def test_toggle_by_repo_logs_debug_at_start(self, tmp_path: Path, caplog) -> None:
+        """toggle_by_repo should log debug message at start (DS-259)."""
+        import logging
+
+        caplog.set_level(logging.DEBUG)
+
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: github
+      repo: "org/repo"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        writer.toggle_by_repo({"test": file_path}, "org/repo", False)
+
+        # Check that debug log was emitted
+        assert any(
+            "toggle_by_repo called" in record.message
+            and "org/repo" in record.message
+            and "enabled=False" in record.message
+            for record in caplog.records
+            if record.levelno == logging.DEBUG
+        )
+
+    def test_toggle_by_project_logs_debug_at_start(self, tmp_path: Path, caplog) -> None:
+        """toggle_by_project should log debug message at start (DS-259)."""
+        import logging
+
+        caplog.set_level(logging.DEBUG)
+
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "PROJ"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        writer.toggle_by_project({"test": file_path}, "PROJ", False)
+
+        # Check that debug log was emitted
+        assert any(
+            "toggle_by_project called" in record.message
+            and "PROJ" in record.message
+            and "enabled=False" in record.message
+            for record in caplog.records
+            if record.levelno == logging.DEBUG
+        )
