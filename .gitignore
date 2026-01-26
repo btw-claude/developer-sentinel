@@ -52,6 +52,11 @@ dmypy.json
 # Ruff
 .ruff_cache/
 
+# Node.js (CSS linting)
+node_modules/
+package-lock.json
+.stylelintcache
+
 # OS
 .DS_Store
 Thumbs.db

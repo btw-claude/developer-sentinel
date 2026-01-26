@@ -1,0 +1,14 @@
+{
+  "name": "developer-sentinel-css-lint",
+  "version": "0.1.0",
+  "description": "CSS linting configuration for Developer Sentinel",
+  "private": true,
+  "scripts": {
+    "lint:css": "stylelint 'src/**/*.css'",
+    "lint:css:fix": "stylelint 'src/**/*.css' --fix"
+  },
+  "devDependencies": {
+    "stylelint": "^16.0.0",
+    "stylelint-order": "^6.0.0"
+  }
+}
