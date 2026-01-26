@@ -27,7 +27,7 @@ from sentinel.agent_clients.claude_sdk import (
     ClaudeProcessInterruptedError,
     ClaudeSdkAgentClient,
     TimingMetrics,
-    _run_query,  # Used internally in this module, but not re-exported
+    _run_query,
     get_shutdown_event,
     is_shutdown_requested,
     request_shutdown,
