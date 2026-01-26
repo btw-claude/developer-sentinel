@@ -9,20 +9,22 @@
             <div class="bulk-toggle-buttons">
                 <button class="btn-sm btn-success"
                         hx-post="/api/orchestrations/bulk-toggle"
-                        hx-vals='{"source": "{{ source_type }}", "identifier": "{{ project.identifier }}", "enabled": true}'
+                        hx-vals='js:{"source": "{{ source_type }}", "identifier": encodeURIComponent("{{ project.identifier }}"), "enabled": true}'
                         hx-swap="none"
                         hx-confirm="Enable all orchestrations in {{ project.identifier }}?"
                         hx-on::after-request="handleToggleResponse(event)"
-                        onclick="event.stopPropagation()">
+                        onclick="event.stopPropagation()"
+                        aria-label="Enable all orchestrations in {{ project.identifier }}">
                     Enable All
                 </button>
                 <button class="btn-sm btn-danger"
                         hx-post="/api/orchestrations/bulk-toggle"
-                        hx-vals='{"source": "{{ source_type }}", "identifier": "{{ project.identifier }}", "enabled": false}'
+                        hx-vals='js:{"source": "{{ source_type }}", "identifier": encodeURIComponent("{{ project.identifier }}"), "enabled": false}'
                         hx-swap="none"
                         hx-confirm="Disable all orchestrations in {{ project.identifier }}?"
                         hx-on::after-request="handleToggleResponse(event)"
-                        onclick="event.stopPropagation()">
+                        onclick="event.stopPropagation()"
+                        aria-label="Disable all orchestrations in {{ project.identifier }}">
                     Disable All
                 </button>
             </div>
