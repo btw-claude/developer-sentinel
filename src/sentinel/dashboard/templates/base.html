@@ -229,12 +229,17 @@
         }
 
         /**
-         * Toggle a nested accordion item's expanded state (DS-224).
+         * Toggle a nested accordion item's expanded state (DS-224, DS-236).
          * Used for project/repo groupings within orchestrations sections.
+         * DS-236: Added defensive null check to prevent errors when element not found.
          * @param {HTMLElement} headerElement - The .nested-accordion-header element that was clicked
          */
         function toggleNestedAccordion(headerElement) {
             const item = headerElement.closest('.nested-accordion-item');
+            if (!item) {
+                console.warn('toggleNestedAccordion: Could not find parent .nested-accordion-item');
+                return;
+            }
             item.classList.toggle('expanded');
         }
 
