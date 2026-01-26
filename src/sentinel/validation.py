@@ -4,6 +4,7 @@ This module provides reusable validation functions for parsing and validating
 environment variables with proper error handling and bounds checking.
 
 DS-282: Consolidate validation helpers from routes.py into a dedicated module.
+DS-285: Add __all__ to explicitly define the public API.
 """
 
 from __future__ import annotations
@@ -11,6 +12,22 @@ from __future__ import annotations
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Explicitly define public API (DS-285)
+# This makes it clear which symbols are intended for external use
+__all__ = [
+    # Bounds constants for rate limiting configuration
+    "MIN_TOGGLE_COOLDOWN",
+    "MAX_TOGGLE_COOLDOWN",
+    "MIN_CACHE_TTL",
+    "MAX_CACHE_TTL",
+    "MIN_CACHE_MAXSIZE",
+    "MAX_CACHE_MAXSIZE",
+    # Validation functions
+    "validate_positive_float",
+    "validate_strictly_positive_float",
+    "validate_positive_int",
+]
 
 
 # Bounds constants for rate limiting configuration (DS-278, DS-282)

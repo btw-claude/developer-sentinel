@@ -1,10 +1,13 @@
-"""Tests for validation module (DS-282).
+"""Tests for validation module (DS-282, DS-285).
 
 Tests for the validation helper functions that were consolidated from routes.py
 into a dedicated sentinel.validation module.
+
+DS-285: Added tests for deprecation warnings on backwards compatibility aliases.
 """
 
 import logging
+import warnings
 
 import pytest
 
@@ -204,7 +207,7 @@ class TestBoundsConstants:
 
 
 class TestBackwardsCompatibility:
-    """Tests to ensure backwards compatibility with routes.py imports (DS-282)."""
+    """Tests to ensure backwards compatibility with routes.py imports (DS-282, DS-285)."""
 
     def test_routes_module_imports_validation_functions(self) -> None:
         """Test that routes module can import validation functions."""
@@ -215,31 +218,122 @@ class TestBackwardsCompatibility:
         assert callable(_validate_positive_int)
 
     def test_routes_module_imports_bounds_constants(self) -> None:
-        """Test that routes module can import bounds constants."""
-        from sentinel.dashboard.routes import (
-            _MAX_CACHE_MAXSIZE,
-            _MAX_CACHE_TTL,
-            _MAX_TOGGLE_COOLDOWN,
-            _MIN_CACHE_MAXSIZE,
-            _MIN_CACHE_TTL,
-            _MIN_TOGGLE_COOLDOWN,
-        )
+        """Test that routes module can import bounds constants with deprecation warning (DS-285)."""
+        from sentinel.dashboard import routes
 
-        # Verify they have correct values
-        assert _MIN_TOGGLE_COOLDOWN == MIN_TOGGLE_COOLDOWN
-        assert _MAX_TOGGLE_COOLDOWN == MAX_TOGGLE_COOLDOWN
-        assert _MIN_CACHE_TTL == MIN_CACHE_TTL
-        assert _MAX_CACHE_TTL == MAX_CACHE_TTL
-        assert _MIN_CACHE_MAXSIZE == MIN_CACHE_MAXSIZE
-        assert _MAX_CACHE_MAXSIZE == MAX_CACHE_MAXSIZE
+        # Verify they have correct values and emit deprecation warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            assert routes._MIN_TOGGLE_COOLDOWN == MIN_TOGGLE_COOLDOWN
+            assert routes._MAX_TOGGLE_COOLDOWN == MAX_TOGGLE_COOLDOWN
+            assert routes._MIN_CACHE_TTL == MIN_CACHE_TTL
+            assert routes._MAX_CACHE_TTL == MAX_CACHE_TTL
+            assert routes._MIN_CACHE_MAXSIZE == MIN_CACHE_MAXSIZE
+            assert routes._MAX_CACHE_MAXSIZE == MAX_CACHE_MAXSIZE
+
+            # Verify deprecation warnings were emitted
+            deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_warnings) == 6
 
     def test_routes_validation_functions_work_same_as_module(self) -> None:
-        """Test that routes validation functions behave same as module functions."""
+        """Test that routes validation functions behave same as module functions (DS-285)."""
         from sentinel.dashboard.routes import _validate_positive_float as routes_float
         from sentinel.dashboard.routes import _validate_positive_int as routes_int
 
-        # Test that they produce same results
-        assert routes_float("TEST", "5.0", 2.0, 0.0, 10.0) == validate_positive_float(
-            "TEST", "5.0", 2.0, 0.0, 10.0
-        )
-        assert routes_int("TEST", "5", 2, 1, 10) == validate_positive_int("TEST", "5", 2, 1, 10)
+        # Test that they produce same results (with deprecation warnings)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            assert routes_float("TEST", "5.0", 2.0, 0.0, 10.0) == validate_positive_float(
+                "TEST", "5.0", 2.0, 0.0, 10.0
+            )
+            assert routes_int("TEST", "5", 2, 1, 10) == validate_positive_int("TEST", "5", 2, 1, 10)
+
+            # Verify deprecation warnings were emitted
+            deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_warnings) == 2
+
+
+class TestDeprecationWarnings:
+    """Tests for deprecation warnings on backwards compatibility aliases (DS-285)."""
+
+    def test_validate_positive_float_emits_deprecation_warning(self) -> None:
+        """Test that _validate_positive_float emits deprecation warning."""
+        from sentinel.dashboard.routes import _validate_positive_float
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _validate_positive_float("TEST", "5.0", 2.0, 0.0, 10.0)
+
+            deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_warnings) == 1
+            assert "_validate_positive_float is deprecated" in str(deprecation_warnings[0].message)
+            assert "sentinel.validation" in str(deprecation_warnings[0].message)
+
+    def test_validate_positive_int_emits_deprecation_warning(self) -> None:
+        """Test that _validate_positive_int emits deprecation warning."""
+        from sentinel.dashboard.routes import _validate_positive_int
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _validate_positive_int("TEST", "5", 2, 1, 10)
+
+            deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(deprecation_warnings) == 1
+            assert "_validate_positive_int is deprecated" in str(deprecation_warnings[0].message)
+            assert "sentinel.validation" in str(deprecation_warnings[0].message)
+
+    def test_bounds_constants_emit_deprecation_warnings(self) -> None:
+        """Test that accessing deprecated bounds constants emits warnings."""
+        from sentinel.dashboard import routes
+
+        deprecated_constants = [
+            ("_MIN_TOGGLE_COOLDOWN", "MIN_TOGGLE_COOLDOWN"),
+            ("_MAX_TOGGLE_COOLDOWN", "MAX_TOGGLE_COOLDOWN"),
+            ("_MIN_CACHE_TTL", "MIN_CACHE_TTL"),
+            ("_MAX_CACHE_TTL", "MAX_CACHE_TTL"),
+            ("_MIN_CACHE_MAXSIZE", "MIN_CACHE_MAXSIZE"),
+            ("_MAX_CACHE_MAXSIZE", "MAX_CACHE_MAXSIZE"),
+        ]
+
+        for deprecated_name, canonical_name in deprecated_constants:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                getattr(routes, deprecated_name)
+
+                deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+                assert len(deprecation_warnings) == 1, f"Expected 1 warning for {deprecated_name}"
+                warning_msg = str(deprecation_warnings[0].message)
+                assert deprecated_name in warning_msg
+                assert canonical_name in warning_msg
+                assert "sentinel.validation" in warning_msg
+
+
+class TestValidationModuleAll:
+    """Tests for __all__ definition in validation module (DS-285)."""
+
+    def test_all_contains_expected_symbols(self) -> None:
+        """Test that __all__ contains all expected public symbols."""
+        from sentinel.validation import __all__
+
+        expected_symbols = [
+            "MIN_TOGGLE_COOLDOWN",
+            "MAX_TOGGLE_COOLDOWN",
+            "MIN_CACHE_TTL",
+            "MAX_CACHE_TTL",
+            "MIN_CACHE_MAXSIZE",
+            "MAX_CACHE_MAXSIZE",
+            "validate_positive_float",
+            "validate_strictly_positive_float",
+            "validate_positive_int",
+        ]
+
+        for symbol in expected_symbols:
+            assert symbol in __all__, f"Expected {symbol} to be in __all__"
+
+    def test_all_symbols_are_importable(self) -> None:
+        """Test that all symbols in __all__ can be imported."""
+        from sentinel import validation
+        from sentinel.validation import __all__
+
+        for symbol in __all__:
+            assert hasattr(validation, symbol), f"Symbol {symbol} in __all__ but not importable"
