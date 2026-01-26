@@ -3,10 +3,47 @@
 {% block title %}Orchestrations - Developer Sentinel{% endblock %}
 
 {% block content %}
-<div class="card">
-    <h2>Active Orchestrations</h2>
-    <div id="orchestrations-list" hx-get="/partials/orchestrations" hx-trigger="every 10s" hx-swap="innerHTML">
-        {% include "partials/orchestrations.html" %}
+<div class="card collapsible-section">
+    <div class="collapsible-header expanded"
+         hx-get="/partials/orchestrations?source=jira"
+         hx-target="#jira-orchestrations-content"
+         hx-swap="innerHTML"
+         hx-trigger="click[!isExpanded('jira-orchestrations-content')]"
+         hx-on::after-request="toggleCollapsibleSection(this)"
+         onclick="if(isExpanded('jira-orchestrations-content')) toggleCollapsibleSection(this)">
+        <h2>
+            <span class="collapse-icon rotated">&#9654;</span>
+            Jira Orchestrations
+            <span class="badge">{{ state.jira_projects | length }}</span>
+        </h2>
+    </div>
+    <div id="jira-orchestrations-content" class="collapsible-content expanded"
+         hx-get="/partials/orchestrations?source=jira"
+         hx-trigger="load, every 10s[isExpanded('jira-orchestrations-content')]"
+         hx-swap="innerHTML">
+        <!-- Content loaded via HTMX, auto-refreshes every 10s when expanded -->
+    </div>
+</div>
+
+<div class="card collapsible-section">
+    <div class="collapsible-header expanded"
+         hx-get="/partials/orchestrations?source=github"
+         hx-target="#github-orchestrations-content"
+         hx-swap="innerHTML"
+         hx-trigger="click[!isExpanded('github-orchestrations-content')]"
+         hx-on::after-request="toggleCollapsibleSection(this)"
+         onclick="if(isExpanded('github-orchestrations-content')) toggleCollapsibleSection(this)">
+        <h2>
+            <span class="collapse-icon rotated">&#9654;</span>
+            GitHub Orchestrations
+            <span class="badge">{{ state.github_repos | length }}</span>
+        </h2>
+    </div>
+    <div id="github-orchestrations-content" class="collapsible-content expanded"
+         hx-get="/partials/orchestrations?source=github"
+         hx-trigger="load, every 10s[isExpanded('github-orchestrations-content')]"
+         hx-swap="innerHTML">
+        <!-- Content loaded via HTMX, auto-refreshes every 10s when expanded -->
     </div>
 </div>
 
