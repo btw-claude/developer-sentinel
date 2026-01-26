@@ -326,3 +326,164 @@ class TestFactoryCacheKeyBehavior:
 
         assert client1 is client2
         assert creation_count == 1
+
+
+class TestOrchestrationKwargsCache:
+    """Tests for kwargs impact on cache key in create_for_orchestration (DS-299)."""
+
+    def test_get_or_create_for_orchestration_caches_with_kwargs(self) -> None:
+        """Test that get_or_create_for_orchestration caches based on kwargs."""
+        factory = AgentClientFactory()
+        config = make_test_config()
+        creation_count = 0
+
+        def builder(cfg: Config) -> MockAgentClient:
+            nonlocal creation_count
+            creation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", builder)
+
+        # Same kwargs should return cached instance
+        client1 = factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/tmp/test1"
+        )
+        client2 = factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/tmp/test1"
+        )
+
+        assert client1 is client2
+        assert creation_count == 1
+
+    def test_different_kwargs_create_separate_cached_instances(self) -> None:
+        """Test that different kwargs create separate cached instances."""
+        factory = AgentClientFactory()
+        config = make_test_config()
+        creation_count = 0
+
+        def builder(cfg: Config) -> MockAgentClient:
+            nonlocal creation_count
+            creation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", builder)
+
+        client1 = factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/tmp/test1"
+        )
+        client2 = factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/tmp/test2"
+        )
+
+        assert client1 is not client2
+        assert creation_count == 2
+
+    def test_empty_kwargs_cached_separately_from_with_kwargs(self) -> None:
+        """Test that empty kwargs and kwargs with values cache separately."""
+        factory = AgentClientFactory()
+        config = make_test_config()
+        creation_count = 0
+
+        def builder(cfg: Config) -> MockAgentClient:
+            nonlocal creation_count
+            creation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", builder)
+
+        client1 = factory.get_or_create_for_orchestration("claude", config)
+        client2 = factory.get_or_create_for_orchestration(
+            "claude", config, some_option="value"
+        )
+
+        assert client1 is not client2
+        assert creation_count == 2
+
+    def test_kwargs_order_does_not_affect_cache(self) -> None:
+        """Test that kwargs order doesn't affect cache key."""
+        factory = AgentClientFactory()
+        config = make_test_config()
+        creation_count = 0
+
+        def builder(cfg: Config) -> MockAgentClient:
+            nonlocal creation_count
+            creation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", builder)
+
+        # Pass kwargs in different orders
+        client1 = factory.get_or_create_for_orchestration(
+            "claude", config, a="1", b="2"
+        )
+        client2 = factory.get_or_create_for_orchestration(
+            "claude", config, b="2", a="1"
+        )
+
+        assert client1 is client2
+        assert creation_count == 1
+
+    def test_unhashable_kwargs_raises_type_error(self) -> None:
+        """Test that unhashable kwargs values raise TypeError."""
+        factory = AgentClientFactory()
+        config = make_test_config()
+
+        factory.register("claude", lambda cfg: MockAgentClient("claude"))
+
+        with pytest.raises(TypeError) as exc_info:
+            factory.get_or_create_for_orchestration(
+                "claude", config, unhashable_list=[1, 2, 3]
+            )
+
+        assert "hashable" in str(exc_info.value).lower()
+
+    def test_get_or_create_for_orchestration_defaults_to_claude(self) -> None:
+        """Test get_or_create_for_orchestration defaults to 'claude' when None."""
+        factory = AgentClientFactory()
+        config = make_test_config()
+
+        factory.register("claude", lambda cfg: MockAgentClient("claude"))
+
+        client = factory.get_or_create_for_orchestration(None, config)
+        assert client.agent_type == "claude"
+
+    def test_clear_cache_clears_orchestration_cache(self) -> None:
+        """Test that clear_cache also clears orchestration-cached clients."""
+        factory = AgentClientFactory()
+        config = make_test_config()
+        creation_count = 0
+
+        def builder(cfg: Config) -> MockAgentClient:
+            nonlocal creation_count
+            creation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", builder)
+
+        factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/tmp/test"
+        )
+        assert creation_count == 1
+
+        factory.clear_cache()
+
+        factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/tmp/test"
+        )
+        assert creation_count == 2
+
+    def test_make_kwargs_hashable_creates_sorted_tuple(self) -> None:
+        """Test that _make_kwargs_hashable creates a sorted tuple."""
+        factory = AgentClientFactory()
+
+        result = factory._make_kwargs_hashable({"b": 2, "a": 1, "c": 3})
+
+        assert result == (("a", 1), ("b", 2), ("c", 3))
+
+    def test_make_kwargs_hashable_empty_dict(self) -> None:
+        """Test that _make_kwargs_hashable handles empty dict."""
+        factory = AgentClientFactory()
+
+        result = factory._make_kwargs_hashable({})
+
+        assert result == ()
