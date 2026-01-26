@@ -247,8 +247,14 @@ class SentinelStateAccessor:
         sentinel = self._sentinel
         config = sentinel.config
 
-        # Build a mapping from orchestration to source_file for lookup
-        # This is needed because source_file is stored in OrchestrationVersion
+        # Build a mapping from orchestration to source_file for lookup.
+        # This is needed because source_file is stored in OrchestrationVersion.
+        #
+        # We use id(orch) as keys because Orchestration objects are identity-based
+        # (each instance is unique) and the _versions_lock ensures the orchestration
+        # objects referenced here remain valid and unchanged for the duration of
+        # this method. This approach avoids requiring Orchestration to be hashable
+        # while still providing O(1) lookup performance.
         orch_to_source_file: dict[int, str] = {}
         with sentinel._versions_lock:
             for version in sentinel._active_versions:
