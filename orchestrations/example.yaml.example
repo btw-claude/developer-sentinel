@@ -116,6 +116,19 @@ orchestrations:
       # Shorthand (latest): opus, sonnet, haiku
       # model: "sonnet"
 
+      # Optional: Specify which agent type to use
+      # If not specified, defaults to SENTINEL_DEFAULT_AGENT_TYPE environment variable (defaults to "claude")
+      # Valid values: "claude", "cursor"
+      # agent_type: "claude"
+
+      # Optional: Cursor-specific mode (only valid when agent_type is "cursor")
+      # If not specified when agent_type is "cursor", defaults to SENTINEL_CURSOR_DEFAULT_MODE (defaults to "agent")
+      # Valid values: "agent", "plan", "ask"
+      # - agent: Full autonomous agent mode (default)
+      # - plan: Planning mode - creates plans without executing
+      # - ask: Ask mode - waits for user confirmation before actions
+      # cursor_mode: "agent"
+
       # The prompt/instructions for the agent
       # Use template variables like {jira_issue_key} to include issue context
       prompt: |
@@ -466,3 +479,134 @@ orchestrations:
 
     on_failure:
       add_tag: "triage-failed"
+
+  # Cursor Agent Example
+  # --------------------
+  # This example demonstrates using Cursor as the agent type instead of Claude.
+  # The agent_type and cursor_mode fields allow you to use Cursor's AI capabilities
+  # for tasks that benefit from its IDE integration.
+  - name: "cursor-code-review"
+
+    trigger:
+      source: jira
+      project: "PROJ"
+      tags:
+        - "cursor-review"
+
+    agent:
+      # Use Cursor instead of Claude for this orchestration
+      agent_type: cursor
+
+      # Cursor mode: "agent" (autonomous), "plan" (planning only), "ask" (confirmation required)
+      cursor_mode: agent
+
+      prompt: |
+        You are a code review assistant running in Cursor. Review issue {jira_issue_key}.
+
+        ## Issue Details
+        **Summary:** {jira_summary}
+
+        **Description:**
+        {jira_description}
+
+        ## Repository
+        {github_org}/{github_repo}
+
+        ## Your Task
+        Review the code changes and provide feedback. Use Cursor's code understanding
+        capabilities to analyze the codebase context.
+
+        Post your findings as a comment on the Jira issue.
+
+        End your response with SUCCESS or FAILURE.
+
+      tools:
+        - jira
+        - github
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+      timeout_seconds: 600
+
+    retry:
+      max_attempts: 3
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "error"
+
+    on_start:
+      add_tag: "cursor-processing"
+
+    on_complete:
+      add_tag: "cursor-reviewed"
+
+    on_failure:
+      add_tag: "cursor-review-failed"
+
+  # Cursor Planning Mode Example
+  # ----------------------------
+  # This example shows using Cursor in "plan" mode, which creates implementation
+  # plans without executing them. Useful for complex refactoring tasks that need
+  # human review before execution.
+  - name: "cursor-refactor-planner"
+
+    trigger:
+      source: jira
+      project: "PROJ"
+      tags:
+        - "needs-refactor-plan"
+
+    agent:
+      agent_type: cursor
+      cursor_mode: plan  # Planning mode - creates plans without executing
+
+      prompt: |
+        You are a refactoring planner. Create an implementation plan for {jira_issue_key}.
+
+        ## Issue Details
+        **Summary:** {jira_summary}
+
+        **Description:**
+        {jira_description}
+
+        ## Your Task
+        Analyze the codebase and create a detailed refactoring plan that includes:
+        1. Files that need to be modified
+        2. Specific changes for each file
+        3. Potential risks and how to mitigate them
+        4. Suggested order of operations
+
+        Post the plan as a comment on the Jira issue for review.
+
+        End with SUCCESS after posting the plan.
+
+      tools:
+        - jira
+        - github
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "error"
+
+    on_start:
+      add_tag: "planning-refactor"
+
+    on_complete:
+      add_tag: "refactor-plan-ready"
+
+    on_failure:
+      add_tag: "planning-failed"
