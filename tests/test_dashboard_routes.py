@@ -1064,66 +1064,41 @@ orchestrations:
 
 
 class TestToggleRateLimitConfiguration:
-    """Tests for rate limiting configuration (DS-268)."""
+    """Tests for rate limiting configuration (DS-268, DS-278).
 
-    def test_cooldown_configurable_via_environment_variable(self) -> None:
+    DS-278: Tests now use pytest.monkeypatch for cleaner environment variable management
+    instead of manual env var management with importlib.reload().
+    """
+
+    def test_cooldown_configurable_via_environment_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that TOGGLE_COOLDOWN_SECONDS is configurable via SENTINEL_TOGGLE_COOLDOWN env var (DS-268)."""
         import importlib
-        import os
 
-        # Save original values
-        original_env = os.environ.get("SENTINEL_TOGGLE_COOLDOWN")
+        # Set a custom cooldown value via environment variable using monkeypatch
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "5.0")
 
-        try:
-            # Set a custom cooldown value via environment variable
-            os.environ["SENTINEL_TOGGLE_COOLDOWN"] = "5.0"
+        # Reimport the module to pick up the new environment variable
+        from sentinel.dashboard import routes
 
-            # Reimport the module to pick up the new environment variable
-            from sentinel.dashboard import routes
+        importlib.reload(routes)
 
-            importlib.reload(routes)
+        # Verify the cooldown was set from the environment variable
+        assert routes.TOGGLE_COOLDOWN_SECONDS == 5.0
 
-            # Verify the cooldown was set from the environment variable
-            assert routes.TOGGLE_COOLDOWN_SECONDS == 5.0
-        finally:
-            # Restore original environment
-            if original_env is None:
-                os.environ.pop("SENTINEL_TOGGLE_COOLDOWN", None)
-            else:
-                os.environ["SENTINEL_TOGGLE_COOLDOWN"] = original_env
-
-            # Reload to restore default
-            from sentinel.dashboard import routes
-
-            importlib.reload(routes)
-
-    def test_cooldown_defaults_to_two_seconds(self) -> None:
+    def test_cooldown_defaults_to_two_seconds(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that TOGGLE_COOLDOWN_SECONDS defaults to 2.0 when env var not set (DS-268)."""
         import importlib
-        import os
 
-        # Save original value and remove env var
-        original_env = os.environ.get("SENTINEL_TOGGLE_COOLDOWN")
+        # Remove env var using monkeypatch
+        monkeypatch.delenv("SENTINEL_TOGGLE_COOLDOWN", raising=False)
 
-        try:
-            os.environ.pop("SENTINEL_TOGGLE_COOLDOWN", None)
+        # Reimport the module
+        from sentinel.dashboard import routes
 
-            # Reimport the module
-            from sentinel.dashboard import routes
+        importlib.reload(routes)
 
-            importlib.reload(routes)
-
-            # Verify the default
-            assert routes.TOGGLE_COOLDOWN_SECONDS == 2.0
-        finally:
-            # Restore original environment
-            if original_env is not None:
-                os.environ["SENTINEL_TOGGLE_COOLDOWN"] = original_env
-
-            # Reload
-            from sentinel.dashboard import routes
-
-            importlib.reload(routes)
+        # Verify the default
+        assert routes.TOGGLE_COOLDOWN_SECONDS == 2.0
 
     def test_last_write_times_uses_ttl_cache(self) -> None:
         """Test that _last_write_times uses TTLCache for automatic cleanup (DS-268)."""
@@ -1134,156 +1109,321 @@ class TestToggleRateLimitConfiguration:
         # Verify _last_write_times is a TTLCache
         assert isinstance(routes._last_write_times, TTLCache)
 
-    def test_ttl_cache_has_reasonable_limits(self) -> None:
+    def test_ttl_cache_has_reasonable_limits(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that TTLCache has reasonable maxsize and ttl settings (DS-268)."""
         import importlib
-        import os
 
         from sentinel.dashboard import routes
 
-        # Ensure env vars are not set for this test
-        original_ttl_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL")
-        original_maxsize_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE")
+        # Ensure env vars are not set for this test using monkeypatch
+        monkeypatch.delenv("SENTINEL_RATE_LIMIT_CACHE_TTL", raising=False)
+        monkeypatch.delenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", raising=False)
 
-        try:
-            os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_TTL", None)
-            os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", None)
+        importlib.reload(routes)
 
-            importlib.reload(routes)
+        # Check that cache constants are defined with reasonable values
+        assert routes._RATE_LIMIT_CACHE_TTL == 3600  # 1 hour
+        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000  # 10k entries
 
-            # Check that cache constants are defined with reasonable values
-            assert routes._RATE_LIMIT_CACHE_TTL == 3600  # 1 hour
-            assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000  # 10k entries
-        finally:
-            # Restore original environment
-            if original_ttl_env is not None:
-                os.environ["SENTINEL_RATE_LIMIT_CACHE_TTL"] = original_ttl_env
-            if original_maxsize_env is not None:
-                os.environ["SENTINEL_RATE_LIMIT_CACHE_MAXSIZE"] = original_maxsize_env
-
-            importlib.reload(routes)
-
-    def test_cache_ttl_configurable_via_environment_variable(self) -> None:
+    def test_cache_ttl_configurable_via_environment_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that _RATE_LIMIT_CACHE_TTL is configurable via SENTINEL_RATE_LIMIT_CACHE_TTL env var (DS-274)."""
         import importlib
-        import os
 
-        # Save original values
-        original_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL")
+        # Set a custom TTL value via environment variable using monkeypatch
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_TTL", "7200")  # 2 hours
 
-        try:
-            # Set a custom TTL value via environment variable
-            os.environ["SENTINEL_RATE_LIMIT_CACHE_TTL"] = "7200"  # 2 hours
+        # Reimport the module to pick up the new environment variable
+        from sentinel.dashboard import routes
 
-            # Reimport the module to pick up the new environment variable
-            from sentinel.dashboard import routes
+        importlib.reload(routes)
 
-            importlib.reload(routes)
+        # Verify the TTL was set from the environment variable
+        assert routes._RATE_LIMIT_CACHE_TTL == 7200
+        # Verify the cache was created with the new TTL
+        assert routes._last_write_times.ttl == 7200
 
-            # Verify the TTL was set from the environment variable
-            assert routes._RATE_LIMIT_CACHE_TTL == 7200
-            # Verify the cache was created with the new TTL
-            assert routes._last_write_times.ttl == 7200
-        finally:
-            # Restore original environment
-            if original_env is None:
-                os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_TTL", None)
-            else:
-                os.environ["SENTINEL_RATE_LIMIT_CACHE_TTL"] = original_env
-
-            # Reload to restore default
-            from sentinel.dashboard import routes
-
-            importlib.reload(routes)
-
-    def test_cache_maxsize_configurable_via_environment_variable(self) -> None:
+    def test_cache_maxsize_configurable_via_environment_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that _RATE_LIMIT_CACHE_MAXSIZE is configurable via SENTINEL_RATE_LIMIT_CACHE_MAXSIZE env var (DS-274)."""
         import importlib
-        import os
 
-        # Save original values
-        original_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE")
+        # Set a custom maxsize value via environment variable using monkeypatch
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "5000")
 
-        try:
-            # Set a custom maxsize value via environment variable
-            os.environ["SENTINEL_RATE_LIMIT_CACHE_MAXSIZE"] = "5000"
+        # Reimport the module to pick up the new environment variable
+        from sentinel.dashboard import routes
 
-            # Reimport the module to pick up the new environment variable
-            from sentinel.dashboard import routes
+        importlib.reload(routes)
 
-            importlib.reload(routes)
+        # Verify the maxsize was set from the environment variable
+        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 5000
+        # Verify the cache was created with the new maxsize
+        assert routes._last_write_times.maxsize == 5000
 
-            # Verify the maxsize was set from the environment variable
-            assert routes._RATE_LIMIT_CACHE_MAXSIZE == 5000
-            # Verify the cache was created with the new maxsize
-            assert routes._last_write_times.maxsize == 5000
-        finally:
-            # Restore original environment
-            if original_env is None:
-                os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", None)
-            else:
-                os.environ["SENTINEL_RATE_LIMIT_CACHE_MAXSIZE"] = original_env
-
-            # Reload to restore default
-            from sentinel.dashboard import routes
-
-            importlib.reload(routes)
-
-    def test_cache_ttl_defaults_to_3600_seconds(self) -> None:
+    def test_cache_ttl_defaults_to_3600_seconds(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that _RATE_LIMIT_CACHE_TTL defaults to 3600 (1 hour) when env var not set (DS-274)."""
         import importlib
-        import os
 
-        # Save original value and remove env var
-        original_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL")
+        # Remove env var using monkeypatch
+        monkeypatch.delenv("SENTINEL_RATE_LIMIT_CACHE_TTL", raising=False)
 
-        try:
-            os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_TTL", None)
+        # Reimport the module
+        from sentinel.dashboard import routes
 
-            # Reimport the module
-            from sentinel.dashboard import routes
+        importlib.reload(routes)
 
-            importlib.reload(routes)
+        # Verify the default
+        assert routes._RATE_LIMIT_CACHE_TTL == 3600
 
-            # Verify the default
-            assert routes._RATE_LIMIT_CACHE_TTL == 3600
-        finally:
-            # Restore original environment
-            if original_env is not None:
-                os.environ["SENTINEL_RATE_LIMIT_CACHE_TTL"] = original_env
-
-            # Reload
-            from sentinel.dashboard import routes
-
-            importlib.reload(routes)
-
-    def test_cache_maxsize_defaults_to_10000_entries(self) -> None:
+    def test_cache_maxsize_defaults_to_10000_entries(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that _RATE_LIMIT_CACHE_MAXSIZE defaults to 10000 when env var not set (DS-274)."""
         import importlib
-        import os
 
-        # Save original value and remove env var
-        original_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE")
+        # Remove env var using monkeypatch
+        monkeypatch.delenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", raising=False)
 
-        try:
-            os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", None)
+        # Reimport the module
+        from sentinel.dashboard import routes
 
-            # Reimport the module
-            from sentinel.dashboard import routes
+        importlib.reload(routes)
 
+        # Verify the default
+        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000
+
+
+class TestEnvironmentVariableInputValidation:
+    """Tests for environment variable input validation (DS-278).
+
+    Tests that environment variables are properly validated:
+    - Numeric values must be positive (greater than 0 for integers)
+    - Invalid values log errors and use defaults
+    - Values outside reasonable bounds log warnings and are clamped
+    """
+
+    def test_toggle_cooldown_rejects_negative_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that negative SENTINEL_TOGGLE_COOLDOWN is rejected with error log (DS-278)."""
+        import importlib
+        import logging
+
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "-1.0")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.ERROR):
             importlib.reload(routes)
 
-            # Verify the default
-            assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000
-        finally:
-            # Restore original environment
-            if original_env is not None:
-                os.environ["SENTINEL_RATE_LIMIT_CACHE_MAXSIZE"] = original_env
+        # Should use default value
+        assert routes.TOGGLE_COOLDOWN_SECONDS == 2.0
+        # Should have logged an error
+        assert "SENTINEL_TOGGLE_COOLDOWN must be non-negative" in caplog.text
 
-            # Reload
-            from sentinel.dashboard import routes
+    def test_toggle_cooldown_rejects_invalid_string(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that invalid SENTINEL_TOGGLE_COOLDOWN string is rejected with error log (DS-278)."""
+        import importlib
+        import logging
 
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "not-a-number")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.ERROR):
             importlib.reload(routes)
+
+        # Should use default value
+        assert routes.TOGGLE_COOLDOWN_SECONDS == 2.0
+        # Should have logged an error
+        assert "SENTINEL_TOGGLE_COOLDOWN must be a valid float" in caplog.text
+
+    def test_toggle_cooldown_warns_and_clamps_excessive_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that excessive SENTINEL_TOGGLE_COOLDOWN is clamped with warning log (DS-278)."""
+        import importlib
+        import logging
+
+        # Set value exceeding 24 hours (86400 seconds)
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "100000.0")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.WARNING):
+            importlib.reload(routes)
+
+        # Should be clamped to maximum
+        assert routes.TOGGLE_COOLDOWN_SECONDS == 86400.0
+        # Should have logged a warning
+        assert "exceeds maximum" in caplog.text
+
+    def test_toggle_cooldown_allows_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that SENTINEL_TOGGLE_COOLDOWN=0 is allowed to disable cooldown (DS-278)."""
+        import importlib
+
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "0.0")
+
+        from sentinel.dashboard import routes
+
+        importlib.reload(routes)
+
+        # Should allow zero to disable cooldown
+        assert routes.TOGGLE_COOLDOWN_SECONDS == 0.0
+
+    def test_cache_ttl_rejects_zero_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that SENTINEL_RATE_LIMIT_CACHE_TTL=0 is rejected with error log (DS-278)."""
+        import importlib
+        import logging
+
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_TTL", "0")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.ERROR):
+            importlib.reload(routes)
+
+        # Should use default value
+        assert routes._RATE_LIMIT_CACHE_TTL == 3600
+        # Should have logged an error
+        assert "SENTINEL_RATE_LIMIT_CACHE_TTL must be positive" in caplog.text
+
+    def test_cache_ttl_rejects_negative_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that negative SENTINEL_RATE_LIMIT_CACHE_TTL is rejected with error log (DS-278)."""
+        import importlib
+        import logging
+
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_TTL", "-100")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.ERROR):
+            importlib.reload(routes)
+
+        # Should use default value
+        assert routes._RATE_LIMIT_CACHE_TTL == 3600
+        # Should have logged an error
+        assert "SENTINEL_RATE_LIMIT_CACHE_TTL must be positive" in caplog.text
+
+    def test_cache_ttl_rejects_invalid_string(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that invalid SENTINEL_RATE_LIMIT_CACHE_TTL string is rejected with error log (DS-278)."""
+        import importlib
+        import logging
+
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_TTL", "invalid")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.ERROR):
+            importlib.reload(routes)
+
+        # Should use default value
+        assert routes._RATE_LIMIT_CACHE_TTL == 3600
+        # Should have logged an error
+        assert "SENTINEL_RATE_LIMIT_CACHE_TTL must be a valid integer" in caplog.text
+
+    def test_cache_ttl_warns_and_clamps_excessive_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that excessive SENTINEL_RATE_LIMIT_CACHE_TTL is clamped with warning log (DS-278)."""
+        import importlib
+        import logging
+
+        # Set value exceeding 1 week (604800 seconds)
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_TTL", "1000000")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.WARNING):
+            importlib.reload(routes)
+
+        # Should be clamped to maximum
+        assert routes._RATE_LIMIT_CACHE_TTL == 604800
+        # Should have logged a warning
+        assert "exceeds maximum" in caplog.text
+
+    def test_cache_maxsize_rejects_zero_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that SENTINEL_RATE_LIMIT_CACHE_MAXSIZE=0 is rejected with error log (DS-278)."""
+        import importlib
+        import logging
+
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "0")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.ERROR):
+            importlib.reload(routes)
+
+        # Should use default value
+        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000
+        # Should have logged an error
+        assert "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE must be positive" in caplog.text
+
+    def test_cache_maxsize_rejects_negative_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that negative SENTINEL_RATE_LIMIT_CACHE_MAXSIZE is rejected with error log (DS-278)."""
+        import importlib
+        import logging
+
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "-500")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.ERROR):
+            importlib.reload(routes)
+
+        # Should use default value
+        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000
+        # Should have logged an error
+        assert "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE must be positive" in caplog.text
+
+    def test_cache_maxsize_rejects_invalid_string(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that invalid SENTINEL_RATE_LIMIT_CACHE_MAXSIZE string is rejected with error log (DS-278)."""
+        import importlib
+        import logging
+
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "not-an-int")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.ERROR):
+            importlib.reload(routes)
+
+        # Should use default value
+        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000
+        # Should have logged an error
+        assert "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE must be a valid integer" in caplog.text
+
+    def test_cache_maxsize_warns_and_clamps_excessive_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that excessive SENTINEL_RATE_LIMIT_CACHE_MAXSIZE is clamped with warning log (DS-278)."""
+        import importlib
+        import logging
+
+        # Set value exceeding 1 million
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "5000000")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.WARNING):
+            importlib.reload(routes)
+
+        # Should be clamped to maximum
+        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 1000000
+        # Should have logged a warning
+        assert "exceeds maximum" in caplog.text
+
+    def test_valid_values_within_bounds_accepted(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that valid values within reasonable bounds are accepted without warnings (DS-278)."""
+        import importlib
+        import logging
+
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "5.5")
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_TTL", "7200")
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "50000")
+
+        from sentinel.dashboard import routes
+
+        with caplog.at_level(logging.WARNING):
+            importlib.reload(routes)
+
+        # Values should be set correctly
+        assert routes.TOGGLE_COOLDOWN_SECONDS == 5.5
+        assert routes._RATE_LIMIT_CACHE_TTL == 7200
+        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 50000
+        # No warnings or errors should be logged for these valid values
+        assert "SENTINEL_TOGGLE_COOLDOWN" not in caplog.text
+        assert "SENTINEL_RATE_LIMIT_CACHE_TTL" not in caplog.text
+        assert "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE" not in caplog.text
 
 
 class TestToggleOpenApiDocs:

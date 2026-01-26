@@ -30,17 +30,153 @@ from sse_starlette.sse import EventSourceResponse
 
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
-# Rate limiting configuration for toggle endpoints (DS-259, DS-268, DS-274)
+# Rate limiting configuration for toggle endpoints (DS-259, DS-268, DS-274, DS-278)
 # Cooldown period in seconds between writes to the same file
 # Configurable via environment variable for operational flexibility (DS-268)
-TOGGLE_COOLDOWN_SECONDS: float = float(os.environ.get("SENTINEL_TOGGLE_COOLDOWN", "2.0"))
+# Default values and reasonable bounds for each configuration (DS-278)
+_DEFAULT_TOGGLE_COOLDOWN: float = 2.0
+_DEFAULT_RATE_LIMIT_CACHE_TTL: int = 3600  # 1 hour
+_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE: int = 10000  # 10k entries
+
+# Reasonable bounds for configuration values (DS-278)
+# These bounds help catch configuration errors and prevent resource exhaustion
+_MIN_TOGGLE_COOLDOWN: float = 0.0  # Allow 0 to effectively disable cooldown
+_MAX_TOGGLE_COOLDOWN: float = 86400.0  # 24 hours is a reasonable upper bound
+_MIN_CACHE_TTL: int = 1  # At least 1 second
+_MAX_CACHE_TTL: int = 604800  # 1 week
+_MIN_CACHE_MAXSIZE: int = 1  # At least 1 entry
+_MAX_CACHE_MAXSIZE: int = 1000000  # 1 million entries
+
+
+def _validate_positive_float(
+    env_var: str, value_str: str, default: float, min_val: float, max_val: float
+) -> float:
+    """Validate and parse a positive float environment variable (DS-278).
+
+    Args:
+        env_var: Name of the environment variable (for error messages).
+        value_str: String value to parse.
+        default: Default value if parsing fails.
+        min_val: Minimum allowed value.
+        max_val: Maximum allowed value.
+
+    Returns:
+        Validated float value, or default if validation fails.
+    """
+    try:
+        value = float(value_str)
+        if value < 0:
+            logger.error(
+                "%s must be non-negative, got %s. Using default: %s",
+                env_var, value, default
+            )
+            return default
+        if value < min_val:
+            logger.warning(
+                "%s value %s is below minimum %s. Using minimum value.",
+                env_var, value, min_val
+            )
+            return min_val
+        if value > max_val:
+            logger.warning(
+                "%s value %s exceeds maximum %s. Using maximum value.",
+                env_var, value, max_val
+            )
+            return max_val
+        return value
+    except ValueError:
+        logger.error(
+            "%s must be a valid float, got '%s'. Using default: %s",
+            env_var, value_str, default
+        )
+        return default
+
+
+def _validate_positive_int(
+    env_var: str, value_str: str, default: int, min_val: int, max_val: int
+) -> int:
+    """Validate and parse a positive integer environment variable (DS-278).
+
+    Args:
+        env_var: Name of the environment variable (for error messages).
+        value_str: String value to parse.
+        default: Default value if parsing fails.
+        min_val: Minimum allowed value.
+        max_val: Maximum allowed value.
+
+    Returns:
+        Validated integer value, or default if validation fails.
+    """
+    try:
+        value = int(value_str)
+        if value <= 0:
+            logger.error(
+                "%s must be positive (greater than 0), got %s. Using default: %s",
+                env_var, value, default
+            )
+            return default
+        if value < min_val:
+            logger.warning(
+                "%s value %s is below minimum %s. Using minimum value.",
+                env_var, value, min_val
+            )
+            return min_val
+        if value > max_val:
+            logger.warning(
+                "%s value %s exceeds maximum %s. Using maximum value.",
+                env_var, value, max_val
+            )
+            return max_val
+        return value
+    except ValueError:
+        logger.error(
+            "%s must be a valid integer, got '%s'. Using default: %s",
+            env_var, value_str, default
+        )
+        return default
+
+
+# Parse and validate environment variables with input validation (DS-278)
+_toggle_cooldown_env = os.environ.get("SENTINEL_TOGGLE_COOLDOWN")
+if _toggle_cooldown_env is not None:
+    TOGGLE_COOLDOWN_SECONDS: float = _validate_positive_float(
+        "SENTINEL_TOGGLE_COOLDOWN",
+        _toggle_cooldown_env,
+        _DEFAULT_TOGGLE_COOLDOWN,
+        _MIN_TOGGLE_COOLDOWN,
+        _MAX_TOGGLE_COOLDOWN,
+    )
+else:
+    TOGGLE_COOLDOWN_SECONDS = _DEFAULT_TOGGLE_COOLDOWN
 
 # Track last write time per file path for rate limiting (DS-268, DS-274)
 # Using TTLCache to automatically clean up stale entries
 # Cache TTL and maxsize are configurable via environment variables (DS-274)
 # Allows operators to tune cache behavior for different memory constraints and usage patterns
-_RATE_LIMIT_CACHE_TTL: int = int(os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL", "3600"))  # Default: 1 hour
-_RATE_LIMIT_CACHE_MAXSIZE: int = int(os.environ.get("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "10000"))  # Default: 10k entries
+_cache_ttl_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL")
+if _cache_ttl_env is not None:
+    _RATE_LIMIT_CACHE_TTL: int = _validate_positive_int(
+        "SENTINEL_RATE_LIMIT_CACHE_TTL",
+        _cache_ttl_env,
+        _DEFAULT_RATE_LIMIT_CACHE_TTL,
+        _MIN_CACHE_TTL,
+        _MAX_CACHE_TTL,
+    )
+else:
+    _RATE_LIMIT_CACHE_TTL = _DEFAULT_RATE_LIMIT_CACHE_TTL
+
+_cache_maxsize_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE")
+if _cache_maxsize_env is not None:
+    _RATE_LIMIT_CACHE_MAXSIZE: int = _validate_positive_int(
+        "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE",
+        _cache_maxsize_env,
+        _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE,
+        _MIN_CACHE_MAXSIZE,
+        _MAX_CACHE_MAXSIZE,
+    )
+else:
+    _RATE_LIMIT_CACHE_MAXSIZE = _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE
+
 _last_write_times: TTLCache[str, float] = TTLCache(
     maxsize=_RATE_LIMIT_CACHE_MAXSIZE, ttl=_RATE_LIMIT_CACHE_TTL
 )
