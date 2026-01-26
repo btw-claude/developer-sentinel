@@ -91,7 +91,7 @@ class TestJiraSdkClient:
             ]
         )
 
-        with patch("sentinel.sdk_clients.query", create_mock_query(issues_json)):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query(issues_json)):
             client = JiraSdkClient(mock_config)
             result = client.search_issues("project = TEST", max_results=10)
 
@@ -105,7 +105,7 @@ class TestJiraSdkClient:
 [{"key": "TEST-1", "fields": {"summary": "Issue"}}]
 ```"""
 
-        with patch("sentinel.sdk_clients.query", create_mock_query(response)):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query(response)):
             client = JiraSdkClient(mock_config)
             result = client.search_issues("project = TEST")
 
@@ -118,7 +118,7 @@ class TestJiraSdkClient:
 [{"key": "TEST-1", "fields": {"summary": "Issue"}}]
 ```"""
 
-        with patch("sentinel.sdk_clients.query", create_mock_query(response)):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query(response)):
             client = JiraSdkClient(mock_config)
             result = client.search_issues("project = TEST")
 
@@ -129,7 +129,7 @@ class TestJiraSdkClient:
         """Should wrap single issue object in list."""
         response = '{"key": "TEST-1", "fields": {"summary": "Issue"}}'
 
-        with patch("sentinel.sdk_clients.query", create_mock_query(response)):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query(response)):
             client = JiraSdkClient(mock_config)
             result = client.search_issues("project = TEST")
 
@@ -139,7 +139,7 @@ class TestJiraSdkClient:
     def test_search_issues_handles_timeout(self, mock_config: Config) -> None:
         """Should wrap timeout in JiraClientError."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_raising_mock_query(asyncio.TimeoutError()),
         ):
             client = JiraSdkClient(mock_config)
@@ -148,7 +148,7 @@ class TestJiraSdkClient:
 
     def test_search_issues_handles_invalid_json(self, mock_config: Config) -> None:
         """Should raise JiraClientError for invalid JSON."""
-        with patch("sentinel.sdk_clients.query", create_mock_query("not valid json")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("not valid json")):
             client = JiraSdkClient(mock_config)
             with pytest.raises(JiraClientError, match="parse"):
                 client.search_issues("project = TEST")
@@ -156,7 +156,7 @@ class TestJiraSdkClient:
     def test_search_issues_handles_generic_exception(self, mock_config: Config) -> None:
         """Should wrap generic exceptions in JiraClientError."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_raising_mock_query(RuntimeError("unexpected error")),
         ):
             client = JiraSdkClient(mock_config)
@@ -168,7 +168,7 @@ class TestJiraSdkClient:
         # Request shutdown before calling
         request_shutdown()
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("[]")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("[]")):
             client = JiraSdkClient(mock_config)
             with pytest.raises(ClaudeProcessInterruptedError):
                 client.search_issues("project = TEST")
@@ -179,7 +179,7 @@ class TestJiraSdkTagClient:
 
     def test_add_label_success(self, mock_config: Config) -> None:
         """Should add label successfully."""
-        with patch("sentinel.sdk_clients.query", create_mock_query("SUCCESS")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("SUCCESS")):
             client = JiraSdkTagClient(mock_config)
             # Should not raise
             client.add_label("TEST-123", "my-label")
@@ -187,7 +187,7 @@ class TestJiraSdkTagClient:
     def test_add_label_success_with_other_text(self, mock_config: Config) -> None:
         """Should succeed if response contains SUCCESS."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_mock_query("The operation was a SUCCESS. Label added."),
         ):
             client = JiraSdkTagClient(mock_config)
@@ -196,7 +196,7 @@ class TestJiraSdkTagClient:
     def test_add_label_error(self, mock_config: Config) -> None:
         """Should raise JiraTagClientError on error response."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_mock_query("ERROR: Label not found"),
         ):
             client = JiraSdkTagClient(mock_config)
@@ -206,7 +206,7 @@ class TestJiraSdkTagClient:
     def test_add_label_timeout(self, mock_config: Config) -> None:
         """Should wrap timeout in JiraTagClientError."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_raising_mock_query(asyncio.TimeoutError()),
         ):
             client = JiraSdkTagClient(mock_config)
@@ -216,7 +216,7 @@ class TestJiraSdkTagClient:
     def test_add_label_generic_error(self, mock_config: Config) -> None:
         """Should wrap generic error in JiraTagClientError."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_raising_mock_query(RuntimeError("unexpected error")),
         ):
             client = JiraSdkTagClient(mock_config)
@@ -225,7 +225,7 @@ class TestJiraSdkTagClient:
 
     def test_remove_label_success(self, mock_config: Config) -> None:
         """Should remove label successfully."""
-        with patch("sentinel.sdk_clients.query", create_mock_query("SUCCESS")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("SUCCESS")):
             client = JiraSdkTagClient(mock_config)
             # Should not raise
             client.remove_label("TEST-123", "my-label")
@@ -233,7 +233,7 @@ class TestJiraSdkTagClient:
     def test_remove_label_error(self, mock_config: Config) -> None:
         """Should raise JiraTagClientError on error response."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_mock_query("ERROR: Label not found"),
         ):
             client = JiraSdkTagClient(mock_config)
@@ -243,7 +243,7 @@ class TestJiraSdkTagClient:
     def test_remove_label_timeout(self, mock_config: Config) -> None:
         """Should wrap timeout in JiraTagClientError."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_raising_mock_query(asyncio.TimeoutError()),
         ):
             client = JiraSdkTagClient(mock_config)
@@ -254,7 +254,7 @@ class TestJiraSdkTagClient:
         """Should raise ClaudeProcessInterruptedError when shutdown is requested."""
         request_shutdown()
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("SUCCESS")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("SUCCESS")):
             client = JiraSdkTagClient(mock_config)
             with pytest.raises(ClaudeProcessInterruptedError):
                 client.add_label("TEST-123", "my-label")
@@ -266,7 +266,7 @@ class TestClaudeSdkAgentClient:
     def test_run_agent_returns_response(self, mock_config: Config) -> None:
         """Should return AgentRunResult with agent response."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_mock_query("Agent completed successfully"),
         ):
             client = ClaudeSdkAgentClient(mock_config)
@@ -279,7 +279,7 @@ class TestClaudeSdkAgentClient:
         """Should include context in prompt."""
         captured_prompt: list[str] = []
 
-        with patch("sentinel.sdk_clients.query", create_capturing_mock_query(captured_prompt)):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_capturing_mock_query(captured_prompt)):
             client = ClaudeSdkAgentClient(mock_config)
             client.run_agent(
                 "Do something",
@@ -295,7 +295,7 @@ class TestClaudeSdkAgentClient:
     def test_run_agent_handles_timeout(self, mock_config: Config) -> None:
         """Should wrap timeout in AgentTimeoutError."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_raising_mock_query(asyncio.TimeoutError()),
         ):
             client = ClaudeSdkAgentClient(mock_config)
@@ -305,7 +305,7 @@ class TestClaudeSdkAgentClient:
     def test_run_agent_handles_generic_exception(self, mock_config: Config) -> None:
         """Should wrap generic exceptions in AgentClientError."""
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_raising_mock_query(RuntimeError("unexpected error")),
         ):
             client = ClaudeSdkAgentClient(mock_config)
@@ -355,7 +355,7 @@ class TestClaudeSdkAgentClient:
         self, tmp_path: Path, mock_config: Config
     ) -> None:
         """Should create workdir when base_workdir and issue_key provided."""
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
             client.run_agent("Do something", [], issue_key="DS-100")
 
@@ -365,7 +365,7 @@ class TestClaudeSdkAgentClient:
 
     def test_run_agent_no_workdir_without_base(self, mock_config: Config) -> None:
         """Should not create workdir when base_workdir not configured."""
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config)
             client.run_agent("Do something", [], issue_key="DS-200")
         # No exception should be raised
@@ -374,7 +374,7 @@ class TestClaudeSdkAgentClient:
         self, tmp_path: Path, mock_config: Config
     ) -> None:
         """Should not create workdir when issue_key not provided."""
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
             client.run_agent("Do something", [])
 
@@ -385,7 +385,7 @@ class TestClaudeSdkAgentClient:
         """Should raise ClaudeProcessInterruptedError when shutdown is requested."""
         request_shutdown()
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config)
             with pytest.raises(ClaudeProcessInterruptedError):
                 client.run_agent("Do something", [])
@@ -413,7 +413,7 @@ class TestClaudeSdkAgentClientStreaming:
         log_dir = tmp_path / "logs"
         work_dir = tmp_path / "work"
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=work_dir,
@@ -438,7 +438,7 @@ class TestClaudeSdkAgentClientStreaming:
         """Should write header to log file."""
         log_dir = tmp_path / "logs"
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("Agent completed task")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("Agent completed task")):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
             result = client.run_agent(
                 "Test prompt",
@@ -461,7 +461,7 @@ class TestClaudeSdkAgentClientStreaming:
         self, tmp_path: Path, mock_config: Config
     ) -> None:
         """Should not create streaming logs when log_base_dir not set."""
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config)
             client.run_agent(
                 "Test",
@@ -479,7 +479,7 @@ class TestClaudeSdkAgentClientStreaming:
         """Should not create streaming logs without issue_key."""
         log_dir = tmp_path / "logs"
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
             client.run_agent(
                 "Test",
@@ -496,7 +496,7 @@ class TestClaudeSdkAgentClientStreaming:
         """Should not create streaming logs without orchestration_name."""
         log_dir = tmp_path / "logs"
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
             client.run_agent(
                 "Test",
@@ -513,7 +513,7 @@ class TestClaudeSdkAgentClientStreaming:
         """Should finalize log with COMPLETED status on success."""
         log_dir = tmp_path / "logs"
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
             client.run_agent(
                 "Test",
@@ -534,7 +534,7 @@ class TestClaudeSdkAgentClientStreaming:
         log_dir = tmp_path / "logs"
 
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_raising_mock_query(asyncio.TimeoutError()),
         ):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
@@ -558,7 +558,7 @@ class TestClaudeSdkAgentClientStreaming:
         log_dir = tmp_path / "logs"
 
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_raising_mock_query(RuntimeError("test error")),
         ):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
@@ -610,7 +610,7 @@ class TestDisableStreamingLogs:
         """Should use _run_simple when streaming is disabled."""
         log_dir = tmp_path / "logs"
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 log_base_dir=log_dir,
@@ -635,7 +635,7 @@ class TestDisableStreamingLogs:
         log_dir = tmp_path / "logs"
 
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_mock_query("Agent completed task successfully"),
         ):
             client = ClaudeSdkAgentClient(
@@ -670,7 +670,7 @@ class TestDisableStreamingLogs:
         """Should not write log when streaming disabled but params missing."""
         log_dir = tmp_path / "logs"
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 log_base_dir=log_dir,
@@ -692,7 +692,7 @@ class TestDisableStreamingLogs:
         """Should use streaming logs when not disabled."""
         log_dir = tmp_path / "logs"
 
-        with patch("sentinel.sdk_clients.query", create_mock_query("done")):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 log_base_dir=log_dir,

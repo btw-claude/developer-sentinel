@@ -646,7 +646,7 @@ class TestSdkStreamingVsNonStreaming:
         """SDK client with streaming enabled should use _run_with_log."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.sdk_clients.query", create_timed_mock_query(["response"])):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -672,7 +672,7 @@ class TestSdkStreamingVsNonStreaming:
         """SDK client with streaming disabled should use _run_simple."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.sdk_clients.query", create_timed_mock_query(["response"])):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -699,7 +699,7 @@ class TestSdkStreamingVsNonStreaming:
         workdir, logs = temp_dirs
         config = Config(disable_streaming_logs=True)
 
-        with patch("sentinel.sdk_clients.query", create_timed_mock_query(["response"])):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
             client = ClaudeSdkAgentClient(
                 config,
                 base_workdir=workdir,
@@ -731,7 +731,7 @@ class TestSdkStreamingVsNonStreaming:
         """Streaming logs should contain timing metrics section."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.sdk_clients.query", create_timed_mock_query(["response"])):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -762,7 +762,7 @@ class TestSdkStreamingVsNonStreaming:
         """Streaming logs should contain JSON metrics export for programmatic access (DS-173)."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.sdk_clients.query", create_timed_mock_query(["response"])):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -796,7 +796,7 @@ class TestSdkStreamingVsNonStreaming:
         """Non-streaming logs should have correct format."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.sdk_clients.query", create_timed_mock_query(["response"])):
+        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -919,7 +919,7 @@ class TestMultipleResponseSimulation:
         delays = [0.01, 0.02, 0.01, 0.015, 0.01]
 
         with patch(
-            "sentinel.sdk_clients.query",
+            "sentinel.agent_clients.claude_sdk.query",
             create_timed_mock_query(responses, delays),
         ):
             client = ClaudeSdkAgentClient(
