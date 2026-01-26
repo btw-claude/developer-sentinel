@@ -1136,11 +1136,154 @@ class TestToggleRateLimitConfiguration:
 
     def test_ttl_cache_has_reasonable_limits(self) -> None:
         """Test that TTLCache has reasonable maxsize and ttl settings (DS-268)."""
+        import importlib
+        import os
+
         from sentinel.dashboard import routes
 
-        # Check that cache constants are defined with reasonable values
-        assert routes._RATE_LIMIT_CACHE_TTL == 3600  # 1 hour
-        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000  # 10k entries
+        # Ensure env vars are not set for this test
+        original_ttl_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL")
+        original_maxsize_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE")
+
+        try:
+            os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_TTL", None)
+            os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", None)
+
+            importlib.reload(routes)
+
+            # Check that cache constants are defined with reasonable values
+            assert routes._RATE_LIMIT_CACHE_TTL == 3600  # 1 hour
+            assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000  # 10k entries
+        finally:
+            # Restore original environment
+            if original_ttl_env is not None:
+                os.environ["SENTINEL_RATE_LIMIT_CACHE_TTL"] = original_ttl_env
+            if original_maxsize_env is not None:
+                os.environ["SENTINEL_RATE_LIMIT_CACHE_MAXSIZE"] = original_maxsize_env
+
+            importlib.reload(routes)
+
+    def test_cache_ttl_configurable_via_environment_variable(self) -> None:
+        """Test that _RATE_LIMIT_CACHE_TTL is configurable via SENTINEL_RATE_LIMIT_CACHE_TTL env var (DS-274)."""
+        import importlib
+        import os
+
+        # Save original values
+        original_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL")
+
+        try:
+            # Set a custom TTL value via environment variable
+            os.environ["SENTINEL_RATE_LIMIT_CACHE_TTL"] = "7200"  # 2 hours
+
+            # Reimport the module to pick up the new environment variable
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+            # Verify the TTL was set from the environment variable
+            assert routes._RATE_LIMIT_CACHE_TTL == 7200
+            # Verify the cache was created with the new TTL
+            assert routes._last_write_times.ttl == 7200
+        finally:
+            # Restore original environment
+            if original_env is None:
+                os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_TTL", None)
+            else:
+                os.environ["SENTINEL_RATE_LIMIT_CACHE_TTL"] = original_env
+
+            # Reload to restore default
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+    def test_cache_maxsize_configurable_via_environment_variable(self) -> None:
+        """Test that _RATE_LIMIT_CACHE_MAXSIZE is configurable via SENTINEL_RATE_LIMIT_CACHE_MAXSIZE env var (DS-274)."""
+        import importlib
+        import os
+
+        # Save original values
+        original_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE")
+
+        try:
+            # Set a custom maxsize value via environment variable
+            os.environ["SENTINEL_RATE_LIMIT_CACHE_MAXSIZE"] = "5000"
+
+            # Reimport the module to pick up the new environment variable
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+            # Verify the maxsize was set from the environment variable
+            assert routes._RATE_LIMIT_CACHE_MAXSIZE == 5000
+            # Verify the cache was created with the new maxsize
+            assert routes._last_write_times.maxsize == 5000
+        finally:
+            # Restore original environment
+            if original_env is None:
+                os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", None)
+            else:
+                os.environ["SENTINEL_RATE_LIMIT_CACHE_MAXSIZE"] = original_env
+
+            # Reload to restore default
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+    def test_cache_ttl_defaults_to_3600_seconds(self) -> None:
+        """Test that _RATE_LIMIT_CACHE_TTL defaults to 3600 (1 hour) when env var not set (DS-274)."""
+        import importlib
+        import os
+
+        # Save original value and remove env var
+        original_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL")
+
+        try:
+            os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_TTL", None)
+
+            # Reimport the module
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+            # Verify the default
+            assert routes._RATE_LIMIT_CACHE_TTL == 3600
+        finally:
+            # Restore original environment
+            if original_env is not None:
+                os.environ["SENTINEL_RATE_LIMIT_CACHE_TTL"] = original_env
+
+            # Reload
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+    def test_cache_maxsize_defaults_to_10000_entries(self) -> None:
+        """Test that _RATE_LIMIT_CACHE_MAXSIZE defaults to 10000 when env var not set (DS-274)."""
+        import importlib
+        import os
+
+        # Save original value and remove env var
+        original_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE")
+
+        try:
+            os.environ.pop("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", None)
+
+            # Reimport the module
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+            # Verify the default
+            assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000
+        finally:
+            # Restore original environment
+            if original_env is not None:
+                os.environ["SENTINEL_RATE_LIMIT_CACHE_MAXSIZE"] = original_env
+
+            # Reload
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
 
 
 class TestToggleOpenApiDocs:
