@@ -12,6 +12,9 @@ from dotenv import load_dotenv
 # Valid log levels
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
+# Valid Cursor modes
+VALID_CURSOR_MODES = frozenset({"agent", "plan", "ask"})
+
 # Port validation bounds
 MIN_PORT = 1
 MAX_PORT = 65535
@@ -74,6 +77,12 @@ class Config:
     # When True, disables streaming log writes during agent execution
     # Uses _run_simple() path and writes full response after completion
     disable_streaming_logs: bool = False
+
+    # Cursor CLI configuration (DS-293)
+    default_agent_type: str = "claude"  # Default agent type: claude or cursor
+    cursor_path: str = ""  # Path to Cursor CLI executable
+    cursor_default_model: str = ""  # Default model for Cursor agent
+    cursor_default_mode: str = "agent"  # Default mode: agent, plan, or ask
 
     @property
     def jira_configured(self) -> bool:
@@ -192,6 +201,30 @@ def _parse_bool(value: str) -> bool:
     return value.lower() in ("true", "1", "yes")
 
 
+def _validate_cursor_mode(value: str, default: str = "agent") -> str:
+    """Validate and normalize a Cursor mode string.
+
+    Args:
+        value: The cursor mode string to validate.
+        default: The default value to use if invalid.
+
+    Returns:
+        The validated cursor mode (lowercase), or the default if invalid.
+
+    Logs a warning if the value is invalid.
+    """
+    normalized = value.lower()
+    if normalized not in VALID_CURSOR_MODES:
+        logging.warning(
+            "Invalid SENTINEL_CURSOR_DEFAULT_MODE: '%s' is not valid, using default '%s'. Valid values: %s",
+            value,
+            default,
+            ", ".join(sorted(VALID_CURSOR_MODES)),
+        )
+        return default
+    return normalized
+
+
 def load_config(env_file: Path | None = None) -> Config:
     """Load configuration from environment variables.
 
@@ -279,6 +312,14 @@ def load_config(env_file: Path | None = None) -> Config:
     orchestration_logs_dir_str = os.getenv("SENTINEL_ORCHESTRATION_LOGS_DIR", "")
     orchestration_logs_dir = Path(orchestration_logs_dir_str) if orchestration_logs_dir_str else None
 
+    # Parse Cursor CLI configuration (DS-293)
+    default_agent_type = os.getenv("SENTINEL_DEFAULT_AGENT_TYPE", "claude")
+    cursor_path = os.getenv("SENTINEL_CURSOR_PATH", "")
+    cursor_default_model = os.getenv("SENTINEL_CURSOR_DEFAULT_MODEL", "")
+    cursor_default_mode = _validate_cursor_mode(
+        os.getenv("SENTINEL_CURSOR_DEFAULT_MODE", "agent"),
+    )
+
     # Parse MCP server args (comma-separated)
     def parse_args(env_var: str) -> list[str]:
         value = os.getenv(env_var, "")
@@ -307,4 +348,8 @@ def load_config(env_file: Path | None = None) -> Config:
         attempt_counts_ttl=attempt_counts_ttl,
         max_queue_size=max_queue_size,
         disable_streaming_logs=disable_streaming_logs,
+        default_agent_type=default_agent_type,
+        cursor_path=cursor_path,
+        cursor_default_model=cursor_default_model,
+        cursor_default_mode=cursor_default_mode,
     )
