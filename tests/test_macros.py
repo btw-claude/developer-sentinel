@@ -17,6 +17,24 @@ from pathlib import Path
 
 
 # DS-286: Helper assertion functions for badge testing
+# DS-288: Refactored helpers to use assert_badge_exists internally
+def assert_badge_exists(soup: BeautifulSoup):
+    """Assert that a badge element exists in the parsed HTML.
+
+    Args:
+        soup: BeautifulSoup object containing the rendered HTML
+
+    Returns:
+        The badge element if found
+
+    Raises:
+        AssertionError: If badge element is not found
+    """
+    badge = soup.find("span", class_="badge")
+    assert badge is not None, "Badge element not found"
+    return badge
+
+
 def assert_badge_has_class(soup: BeautifulSoup, expected_class: str) -> None:
     """Assert that the badge element has the expected CSS class.
 
@@ -27,8 +45,7 @@ def assert_badge_has_class(soup: BeautifulSoup, expected_class: str) -> None:
     Raises:
         AssertionError: If badge is not found or doesn't have the expected class
     """
-    badge = soup.find("span", class_="badge")
-    assert badge is not None, "Badge element not found"
+    badge = assert_badge_exists(soup)
     assert expected_class in badge.get("class", []), (
         f"Expected class '{expected_class}' not found in badge classes: {badge.get('class', [])}"
     )
@@ -44,8 +61,7 @@ def assert_badge_not_has_class(soup: BeautifulSoup, unexpected_class: str) -> No
     Raises:
         AssertionError: If badge is not found or has the unexpected class
     """
-    badge = soup.find("span", class_="badge")
-    assert badge is not None, "Badge element not found"
+    badge = assert_badge_exists(soup)
     assert unexpected_class not in badge.get("class", []), (
         f"Unexpected class '{unexpected_class}' found in badge classes: {badge.get('class', [])}"
     )
@@ -61,24 +77,10 @@ def assert_badge_text(soup: BeautifulSoup, expected_text: str) -> None:
     Raises:
         AssertionError: If badge is not found or text doesn't match
     """
-    badge = soup.find("span", class_="badge")
-    assert badge is not None, "Badge element not found"
+    badge = assert_badge_exists(soup)
     assert badge.text == expected_text, (
         f"Expected badge text '{expected_text}', got '{badge.text}'"
     )
-
-
-def assert_badge_exists(soup: BeautifulSoup) -> None:
-    """Assert that a badge element exists in the parsed HTML.
-
-    Args:
-        soup: BeautifulSoup object containing the rendered HTML
-
-    Raises:
-        AssertionError: If badge element is not found
-    """
-    badge = soup.find("span", class_="badge")
-    assert badge is not None, "Badge element not found"
 
 
 class TestStatusBadgeMacro:
@@ -201,9 +203,8 @@ class TestStatusBadgeMacro:
     def test_badge_renders_span_element(self, parse_badge) -> None:
         """Test that the badge is rendered as a span element."""
         soup = parse_badge(active_count=2, total_count=5)
-        badge = soup.find("span", class_="badge")
-
-        assert_badge_exists(soup)
+        # DS-288: Use assert_badge_exists which returns the badge, eliminating redundant soup.find call
+        badge = assert_badge_exists(soup)
         assert badge.name == "span"
 
     def test_badge_displays_count_format(self, parse_badge) -> None:
