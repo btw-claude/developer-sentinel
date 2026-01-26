@@ -2,6 +2,7 @@
 
 DS-125: Tests for the log file discovery API endpoint.
 DS-126: Tests for the SSE log streaming endpoint.
+DS-250: Tests for orchestration toggle API endpoints.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from sentinel.config import Config
 from sentinel.dashboard.routes import create_routes
-from sentinel.dashboard.state import SentinelStateAccessor
+from sentinel.dashboard.state import OrchestrationInfo, SentinelStateAccessor
 
 
 class MockSentinel:
@@ -454,3 +455,425 @@ class TestSseLogStreamingEndpoint:
             # Verify the route exists
             route_paths = [route.path for route in app.routes]
             assert "/api/logs/stream/{orchestration}/{filename}" in route_paths
+
+
+class MockSentinelWithOrchestrations(MockSentinel):
+    """Mock Sentinel with configurable orchestrations for toggle endpoint tests."""
+
+    def __init__(self, config: Config, orchestrations_data: list[OrchestrationInfo]) -> None:
+        super().__init__(config)
+        self._orchestrations_data = orchestrations_data
+
+    @property
+    def orchestrations(self) -> list[Any]:
+        """Return mock orchestrations for state accessor."""
+        # Return simple mock objects that the state accessor can convert
+        return []
+
+
+class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
+    """Mock state accessor that returns configured orchestration info."""
+
+    def __init__(self, sentinel: Any, orchestrations_data: list[OrchestrationInfo]) -> None:
+        self._sentinel = sentinel
+        self._orchestrations_data = orchestrations_data
+
+    def get_state(self) -> Any:
+        """Return a mock state with the configured orchestrations."""
+        from sentinel.dashboard.state import DashboardState
+
+        return DashboardState(
+            poll_interval=60,
+            max_concurrent_executions=5,
+            max_issues_per_poll=10,
+            orchestrations=self._orchestrations_data,
+        )
+
+
+class TestToggleOrchestrationEndpoint:
+    """Tests for POST /api/orchestrations/{name}/toggle endpoint (DS-250)."""
+
+    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
+        """Create a test FastAPI app with dashboard routes."""
+        app = FastAPI()
+        router = create_routes(accessor)
+        app.include_router(router)
+        return app
+
+    def test_toggle_orchestration_success(self) -> None:
+        """Test successful toggle of a single orchestration."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+
+            # Create an orchestration YAML file
+            orch_file = logs_dir / "test-orch.yaml"
+            orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            # Create orchestration info pointing to the real file
+            orch_info = OrchestrationInfo(
+                name="test-orch",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_repo=None,
+                trigger_tags=[],
+                agent_prompt_preview="Test prompt",
+                source_file=str(orch_file),
+            )
+
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/orchestrations/test-orch/toggle",
+                    json={"enabled": False},
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                assert data["enabled"] is False
+                assert data["name"] == "test-orch"
+
+                # Verify file was updated
+                updated_content = orch_file.read_text()
+                assert "enabled: false" in updated_content
+
+    def test_toggle_orchestration_enable(self) -> None:
+        """Test enabling a disabled orchestration."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+
+            orch_file = logs_dir / "test-orch.yaml"
+            orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: false
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+""")
+
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            orch_info = OrchestrationInfo(
+                name="test-orch",
+                enabled=False,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_repo=None,
+                trigger_tags=[],
+                agent_prompt_preview="Test",
+                source_file=str(orch_file),
+            )
+
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/orchestrations/test-orch/toggle",
+                    json={"enabled": True},
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                assert data["enabled"] is True
+
+                # Verify file was updated
+                updated_content = orch_file.read_text()
+                assert "enabled: true" in updated_content
+
+    def test_toggle_orchestration_not_found(self) -> None:
+        """Test 404 when orchestration doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            # No orchestrations configured
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/orchestrations/nonexistent/toggle",
+                    json={"enabled": False},
+                )
+
+                assert response.status_code == 404
+                assert "not found" in response.json()["detail"].lower()
+
+    def test_toggle_orchestration_file_not_found(self) -> None:
+        """Test 404 when orchestration file doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            # Orchestration info pointing to non-existent file
+            orch_info = OrchestrationInfo(
+                name="test-orch",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_repo=None,
+                trigger_tags=[],
+                agent_prompt_preview="Test",
+                source_file="/nonexistent/path.yaml",
+            )
+
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/orchestrations/test-orch/toggle",
+                    json={"enabled": False},
+                )
+
+                assert response.status_code == 404
+                assert "not found" in response.json()["detail"].lower()
+
+    def test_toggle_endpoint_exists(self) -> None:
+        """Test that the toggle endpoint exists at the correct path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+            app = self._create_test_app(accessor)
+
+            route_paths = [route.path for route in app.routes]
+            assert "/api/orchestrations/{name}/toggle" in route_paths
+
+
+class TestBulkToggleOrchestrationEndpoint:
+    """Tests for POST /api/orchestrations/bulk-toggle endpoint (DS-250)."""
+
+    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
+        """Create a test FastAPI app with dashboard routes."""
+        app = FastAPI()
+        router = create_routes(accessor)
+        app.include_router(router)
+        return app
+
+    def test_bulk_toggle_jira_orchestrations_success(self) -> None:
+        """Test bulk toggling Jira orchestrations by project."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+
+            # Create an orchestration YAML file with multiple orchestrations
+            orch_file = logs_dir / "jira-orchestrations.yaml"
+            orch_file.write_text("""
+orchestrations:
+  - name: "jira-orch-1"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "First"
+  - name: "jira-orch-2"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Second"
+  - name: "other-project"
+    enabled: true
+    trigger:
+      source: jira
+      project: "OTHER"
+    agent:
+      prompt: "Other project"
+""")
+
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            orchestrations = [
+                OrchestrationInfo(
+                    name="jira-orch-1",
+                    enabled=True,
+                    trigger_source="jira",
+                    trigger_project="TEST",
+                    trigger_repo=None,
+                    trigger_tags=[],
+                    agent_prompt_preview="First",
+                    source_file=str(orch_file),
+                ),
+                OrchestrationInfo(
+                    name="jira-orch-2",
+                    enabled=True,
+                    trigger_source="jira",
+                    trigger_project="TEST",
+                    trigger_repo=None,
+                    trigger_tags=[],
+                    agent_prompt_preview="Second",
+                    source_file=str(orch_file),
+                ),
+                OrchestrationInfo(
+                    name="other-project",
+                    enabled=True,
+                    trigger_source="jira",
+                    trigger_project="OTHER",
+                    trigger_repo=None,
+                    trigger_tags=[],
+                    agent_prompt_preview="Other project",
+                    source_file=str(orch_file),
+                ),
+            ]
+
+            accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/orchestrations/bulk-toggle",
+                    json={"source": "jira", "identifier": "TEST", "enabled": False},
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                assert data["toggled_count"] == 2
+
+                # Verify file was updated
+                updated_content = orch_file.read_text()
+                # The TEST project orchestrations should be disabled
+                # but we can't easily verify order, just count
+                assert updated_content.count("enabled: false") == 2
+                # OTHER project should still be enabled
+                assert "enabled: true" in updated_content
+
+    def test_bulk_toggle_github_orchestrations_success(self) -> None:
+        """Test bulk toggling GitHub orchestrations by repo."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+
+            orch_file = logs_dir / "github-orchestrations.yaml"
+            orch_file.write_text("""
+orchestrations:
+  - name: "github-orch-1"
+    enabled: true
+    trigger:
+      source: github
+      repo: "org/repo"
+    agent:
+      prompt: "First"
+  - name: "github-orch-2"
+    enabled: true
+    trigger:
+      source: github
+      repo: "org/repo"
+    agent:
+      prompt: "Second"
+""")
+
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            orchestrations = [
+                OrchestrationInfo(
+                    name="github-orch-1",
+                    enabled=True,
+                    trigger_source="github",
+                    trigger_project=None,
+                    trigger_repo="org/repo",
+                    trigger_tags=[],
+                    agent_prompt_preview="First",
+                    source_file=str(orch_file),
+                ),
+                OrchestrationInfo(
+                    name="github-orch-2",
+                    enabled=True,
+                    trigger_source="github",
+                    trigger_project=None,
+                    trigger_repo="org/repo",
+                    trigger_tags=[],
+                    agent_prompt_preview="Second",
+                    source_file=str(orch_file),
+                ),
+            ]
+
+            accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/orchestrations/bulk-toggle",
+                    json={"source": "github", "identifier": "org/repo", "enabled": False},
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                assert data["toggled_count"] == 2
+
+    def test_bulk_toggle_no_matching_orchestrations(self) -> None:
+        """Test 404 when no orchestrations match the identifier."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            # No matching orchestrations
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/orchestrations/bulk-toggle",
+                    json={"source": "jira", "identifier": "NONEXISTENT", "enabled": False},
+                )
+
+                assert response.status_code == 404
+                assert "No orchestrations found" in response.json()["detail"]
+
+    def test_bulk_toggle_endpoint_exists(self) -> None:
+        """Test that the bulk toggle endpoint exists at the correct path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+            app = self._create_test_app(accessor)
+
+            route_paths = [route.path for route in app.routes]
+            assert "/api/orchestrations/bulk-toggle" in route_paths
+
+    def test_bulk_toggle_invalid_source(self) -> None:
+        """Test validation error for invalid source type."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/orchestrations/bulk-toggle",
+                    json={"source": "invalid", "identifier": "TEST", "enabled": False},
+                )
+
+                # Should return 422 for validation error
+                assert response.status_code == 422
