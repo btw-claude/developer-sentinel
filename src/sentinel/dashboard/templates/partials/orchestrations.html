@@ -6,7 +6,7 @@
             <span class="collapse-icon">&#9654;</span>
             <strong>{{ project.identifier }}</strong>
             <span class="badge ml-2">{{ project.count }} orchestration{% if project.count != 1 %}s{% endif %}</span>
-            <div class="bulk-toggle-buttons" style="margin-left: auto;">
+            <div class="bulk-toggle-buttons">
                 <button class="btn-sm btn-success"
                         hx-post="/api/orchestrations/bulk-toggle"
                         hx-vals='{"source": "{{ source_type }}", "identifier": "{{ project.identifier }}", "enabled": true}'
