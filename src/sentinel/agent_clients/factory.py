@@ -107,6 +107,69 @@ class AgentClientFactory:
         self._cache[cache_key] = client
         return client
 
+    def _make_kwargs_hashable(self, kwargs: dict[str, Any]) -> tuple[tuple[str, Any], ...]:
+        """Convert kwargs dict to a hashable tuple for cache key use.
+
+        Args:
+            kwargs: Dictionary of keyword arguments.
+
+        Returns:
+            A sorted tuple of (key, value) pairs. Values must be hashable.
+
+        Raises:
+            TypeError: If any kwargs values are not hashable.
+        """
+        try:
+            return tuple(sorted(kwargs.items()))
+        except TypeError as e:
+            raise TypeError(
+                f"All kwargs values must be hashable for cache key generation: {e}"
+            ) from e
+
+    def get_or_create_for_orchestration(
+        self,
+        orch_agent_type: AgentType | None,
+        config: Config,
+        **kwargs: Any,
+    ) -> AgentClient:
+        """Get a cached client or create one for orchestration with kwargs support.
+
+        Clients are cached by (agent_type, config_id, kwargs) tuple. This ensures
+        that different orchestration configurations get different client instances.
+
+        Args:
+            orch_agent_type: The agent type specified by the orchestration.
+                            Defaults to 'claude' if None.
+            config: Base configuration object.
+            **kwargs: Additional configuration options that influence the cache key.
+                     All values must be hashable.
+
+        Returns:
+            An AgentClient instance (possibly cached).
+
+        Raises:
+            ValueError: If no builder is registered for the agent type.
+            TypeError: If any kwargs values are not hashable.
+        """
+        resolved_type: AgentType = orch_agent_type if orch_agent_type is not None else "claude"
+        kwargs_key = self._make_kwargs_hashable(kwargs)
+        cache_key = (resolved_type, id(config), kwargs_key)
+
+        if cache_key in self._cache:
+            logger.debug(
+                f"Returning cached {resolved_type} orchestration client "
+                f"(kwargs: {kwargs_key})"
+            )
+            return self._cache[cache_key]
+
+        client = self.create_for_orchestration(orch_agent_type, config, **kwargs)
+        self._cache[cache_key] = client
+        logger.debug(
+            f"Created and cached {resolved_type} orchestration client "
+            f"(kwargs: {kwargs_key})"
+        )
+        return client
+
     def create_for_orchestration(
         self,
         orch_agent_type: AgentType | None,
@@ -119,11 +182,16 @@ class AgentClientFactory:
         specific configurations (e.g., different working directories,
         logging paths, etc.).
 
+        Note: For caching support with kwargs, use get_or_create_for_orchestration().
+        The kwargs parameter influences cache key generation in that method.
+
         Args:
             orch_agent_type: The agent type specified by the orchestration.
                             Defaults to 'claude' if None.
             config: Base configuration object.
             **kwargs: Additional configuration options (reserved for future use).
+                     When caching is desired, use get_or_create_for_orchestration()
+                     to ensure kwargs are included in the cache key.
 
         Returns:
             An AgentClient configured for the orchestration.
