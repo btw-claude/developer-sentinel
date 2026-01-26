@@ -876,6 +876,20 @@
 }
 
 /* =============================================================================
+   BULK TOGGLE BUTTONS (DS-264)
+   Styles for bulk enable/disable buttons in orchestration accordion headers.
+
+   This rule pushes the bulk toggle buttons to the right side of the flex container.
+   Extracted from inline styles for better maintainability per code review feedback.
+
+   See: DS-252 (code review), DS-264 (refactoring task)
+   ============================================================================= */
+
+.bulk-toggle-buttons {
+    margin-left: auto;
+}
+
+/* =============================================================================
    RESPONSIVE UTILITIES (Future Consideration)
 
    TODO: Consider adding breakpoint prefixes for responsive variants:
