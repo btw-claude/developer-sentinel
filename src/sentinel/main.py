@@ -282,8 +282,8 @@ class Sentinel:
         config: Config,
         orchestrations: list[Orchestration],
         jira_client: JiraClient,
+        tag_client: JiraTagClient,
         agent_factory: AgentClientFactory | AgentClient | None = None,
-        tag_client: JiraTagClient | None = None,
         agent_logger: AgentLogger | None = None,
         github_client: GitHubClient | None = None,
         github_tag_client: GitHubTagClient | None = None,
@@ -296,10 +296,10 @@ class Sentinel:
             config: Application configuration.
             orchestrations: List of orchestration configurations.
             jira_client: Jira client for polling issues.
+            tag_client: Jira client for tag operations (required).
             agent_factory: Factory for creating agent clients per-orchestration.
                 For backward compatibility with tests, an AgentClient instance
                 can also be passed directly (will be wrapped in a simple factory).
-            tag_client: Jira client for tag operations.
             agent_logger: Optional logger for agent execution logs.
             github_client: Optional GitHub client for polling GitHub issues/PRs.
             github_tag_client: Optional GitHub client for tag/label operations.
@@ -340,8 +340,6 @@ class Sentinel:
             self._legacy_agent_client = effective_agent
             self.executor = AgentExecutor(effective_agent, agent_logger)
 
-        if tag_client is None:
-            raise ValueError("tag_client must be provided to Sentinel")
         self.tag_manager = TagManager(tag_client, github_client=github_tag_client)
         self._shutdown_requested = False
 
@@ -1215,12 +1213,14 @@ class Sentinel:
 
             # DS-296: Get per-orchestration agent client based on orchestration's agent_type
             # If a legacy agent client was provided, use the default executor
-            # Otherwise, create a per-orchestration executor using the factory
+            # Otherwise, use the factory's cached client lookup
+            # DS-303: Use get_or_create_for_orchestration to cache clients by type,
+            # avoiding creation of new clients for each orchestration execution
             if self._legacy_agent_client is not None or self._agent_factory is None:
                 executor = self.executor
             else:
                 agent_type = orchestration.agent.agent_type
-                client = self._agent_factory.create_for_orchestration(
+                client = self._agent_factory.get_or_create_for_orchestration(
                     agent_type, self.config
                 )
                 executor = AgentExecutor(client, self._agent_logger)
@@ -1970,12 +1970,13 @@ def main(args: list[str] | None = None) -> int:
     logger.info(f"Initialized agent factory with types: {agent_factory.registered_types}")
 
     # Create and run Sentinel
+    # DS-303: tag_client is now a required positional parameter for clearer API contract
     sentinel = Sentinel(
         config=config,
         orchestrations=orchestrations,
         jira_client=jira_client,
-        agent_factory=agent_factory,
         tag_client=tag_client,
+        agent_factory=agent_factory,
         agent_logger=agent_logger,
         github_client=github_client,
         github_tag_client=github_tag_client,
