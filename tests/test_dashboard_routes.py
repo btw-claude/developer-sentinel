@@ -877,3 +877,264 @@ orchestrations:
 
                 # Should return 422 for validation error
                 assert response.status_code == 422
+
+
+class TestToggleRateLimiting:
+    """Tests for rate limiting on toggle endpoints (DS-259)."""
+
+    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
+        """Create a test FastAPI app with dashboard routes."""
+        app = FastAPI()
+        router = create_routes(accessor)
+        app.include_router(router)
+        return app
+
+    def test_toggle_rate_limit_enforced(self) -> None:
+        """Test that rapid toggles are rate limited (DS-259)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+
+            # Create an orchestration YAML file
+            orch_file = logs_dir / "test-orch.yaml"
+            orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            orch_info = OrchestrationInfo(
+                name="test-orch",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_repo=None,
+                trigger_tags=[],
+                agent_prompt_preview="Test prompt",
+                source_file=str(orch_file),
+            )
+
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+            app = self._create_test_app(accessor)
+
+            # Clear any existing rate limit state
+            from sentinel.dashboard import routes
+            routes._last_write_times.clear()
+
+            with TestClient(app) as client:
+                # First toggle should succeed
+                response1 = client.post(
+                    "/api/orchestrations/test-orch/toggle",
+                    json={"enabled": False},
+                )
+                assert response1.status_code == 200
+
+                # Immediate second toggle should be rate limited
+                response2 = client.post(
+                    "/api/orchestrations/test-orch/toggle",
+                    json={"enabled": True},
+                )
+                assert response2.status_code == 429
+                assert "Rate limit exceeded" in response2.json()["detail"]
+
+    def test_rate_limit_allows_after_cooldown(self) -> None:
+        """Test that toggles are allowed after cooldown period (DS-259)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+
+            orch_file = logs_dir / "test-orch.yaml"
+            orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test"
+""")
+
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            orch_info = OrchestrationInfo(
+                name="test-orch",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_repo=None,
+                trigger_tags=[],
+                agent_prompt_preview="Test",
+                source_file=str(orch_file),
+            )
+
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+            app = self._create_test_app(accessor)
+
+            # Clear any existing rate limit state and set a short cooldown for testing
+            from sentinel.dashboard import routes
+            routes._last_write_times.clear()
+            original_cooldown = routes.TOGGLE_COOLDOWN_SECONDS
+            routes.TOGGLE_COOLDOWN_SECONDS = 0.1  # Very short cooldown for testing
+
+            try:
+                with TestClient(app) as client:
+                    # First toggle should succeed
+                    response1 = client.post(
+                        "/api/orchestrations/test-orch/toggle",
+                        json={"enabled": False},
+                    )
+                    assert response1.status_code == 200
+
+                    # Wait for cooldown
+                    import time
+                    time.sleep(0.15)
+
+                    # Second toggle should now succeed
+                    response2 = client.post(
+                        "/api/orchestrations/test-orch/toggle",
+                        json={"enabled": True},
+                    )
+                    assert response2.status_code == 200
+            finally:
+                routes.TOGGLE_COOLDOWN_SECONDS = original_cooldown
+
+    def test_bulk_toggle_rate_limit_enforced(self) -> None:
+        """Test that rapid bulk toggles are rate limited (DS-259)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+
+            orch_file = logs_dir / "jira-orchestrations.yaml"
+            orch_file.write_text("""
+orchestrations:
+  - name: "jira-orch-1"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "First"
+""")
+
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+
+            orchestrations = [
+                OrchestrationInfo(
+                    name="jira-orch-1",
+                    enabled=True,
+                    trigger_source="jira",
+                    trigger_project="TEST",
+                    trigger_repo=None,
+                    trigger_tags=[],
+                    agent_prompt_preview="First",
+                    source_file=str(orch_file),
+                ),
+            ]
+
+            accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
+            app = self._create_test_app(accessor)
+
+            # Clear any existing rate limit state
+            from sentinel.dashboard import routes
+            routes._last_write_times.clear()
+
+            with TestClient(app) as client:
+                # First bulk toggle should succeed
+                response1 = client.post(
+                    "/api/orchestrations/bulk-toggle",
+                    json={"source": "jira", "identifier": "TEST", "enabled": False},
+                )
+                assert response1.status_code == 200
+
+                # Immediate second bulk toggle should be rate limited
+                response2 = client.post(
+                    "/api/orchestrations/bulk-toggle",
+                    json={"source": "jira", "identifier": "TEST", "enabled": True},
+                )
+                assert response2.status_code == 429
+                assert "Rate limit exceeded" in response2.json()["detail"]
+
+
+class TestToggleOpenApiDocs:
+    """Tests for OpenAPI documentation on toggle endpoints (DS-259)."""
+
+    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
+        """Create a test FastAPI app with dashboard routes."""
+        app = FastAPI()
+        router = create_routes(accessor)
+        app.include_router(router)
+        return app
+
+    def test_toggle_endpoint_has_openapi_summary(self) -> None:
+        """Test that single toggle endpoint has OpenAPI summary (DS-259)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+            app = self._create_test_app(accessor)
+
+            openapi_schema = app.openapi()
+            toggle_path = openapi_schema["paths"].get("/api/orchestrations/{name}/toggle")
+
+            assert toggle_path is not None
+            assert "post" in toggle_path
+            assert "summary" in toggle_path["post"]
+            assert toggle_path["post"]["summary"] == "Toggle orchestration enabled status"
+
+    def test_toggle_endpoint_has_openapi_description(self) -> None:
+        """Test that single toggle endpoint has OpenAPI description (DS-259)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+            app = self._create_test_app(accessor)
+
+            openapi_schema = app.openapi()
+            toggle_path = openapi_schema["paths"].get("/api/orchestrations/{name}/toggle")
+
+            assert toggle_path is not None
+            assert "description" in toggle_path["post"]
+            assert "rate limited" in toggle_path["post"]["description"].lower()
+
+    def test_bulk_toggle_endpoint_has_openapi_summary(self) -> None:
+        """Test that bulk toggle endpoint has OpenAPI summary (DS-259)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+            app = self._create_test_app(accessor)
+
+            openapi_schema = app.openapi()
+            bulk_toggle_path = openapi_schema["paths"].get("/api/orchestrations/bulk-toggle")
+
+            assert bulk_toggle_path is not None
+            assert "post" in bulk_toggle_path
+            assert "summary" in bulk_toggle_path["post"]
+            assert bulk_toggle_path["post"]["summary"] == "Bulk toggle orchestrations by source"
+
+    def test_bulk_toggle_endpoint_has_openapi_description(self) -> None:
+        """Test that bulk toggle endpoint has OpenAPI description (DS-259)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+            app = self._create_test_app(accessor)
+
+            openapi_schema = app.openapi()
+            bulk_toggle_path = openapi_schema["paths"].get("/api/orchestrations/bulk-toggle")
+
+            assert bulk_toggle_path is not None
+            assert "description" in bulk_toggle_path["post"]
+            assert "rate limited" in bulk_toggle_path["post"]["description"].lower()

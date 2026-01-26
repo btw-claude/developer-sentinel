@@ -500,6 +500,13 @@ class OrchestrationYamlWriter:
             FileLockTimeoutError: If any file lock cannot be acquired within
                 the configured timeout.
         """
+        # DS-259: Add debug log at start for traceability
+        logger.debug(
+            "toggle_by_project called: project='%s', enabled=%s, files=%d",
+            project,
+            enabled,
+            len(orch_files),
+        )
         total_count = 0
         # Get unique file paths
         unique_files = set(orch_files.values())
@@ -582,6 +589,13 @@ class OrchestrationYamlWriter:
             FileLockTimeoutError: If any file lock cannot be acquired within
                 the configured timeout.
         """
+        # DS-259: Add debug log at start for traceability (aligns with toggle_by_project)
+        logger.debug(
+            "toggle_by_repo called: repo='%s', enabled=%s, files=%d",
+            repo,
+            enabled,
+            len(orch_files),
+        )
         total_count = 0
         # Get unique file paths
         unique_files = set(orch_files.values())

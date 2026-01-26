@@ -5,6 +5,7 @@ All handlers receive state through the SentinelStateAccessor to ensure
 read-only access to the orchestrator's state.
 
 DS-250: Add API endpoints for orchestration toggle actions.
+DS-259: Add rate limiting and OpenAPI documentation to toggle endpoints.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator, Literal
@@ -24,6 +26,53 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
+
+# Rate limiting configuration for toggle endpoints (DS-259)
+# Cooldown period in seconds between writes to the same file
+TOGGLE_COOLDOWN_SECONDS: float = 2.0
+
+# Track last write time per file path for rate limiting
+_last_write_times: dict[str, float] = {}
+
+
+def _check_rate_limit(file_path: str) -> None:
+    """Check if a file write is allowed based on rate limiting.
+
+    Raises HTTPException with 429 status if the cooldown period has not elapsed
+    since the last write to the same file. (DS-259)
+
+    Args:
+        file_path: The path to the file being written.
+
+    Raises:
+        HTTPException: 429 if the cooldown period has not elapsed.
+    """
+    current_time = time.monotonic()
+    last_write = _last_write_times.get(file_path)
+
+    if last_write is not None:
+        elapsed = current_time - last_write
+        if elapsed < TOGGLE_COOLDOWN_SECONDS:
+            remaining = TOGGLE_COOLDOWN_SECONDS - elapsed
+            logger.warning(
+                "Rate limit exceeded for file %s, %.1fs remaining in cooldown",
+                file_path,
+                remaining,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=f"Rate limit exceeded. Please wait {remaining:.1f} seconds before toggling again.",
+            )
+
+
+def _record_write(file_path: str) -> None:
+    """Record the write time for a file for rate limiting purposes. (DS-259)
+
+    Args:
+        file_path: The path to the file that was written.
+    """
+    _last_write_times[file_path] = time.monotonic()
+
 
 if TYPE_CHECKING:
     from sentinel.dashboard.state import SentinelStateAccessor
@@ -425,9 +474,16 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
 
         return EventSourceResponse(event_generator())
 
-    @dashboard_router.post("/api/orchestrations/{name}/toggle", response_model=ToggleResponse)
+    @dashboard_router.post(
+        "/api/orchestrations/{name}/toggle",
+        response_model=ToggleResponse,
+        summary="Toggle orchestration enabled status",
+        description="Toggle the enabled status of a single orchestration by name. "
+        "Modifies the orchestration's YAML file and changes take effect on "
+        "the next hot-reload cycle. Rate limited to prevent rapid file writes.",
+    )
     async def toggle_orchestration(name: str, request_body: ToggleRequest) -> ToggleResponse:
-        """Toggle the enabled status of a single orchestration (DS-250).
+        """Toggle the enabled status of a single orchestration (DS-250, DS-259).
 
         This endpoint toggles the enabled field in the orchestration's YAML file.
         The change takes effect on the next hot-reload cycle.
@@ -440,8 +496,9 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
             ToggleResponse with success status, new enabled state, and name.
 
         Raises:
-            HTTPException: 404 if orchestration not found, 500 for YAML errors.
+            HTTPException: 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
+        logger.debug("toggle_orchestration called for '%s' with enabled=%s", name, request_body.enabled)
         state = state_accessor.get_state()
 
         # Find the orchestration to get its source file
@@ -470,6 +527,9 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                 detail=f"Orchestration file not found: {source_file}",
             )
 
+        # Check rate limit before writing (DS-259)
+        _check_rate_limit(str(source_file))
+
         try:
             writer = OrchestrationYamlWriter()
             result = writer.toggle_orchestration(source_file, name, request_body.enabled)
@@ -479,6 +539,9 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                     status_code=404,
                     detail=f"Orchestration '{name}' not found in file {source_file}",
                 )
+
+            # Record successful write for rate limiting (DS-259)
+            _record_write(str(source_file))
 
             return ToggleResponse(
                 success=True,
@@ -493,9 +556,16 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                 detail=str(e),
             ) from e
 
-    @dashboard_router.post("/api/orchestrations/bulk-toggle", response_model=BulkToggleResponse)
+    @dashboard_router.post(
+        "/api/orchestrations/bulk-toggle",
+        response_model=BulkToggleResponse,
+        summary="Bulk toggle orchestrations by source",
+        description="Toggle the enabled status of multiple orchestrations by their "
+        "source type (jira or github) and identifier (project key or org/repo). "
+        "Rate limited per file to prevent rapid writes.",
+    )
     async def bulk_toggle_orchestrations(request_body: BulkToggleRequest) -> BulkToggleResponse:
-        """Toggle the enabled status of orchestrations by source and identifier (DS-250).
+        """Toggle the enabled status of orchestrations by source and identifier (DS-250, DS-259).
 
         This endpoint bulk toggles orchestrations based on their source type
         (jira or github) and identifier (project key or org/repo).
@@ -508,8 +578,14 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
             BulkToggleResponse with success status and count of toggled orchestrations.
 
         Raises:
-            HTTPException: 404 if no matching orchestrations found, 500 for YAML errors.
+            HTTPException: 404 if no matching orchestrations found, 429 for rate limit, 500 for YAML errors.
         """
+        logger.debug(
+            "bulk_toggle_orchestrations called for %s '%s' with enabled=%s",
+            request_body.source,
+            request_body.identifier,
+            request_body.enabled,
+        )
         state = state_accessor.get_state()
 
         # Build a mapping of orchestration names to their source files
@@ -537,6 +613,11 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                 detail=f"No orchestrations found for {request_body.source} '{request_body.identifier}'",
             )
 
+        # Check rate limit for all unique files before writing (DS-259)
+        unique_files = set(str(f) for f in orch_files.values())
+        for file_path in unique_files:
+            _check_rate_limit(file_path)
+
         try:
             writer = OrchestrationYamlWriter()
 
@@ -548,6 +629,10 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                 toggled_count = writer.toggle_by_repo(
                     orch_files, request_body.identifier, request_body.enabled
                 )
+
+            # Record successful writes for rate limiting (DS-259)
+            for file_path in unique_files:
+                _record_write(file_path)
 
             return BulkToggleResponse(
                 success=True,
