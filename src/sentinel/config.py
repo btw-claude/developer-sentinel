@@ -228,18 +228,18 @@ def _validate_cursor_mode(value: str, default: str = "agent") -> str:
     return normalized
 
 
-def _validate_agent_type(value: str, default: str = "claude") -> str:
+def _validate_agent_type(value: str) -> str:
     """Validate and normalize an agent type string.
 
     Args:
         value: The agent type string to validate.
-        default: The default value to use if invalid.
 
     Returns:
-        The validated agent type (lowercase), or the default if invalid.
+        The validated agent type (lowercase), or "claude" if invalid.
 
     Logs a warning if the value is invalid.
     """
+    default = "claude"
     normalized = value.lower()
     if normalized not in VALID_AGENT_TYPES:
         logging.warning(
