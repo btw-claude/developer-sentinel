@@ -162,6 +162,26 @@ Use CSS custom properties (CSS variables) for theming:
 - Group by purpose: `--bg-*`, `--text-*`, `--border-*`, etc.
 - Always provide fallback values
 
+## Live Examples
+
+The following CSS files in this repository demonstrate the patterns described in this guide:
+
+### Deprecation Annotations
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L805-L831) - Block-level deprecation example for legacy toggle slider styles
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L833-L876) - Inline deprecation examples with `@deprecated` annotations
+
+### BEM Naming Convention
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L704-L803) - Toggle switch component using BEM structure (`.toggle-switch`, `.toggle-switch__input`, `.toggle-switch__slider`)
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L554-L702) - Accordion component with BEM classes (`.accordion`, `.accordion__item`, `.accordion__header`, `.accordion__content`)
+
+### CSS Custom Properties
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L1-L45) - Documentation header showing CSS variable definitions and usage
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L52-L110) - Utility classes demonstrating CSS variable usage with fallback values
+
+### Comment Blocks
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L47-L50) - Section header example with double-line borders
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L576-L579) - Subsection header example with single-line borders
+
 ## Related Resources
 
 - [Stylelint Configuration](../.stylelintrc.json)

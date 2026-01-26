@@ -5,9 +5,12 @@
   "private": true,
   "scripts": {
     "lint:css": "stylelint 'src/**/*.css'",
-    "lint:css:fix": "stylelint 'src/**/*.css' --fix"
+    "lint:css:fix": "stylelint 'src/**/*.css' --fix",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "stylelint": "^16.0.0",
     "stylelint-order": "^6.0.0"
   }

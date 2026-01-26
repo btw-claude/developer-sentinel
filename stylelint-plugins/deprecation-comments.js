@@ -52,7 +52,7 @@ const PATTERNS = {
 };
 
 /** @type {import('stylelint').Rule} */
-const ruleFunction = (primaryOption, _secondaryOptions, context) => {
+const ruleFunction = (primaryOption, _secondaryOptions, _context) => {
     return (root, result) => {
         const validOptions = stylelint.utils.validateOptions(result, ruleName, {
             actual: primaryOption,
