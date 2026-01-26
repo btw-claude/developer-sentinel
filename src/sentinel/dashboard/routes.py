@@ -8,6 +8,7 @@ DS-250: Add API endpoints for orchestration toggle actions.
 DS-259: Add rate limiting and OpenAPI documentation to toggle endpoints.
 DS-282: Refactored to use validation helpers from sentinel.validation module.
 DS-285: Add deprecation warnings to backwards compatibility aliases.
+DS-287: Add version numbers to deprecation warnings.
 """
 
 from __future__ import annotations
@@ -73,7 +74,7 @@ def __getattr__(name: str) -> float | int:
     if name in _deprecated_constants:
         canonical_name, value = _deprecated_constants[name]
         warnings.warn(
-            f"{name} is deprecated and will be removed in a future release. "
+            f"{name} is deprecated and will be removed in version 2.0. "
             f"Import {canonical_name} from sentinel.validation instead.",
             DeprecationWarning,
             stacklevel=2,
@@ -91,7 +92,7 @@ def _validate_positive_float(
     sentinel.validation directly instead.
     """
     warnings.warn(
-        "_validate_positive_float is deprecated and will be removed in a future release. "
+        "_validate_positive_float is deprecated and will be removed in version 2.0. "
         "Import validate_positive_float from sentinel.validation instead.",
         DeprecationWarning,
         stacklevel=2,
@@ -108,7 +109,7 @@ def _validate_positive_int(
     sentinel.validation directly instead.
     """
     warnings.warn(
-        "_validate_positive_int is deprecated and will be removed in a future release. "
+        "_validate_positive_int is deprecated and will be removed in version 2.0. "
         "Import validate_positive_int from sentinel.validation instead.",
         DeprecationWarning,
         stacklevel=2,
