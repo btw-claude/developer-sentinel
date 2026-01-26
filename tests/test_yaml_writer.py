@@ -2,6 +2,7 @@
 
 DS-248: Create YAML writer module for safe orchestration file modification
 DS-257: Add timeout and cleanup improvements
+DS-267: Minor enhancements from code review
 """
 
 import fcntl
@@ -1046,8 +1047,8 @@ orchestrations:
         writer = OrchestrationYamlWriter(create_backups=True, backup_suffix="timestamp")
         writer.toggle_orchestration(file_path, "test-orch", False)
 
-        # Find timestamped backup
-        backup_files = list(tmp_path.glob("test.yaml.*.bak"))
+        # Find timestamped backup (DS-267: now uses test.TIMESTAMP.bak format)
+        backup_files = list(tmp_path.glob("test.*.bak"))
         assert len(backup_files) == 1
         assert "enabled: true" in backup_files[0].read_text()
 
@@ -1190,14 +1191,15 @@ orchestrations:
 
         writer = OrchestrationYamlWriter(
             lock_timeout_seconds=5.0,
+            retry_interval_seconds=0.2,  # DS-267
             cleanup_lock_files=True,
             create_backups=True,
             backup_suffix="timestamp",
         )
         writer.toggle_orchestration(file_path, "test-orch", False)
 
-        # Should have created timestamped backup
-        backup_files = list(tmp_path.glob("test.yaml.*.bak"))
+        # Should have created timestamped backup (DS-267: uses test.TIMESTAMP.bak format)
+        backup_files = list(tmp_path.glob("test.*.bak"))
         assert len(backup_files) == 1
 
         # Lock file should be cleaned up
@@ -1206,3 +1208,121 @@ orchestrations:
 
         # File should be modified
         assert "enabled: false" in file_path.read_text()
+
+
+class TestDS267Enhancements:
+    """Tests for DS-267 enhancements from code review."""
+
+    def test_configurable_retry_interval(self, tmp_path: Path) -> None:
+        """Writer should accept custom retry interval parameter."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        # Create writer with custom retry interval
+        writer = OrchestrationYamlWriter(retry_interval_seconds=0.2)
+        assert writer._retry_interval_seconds == 0.2
+
+        # Should still work correctly
+        result = writer.toggle_orchestration(file_path, "test-orch", False)
+        assert result is True
+        assert "enabled: false" in file_path.read_text()
+
+    def test_file_lock_with_custom_retry_interval(self, tmp_path: Path) -> None:
+        """File lock should use custom retry interval."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("test: value")
+
+        # Should succeed with custom retry interval
+        with _file_lock(file_path, retry_interval_seconds=0.05):
+            pass
+
+    def test_backup_with_yml_extension(self, tmp_path: Path) -> None:
+        """Backup should work correctly with .yml extension."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yml"
+        file_path.write_text(yaml_content)
+        backup_path = file_path.with_suffix(".yml.bak")
+
+        writer = OrchestrationYamlWriter(create_backups=True)
+        writer.toggle_orchestration(file_path, "test-orch", False)
+
+        assert backup_path.exists()
+        assert "enabled: true" in backup_path.read_text()
+        assert "enabled: false" in file_path.read_text()
+
+    def test_timestamp_backup_with_yml_extension(self, tmp_path: Path) -> None:
+        """Timestamped backup should have consistent naming for .yml files."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "config.yml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter(create_backups=True, backup_suffix="timestamp")
+        writer.toggle_orchestration(file_path, "test-orch", False)
+
+        # Find timestamped backup - should be config.TIMESTAMP.bak
+        backup_files = list(tmp_path.glob("config.*.bak"))
+        assert len(backup_files) == 1
+        assert "enabled: true" in backup_files[0].read_text()
+
+    def test_cleanup_orphaned_yml_lock_files(self, tmp_path: Path) -> None:
+        """Should clean up orphaned .yml.lock files."""
+        # Create old .yml.lock file
+        old_yml_lock = tmp_path / "old.yml.lock"
+        old_yml_lock.write_text("")
+        old_time = time.time() - 7200
+        os.utime(old_yml_lock, (old_time, old_time))
+
+        # Create old .yaml.lock file
+        old_yaml_lock = tmp_path / "old.yaml.lock"
+        old_yaml_lock.write_text("")
+        os.utime(old_yaml_lock, (old_time, old_time))
+
+        # Create new lock files (should not be removed)
+        new_yml_lock = tmp_path / "new.yml.lock"
+        new_yml_lock.write_text("")
+        new_yaml_lock = tmp_path / "new.yaml.lock"
+        new_yaml_lock.write_text("")
+
+        # Clean up files older than 1 hour
+        removed = cleanup_orphaned_lock_files(tmp_path, max_age_seconds=3600)
+
+        assert removed == 2
+        assert not old_yml_lock.exists()
+        assert not old_yaml_lock.exists()
+        assert new_yml_lock.exists()
+        assert new_yaml_lock.exists()
+
+    def test_writer_configuration_with_retry_interval(self) -> None:
+        """Writer should store retry interval configuration."""
+        writer = OrchestrationYamlWriter(retry_interval_seconds=0.5)
+        assert writer._retry_interval_seconds == 0.5
+
+    def test_default_retry_interval_is_none(self) -> None:
+        """Writer should default retry interval to None (uses constant)."""
+        writer = OrchestrationYamlWriter()
+        assert writer._retry_interval_seconds is None

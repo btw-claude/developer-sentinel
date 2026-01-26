@@ -6,6 +6,7 @@ round-trip editing capabilities.
 
 DS-248: Create YAML writer module for safe orchestration file modification
 DS-257: Add timeout and cleanup improvements
+DS-267: Minor enhancements from code review
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import shutil
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -53,6 +54,7 @@ def _file_lock(
     file_path: Path,
     max_wait_seconds: float | None = None,
     cleanup_lock_file: bool = False,
+    retry_interval_seconds: float | None = None,
 ) -> Iterator[None]:
     """Context manager for file locking to prevent concurrent modifications.
 
@@ -66,6 +68,9 @@ def _file_lock(
             (original behavior).
         cleanup_lock_file: If True, removes the .lock file after releasing the lock.
             Defaults to False for backward compatibility.
+        retry_interval_seconds: Time to wait between lock acquisition attempts in
+            seconds. If None, uses DEFAULT_LOCK_RETRY_INTERVAL (0.1s). Useful for
+            environments with different I/O characteristics. (DS-267)
 
     Yields:
         None
@@ -76,6 +81,9 @@ def _file_lock(
     """
     if max_wait_seconds is None:
         max_wait_seconds = DEFAULT_LOCK_TIMEOUT_SECONDS
+
+    if retry_interval_seconds is None:
+        retry_interval_seconds = DEFAULT_LOCK_RETRY_INTERVAL
 
     lock_path = file_path.with_suffix(file_path.suffix + ".lock")
     lock_file = None
@@ -102,8 +110,8 @@ def _file_lock(
                             f"Timed out waiting for lock on {file_path} "
                             f"after {max_wait_seconds:.1f} seconds"
                         ) from None
-                    # Wait before retrying
-                    time.sleep(DEFAULT_LOCK_RETRY_INTERVAL)
+                    # Wait before retrying (DS-267: configurable interval)
+                    time.sleep(retry_interval_seconds)
         yield
     except (FileLockTimeoutError, OrchestrationYamlWriterError):
         raise
@@ -129,8 +137,8 @@ def _file_lock(
 def cleanup_orphaned_lock_files(directory: Path, max_age_seconds: float = 3600) -> int:
     """Remove orphaned lock files older than the specified age.
 
-    This utility function can be used to clean up .yaml.lock files that may
-    have been left behind due to crashes or other unexpected terminations.
+    This utility function can be used to clean up .yaml.lock and .yml.lock files
+    that may have been left behind due to crashes or other unexpected terminations.
 
     Args:
         directory: Directory to search for orphaned lock files.
@@ -143,16 +151,20 @@ def cleanup_orphaned_lock_files(directory: Path, max_age_seconds: float = 3600) 
     removed_count = 0
     current_time = time.time()
 
+    # DS-267: Handle both .yaml.lock and .yml.lock files
+    lock_patterns = ["**/*.yaml.lock", "**/*.yml.lock"]
+
     try:
-        for lock_file in directory.glob("**/*.yaml.lock"):
-            try:
-                file_age = current_time - lock_file.stat().st_mtime
-                if file_age > max_age_seconds:
-                    lock_file.unlink()
-                    removed_count += 1
-                    logger.info("Removed orphaned lock file: %s", lock_file)
-            except OSError as e:
-                logger.debug("Could not process lock file %s: %s", lock_file, e)
+        for pattern in lock_patterns:
+            for lock_file in directory.glob(pattern):
+                try:
+                    file_age = current_time - lock_file.stat().st_mtime
+                    if file_age > max_age_seconds:
+                        lock_file.unlink()
+                        removed_count += 1
+                        logger.info("Removed orphaned lock file: %s", lock_file)
+                except OSError as e:
+                    logger.debug("Could not process lock file %s: %s", lock_file, e)
     except OSError as e:
         logger.warning("Error scanning for orphaned lock files in %s: %s", directory, e)
 
@@ -169,6 +181,9 @@ class OrchestrationYamlWriter:
         lock_timeout_seconds: Maximum time to wait for file lock acquisition.
             Defaults to DEFAULT_LOCK_TIMEOUT_SECONDS (30 seconds).
             Set to 0 to block indefinitely.
+        retry_interval_seconds: Time to wait between lock acquisition attempts.
+            Defaults to DEFAULT_LOCK_RETRY_INTERVAL (0.1s). Useful for
+            environments with different I/O characteristics. (DS-267)
         cleanup_lock_files: If True, removes lock files after releasing locks.
             Defaults to False.
         create_backups: If True, creates backup files before modifications.
@@ -204,13 +219,15 @@ class OrchestrationYamlWriter:
             create_backups=True,
             backup_suffix="timestamp",
             cleanup_lock_files=True,
-            lock_timeout_seconds=10.0
+            lock_timeout_seconds=10.0,
+            retry_interval_seconds=0.2  # DS-267: custom retry interval
         )
     """
 
     def __init__(
         self,
         lock_timeout_seconds: float | None = None,
+        retry_interval_seconds: float | None = None,
         cleanup_lock_files: bool = False,
         create_backups: bool = False,
         backup_suffix: str = ".bak",
@@ -222,8 +239,9 @@ class OrchestrationYamlWriter:
         self._yaml.default_flow_style = False
         self._yaml.width = 4096  # Prevent line wrapping
 
-        # Lock configuration (DS-257)
+        # Lock configuration (DS-257, DS-267)
         self._lock_timeout_seconds = lock_timeout_seconds
+        self._retry_interval_seconds = retry_interval_seconds  # DS-267
         self._cleanup_lock_files = cleanup_lock_files
 
         # Backup configuration (DS-257)
@@ -283,8 +301,14 @@ class OrchestrationYamlWriter:
 
         try:
             if self._backup_suffix == "timestamp":
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_path = file_path.with_suffix(f".yaml.{timestamp}.bak")
+                # DS-267: Use UTC timezone for consistent timestamps across environments
+                timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+                # DS-267: Handle both .yaml and .yml extensions consistently
+                base_name = file_path.stem
+                if file_path.suffix.lower() in (".yaml", ".yml"):
+                    backup_path = file_path.parent / f"{base_name}.{timestamp}.bak"
+                else:
+                    backup_path = file_path.parent / f"{file_path.name}.{timestamp}.bak"
             else:
                 backup_path = file_path.with_suffix(file_path.suffix + self._backup_suffix)
 
@@ -368,6 +392,7 @@ class OrchestrationYamlWriter:
             file_path,
             max_wait_seconds=self._lock_timeout_seconds,
             cleanup_lock_file=self._cleanup_lock_files,
+            retry_interval_seconds=self._retry_interval_seconds,
         ):
             data = self._load_yaml(file_path)
 
@@ -422,6 +447,7 @@ class OrchestrationYamlWriter:
             file_path,
             max_wait_seconds=self._lock_timeout_seconds,
             cleanup_lock_file=self._cleanup_lock_files,
+            retry_interval_seconds=self._retry_interval_seconds,
         ):
             data = self._load_yaml(file_path)
 
@@ -483,6 +509,7 @@ class OrchestrationYamlWriter:
                 file_path,
                 max_wait_seconds=self._lock_timeout_seconds,
                 cleanup_lock_file=self._cleanup_lock_files,
+                retry_interval_seconds=self._retry_interval_seconds,
             ):
                 data = self._load_yaml(file_path)
 
@@ -564,6 +591,7 @@ class OrchestrationYamlWriter:
                 file_path,
                 max_wait_seconds=self._lock_timeout_seconds,
                 cleanup_lock_file=self._cleanup_lock_files,
+                retry_interval_seconds=self._retry_interval_seconds,
             ):
                 data = self._load_yaml(file_path)
 
