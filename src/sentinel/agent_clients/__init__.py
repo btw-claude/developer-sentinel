@@ -11,11 +11,29 @@ from sentinel.agent_clients.base import (
     AgentTimeoutError,
     AgentType,
 )
+from sentinel.agent_clients.claude_sdk import (
+    ClaudeProcessInterruptedError,
+    ClaudeSdkAgentClient,
+    TimingMetrics,
+    get_shutdown_event,
+    is_shutdown_requested,
+    request_shutdown,
+    reset_shutdown,
+)
 
 __all__ = [
+    # Base classes and types
     "AgentClient",
     "AgentClientError",
     "AgentRunResult",
     "AgentTimeoutError",
     "AgentType",
+    # Claude SDK client
+    "ClaudeProcessInterruptedError",
+    "ClaudeSdkAgentClient",
+    "TimingMetrics",
+    "get_shutdown_event",
+    "is_shutdown_requested",
+    "request_shutdown",
+    "reset_shutdown",
 ]

@@ -163,16 +163,10 @@ class ExecutionResult:
         return self.status == ExecutionStatus.SUCCESS
 
 
-class AgentClientError(Exception):
-    """Raised when an agent client operation fails."""
-
-    pass
-
-
-class AgentTimeoutError(AgentClientError):
-    """Raised when an agent execution times out."""
-
-    pass
+# Import exception classes from agent_clients.base for backward compatibility
+# These exceptions are now defined in agent_clients.base but re-exported here
+# to maintain existing import paths used throughout the codebase
+from sentinel.agent_clients.base import AgentClientError, AgentTimeoutError
 
 
 class AgentClient(ABC):
