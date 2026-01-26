@@ -30,8 +30,10 @@ dependencies = [
     "python-dotenv>=1.0.0,<2.0.0",
     # YAML Libraries - two libraries are needed for different purposes:
     # - pyyaml: Used for general YAML parsing (simple read operations)
+    #   See: src/sentinel/orchestration.py
     "pyyaml>=6.0,<7.0.0",
     # - ruamel.yaml: Used for round-trip YAML editing that preserves comments and formatting
+    #   See: src/sentinel/yaml_writer.py
     "ruamel.yaml>=0.18.0,<1.0.0",
     # Dashboard dependencies
     "fastapi>=0.109.0,<1.0.0",
