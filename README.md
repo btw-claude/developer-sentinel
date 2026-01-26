@@ -88,9 +88,11 @@ Configure these to enable Cursor as an alternative agent type:
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `SENTINEL_DEFAULT_AGENT_TYPE` | No | `claude` | Default agent type (`claude`, `cursor`) |
-| `SENTINEL_CURSOR_PATH` | No | - | Path to Cursor CLI executable |
+| `SENTINEL_CURSOR_PATH` | Yes* | - | Path to Cursor CLI executable. *Required when using `cursor` agent type. |
 | `SENTINEL_CURSOR_DEFAULT_MODEL` | No | - | Default model for Cursor agent |
 | `SENTINEL_CURSOR_DEFAULT_MODE` | No | `agent` | Default Cursor mode (`agent`, `plan`, `ask`) |
+
+**Note:** When `SENTINEL_DEFAULT_AGENT_TYPE` is set to `cursor` (or when an orchestration specifies `agent_type: cursor`), the `SENTINEL_CURSOR_PATH` environment variable must be configured with the path to the Cursor CLI executable.
 
 ## Usage
 

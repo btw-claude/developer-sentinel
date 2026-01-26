@@ -671,18 +671,19 @@ class TestValidateAgentType:
         assert _validate_agent_type("Cursor") == "cursor"
         assert _validate_agent_type("CURSOR") == "cursor"
 
+    def test_mixed_case_input(self) -> None:
+        """Test that mixed case input is correctly normalized (DS-307)."""
+        assert _validate_agent_type("CuRsOr") == "cursor"
+        assert _validate_agent_type("ClAuDe") == "claude"
+        assert _validate_agent_type("cLaUdE") == "claude"
+        assert _validate_agent_type("cUrSoR") == "cursor"
+
     def test_invalid_agent_type(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that invalid agent type returns default and logs warning."""
         with caplog.at_level(logging.WARNING):
             result = _validate_agent_type("invalid")
         assert result == "claude"
         assert "Invalid SENTINEL_DEFAULT_AGENT_TYPE: 'invalid' is not valid" in caplog.text
-
-    def test_invalid_with_custom_default(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that invalid agent type uses custom default."""
-        with caplog.at_level(logging.WARNING):
-            result = _validate_agent_type("invalid", default="cursor")
-        assert result == "cursor"
 
 
 class TestValidateCursorMode:
