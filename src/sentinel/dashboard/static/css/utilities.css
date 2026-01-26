@@ -37,7 +37,11 @@
  *          DS-166 (MDN documentation links for CSS logical properties),
  *          DS-167 (MDN documentation links for CSS block-level logical properties),
  *          DS-240 (CSS architecture review, BEM methodology, removed !important),
- *          DS-260 (deprecated legacy .toggle-slider class, scoped selectors)
+ *          DS-260 (deprecated legacy .toggle-slider class, scoped selectors),
+ *          DS-269 (added deprecation timeline and date stamp for .toggle-slider removal)
+ *
+ * Deprecation Notice (added 2026-01-26):
+ * - Legacy .toggle-slider styles deprecated in DS-260, planned removal Q2 2026 (v2.0)
  */
 
 /* =============================================================================
@@ -801,6 +805,8 @@
 /* -----------------------------------------------------------------------------
    LEGACY TOGGLE SLIDER STYLES
    @deprecated DS-260 - These styles are deprecated and will be removed in a future release.
+   @since 2026-01-26 (deprecation added)
+   @removal Planned removal: Q2 2026 (v2.0)
 
    Migration Guide:
    Replace legacy HTML:
