@@ -3,6 +3,8 @@
 This module defines the HTTP route handlers for the dashboard web interface.
 All handlers receive state through the SentinelStateAccessor to ensure
 read-only access to the orchestrator's state.
+
+DS-250: Add API endpoints for orchestration toggle actions.
 """
 
 from __future__ import annotations
@@ -12,16 +14,49 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator, Literal
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
+
+from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
 if TYPE_CHECKING:
     from sentinel.dashboard.state import SentinelStateAccessor
+
+
+# Request/Response models for orchestration toggle endpoints (DS-250)
+class ToggleRequest(BaseModel):
+    """Request model for single orchestration toggle."""
+
+    enabled: bool
+
+
+class ToggleResponse(BaseModel):
+    """Response model for single orchestration toggle."""
+
+    success: bool
+    enabled: bool
+    name: str
+
+
+class BulkToggleRequest(BaseModel):
+    """Request model for bulk orchestration toggle."""
+
+    source: Literal["jira", "github"]
+    identifier: str
+    enabled: bool
+
+
+class BulkToggleResponse(BaseModel):
+    """Response model for bulk orchestration toggle."""
+
+    success: bool
+    toggled_count: int
 
 
 def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
@@ -389,5 +424,146 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                     )
 
         return EventSourceResponse(event_generator())
+
+    @dashboard_router.post("/api/orchestrations/{name}/toggle", response_model=ToggleResponse)
+    async def toggle_orchestration(name: str, request_body: ToggleRequest) -> ToggleResponse:
+        """Toggle the enabled status of a single orchestration (DS-250).
+
+        This endpoint toggles the enabled field in the orchestration's YAML file.
+        The change takes effect on the next hot-reload cycle.
+
+        Args:
+            name: The name of the orchestration to toggle.
+            request_body: The toggle request containing the new enabled status.
+
+        Returns:
+            ToggleResponse with success status, new enabled state, and name.
+
+        Raises:
+            HTTPException: 404 if orchestration not found, 500 for YAML errors.
+        """
+        state = state_accessor.get_state()
+
+        # Find the orchestration to get its source file
+        orch_info = None
+        for orch in state.orchestrations:
+            if orch.name == name:
+                orch_info = orch
+                break
+
+        if orch_info is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found",
+            )
+
+        if not orch_info.source_file:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Source file not found for orchestration '{name}'",
+            )
+
+        source_file = Path(orch_info.source_file)
+        if not source_file.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration file not found: {source_file}",
+            )
+
+        try:
+            writer = OrchestrationYamlWriter()
+            result = writer.toggle_orchestration(source_file, name, request_body.enabled)
+
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Orchestration '{name}' not found in file {source_file}",
+                )
+
+            return ToggleResponse(
+                success=True,
+                enabled=request_body.enabled,
+                name=name,
+            )
+
+        except OrchestrationYamlWriterError as e:
+            logger.error("Failed to toggle orchestration '%s': %s", name, e)
+            raise HTTPException(
+                status_code=500,
+                detail=str(e),
+            ) from e
+
+    @dashboard_router.post("/api/orchestrations/bulk-toggle", response_model=BulkToggleResponse)
+    async def bulk_toggle_orchestrations(request_body: BulkToggleRequest) -> BulkToggleResponse:
+        """Toggle the enabled status of orchestrations by source and identifier (DS-250).
+
+        This endpoint bulk toggles orchestrations based on their source type
+        (jira or github) and identifier (project key or org/repo).
+
+        Args:
+            request_body: The bulk toggle request containing source, identifier,
+                and new enabled status.
+
+        Returns:
+            BulkToggleResponse with success status and count of toggled orchestrations.
+
+        Raises:
+            HTTPException: 404 if no matching orchestrations found, 500 for YAML errors.
+        """
+        state = state_accessor.get_state()
+
+        # Build a mapping of orchestration names to their source files
+        orch_files: dict[str, Path] = {}
+
+        for orch in state.orchestrations:
+            if not orch.source_file:
+                continue
+
+            source_file = Path(orch.source_file)
+            if not source_file.exists():
+                continue
+
+            # Filter by source type and identifier
+            if request_body.source == "jira":
+                if orch.trigger_source == "jira" and orch.trigger_project == request_body.identifier:
+                    orch_files[orch.name] = source_file
+            elif request_body.source == "github":
+                if orch.trigger_source == "github" and orch.trigger_repo == request_body.identifier:
+                    orch_files[orch.name] = source_file
+
+        if not orch_files:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No orchestrations found for {request_body.source} '{request_body.identifier}'",
+            )
+
+        try:
+            writer = OrchestrationYamlWriter()
+
+            if request_body.source == "jira":
+                toggled_count = writer.toggle_by_project(
+                    orch_files, request_body.identifier, request_body.enabled
+                )
+            else:  # github
+                toggled_count = writer.toggle_by_repo(
+                    orch_files, request_body.identifier, request_body.enabled
+                )
+
+            return BulkToggleResponse(
+                success=True,
+                toggled_count=toggled_count,
+            )
+
+        except OrchestrationYamlWriterError as e:
+            logger.error(
+                "Failed to bulk toggle orchestrations for %s '%s': %s",
+                request_body.source,
+                request_body.identifier,
+                e,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=str(e),
+            ) from e
 
     return dashboard_router

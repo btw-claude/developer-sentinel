@@ -617,3 +617,178 @@ orchestrations:
         assert updated_content.count("enabled: false") == 1
         # First should still be enabled
         assert updated_content.count("enabled: true") == 1
+
+
+class TestToggleByRepo:
+    """Tests for toggle_by_repo method (DS-250)."""
+
+    def test_toggle_by_repo_success(self, tmp_path: Path) -> None:
+        """Should toggle orchestrations matching the repo."""
+        yaml_content = """
+orchestrations:
+  - name: "repo-a-orch"
+    enabled: true
+    trigger:
+      source: github
+      repo: "org/repo-a"
+    agent:
+      prompt: "First"
+  - name: "repo-b-orch"
+    enabled: true
+    trigger:
+      source: github
+      repo: "org/repo-b"
+    agent:
+      prompt: "Second"
+  - name: "repo-a-orch-2"
+    enabled: true
+    trigger:
+      source: github
+      repo: "org/repo-a"
+    agent:
+      prompt: "Third"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        count = writer.toggle_by_repo(
+            {"test": file_path}, "org/repo-a", False
+        )
+
+        assert count == 2
+        updated_content = file_path.read_text()
+        # repo-a orchestrations should be disabled
+        assert updated_content.count("enabled: false") == 2
+        # repo-b should still be enabled
+        assert "enabled: true" in updated_content
+
+    def test_toggle_by_repo_multiple_files(self, tmp_path: Path) -> None:
+        """Should toggle orchestrations across multiple files."""
+        file1_content = """
+orchestrations:
+  - name: "file1-orch"
+    trigger:
+      source: github
+      repo: "org/repo"
+    agent:
+      prompt: "File 1"
+"""
+        file2_content = """
+orchestrations:
+  - name: "file2-orch"
+    trigger:
+      source: github
+      repo: "org/repo"
+    agent:
+      prompt: "File 2"
+"""
+        file1 = tmp_path / "file1.yaml"
+        file2 = tmp_path / "file2.yaml"
+        file1.write_text(file1_content)
+        file2.write_text(file2_content)
+
+        writer = OrchestrationYamlWriter()
+        count = writer.toggle_by_repo(
+            {"orch1": file1, "orch2": file2}, "org/repo", False
+        )
+
+        assert count == 2
+        assert "enabled: false" in file1.read_text()
+        assert "enabled: false" in file2.read_text()
+
+    def test_toggle_by_repo_no_matches(self, tmp_path: Path) -> None:
+        """Should return 0 when no orchestrations match the repo."""
+        yaml_content = """
+orchestrations:
+  - name: "other-orch"
+    trigger:
+      source: github
+      repo: "org/other-repo"
+    agent:
+      prompt: "Other"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        count = writer.toggle_by_repo(
+            {"test": file_path}, "org/nonexistent", False
+        )
+
+        assert count == 0
+
+    def test_toggle_by_repo_jira_trigger_ignored(self, tmp_path: Path) -> None:
+        """Should not match Jira triggers (they don't use repo field)."""
+        yaml_content = """
+orchestrations:
+  - name: "jira-orch"
+    trigger:
+      source: jira
+      project: "PROJ"
+    agent:
+      prompt: "Jira"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        count = writer.toggle_by_repo(
+            {"test": file_path}, "PROJ", False
+        )
+
+        # Should not match because Jira triggers use project, not repo
+        assert count == 0
+
+    def test_toggle_by_repo_deduplicates_files(self, tmp_path: Path) -> None:
+        """Should handle duplicate file paths correctly."""
+        yaml_content = """
+orchestrations:
+  - name: "orch-one"
+    trigger:
+      source: github
+      repo: "org/repo"
+    agent:
+      prompt: "One"
+  - name: "orch-two"
+    trigger:
+      source: github
+      repo: "org/repo"
+    agent:
+      prompt: "Two"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        # Same file referenced twice with different keys
+        count = writer.toggle_by_repo(
+            {"orch-one": file_path, "orch-two": file_path}, "org/repo", False
+        )
+
+        # Should only count 2 (the orchestrations), not process file twice
+        assert count == 2
+
+    def test_toggle_by_repo_enable(self, tmp_path: Path) -> None:
+        """Should enable orchestrations matching the repo."""
+        yaml_content = """
+orchestrations:
+  - name: "repo-orch"
+    enabled: false
+    trigger:
+      source: github
+      repo: "org/repo"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        count = writer.toggle_by_repo(
+            {"test": file_path}, "org/repo", True
+        )
+
+        assert count == 1
+        updated_content = file_path.read_text()
+        assert "enabled: true" in updated_content
