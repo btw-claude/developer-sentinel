@@ -20,6 +20,10 @@ from sentinel.agent_clients.claude_sdk import (
     request_shutdown,
     reset_shutdown,
 )
+from sentinel.agent_clients.factory import (
+    AgentClientFactory,
+    create_default_factory,
+)
 
 __all__ = [
     # Base classes and types
@@ -36,4 +40,7 @@ __all__ = [
     "is_shutdown_requested",
     "request_shutdown",
     "reset_shutdown",
+    # Factory
+    "AgentClientFactory",
+    "create_default_factory",
 ]
