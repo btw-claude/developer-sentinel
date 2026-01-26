@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/static/css/utilities.css">
     <style>
         :root {
+            /* Base theme colors */
             --bg-primary: #1a1a2e;
             --bg-secondary: #16213e;
             --text-primary: #eee;
@@ -17,6 +18,14 @@
             --success: #00d26a;
             --warning: #f9c74f;
             --danger: #e63946;
+
+            /* DS-240: Accordion component custom properties for consistent theming */
+            --accordion-border: var(--accent);
+            --accordion-radius: 0.25rem;
+            --accordion-header-bg: var(--bg-secondary);
+            --accordion-header-hover: var(--accent);
+            --accordion-content-bg: var(--bg-primary);
+            --accordion-hover: var(--accent-hover);
         }
 
         * {
