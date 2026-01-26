@@ -587,15 +587,18 @@
     transform: rotate(90deg);
 }
 
-/* Accordion content - hidden by default */
-.nested-accordion-content {
+/* Accordion content - hidden by default
+   DS-236: Using higher specificity selector to ensure content is hidden by default.
+   This prevents any other generic rules from accidentally showing nested content. */
+.nested-accordion .nested-accordion-item .nested-accordion-content {
     display: none;
     padding: 0;
     background-color: var(--bg-primary, #1a1a2e);
 }
 
-/* Show content when expanded */
-.nested-accordion-item.expanded .nested-accordion-content {
+/* Show content when expanded
+   DS-236: Matching specificity increase to ensure expanded state properly overrides hidden state. */
+.nested-accordion .nested-accordion-item.expanded .nested-accordion-content {
     display: block;
 }
 
