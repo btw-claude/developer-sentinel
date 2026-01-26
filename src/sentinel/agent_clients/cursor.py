@@ -95,6 +95,13 @@ class CursorAgentClient(AgentClient):
         # Validate and store cursor path
         self._cursor_path = config.cursor_path or "cursor"
         self._default_model = config.cursor_default_model or None
+
+        # Defensive validation for cursor_default_mode
+        if not config.cursor_default_mode or not config.cursor_default_mode.strip():
+            raise AgentClientError(
+                "cursor_default_mode is not set. Please configure SENTINEL_CURSOR_DEFAULT_MODE "
+                "with a valid mode: agent, plan, or ask"
+            )
         self._default_mode = CursorMode.from_string(config.cursor_default_mode)
 
         logger.debug(
@@ -171,6 +178,7 @@ class CursorAgentClient(AgentClient):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
+        mode: CursorMode | str | None = None,
     ) -> AgentRunResult:
         """Run a Cursor agent with the given prompt.
 
@@ -182,6 +190,8 @@ class CursorAgentClient(AgentClient):
             issue_key: Optional issue key for creating a unique working directory.
             model: Optional model identifier. If None, uses the client's default model.
             orchestration_name: Optional orchestration name (reserved for future logging).
+            mode: Optional operation mode (agent, plan, ask). Can be a CursorMode enum or string.
+                  If None, uses the client's default mode.
 
         Returns:
             AgentRunResult containing the agent's response text and optional working directory path.
@@ -201,11 +211,16 @@ class CursorAgentClient(AgentClient):
                 f"- {k}: {v}\n" for k, v in context.items()
             )
 
+        # Convert string mode to CursorMode if provided
+        effective_mode: CursorMode | None = None
+        if mode is not None:
+            effective_mode = mode if isinstance(mode, CursorMode) else CursorMode.from_string(mode)
+
         # Build the command
-        cmd = self._build_command(full_prompt, model=model)
+        cmd = self._build_command(full_prompt, model=model, mode=effective_mode)
 
         logger.info(
-            f"Running Cursor CLI: mode={self._default_mode.value}, "
+            f"Running Cursor CLI: mode={(effective_mode or self._default_mode).value}, "
             f"model={model or self._default_model or 'default'}, "
             f"timeout={timeout_seconds}s"
         )
