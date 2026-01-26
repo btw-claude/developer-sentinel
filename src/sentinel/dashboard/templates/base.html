@@ -217,12 +217,27 @@
          * Toggle a collapsible section's expanded state.
          * Handles both the visual toggle (icon rotation, content expansion)
          * and works with HTMX's lazy loading pattern.
+         * DS-239: Added defensive null checks for consistency with toggleNestedAccordion.
          * @param {HTMLElement} headerElement - The .collapsible-header element that was clicked
          */
         function toggleCollapsibleSection(headerElement) {
             const section = headerElement.closest('.collapsible-section');
+            if (!section) {
+                console.warn('toggleCollapsibleSection: Could not find parent .collapsible-section');
+                return;
+            }
+
             const content = section.querySelector('.collapsible-content');
+            if (!content) {
+                console.warn('toggleCollapsibleSection: Could not find .collapsible-content within section');
+                return;
+            }
+
             const icon = headerElement.querySelector('.collapse-icon');
+            if (!icon) {
+                console.warn('toggleCollapsibleSection: Could not find .collapse-icon within header');
+                return;
+            }
 
             content.classList.toggle('expanded');
             icon.classList.toggle('rotated');
