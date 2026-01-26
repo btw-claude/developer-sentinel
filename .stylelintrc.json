@@ -5,13 +5,5 @@
   "rules": {
     "order/properties-alphabetical-order": true,
     "custom-property-pattern": null
-  },
-  "overrides": [
-    {
-      "files": ["**/*.css"],
-      "rules": {
-        "order/properties-alphabetical-order": true
-      }
-    }
-  ]
+  }
 }
