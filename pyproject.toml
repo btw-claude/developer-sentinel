@@ -52,6 +52,8 @@ dev = [
     "ruff>=0.1.0,<1.0.0",
     "mypy>=1.8.0,<2.0.0",
     "types-PyYAML>=6.0,<7.0.0",
+    # BeautifulSoup for HTML parsing in tests (DS-284)
+    "beautifulsoup4>=4.12.0,<5.0.0",
 ]
 
 [project.scripts]
