@@ -53,22 +53,12 @@ class TestStatusBadgeMacro:
         assert 'class="badge badge--inactive"' in result
         assert ">0/5<" in result
 
-    def test_badge_inactive_with_zero_active_and_various_totals(self, render_status_badge) -> None:
+    @pytest.mark.parametrize("total_count", [1, 10, 100])
+    def test_badge_inactive_with_zero_active_and_various_totals(self, render_status_badge, total_count: int) -> None:
         """Test badge--inactive state with various total_count values."""
-        # Test with total_count = 1
-        result = render_status_badge(active_count=0, total_count=1)
+        result = render_status_badge(active_count=0, total_count=total_count)
         assert 'badge--inactive' in result
-        assert ">0/1<" in result
-
-        # Test with total_count = 10
-        result = render_status_badge(active_count=0, total_count=10)
-        assert 'badge--inactive' in result
-        assert ">0/10<" in result
-
-        # Test with total_count = 100
-        result = render_status_badge(active_count=0, total_count=100)
-        assert 'badge--inactive' in result
-        assert ">0/100<" in result
+        assert f">0/{total_count}<" in result
 
     def test_badge_success_when_active_equals_total(self, render_status_badge) -> None:
         """Test badge--success state when active_count equals total_count (DS-280 requirement 2)."""
@@ -77,22 +67,12 @@ class TestStatusBadgeMacro:
         assert 'class="badge badge--success"' in result
         assert ">5/5<" in result
 
-    def test_badge_success_with_various_equal_counts(self, render_status_badge) -> None:
+    @pytest.mark.parametrize("count", [1, 10, 100])
+    def test_badge_success_with_various_equal_counts(self, render_status_badge, count: int) -> None:
         """Test badge--success state with various matching counts."""
-        # Test with 1/1
-        result = render_status_badge(active_count=1, total_count=1)
+        result = render_status_badge(active_count=count, total_count=count)
         assert 'badge--success' in result
-        assert ">1/1<" in result
-
-        # Test with 10/10
-        result = render_status_badge(active_count=10, total_count=10)
-        assert 'badge--success' in result
-        assert ">10/10<" in result
-
-        # Test with 100/100
-        result = render_status_badge(active_count=100, total_count=100)
-        assert 'badge--success' in result
-        assert ">100/100<" in result
+        assert f">{count}/{count}<" in result
 
     def test_badge_default_when_partially_active(self, render_status_badge) -> None:
         """Test default state (no modifier class) when partially active (DS-280 requirement 3)."""
@@ -104,28 +84,21 @@ class TestStatusBadgeMacro:
         assert 'badge--success' not in result
         assert ">3/5<" in result
 
-    def test_badge_default_with_various_partial_counts(self, render_status_badge) -> None:
+    @pytest.mark.parametrize(
+        "active_count,total_count",
+        [
+            (1, 5),
+            (4, 5),  # almost full
+            (50, 100),
+        ],
+    )
+    def test_badge_default_with_various_partial_counts(self, render_status_badge, active_count: int, total_count: int) -> None:
         """Test default state with various partial active counts."""
-        # Test with 1/5
-        result = render_status_badge(active_count=1, total_count=5)
+        result = render_status_badge(active_count=active_count, total_count=total_count)
         assert 'class="badge"' in result
         assert 'badge--inactive' not in result
         assert 'badge--success' not in result
-        assert ">1/5<" in result
-
-        # Test with 4/5 (almost full)
-        result = render_status_badge(active_count=4, total_count=5)
-        assert 'class="badge"' in result
-        assert 'badge--inactive' not in result
-        assert 'badge--success' not in result
-        assert ">4/5<" in result
-
-        # Test with 50/100
-        result = render_status_badge(active_count=50, total_count=100)
-        assert 'class="badge"' in result
-        assert 'badge--inactive' not in result
-        assert 'badge--success' not in result
-        assert ">50/100<" in result
+        assert f">{active_count}/{total_count}<" in result
 
     def test_edge_case_both_counts_zero(self, render_status_badge) -> None:
         """Test edge case when total_count is 0 (DS-280 requirement 4).
