@@ -7,6 +7,7 @@ read-only access to the orchestrator's state.
 DS-250: Add API endpoints for orchestration toggle actions.
 DS-259: Add rate limiting and OpenAPI documentation to toggle endpoints.
 DS-282: Refactored to use validation helpers from sentinel.validation module.
+DS-285: Add deprecation warnings to backwards compatibility aliases.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import json
 import logging
 import os
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator, Literal
@@ -50,20 +52,68 @@ _DEFAULT_TOGGLE_COOLDOWN: float = 2.0
 _DEFAULT_RATE_LIMIT_CACHE_TTL: int = 3600  # 1 hour
 _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE: int = 10000  # 10k entries
 
-# Backwards compatibility aliases for bounds constants (DS-282)
-# These are now imported from sentinel.validation but kept as module-level aliases
-# for any code that may reference them directly
-_MIN_TOGGLE_COOLDOWN: float = MIN_TOGGLE_COOLDOWN
-_MAX_TOGGLE_COOLDOWN: float = MAX_TOGGLE_COOLDOWN
-_MIN_CACHE_TTL: int = MIN_CACHE_TTL
-_MAX_CACHE_TTL: int = MAX_CACHE_TTL
-_MIN_CACHE_MAXSIZE: int = MIN_CACHE_MAXSIZE
-_MAX_CACHE_MAXSIZE: int = MAX_CACHE_MAXSIZE
+# Backwards compatibility aliases for bounds constants (DS-282, DS-285)
+# These are deprecated and will be removed in a future release.
+# Users should import directly from sentinel.validation instead.
+def __getattr__(name: str) -> float | int:
+    """Provide deprecated access to bounds constants (DS-285).
 
-# Backwards compatibility aliases for validation functions (DS-282)
-# These wrap the new module-level functions for any code using the old private names
-_validate_positive_float = validate_positive_float
-_validate_positive_int = validate_positive_int
+    This function intercepts attribute access for deprecated module-level
+    constants and emits a deprecation warning, guiding users to import
+    from sentinel.validation directly.
+    """
+    _deprecated_constants = {
+        "_MIN_TOGGLE_COOLDOWN": ("MIN_TOGGLE_COOLDOWN", MIN_TOGGLE_COOLDOWN),
+        "_MAX_TOGGLE_COOLDOWN": ("MAX_TOGGLE_COOLDOWN", MAX_TOGGLE_COOLDOWN),
+        "_MIN_CACHE_TTL": ("MIN_CACHE_TTL", MIN_CACHE_TTL),
+        "_MAX_CACHE_TTL": ("MAX_CACHE_TTL", MAX_CACHE_TTL),
+        "_MIN_CACHE_MAXSIZE": ("MIN_CACHE_MAXSIZE", MIN_CACHE_MAXSIZE),
+        "_MAX_CACHE_MAXSIZE": ("MAX_CACHE_MAXSIZE", MAX_CACHE_MAXSIZE),
+    }
+    if name in _deprecated_constants:
+        canonical_name, value = _deprecated_constants[name]
+        warnings.warn(
+            f"{name} is deprecated and will be removed in a future release. "
+            f"Import {canonical_name} from sentinel.validation instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _validate_positive_float(
+    env_var: str, value_str: str, default: float, min_val: float, max_val: float
+) -> float:
+    """Deprecated wrapper for validate_positive_float (DS-285).
+
+    This function is deprecated. Import validate_positive_float from
+    sentinel.validation directly instead.
+    """
+    warnings.warn(
+        "_validate_positive_float is deprecated and will be removed in a future release. "
+        "Import validate_positive_float from sentinel.validation instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return validate_positive_float(env_var, value_str, default, min_val, max_val)
+
+
+def _validate_positive_int(
+    env_var: str, value_str: str, default: int, min_val: int, max_val: int
+) -> int:
+    """Deprecated wrapper for validate_positive_int (DS-285).
+
+    This function is deprecated. Import validate_positive_int from
+    sentinel.validation directly instead.
+    """
+    warnings.warn(
+        "_validate_positive_int is deprecated and will be removed in a future release. "
+        "Import validate_positive_int from sentinel.validation instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return validate_positive_int(env_var, value_str, default, min_val, max_val)
 
 
 # Parse and validate environment variables with input validation (DS-278)
