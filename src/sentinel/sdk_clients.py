@@ -21,11 +21,13 @@ from sentinel.poller import JiraClient, JiraClientError
 from sentinel.tag_manager import JiraTagClient, JiraTagClientError
 
 # Backward-compatible re-exports from agent_clients.claude_sdk
+# Note: _run_query is intentionally not re-exported as it's a private function
+# that consumers should import directly from agent_clients.claude_sdk if needed.
 from sentinel.agent_clients.claude_sdk import (
     ClaudeProcessInterruptedError,
     ClaudeSdkAgentClient,
     TimingMetrics,
-    _run_query,
+    _run_query,  # Used internally in this module, but not re-exported
     get_shutdown_event,
     is_shutdown_requested,
     request_shutdown,
@@ -35,13 +37,13 @@ from sentinel.agent_clients.claude_sdk import (
 logger = get_logger(__name__)
 
 # Re-export for backward compatibility
+# Note: _run_query is excluded as it's a private function (underscore prefix)
 __all__ = [
     "ClaudeProcessInterruptedError",
     "ClaudeSdkAgentClient",
     "JiraSdkClient",
     "JiraSdkTagClient",
     "TimingMetrics",
-    "_run_query",
     "get_shutdown_event",
     "is_shutdown_requested",
     "request_shutdown",
