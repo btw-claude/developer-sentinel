@@ -14,7 +14,7 @@
         <h2>
             <span class="collapse-icon rotated">&#9654;</span>
             Jira Orchestrations
-            <span class="badge">{{ state.active_jira_projects_count }}</span>
+            <span class="badge">{{ state.active_jira_projects_count }}/{{ state.jira_projects | length }}</span>
         </h2>
     </div>
     <div id="jira-orchestrations-content" class="collapsible-content expanded"
@@ -36,7 +36,7 @@
         <h2>
             <span class="collapse-icon rotated">&#9654;</span>
             GitHub Orchestrations
-            <span class="badge">{{ state.active_github_repos_count }}</span>
+            <span class="badge">{{ state.active_github_repos_count }}/{{ state.github_repos | length }}</span>
         </h2>
     </div>
     <div id="github-orchestrations-content" class="collapsible-content expanded"
