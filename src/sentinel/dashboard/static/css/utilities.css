@@ -821,7 +821,7 @@
    - No conflicts with generic input selectors
 
    TODO: Remove this section once all usages have been migrated to BEM classes.
-   See: DS-253 (original implementation), DS-260 (deprecation)
+   See: DS-253 (original implementation), DS-260 (deprecation), DS-262 (BEM class verification)
    ----------------------------------------------------------------------------- */
 
 /* @deprecated - Use .toggle-switch__slider instead */
