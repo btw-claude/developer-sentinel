@@ -697,6 +697,152 @@
 }
 
 /* =============================================================================
+   TOGGLE SWITCH COMPONENT (DS-253)
+   Styles for toggle switch component used in orchestration enable/disable.
+
+   BEM Structure:
+   - Block: .toggle-switch (label container)
+   - Elements: .toggle-switch__input, .toggle-switch__slider
+   - Modifiers: States are handled via :checked pseudo-class
+
+   Usage:
+     <label class="toggle-switch">
+       <input type="checkbox" class="toggle-switch__input">
+       <span class="toggle-switch__slider"></span>
+     </label>
+
+   Color Scheme:
+   - Enabled (checked): --success (#00d26a)
+   - Disabled (unchecked): --text-secondary (#aaa)
+   ============================================================================= */
+
+/* Toggle switch container label */
+.toggle-switch {
+    cursor: pointer;
+    display: inline-block;
+    height: 24px;
+    position: relative;
+    width: 44px;
+}
+
+/* Hide the default checkbox input */
+.toggle-switch__input {
+    height: 0;
+    opacity: 0;
+    width: 0;
+}
+
+/* The slider/track element */
+.toggle-switch__slider {
+    background-color: var(--text-secondary, #aaa);
+    border-radius: 24px;
+    bottom: 0;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    transition: background-color 0.3s ease, box-shadow 0.2s ease;
+}
+
+/* The circular knob (using ::before pseudo-element) */
+.toggle-switch__slider::before {
+    background-color: var(--bg-primary, #1a1a2e);
+    border-radius: 50%;
+    bottom: 2px;
+    content: "";
+    height: 20px;
+    left: 2px;
+    position: absolute;
+    transition: transform 0.3s ease;
+    width: 20px;
+}
+
+/* Checked state - slider background */
+.toggle-switch__input:checked + .toggle-switch__slider {
+    background-color: var(--success, #00d26a);
+}
+
+/* Checked state - move the knob to the right */
+.toggle-switch__input:checked + .toggle-switch__slider::before {
+    transform: translateX(20px);
+}
+
+/* Hover state - subtle glow effect */
+.toggle-switch:hover .toggle-switch__slider {
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.2);
+}
+
+/* Focus state - accessibility outline */
+.toggle-switch__input:focus + .toggle-switch__slider {
+    box-shadow: 0 0 0 2px var(--accent, #0f3460), 0 0 0 4px rgba(15, 52, 96, 0.3);
+}
+
+/* Focus-visible state - only show focus ring for keyboard navigation */
+.toggle-switch__input:focus-visible + .toggle-switch__slider {
+    box-shadow: 0 0 0 2px var(--accent, #0f3460), 0 0 0 4px rgba(15, 52, 96, 0.3);
+}
+
+/* Remove focus ring for mouse clicks (if browser supports :focus-visible) */
+.toggle-switch__input:focus:not(:focus-visible) + .toggle-switch__slider {
+    box-shadow: none;
+}
+
+/* Disabled state */
+.toggle-switch__input:disabled + .toggle-switch__slider {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.toggle-switch__input:disabled + .toggle-switch__slider::before {
+    background-color: var(--text-secondary, #aaa);
+}
+
+/* Legacy class names for backwards compatibility */
+.toggle-slider {
+    background-color: var(--text-secondary, #aaa);
+    border-radius: 24px;
+    bottom: 0;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    transition: background-color 0.3s ease, box-shadow 0.2s ease;
+}
+
+.toggle-slider::before {
+    background-color: var(--bg-primary, #1a1a2e);
+    border-radius: 50%;
+    bottom: 2px;
+    content: "";
+    height: 20px;
+    left: 2px;
+    position: absolute;
+    transition: transform 0.3s ease;
+    width: 20px;
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--success, #00d26a);
+}
+
+input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+}
+
+.toggle-switch:hover .toggle-slider {
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.2);
+}
+
+input:focus + .toggle-slider {
+    box-shadow: 0 0 0 2px var(--accent, #0f3460), 0 0 0 4px rgba(15, 52, 96, 0.3);
+}
+
+input:disabled + .toggle-slider {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* =============================================================================
    RESPONSIVE UTILITIES (Future Consideration)
 
    TODO: Consider adding breakpoint prefixes for responsive variants:
