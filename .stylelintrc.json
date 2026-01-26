@@ -1,9 +1,11 @@
 {
   "plugins": [
-    "stylelint-order"
+    "stylelint-order",
+    "./stylelint-plugins/deprecation-comments.js"
   ],
   "rules": {
     "order/properties-alphabetical-order": true,
-    "custom-property-pattern": null
+    "custom-property-pattern": null,
+    "developer-sentinel/deprecation-comments": true
   }
 }
