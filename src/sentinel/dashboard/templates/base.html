@@ -223,6 +223,19 @@
     </style>
     <script>
         /**
+         * DS-270: Centralized CSS fallback color constants for cross-browser compatibility.
+         * These fallback values are used when CSS custom properties are not supported.
+         * Matches the CSS custom properties defined in :root for consistency.
+         * @constant {Object}
+         */
+        const CSS_FALLBACK_COLORS = {
+            danger: '#e63946',
+            success: '#00d26a',
+            warning: '#f9c74f',
+            textPrimary: '#ffffff'
+        };
+
+        /**
          * Toggle a collapsible section's expanded state.
          * Handles both the visual toggle (icon rotation, content expansion)
          * and works with HTMX's lazy loading pattern.
@@ -348,16 +361,17 @@
             const toast = document.createElement('div');
             toast.className = 'toast toast-' + type;
 
-            // DS-261: Set colors based on type with CSS variable fallbacks for cross-browser compatibility
+            // DS-261, DS-270: Set colors based on type with CSS variable fallbacks for cross-browser compatibility
+            // DS-270: Refactored to use centralized CSS_FALLBACK_COLORS constants
             const colors = {
-                error: 'var(--danger, #e63946)',
-                success: 'var(--success, #00d26a)',
-                warning: 'var(--warning, #f9c74f)'
+                error: 'var(--danger, ' + CSS_FALLBACK_COLORS.danger + ')',
+                success: 'var(--success, ' + CSS_FALLBACK_COLORS.success + ')',
+                warning: 'var(--warning, ' + CSS_FALLBACK_COLORS.warning + ')'
             };
             const bgColor = colors[type] || colors.error;
 
-            // DS-261: Added fallback values for CSS variables (e.g., var(--text-primary, #ffffff))
-            toast.style.cssText = 'background-color: ' + bgColor + '; color: var(--text-primary, #ffffff); padding: 0.75rem 1rem; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); max-width: 300px; animation: slideIn 0.3s ease-out;';
+            // DS-261, DS-270: Added fallback values for CSS variables using centralized constants
+            toast.style.cssText = 'background-color: ' + bgColor + '; color: var(--text-primary, ' + CSS_FALLBACK_COLORS.textPrimary + '); padding: 0.75rem 1rem; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); max-width: 300px; animation: slideIn 0.3s ease-out;';
             toast.textContent = message;
 
             // Add slide-in animation if not already defined
