@@ -15,6 +15,11 @@ describe("deprecation-comments plugin patterns", () => {
     /**
      * Pattern definitions matching those in the plugin.
      * These are duplicated here for isolated unit testing of regex behavior.
+     *
+     * NOTE: These patterns must stay in sync with deprecation-comments.js.
+     * When modifying patterns, update both files to ensure consistency.
+     *
+     * @see ./deprecation-comments.js - Contains the authoritative PATTERNS definitions
      */
     const PATTERNS = {
         // Matches: @deprecated DS-123 - reason or @deprecated - Use .class instead
