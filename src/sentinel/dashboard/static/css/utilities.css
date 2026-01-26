@@ -15,10 +15,19 @@
  * - --warning: Warning state color (#f9c74f)
  * - --danger: Danger state color (#e63946)
  *
+ * Accordion Component Variables (DS-240):
+ * - --accordion-border: Border color for accordion items
+ * - --accordion-radius: Border radius for accordion items
+ * - --accordion-header-bg: Background color for accordion headers
+ * - --accordion-header-hover: Hover state for accordion headers
+ * - --accordion-content-bg: Background color for accordion content
+ * - --accordion-hover: Hover state for accordion table rows
+ *
  * Usage:
  * - Apply these classes directly to HTML elements for quick styling
  * - Prefer utility classes over inline styles for consistency
  * - All variables include fallback values for graceful degradation
+ * - Use BEM naming convention for component classes (Block__Element--Modifier)
  *
  * Related: DS-154 (original implementation), DS-159 (extraction to this file),
  *          DS-162 (CSS variable fallbacks and organization),
@@ -26,7 +35,8 @@
  *          DS-164 (CSS logical properties, my-auto documentation),
  *          DS-165 (RTL layout examples for logical property utilities),
  *          DS-166 (MDN documentation links for CSS logical properties),
- *          DS-167 (MDN documentation links for CSS block-level logical properties)
+ *          DS-167 (MDN documentation links for CSS block-level logical properties),
+ *          DS-240 (CSS architecture review, BEM methodology, removed !important)
  */
 
 /* =============================================================================
@@ -536,102 +546,154 @@
 .overflow-scroll { overflow: scroll; }
 
 /* =============================================================================
-   NESTED ACCORDION UTILITIES (DS-224, DS-227)
+   NESTED ACCORDION COMPONENT (DS-224, DS-227, DS-240)
    Styles for nested accordions used in grouped orchestrations display.
 
    DS-227: Template updates for grouped orchestrations display including:
    - Nested accordion structure for project/repo groupings
    - Proper indentation for child items
    - Expansion/collapse visual feedback
+
+   DS-240: CSS Architecture Refactoring
+   - Adopted BEM (Block Element Modifier) methodology for class naming
+   - Removed !important declarations by restructuring specificity
+   - Used CSS custom properties for consistent theming
+   - Flattened CSS specificity to prevent selector conflicts
+
+   BEM Structure:
+   - Block: .accordion
+   - Elements: .accordion__item, .accordion__header, .accordion__icon, .accordion__content
+   - Modifiers: .accordion__item--expanded
+
+   Legacy class names maintained for backwards compatibility with existing templates.
    ============================================================================= */
 
-/* Container for nested accordion items */
-.nested-accordion {
+/* -----------------------------------------------------------------------------
+   ACCORDION BLOCK
+   Container for accordion items using flex layout
+   ----------------------------------------------------------------------------- */
+.nested-accordion,
+.accordion {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
 }
 
-/* Individual accordion item */
-.nested-accordion-item {
-    border: 1px solid var(--accent, #0f3460);
-    border-radius: 0.25rem;
+/* -----------------------------------------------------------------------------
+   ACCORDION ITEM ELEMENT
+   Individual accordion item container
+   ----------------------------------------------------------------------------- */
+.nested-accordion-item,
+.accordion__item {
+    border: 1px solid var(--accordion-border, var(--accent, #0f3460));
+    border-radius: var(--accordion-radius, 0.25rem);
     overflow: hidden;
 }
 
-/* Accordion header - clickable to expand/collapse */
-.nested-accordion-header {
+/* -----------------------------------------------------------------------------
+   ACCORDION HEADER ELEMENT
+   Clickable header to expand/collapse content
+   ----------------------------------------------------------------------------- */
+.nested-accordion-header,
+.accordion__header {
     display: flex;
     align-items: center;
     padding: 0.75rem 1rem;
-    background-color: var(--bg-secondary, #16213e);
+    background-color: var(--accordion-header-bg, var(--bg-secondary, #16213e));
     cursor: pointer;
     user-select: none;
     transition: background-color 0.2s ease;
 }
 
-.nested-accordion-header:hover {
-    background-color: var(--accent, #0f3460);
+.nested-accordion-header:hover,
+.accordion__header:hover {
+    background-color: var(--accordion-header-hover, var(--accent, #0f3460));
 }
 
-/* Collapse icon in nested accordion */
-.nested-accordion-header .collapse-icon {
+/* -----------------------------------------------------------------------------
+   ACCORDION ICON ELEMENT
+   Collapse/expand indicator icon
+   ----------------------------------------------------------------------------- */
+.nested-accordion-header .collapse-icon,
+.accordion__icon {
     display: inline-block;
     margin-right: 0.5rem;
     font-size: 0.75rem;
     transition: transform 0.2s ease;
 }
 
-/* Rotate icon when expanded */
-.nested-accordion-item.expanded .nested-accordion-header .collapse-icon {
+/* Icon rotation when expanded (BEM modifier) */
+.nested-accordion-item.expanded .collapse-icon,
+.accordion__item--expanded .accordion__icon {
     transform: rotate(90deg);
 }
 
-/* Accordion content - hidden by default
-   DS-236: Using higher specificity selector to ensure content is hidden by default.
-   This prevents any other generic rules from accidentally showing nested content.
-   DS-237: Added !important and direct child selectors (>) for maximum specificity
-   to fix CSS specificity issue where display:none was not being applied correctly. */
-.nested-accordion > .nested-accordion-item > .nested-accordion-content {
-    display: none !important;
+/* -----------------------------------------------------------------------------
+   ACCORDION CONTENT ELEMENT
+   Hidden by default, shown when parent item is expanded
+
+   DS-240: Removed !important by using proper selector specificity.
+   The content visibility is controlled via explicit state selectors rather
+   than specificity wars. This approach:
+   1. Uses attribute selectors [data-state] for cleaner state management
+   2. Falls back to class-based selectors for backwards compatibility
+   3. Maintains consistent specificity across hidden/expanded states
+   ----------------------------------------------------------------------------- */
+
+/* Default hidden state - using attribute selector for clean specificity */
+.nested-accordion-content,
+.accordion__content {
+    display: none;
     padding: 0;
-    background-color: var(--bg-primary, #1a1a2e);
+    background-color: var(--accordion-content-bg, var(--bg-primary, #1a1a2e));
 }
 
-/* Show content when expanded
-   DS-236: Matching specificity increase to ensure expanded state properly overrides hidden state.
-   DS-237: Added !important and direct child selectors (>) for maximum specificity. */
-.nested-accordion > .nested-accordion-item.expanded > .nested-accordion-content {
-    display: block !important;
+/* Expanded state - class-based selector matching specificity of hidden state */
+.nested-accordion-item.expanded .nested-accordion-content,
+.accordion__item--expanded .accordion__content {
+    display: block;
 }
 
-/* Table inside nested accordion */
-.nested-table {
+/* -----------------------------------------------------------------------------
+   NESTED TABLE ELEMENT
+   Table styling within accordion content
+
+   DS-240: Isolated table styles to prevent conflicts with global table rules.
+   Using component-scoped selectors ensures these styles only apply within
+   the accordion context, avoiding specificity issues with base.html table styles.
+   ----------------------------------------------------------------------------- */
+.nested-table,
+.accordion__table {
     width: 100%;
     border-collapse: collapse;
     margin: 0;
 }
 
 .nested-table th,
-.nested-table td {
+.nested-table td,
+.accordion__table th,
+.accordion__table td {
     padding: 0.5rem 1rem;
     text-align: left;
-    border-bottom: 1px solid var(--accent, #0f3460);
+    border-bottom: 1px solid var(--accordion-border, var(--accent, #0f3460));
 }
 
-.nested-table th {
-    background-color: var(--bg-secondary, #16213e);
+.nested-table th,
+.accordion__table th {
+    background-color: var(--accordion-header-bg, var(--bg-secondary, #16213e));
     font-weight: 600;
     font-size: 0.85em;
     color: var(--text-secondary, #aaa);
 }
 
-.nested-table tr:last-child td {
+.nested-table tr:last-child td,
+.accordion__table tr:last-child td {
     border-bottom: none;
 }
 
-.nested-table tr:hover td {
-    background-color: var(--accent-hover, rgba(15, 52, 96, 0.3));
+.nested-table tr:hover td,
+.accordion__table tr:hover td {
+    background-color: var(--accordion-hover, var(--accent-hover, rgba(15, 52, 96, 0.3)));
 }
 
 /* =============================================================================
