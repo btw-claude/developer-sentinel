@@ -617,7 +617,7 @@
 .nested-accordion-header .collapse-icon,
 .accordion__icon {
     display: inline-block;
-    margin-right: 0.5rem;
+    margin-inline-end: 0.5rem;
     font-size: 0.75rem;
     transition: transform 0.2s ease;
 }
