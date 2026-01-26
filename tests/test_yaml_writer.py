@@ -1,17 +1,23 @@
 """Tests for YAML writer module.
 
 DS-248: Create YAML writer module for safe orchestration file modification
+DS-257: Add timeout and cleanup improvements
 """
 
+import fcntl
 import os
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
 from sentinel.yaml_writer import (
+    FileLockTimeoutError,
     OrchestrationYamlWriter,
     OrchestrationYamlWriterError,
     _file_lock,
+    cleanup_orphaned_lock_files,
 )
 
 
@@ -792,3 +798,411 @@ orchestrations:
         assert count == 1
         updated_content = file_path.read_text()
         assert "enabled: true" in updated_content
+
+
+class TestFileLockTimeout:
+    """Tests for file lock timeout functionality (DS-257)."""
+
+    def test_file_lock_with_default_timeout(self, tmp_path: Path) -> None:
+        """File lock should use default timeout when not specified."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("test: value")
+
+        # Should succeed with default timeout
+        with _file_lock(file_path):
+            pass
+
+    def test_file_lock_with_custom_timeout(self, tmp_path: Path) -> None:
+        """File lock should accept custom timeout."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("test: value")
+
+        # Should succeed with custom timeout
+        with _file_lock(file_path, max_wait_seconds=5.0):
+            pass
+
+    def test_file_lock_timeout_raises_error(self, tmp_path: Path) -> None:
+        """File lock should raise FileLockTimeoutError when timeout expires."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("test: value")
+        lock_path = file_path.with_suffix(".yaml.lock")
+
+        # Hold the lock in another context
+        with open(lock_path, "w") as lock_file:  # noqa: SIM117
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+            try:
+                # Attempt to acquire with short timeout
+                with (
+                    pytest.raises(FileLockTimeoutError, match="Timed out waiting for lock"),
+                    _file_lock(file_path, max_wait_seconds=0.2),
+                ):
+                    pass
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def test_file_lock_zero_timeout_blocks_indefinitely(self, tmp_path: Path) -> None:
+        """File lock with max_wait_seconds=0 should block indefinitely."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("test: value")
+
+        lock_acquired = threading.Event()
+        main_thread_waiting = threading.Event()
+
+        def hold_lock_briefly():
+            lock_path = file_path.with_suffix(".yaml.lock")
+            with open(lock_path, "w") as lock_file:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                lock_acquired.set()
+                # Wait for main thread to start waiting for lock
+                main_thread_waiting.wait(timeout=1.0)
+                # Hold lock a bit longer
+                time.sleep(0.1)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+        # Start thread to hold lock briefly
+        thread = threading.Thread(target=hold_lock_briefly)
+        thread.start()
+
+        # Wait for lock to be acquired by other thread
+        lock_acquired.wait(timeout=1.0)
+
+        # Signal that we're about to wait for the lock
+        main_thread_waiting.set()
+
+        # This should block until the other thread releases
+        # (using max_wait_seconds=0 for indefinite blocking)
+        with _file_lock(file_path, max_wait_seconds=0):
+            # We successfully acquired the lock after blocking
+            pass
+
+        thread.join()
+
+    def test_writer_with_custom_timeout(self, tmp_path: Path) -> None:
+        """Writer should use configured timeout for file locks."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter(lock_timeout_seconds=5.0)
+        result = writer.toggle_orchestration(file_path, "test-orch", False)
+
+        assert result is True
+
+
+class TestFileLockCleanup:
+    """Tests for file lock cleanup functionality (DS-257)."""
+
+    def test_file_lock_cleanup_removes_lock_file(self, tmp_path: Path) -> None:
+        """File lock should remove lock file when cleanup is enabled."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("test: value")
+        lock_path = file_path.with_suffix(".yaml.lock")
+
+        with _file_lock(file_path, cleanup_lock_file=True):
+            assert lock_path.exists()
+
+        # Lock file should be removed after context exit
+        assert not lock_path.exists()
+
+    def test_file_lock_no_cleanup_by_default(self, tmp_path: Path) -> None:
+        """File lock should NOT remove lock file by default."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("test: value")
+        lock_path = file_path.with_suffix(".yaml.lock")
+
+        with _file_lock(file_path, cleanup_lock_file=False):
+            assert lock_path.exists()
+
+        # Lock file should remain after context exit
+        assert lock_path.exists()
+
+    def test_writer_with_cleanup_enabled(self, tmp_path: Path) -> None:
+        """Writer should clean up lock files when configured."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+        lock_path = file_path.with_suffix(".yaml.lock")
+
+        writer = OrchestrationYamlWriter(cleanup_lock_files=True)
+        writer.toggle_orchestration(file_path, "test-orch", False)
+
+        # Lock file should be removed
+        assert not lock_path.exists()
+
+    def test_cleanup_orphaned_lock_files(self, tmp_path: Path) -> None:
+        """Should remove orphaned lock files older than max age."""
+        # Create some lock files
+        old_lock = tmp_path / "old.yaml.lock"
+        old_lock.write_text("")
+        # Set modification time to 2 hours ago
+        old_time = time.time() - 7200
+        os.utime(old_lock, (old_time, old_time))
+
+        new_lock = tmp_path / "new.yaml.lock"
+        new_lock.write_text("")
+
+        # Clean up files older than 1 hour
+        removed = cleanup_orphaned_lock_files(tmp_path, max_age_seconds=3600)
+
+        assert removed == 1
+        assert not old_lock.exists()
+        assert new_lock.exists()
+
+    def test_cleanup_orphaned_lock_files_nested(self, tmp_path: Path) -> None:
+        """Should find lock files in nested directories."""
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+
+        old_lock = subdir / "nested.yaml.lock"
+        old_lock.write_text("")
+        old_time = time.time() - 7200
+        os.utime(old_lock, (old_time, old_time))
+
+        removed = cleanup_orphaned_lock_files(tmp_path, max_age_seconds=3600)
+
+        assert removed == 1
+        assert not old_lock.exists()
+
+
+class TestBackupFunctionality:
+    """Tests for backup before modification functionality (DS-257)."""
+
+    def test_backup_creates_bak_file(self, tmp_path: Path) -> None:
+        """Writer should create .bak file when backups are enabled."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+        backup_path = file_path.with_suffix(".yaml.bak")
+
+        writer = OrchestrationYamlWriter(create_backups=True)
+        writer.toggle_orchestration(file_path, "test-orch", False)
+
+        assert backup_path.exists()
+        # Backup should contain original content
+        assert "enabled: true" in backup_path.read_text()
+        # Original file should be modified
+        assert "enabled: false" in file_path.read_text()
+
+    def test_backup_with_custom_suffix(self, tmp_path: Path) -> None:
+        """Writer should use custom backup suffix when specified."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+        backup_path = file_path.with_suffix(".yaml.backup")
+
+        writer = OrchestrationYamlWriter(create_backups=True, backup_suffix=".backup")
+        writer.toggle_orchestration(file_path, "test-orch", False)
+
+        assert backup_path.exists()
+        assert "enabled: true" in backup_path.read_text()
+
+    def test_backup_with_timestamp(self, tmp_path: Path) -> None:
+        """Writer should create timestamped backups when specified."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter(create_backups=True, backup_suffix="timestamp")
+        writer.toggle_orchestration(file_path, "test-orch", False)
+
+        # Find timestamped backup
+        backup_files = list(tmp_path.glob("test.yaml.*.bak"))
+        assert len(backup_files) == 1
+        assert "enabled: true" in backup_files[0].read_text()
+
+    def test_no_backup_by_default(self, tmp_path: Path) -> None:
+        """Writer should NOT create backups by default."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        writer.toggle_orchestration(file_path, "test-orch", False)
+
+        # No backup files should exist
+        backup_files = list(tmp_path.glob("*.bak"))
+        assert len(backup_files) == 0
+
+    def test_backup_preserves_metadata(self, tmp_path: Path) -> None:
+        """Backup should preserve file metadata using shutil.copy2."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        # Get original modification time
+        original_mtime = file_path.stat().st_mtime
+
+        # Wait a bit to ensure times differ
+        time.sleep(0.1)
+
+        writer = OrchestrationYamlWriter(create_backups=True)
+        writer.toggle_orchestration(file_path, "test-orch", False)
+
+        backup_path = file_path.with_suffix(".yaml.bak")
+        # Backup should have the original modification time (from copy2)
+        assert backup_path.stat().st_mtime == original_mtime
+
+    def test_backup_on_toggle_all_in_file(self, tmp_path: Path) -> None:
+        """Backup should be created for toggle_all_in_file."""
+        yaml_content = """
+orchestrations:
+  - name: "orch-one"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "First"
+  - name: "orch-two"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Second"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+        backup_path = file_path.with_suffix(".yaml.bak")
+
+        writer = OrchestrationYamlWriter(create_backups=True)
+        writer.toggle_all_in_file(file_path, False)
+
+        assert backup_path.exists()
+        backup_content = backup_path.read_text()
+        assert backup_content.count("enabled: true") == 2
+
+    def test_backup_on_toggle_by_project(self, tmp_path: Path) -> None:
+        """Backup should be created for toggle_by_project."""
+        yaml_content = """
+orchestrations:
+  - name: "proj-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "PROJ"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+        backup_path = file_path.with_suffix(".yaml.bak")
+
+        writer = OrchestrationYamlWriter(create_backups=True)
+        writer.toggle_by_project({"test": file_path}, "PROJ", False)
+
+        assert backup_path.exists()
+        assert "enabled: true" in backup_path.read_text()
+
+
+class TestWriterConfiguration:
+    """Tests for OrchestrationYamlWriter configuration options (DS-257)."""
+
+    def test_default_configuration(self) -> None:
+        """Writer should have sensible defaults."""
+        writer = OrchestrationYamlWriter()
+        assert writer._lock_timeout_seconds is None  # Uses DEFAULT_LOCK_TIMEOUT_SECONDS
+        assert writer._cleanup_lock_files is False
+        assert writer._create_backups is False
+        assert writer._backup_suffix == ".bak"
+
+    def test_custom_configuration(self) -> None:
+        """Writer should accept custom configuration."""
+        writer = OrchestrationYamlWriter(
+            lock_timeout_seconds=10.0,
+            cleanup_lock_files=True,
+            create_backups=True,
+            backup_suffix=".backup",
+        )
+        assert writer._lock_timeout_seconds == 10.0
+        assert writer._cleanup_lock_files is True
+        assert writer._create_backups is True
+        assert writer._backup_suffix == ".backup"
+
+    def test_combined_features(self, tmp_path: Path) -> None:
+        """Writer should handle all features together."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter(
+            lock_timeout_seconds=5.0,
+            cleanup_lock_files=True,
+            create_backups=True,
+            backup_suffix="timestamp",
+        )
+        writer.toggle_orchestration(file_path, "test-orch", False)
+
+        # Should have created timestamped backup
+        backup_files = list(tmp_path.glob("test.yaml.*.bak"))
+        assert len(backup_files) == 1
+
+        # Lock file should be cleaned up
+        lock_path = file_path.with_suffix(".yaml.lock")
+        assert not lock_path.exists()
+
+        # File should be modified
+        assert "enabled: false" in file_path.read_text()

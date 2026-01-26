@@ -5,13 +5,17 @@ while preserving formatting, comments, and structure using ruamel.yaml's
 round-trip editing capabilities.
 
 DS-248: Create YAML writer module for safe orchestration file modification
+DS-257: Add timeout and cleanup improvements
 """
 
 from __future__ import annotations
 
 import fcntl
+import shutil
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,6 +29,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Default timeout for file lock acquisition (in seconds)
+DEFAULT_LOCK_TIMEOUT_SECONDS: float = 30.0
+
+# Default retry interval for lock acquisition (in seconds)
+DEFAULT_LOCK_RETRY_INTERVAL: float = 0.1
+
 
 class OrchestrationYamlWriterError(Exception):
     """Raised when orchestration YAML modification fails."""
@@ -32,30 +42,75 @@ class OrchestrationYamlWriterError(Exception):
     pass
 
 
+class FileLockTimeoutError(OrchestrationYamlWriterError):
+    """Raised when file lock acquisition times out."""
+
+    pass
+
+
 @contextmanager
-def _file_lock(file_path: Path) -> Iterator[None]:
+def _file_lock(
+    file_path: Path,
+    max_wait_seconds: float | None = None,
+    cleanup_lock_file: bool = False,
+) -> Iterator[None]:
     """Context manager for file locking to prevent concurrent modifications.
 
-    Uses flock for advisory locking. The lock is released when the context exits.
+    Uses flock for advisory locking with optional timeout. The lock is released
+    when the context exits. Optionally removes the lock file after release.
 
     Args:
         file_path: Path to the file to lock.
+        max_wait_seconds: Maximum time to wait for lock acquisition in seconds.
+            If None, uses DEFAULT_LOCK_TIMEOUT_SECONDS. If 0, blocks indefinitely
+            (original behavior).
+        cleanup_lock_file: If True, removes the .lock file after releasing the lock.
+            Defaults to False for backward compatibility.
 
     Yields:
         None
 
     Raises:
-        OrchestrationYamlWriterError: If the file cannot be locked.
+        FileLockTimeoutError: If the lock cannot be acquired within the timeout.
+        OrchestrationYamlWriterError: If the file cannot be locked due to other errors.
     """
+    if max_wait_seconds is None:
+        max_wait_seconds = DEFAULT_LOCK_TIMEOUT_SECONDS
+
     lock_path = file_path.with_suffix(file_path.suffix + ".lock")
     lock_file = None
+    start_time = time.monotonic()
+
     try:
         lock_file = open(lock_path, "w")  # noqa: SIM115
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+        if max_wait_seconds == 0:
+            # Block indefinitely (original behavior)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        else:
+            # Non-blocking with retry loop
+            while True:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break  # Lock acquired successfully
+                except BlockingIOError:
+                    elapsed = time.monotonic() - start_time
+                    if elapsed >= max_wait_seconds:
+                        lock_file.close()
+                        lock_file = None
+                        raise FileLockTimeoutError(
+                            f"Timed out waiting for lock on {file_path} "
+                            f"after {max_wait_seconds:.1f} seconds"
+                        ) from None
+                    # Wait before retrying
+                    time.sleep(DEFAULT_LOCK_RETRY_INTERVAL)
         yield
+    except (FileLockTimeoutError, OrchestrationYamlWriterError):
+        raise
     except OSError as e:
         if lock_file is not None:
             lock_file.close()
+            lock_file = None
         raise OrchestrationYamlWriterError(
             f"Failed to acquire lock for {file_path}: {e}"
         ) from e
@@ -63,6 +118,45 @@ def _file_lock(file_path: Path) -> Iterator[None]:
         if lock_file is not None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
             lock_file.close()
+            if cleanup_lock_file:
+                try:
+                    lock_path.unlink(missing_ok=True)
+                except OSError:
+                    # Best effort cleanup - don't fail if we can't remove the lock file
+                    logger.debug("Could not remove lock file: %s", lock_path)
+
+
+def cleanup_orphaned_lock_files(directory: Path, max_age_seconds: float = 3600) -> int:
+    """Remove orphaned lock files older than the specified age.
+
+    This utility function can be used to clean up .yaml.lock files that may
+    have been left behind due to crashes or other unexpected terminations.
+
+    Args:
+        directory: Directory to search for orphaned lock files.
+        max_age_seconds: Maximum age of lock files to keep (in seconds).
+            Files older than this will be removed. Defaults to 1 hour.
+
+    Returns:
+        The number of lock files that were removed.
+    """
+    removed_count = 0
+    current_time = time.time()
+
+    try:
+        for lock_file in directory.glob("**/*.yaml.lock"):
+            try:
+                file_age = current_time - lock_file.stat().st_mtime
+                if file_age > max_age_seconds:
+                    lock_file.unlink()
+                    removed_count += 1
+                    logger.info("Removed orphaned lock file: %s", lock_file)
+            except OSError as e:
+                logger.debug("Could not process lock file %s: %s", lock_file, e)
+    except OSError as e:
+        logger.warning("Error scanning for orphaned lock files in %s: %s", directory, e)
+
+    return removed_count
 
 
 class OrchestrationYamlWriter:
@@ -70,6 +164,17 @@ class OrchestrationYamlWriter:
 
     Uses ruamel.yaml with preserve_quotes=True for round-trip editing,
     maintaining formatting, comments, and structure of the original file.
+
+    Args:
+        lock_timeout_seconds: Maximum time to wait for file lock acquisition.
+            Defaults to DEFAULT_LOCK_TIMEOUT_SECONDS (30 seconds).
+            Set to 0 to block indefinitely.
+        cleanup_lock_files: If True, removes lock files after releasing locks.
+            Defaults to False.
+        create_backups: If True, creates backup files before modifications.
+            Defaults to False.
+        backup_suffix: Suffix for backup files. Defaults to ".bak".
+            Can also be "timestamp" to use timestamped backups.
 
     Example usage:
         writer = OrchestrationYamlWriter()
@@ -93,15 +198,37 @@ class OrchestrationYamlWriter:
             project="PROJ",
             enabled=False
         )
+
+        # With backup and lock cleanup enabled
+        writer = OrchestrationYamlWriter(
+            create_backups=True,
+            backup_suffix="timestamp",
+            cleanup_lock_files=True,
+            lock_timeout_seconds=10.0
+        )
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        lock_timeout_seconds: float | None = None,
+        cleanup_lock_files: bool = False,
+        create_backups: bool = False,
+        backup_suffix: str = ".bak",
+    ) -> None:
         """Initialize the YAML writer with round-trip configuration."""
         self._yaml = YAML()
         self._yaml.preserve_quotes = True
         # Preserve the original formatting as much as possible
         self._yaml.default_flow_style = False
         self._yaml.width = 4096  # Prevent line wrapping
+
+        # Lock configuration (DS-257)
+        self._lock_timeout_seconds = lock_timeout_seconds
+        self._cleanup_lock_files = cleanup_lock_files
+
+        # Backup configuration (DS-257)
+        self._create_backups = create_backups
+        self._backup_suffix = backup_suffix
 
     def _load_yaml(self, file_path: Path) -> CommentedMap:
         """Load a YAML file with round-trip preservation.
@@ -136,16 +263,56 @@ class OrchestrationYamlWriter:
                 f"Failed to parse YAML in {file_path}: {e}"
             ) from e
 
+    def _create_backup(self, file_path: Path) -> Path | None:
+        """Create a backup of the file before modification.
+
+        Args:
+            file_path: Path to the file to backup.
+
+        Returns:
+            Path to the backup file, or None if backup creation failed.
+
+        Raises:
+            OrchestrationYamlWriterError: If backup creation fails critically.
+        """
+        if not self._create_backups:
+            return None
+
+        if not file_path.exists():
+            return None
+
+        try:
+            if self._backup_suffix == "timestamp":
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_path = file_path.with_suffix(f".yaml.{timestamp}.bak")
+            else:
+                backup_path = file_path.with_suffix(file_path.suffix + self._backup_suffix)
+
+            shutil.copy2(file_path, backup_path)
+            logger.info("Created backup: %s", backup_path)
+            return backup_path
+        except OSError as e:
+            logger.warning("Failed to create backup of %s: %s", file_path, e)
+            raise OrchestrationYamlWriterError(
+                f"Failed to create backup of {file_path}: {e}"
+            ) from e
+
     def _save_yaml(self, file_path: Path, data: CommentedMap) -> None:
         """Save YAML data to a file with round-trip preservation.
+
+        Creates a backup of the original file if backups are enabled.
 
         Args:
             file_path: Path to the YAML file.
             data: The YAML data to save.
 
         Raises:
-            OrchestrationYamlWriterError: If the file cannot be written.
+            OrchestrationYamlWriterError: If the file cannot be written or
+                backup creation fails.
         """
+        # Create backup before modification (DS-257)
+        self._create_backup(file_path)
+
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 self._yaml.dump(data, f)
@@ -194,8 +361,14 @@ class OrchestrationYamlWriter:
         Raises:
             OrchestrationYamlWriterError: If there's an error reading, parsing,
                 or writing the file.
+            FileLockTimeoutError: If the file lock cannot be acquired within
+                the configured timeout.
         """
-        with _file_lock(file_path):
+        with _file_lock(
+            file_path,
+            max_wait_seconds=self._lock_timeout_seconds,
+            cleanup_lock_file=self._cleanup_lock_files,
+        ):
             data = self._load_yaml(file_path)
 
             orchestrations = data.get("orchestrations")
@@ -242,8 +415,14 @@ class OrchestrationYamlWriter:
         Raises:
             OrchestrationYamlWriterError: If there's an error reading, parsing,
                 or writing the file.
+            FileLockTimeoutError: If the file lock cannot be acquired within
+                the configured timeout.
         """
-        with _file_lock(file_path):
+        with _file_lock(
+            file_path,
+            max_wait_seconds=self._lock_timeout_seconds,
+            cleanup_lock_file=self._cleanup_lock_files,
+        ):
             data = self._load_yaml(file_path)
 
             orchestrations = data.get("orchestrations")
@@ -292,13 +471,19 @@ class OrchestrationYamlWriter:
         Raises:
             OrchestrationYamlWriterError: If there's an error reading, parsing,
                 or writing any file.
+            FileLockTimeoutError: If any file lock cannot be acquired within
+                the configured timeout.
         """
         total_count = 0
         # Get unique file paths
         unique_files = set(orch_files.values())
 
         for file_path in unique_files:
-            with _file_lock(file_path):
+            with _file_lock(
+                file_path,
+                max_wait_seconds=self._lock_timeout_seconds,
+                cleanup_lock_file=self._cleanup_lock_files,
+            ):
                 data = self._load_yaml(file_path)
 
                 orchestrations = data.get("orchestrations")
@@ -367,13 +552,19 @@ class OrchestrationYamlWriter:
         Raises:
             OrchestrationYamlWriterError: If there's an error reading, parsing,
                 or writing any file.
+            FileLockTimeoutError: If any file lock cannot be acquired within
+                the configured timeout.
         """
         total_count = 0
         # Get unique file paths
         unique_files = set(orch_files.values())
 
         for file_path in unique_files:
-            with _file_lock(file_path):
+            with _file_lock(
+                file_path,
+                max_wait_seconds=self._lock_timeout_seconds,
+                cleanup_lock_file=self._cleanup_lock_files,
+            ):
                 data = self._load_yaml(file_path)
 
                 orchestrations = data.get("orchestrations")
