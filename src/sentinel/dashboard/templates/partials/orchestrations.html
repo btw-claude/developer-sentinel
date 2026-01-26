@@ -27,11 +27,15 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if orch.enabled %}
-                        <span class="status-ok">Enabled</span>
-                        {% else %}
-                        <span class="status-warn">Disabled</span>
-                        {% endif %}
+                        <label class="toggle-switch">
+                            <input type="checkbox"
+                                   {% if orch.enabled %}checked{% endif %}
+                                   hx-post="/api/orchestrations/{{ orch.name }}/toggle"
+                                   hx-vals='{"enabled": {{ "false" if orch.enabled else "true" }}}'
+                                   hx-swap="none"
+                                   hx-on::after-request="handleToggleResponse(event)">
+                            <span class="toggle-slider"></span>
+                        </label>
                     </td>
                 </tr>
                 {% endfor %}
