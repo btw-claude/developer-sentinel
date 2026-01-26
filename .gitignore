@@ -54,7 +54,6 @@ dmypy.json
 
 # Node.js (CSS linting)
 node_modules/
-package-lock.json
 .stylelintcache
 
 # OS
