@@ -22,9 +22,11 @@ from sentinel.orchestration import Orchestration
 # These provide MockJiraClient, MockAgentClient, MockTagClient,
 # make_config, make_orchestration, and set_mtime_in_future
 # DS-188: Added TrackingAgentClient for concurrency tracking tests
+# DS-296: Added MockAgentClientFactory for factory pattern tests
 from tests.conftest import (
     MockJiraClient,
     MockAgentClient,
+    MockAgentClientFactory,
     MockTagClient,
     TrackingAgentClient,
     make_config,

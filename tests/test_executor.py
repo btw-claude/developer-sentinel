@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from sentinel.agent_clients.base import AgentType
 from sentinel.executor import (
     AgentClient,
     AgentClientError,
@@ -35,6 +36,7 @@ class MockAgentClient(AgentClient):
         self,
         responses: list[str] | None = None,
         workdir: Path | None = None,
+        agent_type_value: AgentType = "claude",
     ) -> None:
         self.responses = responses or ["SUCCESS: Task completed"]
         self.workdir = workdir
@@ -48,6 +50,12 @@ class MockAgentClient(AgentClient):
         self.should_timeout = False
         self.timeout_count = 0
         self.max_timeouts = 0
+        self._agent_type = agent_type_value
+
+    @property
+    def agent_type(self) -> AgentType:
+        """Return the type of agent this client implements."""
+        return self._agent_type
 
     def run_agent(
         self,
