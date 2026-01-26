@@ -900,6 +900,43 @@
 }
 
 /* =============================================================================
+   BADGE VARIANT STYLES (DS-271)
+   Visual styling variants for badges based on state (e.g., active/total counts).
+
+   Variants:
+   - .badge--inactive: Muted/gray style when 0 items are active (0/5)
+   - .badge--success: Success indicator (green accent) when all items are active (5/5)
+   - (default): Neutral badge style when some items are active (2/5)
+
+   These variants work in conjunction with the base .badge class defined in base.html.
+   Apply these modifier classes conditionally based on the state of the data.
+
+   Usage in Jinja2 templates:
+     {% if active_count == 0 %}
+       <span class="badge badge--inactive">{{ active_count }}/{{ total_count }}</span>
+     {% elif active_count == total_count %}
+       <span class="badge badge--success">{{ active_count }}/{{ total_count }}</span>
+     {% else %}
+       <span class="badge">{{ active_count }}/{{ total_count }}</span>
+     {% endif %}
+
+   See: DS-263 (original badge format), DS-271 (styling variants)
+   ============================================================================= */
+
+/* Inactive state - muted/gray style for 0 active items */
+.badge--inactive {
+    background-color: var(--bg-secondary, #16213e);
+    color: var(--text-secondary, #aaa);
+    opacity: 0.7;
+}
+
+/* Success state - green accent for all items active */
+.badge--success {
+    background-color: var(--success, #00d26a);
+    color: var(--bg-primary, #1a1a2e);
+}
+
+/* =============================================================================
    RESPONSIVE UTILITIES (Future Consideration)
 
    TODO: Consider adding breakpoint prefixes for responsive variants:
