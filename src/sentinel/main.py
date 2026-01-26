@@ -17,6 +17,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Any
 
+from sentinel.agent_clients.factory import AgentClientFactory, create_default_factory
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config, load_config
 from sentinel.deduplication import DeduplicationManager
@@ -35,7 +36,6 @@ from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.router import Router
 from sentinel.sdk_clients import (
     ClaudeProcessInterruptedError,
-    ClaudeSdkAgentClient,
     JiraSdkClient,
     JiraSdkTagClient,
     request_shutdown as request_claude_shutdown,
@@ -282,11 +282,13 @@ class Sentinel:
         config: Config,
         orchestrations: list[Orchestration],
         jira_client: JiraClient,
-        agent_client: AgentClient,
-        tag_client: JiraTagClient,
+        agent_factory: AgentClientFactory | AgentClient | None = None,
+        tag_client: JiraTagClient | None = None,
         agent_logger: AgentLogger | None = None,
         github_client: GitHubClient | None = None,
         github_tag_client: GitHubTagClient | None = None,
+        *,
+        agent_client: AgentClient | None = None,
     ) -> None:
         """Initialize the Sentinel orchestrator.
 
@@ -294,18 +296,52 @@ class Sentinel:
             config: Application configuration.
             orchestrations: List of orchestration configurations.
             jira_client: Jira client for polling issues.
-            agent_client: Agent client for executing agents.
+            agent_factory: Factory for creating agent clients per-orchestration.
+                For backward compatibility with tests, an AgentClient instance
+                can also be passed directly (will be wrapped in a simple factory).
             tag_client: Jira client for tag operations.
             agent_logger: Optional logger for agent execution logs.
             github_client: Optional GitHub client for polling GitHub issues/PRs.
             github_tag_client: Optional GitHub client for tag/label operations.
+            agent_client: Deprecated keyword argument. For backward compatibility
+                with tests that use agent_client= instead of agent_factory=.
         """
         self.config = config
         self.orchestrations = orchestrations
         self.jira_poller = JiraPoller(jira_client)
         self.github_poller = GitHubPoller(github_client) if github_client else None
         self.router = Router(orchestrations)
-        self.executor = AgentExecutor(agent_client, agent_logger)
+
+        # DS-296: Support both factory pattern and legacy single client for backward compatibility
+        self._agent_logger = agent_logger
+
+        # Handle backward compatibility: agent_client keyword argument takes precedence
+        # if both are provided (shouldn't happen in normal usage)
+        effective_agent: AgentClientFactory | AgentClient | None = agent_factory
+        if agent_client is not None:
+            effective_agent = agent_client
+
+        if effective_agent is None:
+            raise ValueError(
+                "Either agent_factory or agent_client must be provided to Sentinel"
+            )
+
+        # Check if we received a factory or a legacy client
+        if isinstance(effective_agent, AgentClientFactory):
+            # New pattern: use the factory
+            self._agent_factory: AgentClientFactory | None = effective_agent
+            self._legacy_agent_client: AgentClient | None = None
+            # Create a default executor using factory for default agent type
+            default_client = effective_agent.create_for_orchestration(None, config)
+            self.executor = AgentExecutor(default_client, agent_logger)
+        else:
+            # Backward compatibility: treat as a legacy agent client
+            self._agent_factory = None
+            self._legacy_agent_client = effective_agent
+            self.executor = AgentExecutor(effective_agent, agent_logger)
+
+        if tag_client is None:
+            raise ValueError("tag_client must be provided to Sentinel")
         self.tag_manager = TagManager(tag_client, github_client=github_tag_client)
         self._shutdown_requested = False
 
@@ -1147,6 +1183,9 @@ class Sentinel:
         on the OrchestrationVersion to support hot-reload without affecting
         running executions.
 
+        DS-296: Uses the agent factory to create per-orchestration clients,
+        allowing different orchestrations to use different agent types (claude, cursor).
+
         Args:
             issue: The Jira issue to process.
             orchestration: The orchestration to execute.
@@ -1174,7 +1213,19 @@ class Sentinel:
                 f"Starting execution of '{orchestration.name}' for {issue_key}",
             )
 
-            result = self.executor.execute(issue, orchestration)
+            # DS-296: Get per-orchestration agent client based on orchestration's agent_type
+            # If a legacy agent client was provided, use the default executor
+            # Otherwise, create a per-orchestration executor using the factory
+            if self._legacy_agent_client is not None or self._agent_factory is None:
+                executor = self.executor
+            else:
+                agent_type = orchestration.agent.agent_type
+                client = self._agent_factory.create_for_orchestration(
+                    agent_type, self.config
+                )
+                executor = AgentExecutor(client, self._agent_logger)
+
+            result = executor.execute(issue, orchestration)
             self.tag_manager.update_tags(result, orchestration)
 
             # DS-184: Log execution result to orchestration-specific log file
@@ -1911,21 +1962,19 @@ def main(args: list[str] | None = None) -> int:
                 "but GitHub is not configured. Set GITHUB_TOKEN to enable GitHub polling."
             )
 
-    # Agent client always uses Claude Agent SDK (that's the whole point)
-    # Pass log_base_dir to enable streaming logs during agent execution
-    agent_client = ClaudeSdkAgentClient(
-        config=config,
-        base_workdir=config.agent_workdir,
-        log_base_dir=config.agent_logs_dir,
-    )
+    # DS-296: Use factory pattern for agent client creation
+    # This enables per-orchestration agent type selection (claude, cursor, etc.)
+    agent_factory = create_default_factory(config)
     agent_logger = AgentLogger(base_dir=config.agent_logs_dir)
+
+    logger.info(f"Initialized agent factory with types: {agent_factory.registered_types}")
 
     # Create and run Sentinel
     sentinel = Sentinel(
         config=config,
         orchestrations=orchestrations,
         jira_client=jira_client,
-        agent_client=agent_client,
+        agent_factory=agent_factory,
         tag_client=tag_client,
         agent_logger=agent_logger,
         github_client=github_client,

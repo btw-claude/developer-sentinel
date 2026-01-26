@@ -48,6 +48,8 @@ from typing import Any
 
 import pytest
 
+from sentinel.agent_clients.base import AgentType
+from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.config import Config
 from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.orchestration import AgentConfig, Orchestration, TriggerConfig
@@ -88,12 +90,22 @@ class MockJiraClient(JiraClient):
 class MockAgentClient(AgentClient):
     """Mock agent client for testing."""
 
-    def __init__(self, responses: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        responses: list[str] | None = None,
+        agent_type_value: AgentType = "claude",
+    ) -> None:
         self.responses = responses or ["SUCCESS: Done"]
         self.call_count = 0
         self.calls: list[
             tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None, str | None]
         ] = []
+        self._agent_type = agent_type_value
+
+    @property
+    def agent_type(self) -> AgentType:
+        """Return the type of agent this client implements."""
+        return self._agent_type
 
     def run_agent(
         self,
@@ -158,6 +170,7 @@ class TrackingAgentClient(AgentClient):
         execution_delay: float = 0.05,
         track_order: bool = False,
         track_per_orch: bool = False,
+        agent_type_value: AgentType = "claude",
     ) -> None:
         """Initialize the tracking agent client.
 
@@ -165,6 +178,7 @@ class TrackingAgentClient(AgentClient):
             execution_delay: Time in seconds to sleep during each execution.
             track_order: If True, track start/end events in execution_order list.
             track_per_orch: If True, track per-orchestration execution counts.
+            agent_type_value: The agent type this client simulates.
         """
         self.lock = threading.Lock()
         self.execution_count = 0
@@ -175,6 +189,12 @@ class TrackingAgentClient(AgentClient):
         self.execution_delay = execution_delay
         self.track_order = track_order
         self.track_per_orch = track_per_orch
+        self._agent_type = agent_type_value
+
+    @property
+    def agent_type(self) -> AgentType:
+        """Return the type of agent this client implements."""
+        return self._agent_type
 
     def run_agent(
         self,
@@ -225,6 +245,45 @@ class TrackingAgentClient(AgentClient):
                 )
 
         return AgentRunResult(response="SUCCESS: Done", workdir=None)
+
+
+class MockAgentClientFactory(AgentClientFactory):
+    """Mock agent client factory for testing.
+
+    DS-296: This factory allows tests to control which agent client is returned
+    for different orchestrations without needing to set up real agent backends.
+
+    The factory always returns the same mock client instance, making it easy
+    to verify that the factory pattern is being used correctly.
+    """
+
+    def __init__(self, mock_client: AgentClient) -> None:
+        """Initialize with a mock client to return for all requests.
+
+        Args:
+            mock_client: The mock client to return from create methods.
+        """
+        super().__init__()
+        self._mock_client = mock_client
+
+    def create(self, agent_type: AgentType | None, config: Config) -> AgentClient:
+        """Return the mock client regardless of agent type."""
+        return self._mock_client
+
+    def get_or_create(
+        self, agent_type: AgentType | None, config: Config
+    ) -> AgentClient:
+        """Return the mock client regardless of agent type."""
+        return self._mock_client
+
+    def create_for_orchestration(
+        self,
+        orch_agent_type: AgentType | None,
+        config: Config,
+        **kwargs: Any,
+    ) -> AgentClient:
+        """Return the mock client regardless of orchestration config."""
+        return self._mock_client
 
 
 def make_config(
