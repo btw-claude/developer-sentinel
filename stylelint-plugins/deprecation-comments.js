@@ -31,7 +31,13 @@ const meta = {
 };
 
 /**
- * Patterns for validating deprecation annotations
+ * Patterns for validating deprecation annotations.
+ *
+ * NOTE: These patterns are duplicated in deprecation-comments.test.js for
+ * isolated unit testing. When modifying patterns here, ensure the test file
+ * is updated to match to keep both definitions in sync.
+ *
+ * @see ./deprecation-comments.test.js - Contains matching PATTERNS for unit tests
  */
 const PATTERNS = {
     // Matches: @deprecated DS-123 - reason or @deprecated - Use .class instead

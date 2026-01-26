@@ -167,20 +167,20 @@ Use CSS custom properties (CSS variables) for theming:
 The following CSS files in this repository demonstrate the patterns described in this guide:
 
 ### Deprecation Annotations
-- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L805-L831) - Block-level deprecation example for legacy toggle slider styles
-- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L833-L876) - Inline deprecation examples with `@deprecated` annotations
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css) - Search for "LEGACY TOGGLE SLIDER STYLES" to find the block-level deprecation example
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css) - Search for `@deprecated - Use .toggle-switch__` to find inline deprecation examples
 
 ### BEM Naming Convention
-- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L704-L803) - Toggle switch component using BEM structure (`.toggle-switch`, `.toggle-switch__input`, `.toggle-switch__slider`)
-- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L554-L702) - Accordion component with BEM classes (`.accordion`, `.accordion__item`, `.accordion__header`, `.accordion__content`)
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css) - Search for "TOGGLE SWITCH COMPONENT" to find BEM structure examples (`.toggle-switch`, `.toggle-switch__input`, `.toggle-switch__slider`)
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css) - Search for "NESTED ACCORDION COMPONENT" to find accordion BEM classes (`.accordion`, `.accordion__item`, `.accordion__header`, `.accordion__content`)
 
 ### CSS Custom Properties
-- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L1-L45) - Documentation header showing CSS variable definitions and usage
-- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L52-L110) - Utility classes demonstrating CSS variable usage with fallback values
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css) - See the file header comment block for CSS variable definitions and usage documentation
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css) - Search for "TEXT UTILITIES" or "BACKGROUND UTILITIES" sections for CSS variable usage with fallback values
 
 ### Comment Blocks
-- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L47-L50) - Section header example with double-line borders
-- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css#L576-L579) - Subsection header example with single-line borders
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css) - Search for "TEXT UTILITIES" to find section header examples with double-line borders (`===`)
+- [`static/css/utilities.css`](../src/sentinel/dashboard/static/css/utilities.css) - Search for "ACCORDION BLOCK" to find subsection header examples with single-line borders (`---`)
 
 ## Related Resources
 
