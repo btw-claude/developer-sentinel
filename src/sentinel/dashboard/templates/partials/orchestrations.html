@@ -49,12 +49,13 @@
                     <td>
                         <label class="toggle-switch">
                             <input type="checkbox"
+                                   class="toggle-switch__input"
                                    {% if orch.enabled %}checked{% endif %}
                                    hx-post="/api/orchestrations/{{ orch.name }}/toggle"
                                    hx-vals='{"enabled": {{ "false" if orch.enabled else "true" }}}'
                                    hx-swap="none"
                                    hx-on::after-request="handleToggleResponse(event)">
-                            <span class="toggle-slider"></span>
+                            <span class="toggle-switch__slider"></span>
                         </label>
                     </td>
                 </tr>
