@@ -9,7 +9,7 @@
             <div class="bulk-toggle-buttons">
                 <button class="btn-sm btn-success"
                         hx-post="/api/orchestrations/bulk-toggle"
-                        hx-vals='js:{"source": "{{ source_type }}", "identifier": encodeURIComponent("{{ project.identifier }}"), "enabled": true}'
+                        hx-vals='js:{"source": encodeURIComponent("{{ source_type }}"), "identifier": encodeURIComponent("{{ project.identifier }}"), "enabled": true}'
                         hx-swap="none"
                         hx-confirm="Enable all orchestrations in {{ project.identifier }}?"
                         hx-on::after-request="handleToggleResponse(event)"
@@ -19,7 +19,7 @@
                 </button>
                 <button class="btn-sm btn-danger"
                         hx-post="/api/orchestrations/bulk-toggle"
-                        hx-vals='js:{"source": "{{ source_type }}", "identifier": encodeURIComponent("{{ project.identifier }}"), "enabled": false}'
+                        hx-vals='js:{"source": encodeURIComponent("{{ source_type }}"), "identifier": encodeURIComponent("{{ project.identifier }}"), "enabled": false}'
                         hx-swap="none"
                         hx-confirm="Disable all orchestrations in {{ project.identifier }}?"
                         hx-on::after-request="handleToggleResponse(event)"
