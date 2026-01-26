@@ -8,7 +8,7 @@
     "lint:css:fix": "stylelint 'src/**/*.css' --fix"
   },
   "devDependencies": {
-    "stylelint": "16.0.0",
-    "stylelint-order": "6.0.0"
+    "stylelint": "^16.0.0",
+    "stylelint-order": "^6.0.0"
   }
 }
