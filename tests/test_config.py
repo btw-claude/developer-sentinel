@@ -9,11 +9,13 @@ import pytest
 from sentinel.config import (
     MAX_PORT,
     MIN_PORT,
+    VALID_CURSOR_MODES,
     VALID_LOG_LEVELS,
     Config,
     _parse_bool,
     _parse_port,
     _parse_positive_int,
+    _validate_cursor_mode,
     _validate_log_level,
     load_config,
 )
@@ -651,3 +653,127 @@ class TestDisableStreamingLogsConfig:
         config = load_config()
 
         assert config.disable_streaming_logs is False
+
+
+class TestValidateCursorMode:
+    """Tests for _validate_cursor_mode helper function (DS-293)."""
+
+    def test_valid_cursor_modes(self) -> None:
+        """Test that all valid cursor modes are accepted."""
+        for mode in VALID_CURSOR_MODES:
+            assert _validate_cursor_mode(mode) == mode
+
+    def test_case_insensitive(self) -> None:
+        """Test that cursor mode validation is case-insensitive."""
+        assert _validate_cursor_mode("AGENT") == "agent"
+        assert _validate_cursor_mode("Plan") == "plan"
+        assert _validate_cursor_mode("ASK") == "ask"
+
+    def test_invalid_cursor_mode(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that invalid cursor mode returns default and logs warning."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_cursor_mode("invalid")
+        assert result == "agent"
+        assert "Invalid SENTINEL_CURSOR_DEFAULT_MODE: 'invalid' is not valid" in caplog.text
+
+    def test_invalid_with_custom_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that invalid cursor mode uses custom default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_cursor_mode("invalid", default="plan")
+        assert result == "plan"
+
+
+class TestCursorConfig:
+    """Tests for Cursor CLI configuration (DS-293)."""
+
+    def test_default_agent_type_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that default_agent_type defaults to 'claude'."""
+        monkeypatch.delenv("SENTINEL_DEFAULT_AGENT_TYPE", raising=False)
+
+        config = load_config()
+
+        assert config.default_agent_type == "claude"
+
+    def test_default_agent_type_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that default_agent_type loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_DEFAULT_AGENT_TYPE", "cursor")
+
+        config = load_config()
+
+        assert config.default_agent_type == "cursor"
+
+    def test_cursor_path_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that cursor_path defaults to empty string."""
+        monkeypatch.delenv("SENTINEL_CURSOR_PATH", raising=False)
+
+        config = load_config()
+
+        assert config.cursor_path == ""
+
+    def test_cursor_path_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that cursor_path loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_CURSOR_PATH", "/usr/local/bin/cursor")
+
+        config = load_config()
+
+        assert config.cursor_path == "/usr/local/bin/cursor"
+
+    def test_cursor_default_model_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that cursor_default_model defaults to empty string."""
+        monkeypatch.delenv("SENTINEL_CURSOR_DEFAULT_MODEL", raising=False)
+
+        config = load_config()
+
+        assert config.cursor_default_model == ""
+
+    def test_cursor_default_model_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that cursor_default_model loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_CURSOR_DEFAULT_MODEL", "gpt-4")
+
+        config = load_config()
+
+        assert config.cursor_default_model == "gpt-4"
+
+    def test_cursor_default_mode_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that cursor_default_mode defaults to 'agent'."""
+        monkeypatch.delenv("SENTINEL_CURSOR_DEFAULT_MODE", raising=False)
+
+        config = load_config()
+
+        assert config.cursor_default_mode == "agent"
+
+    def test_cursor_default_mode_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that cursor_default_mode loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_CURSOR_DEFAULT_MODE", "plan")
+
+        config = load_config()
+
+        assert config.cursor_default_mode == "plan"
+
+    def test_cursor_default_mode_ask(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that cursor_default_mode can be set to 'ask'."""
+        monkeypatch.setenv("SENTINEL_CURSOR_DEFAULT_MODE", "ask")
+
+        config = load_config()
+
+        assert config.cursor_default_mode == "ask"
+
+    def test_cursor_default_mode_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that cursor_default_mode parsing is case-insensitive."""
+        monkeypatch.setenv("SENTINEL_CURSOR_DEFAULT_MODE", "PLAN")
+
+        config = load_config()
+
+        assert config.cursor_default_mode == "plan"
+
+    def test_cursor_default_mode_invalid_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid cursor_default_mode uses the default."""
+        monkeypatch.setenv("SENTINEL_CURSOR_DEFAULT_MODE", "invalid")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.cursor_default_mode == "agent"
+        assert "Invalid SENTINEL_CURSOR_DEFAULT_MODE" in caplog.text
