@@ -162,6 +162,12 @@ class AgentConfig:
         model: Optional model identifier to use for this agent.
             If None, uses the Claude CLI's default model.
             Examples: "claude-opus-4-5-20251101", "claude-sonnet-4-20250514"
+        agent_type: Optional agent type to use for this agent.
+            If None, defaults to config.default_agent_type.
+            Valid values: "claude", "cursor"
+        cursor_mode: Optional cursor mode when agent_type is "cursor".
+            Only valid when agent_type is "cursor".
+            Valid values: "agent", "plan", "ask"
     """
 
     prompt: str = ""
@@ -169,6 +175,8 @@ class AgentConfig:
     github: GitHubContext | None = None
     timeout_seconds: int | None = None
     model: str | None = None
+    agent_type: Literal["claude", "cursor"] | None = None
+    cursor_mode: Literal["agent", "plan", "ask"] | None = None
 
 
 @dataclass
@@ -570,12 +578,32 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     if model is not None and not isinstance(model, str):
         raise OrchestrationError(f"Invalid model '{model}': must be a string")
 
+    agent_type = data.get("agent_type")
+    if agent_type is not None and agent_type not in ("claude", "cursor"):
+        raise OrchestrationError(
+            f"Invalid agent_type '{agent_type}': must be 'claude' or 'cursor'"
+        )
+
+    cursor_mode = data.get("cursor_mode")
+    if cursor_mode is not None:
+        if cursor_mode not in ("agent", "plan", "ask"):
+            raise OrchestrationError(
+                f"Invalid cursor_mode '{cursor_mode}': must be 'agent', 'plan', or 'ask'"
+            )
+        # cursor_mode is only valid when agent_type is 'cursor'
+        if agent_type is not None and agent_type != "cursor":
+            raise OrchestrationError(
+                f"cursor_mode '{cursor_mode}' is only valid when agent_type is 'cursor'"
+            )
+
     return AgentConfig(
         prompt=data.get("prompt", ""),
         tools=data.get("tools", []),
         github=_parse_github_context(data.get("github")),
         timeout_seconds=timeout,
         model=model,
+        agent_type=agent_type,
+        cursor_mode=cursor_mode,
     )
 
 

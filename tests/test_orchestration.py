@@ -94,6 +94,30 @@ class TestDataclasses:
         assert agent.tools == []
         assert agent.github is None
         assert agent.timeout_seconds is None
+        assert agent.agent_type is None
+        assert agent.cursor_mode is None
+
+    def test_agent_config_with_agent_type_claude(self) -> None:
+        """AgentConfig should support agent_type='claude'."""
+        agent = AgentConfig(agent_type="claude")
+        assert agent.agent_type == "claude"
+        assert agent.cursor_mode is None
+
+    def test_agent_config_with_agent_type_cursor(self) -> None:
+        """AgentConfig should support agent_type='cursor' with cursor_mode."""
+        agent = AgentConfig(agent_type="cursor", cursor_mode="agent")
+        assert agent.agent_type == "cursor"
+        assert agent.cursor_mode == "agent"
+
+    def test_agent_config_cursor_mode_plan(self) -> None:
+        """AgentConfig should support cursor_mode='plan'."""
+        agent = AgentConfig(agent_type="cursor", cursor_mode="plan")
+        assert agent.cursor_mode == "plan"
+
+    def test_agent_config_cursor_mode_ask(self) -> None:
+        """AgentConfig should support cursor_mode='ask'."""
+        agent = AgentConfig(agent_type="cursor", cursor_mode="ask")
+        assert agent.cursor_mode == "ask"
 
     def test_retry_config_defaults(self) -> None:
         """RetryConfig should have sensible defaults."""
@@ -1985,3 +2009,252 @@ orchestrations:
         assert orch.on_start.add_tag == "processing"
         assert orch.on_complete.remove_tag == "review"
         assert orch.on_failure.add_tag == "review-failed"
+
+
+class TestAgentType:
+    """Tests for agent_type and cursor_mode fields in AgentConfig (DS-295).
+
+    These tests verify the new agent type selection fields:
+    - agent_type: Optional field with values 'claude' or 'cursor'
+    - cursor_mode: Optional field with values 'agent', 'plan', or 'ask'
+      (only valid when agent_type is 'cursor')
+    """
+
+    def test_load_file_with_agent_type_claude(self, tmp_path: Path) -> None:
+        """Should load orchestration with agent_type='claude'."""
+        yaml_content = """
+orchestrations:
+  - name: "claude-agent"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: claude
+"""
+        file_path = tmp_path / "claude_agent.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_type == "claude"
+        assert orchestrations[0].agent.cursor_mode is None
+
+    def test_load_file_with_agent_type_cursor(self, tmp_path: Path) -> None:
+        """Should load orchestration with agent_type='cursor'."""
+        yaml_content = """
+orchestrations:
+  - name: "cursor-agent"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: cursor
+      cursor_mode: agent
+"""
+        file_path = tmp_path / "cursor_agent.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_type == "cursor"
+        assert orchestrations[0].agent.cursor_mode == "agent"
+
+    def test_load_file_with_cursor_mode_plan(self, tmp_path: Path) -> None:
+        """Should load orchestration with cursor_mode='plan'."""
+        yaml_content = """
+orchestrations:
+  - name: "cursor-plan"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: cursor
+      cursor_mode: plan
+"""
+        file_path = tmp_path / "cursor_plan.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.cursor_mode == "plan"
+
+    def test_load_file_with_cursor_mode_ask(self, tmp_path: Path) -> None:
+        """Should load orchestration with cursor_mode='ask'."""
+        yaml_content = """
+orchestrations:
+  - name: "cursor-ask"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: cursor
+      cursor_mode: ask
+"""
+        file_path = tmp_path / "cursor_ask.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.cursor_mode == "ask"
+
+    def test_load_file_without_agent_type_uses_none(self, tmp_path: Path) -> None:
+        """Should default to None when agent_type is not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "no-agent-type"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "no_agent_type.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_type is None
+        assert orchestrations[0].agent.cursor_mode is None
+
+    def test_invalid_agent_type_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for invalid agent_type value."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-agent-type"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      agent_type: copilot
+"""
+        file_path = tmp_path / "invalid_agent_type.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid agent_type"):
+            load_orchestration_file(file_path)
+
+    def test_invalid_cursor_mode_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for invalid cursor_mode value."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-cursor-mode"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      agent_type: cursor
+      cursor_mode: invalid
+"""
+        file_path = tmp_path / "invalid_cursor_mode.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid cursor_mode"):
+            load_orchestration_file(file_path)
+
+    def test_cursor_mode_with_claude_agent_type_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when cursor_mode is set with agent_type='claude'."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-combo"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      agent_type: claude
+      cursor_mode: agent
+"""
+        file_path = tmp_path / "invalid_combo.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="cursor_mode.*only valid when agent_type is 'cursor'"):
+            load_orchestration_file(file_path)
+
+    def test_cursor_mode_without_agent_type_allowed(self, tmp_path: Path) -> None:
+        """cursor_mode without agent_type should be allowed (agent_type defaults to config)."""
+        yaml_content = """
+orchestrations:
+  - name: "cursor-mode-only"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      cursor_mode: agent
+"""
+        file_path = tmp_path / "cursor_mode_only.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_type is None
+        assert orchestrations[0].agent.cursor_mode == "agent"
+
+    def test_agent_type_cursor_without_cursor_mode_allowed(self, tmp_path: Path) -> None:
+        """agent_type='cursor' without cursor_mode should be allowed (defaults can apply)."""
+        yaml_content = """
+orchestrations:
+  - name: "cursor-no-mode"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: cursor
+"""
+        file_path = tmp_path / "cursor_no_mode.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_type == "cursor"
+        assert orchestrations[0].agent.cursor_mode is None
+
+    def test_agent_type_with_all_other_config_options(self, tmp_path: Path) -> None:
+        """Should load agent_type and cursor_mode along with all other options."""
+        yaml_content = """
+orchestrations:
+  - name: "full-agent-config"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["review"]
+    agent:
+      prompt: "Review the code"
+      tools:
+        - jira
+        - github
+      timeout_seconds: 300
+      model: "claude-sonnet-4-20250514"
+      agent_type: cursor
+      cursor_mode: agent
+      github:
+        host: "github.com"
+        org: "test-org"
+        repo: "test-repo"
+"""
+        file_path = tmp_path / "full_agent_config.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.prompt == "Review the code"
+        assert orch.agent.tools == ["jira", "github"]
+        assert orch.agent.timeout_seconds == 300
+        assert orch.agent.model == "claude-sonnet-4-20250514"
+        assert orch.agent.agent_type == "cursor"
+        assert orch.agent.cursor_mode == "agent"
+        assert orch.agent.github is not None
+        assert orch.agent.github.org == "test-org"
