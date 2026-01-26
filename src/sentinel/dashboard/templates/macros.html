@@ -1,0 +1,17 @@
+{# DS-277: Reusable Jinja2 macros for badge components #}
+
+{#
+  Macro to render a badge with automatic state-based styling.
+
+  Determines the badge variant class based on the active/total counts:
+  - badge--inactive: When active_count is 0 (nothing active)
+  - badge--success: When active_count equals total_count (all active)
+  - (default): When partially active (some but not all)
+
+  @param active_count - Number of currently active items
+  @param total_count - Total number of items
+  @returns The badge element with appropriate styling class
+#}
+{% macro status_badge(active_count, total_count) %}
+<span class="badge{% if active_count == 0 %} badge--inactive{% elif active_count == total_count %} badge--success{% endif %}">{{ active_count }}/{{ total_count }}</span>
+{%- endmacro %}
