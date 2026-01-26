@@ -13,10 +13,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator, Literal
+
+from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +30,19 @@ from sse_starlette.sse import EventSourceResponse
 
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
-# Rate limiting configuration for toggle endpoints (DS-259)
+# Rate limiting configuration for toggle endpoints (DS-259, DS-268)
 # Cooldown period in seconds between writes to the same file
-TOGGLE_COOLDOWN_SECONDS: float = 2.0
+# Configurable via environment variable for operational flexibility (DS-268)
+TOGGLE_COOLDOWN_SECONDS: float = float(os.environ.get("SENTINEL_TOGGLE_COOLDOWN", "2.0"))
 
-# Track last write time per file path for rate limiting
-_last_write_times: dict[str, float] = {}
+# Track last write time per file path for rate limiting (DS-268)
+# Using TTLCache to automatically clean up stale entries after 1 hour
+# maxsize=10000 accommodates expected usage patterns for unique file paths
+_RATE_LIMIT_CACHE_TTL: int = 3600  # 1 hour TTL for cache entries
+_RATE_LIMIT_CACHE_MAXSIZE: int = 10000  # Maximum number of unique file paths to track
+_last_write_times: TTLCache[str, float] = TTLCache(
+    maxsize=_RATE_LIMIT_CACHE_MAXSIZE, ttl=_RATE_LIMIT_CACHE_TTL
+)
 
 
 def _check_rate_limit(file_path: str) -> None:

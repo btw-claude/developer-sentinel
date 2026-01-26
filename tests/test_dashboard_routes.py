@@ -1063,6 +1063,86 @@ orchestrations:
                 assert "Rate limit exceeded" in response2.json()["detail"]
 
 
+class TestToggleRateLimitConfiguration:
+    """Tests for rate limiting configuration (DS-268)."""
+
+    def test_cooldown_configurable_via_environment_variable(self) -> None:
+        """Test that TOGGLE_COOLDOWN_SECONDS is configurable via SENTINEL_TOGGLE_COOLDOWN env var (DS-268)."""
+        import importlib
+        import os
+
+        # Save original values
+        original_env = os.environ.get("SENTINEL_TOGGLE_COOLDOWN")
+
+        try:
+            # Set a custom cooldown value via environment variable
+            os.environ["SENTINEL_TOGGLE_COOLDOWN"] = "5.0"
+
+            # Reimport the module to pick up the new environment variable
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+            # Verify the cooldown was set from the environment variable
+            assert routes.TOGGLE_COOLDOWN_SECONDS == 5.0
+        finally:
+            # Restore original environment
+            if original_env is None:
+                os.environ.pop("SENTINEL_TOGGLE_COOLDOWN", None)
+            else:
+                os.environ["SENTINEL_TOGGLE_COOLDOWN"] = original_env
+
+            # Reload to restore default
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+    def test_cooldown_defaults_to_two_seconds(self) -> None:
+        """Test that TOGGLE_COOLDOWN_SECONDS defaults to 2.0 when env var not set (DS-268)."""
+        import importlib
+        import os
+
+        # Save original value and remove env var
+        original_env = os.environ.get("SENTINEL_TOGGLE_COOLDOWN")
+
+        try:
+            os.environ.pop("SENTINEL_TOGGLE_COOLDOWN", None)
+
+            # Reimport the module
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+            # Verify the default
+            assert routes.TOGGLE_COOLDOWN_SECONDS == 2.0
+        finally:
+            # Restore original environment
+            if original_env is not None:
+                os.environ["SENTINEL_TOGGLE_COOLDOWN"] = original_env
+
+            # Reload
+            from sentinel.dashboard import routes
+
+            importlib.reload(routes)
+
+    def test_last_write_times_uses_ttl_cache(self) -> None:
+        """Test that _last_write_times uses TTLCache for automatic cleanup (DS-268)."""
+        from cachetools import TTLCache
+
+        from sentinel.dashboard import routes
+
+        # Verify _last_write_times is a TTLCache
+        assert isinstance(routes._last_write_times, TTLCache)
+
+    def test_ttl_cache_has_reasonable_limits(self) -> None:
+        """Test that TTLCache has reasonable maxsize and ttl settings (DS-268)."""
+        from sentinel.dashboard import routes
+
+        # Check that cache constants are defined with reasonable values
+        assert routes._RATE_LIMIT_CACHE_TTL == 3600  # 1 hour
+        assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000  # 10k entries
+
+
 class TestToggleOpenApiDocs:
     """Tests for OpenAPI documentation on toggle endpoints (DS-259)."""
 
