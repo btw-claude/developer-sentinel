@@ -1,6 +1,7 @@
 """Unit tests for CursorAgentClient.
 
 DS-294: Tests for the Cursor CLI agent client implementation.
+DS-301: Test fixture improvements and additional validation tests.
 """
 
 from __future__ import annotations
@@ -21,12 +22,40 @@ from sentinel.agent_clients import (
 from sentinel.config import Config
 
 
+@pytest.fixture
+def test_config() -> Config:
+    """Create a default test Config with standard cursor settings."""
+    return Config(
+        agent_workdir=Path("/tmp/test-workdir"),
+        agent_logs_dir=Path("/tmp/test-logs"),
+        cursor_path="/usr/local/bin/cursor",
+        cursor_default_model="claude-3-sonnet",
+        cursor_default_mode="agent",
+    )
+
+
+@pytest.fixture
+def test_config_plan_mode() -> Config:
+    """Create a test Config with plan mode."""
+    return Config(
+        agent_workdir=Path("/tmp/test-workdir"),
+        agent_logs_dir=Path("/tmp/test-logs"),
+        cursor_path="/usr/local/bin/cursor",
+        cursor_default_model="claude-3-sonnet",
+        cursor_default_mode="plan",
+    )
+
+
 def make_test_config(
     cursor_path: str = "/usr/local/bin/cursor",
     cursor_default_model: str = "claude-3-sonnet",
     cursor_default_mode: str = "agent",
 ) -> Config:
-    """Create a Config for testing."""
+    """Create a Config for testing with customizable parameters.
+
+    Note: For simple test cases, prefer using the test_config fixture.
+    This helper is useful when specific parameter overrides are needed.
+    """
     return Config(
         agent_workdir=Path("/tmp/test-workdir"),
         agent_logs_dir=Path("/tmp/test-logs"),
@@ -64,6 +93,13 @@ class TestCursorMode:
 
         assert "Invalid Cursor mode: 'invalid'" in str(exc_info.value)
         assert "Valid modes:" in str(exc_info.value)
+
+    def test_from_string_empty_string_raises(self) -> None:
+        """Test that from_string raises ValueError for empty string."""
+        with pytest.raises(ValueError) as exc_info:
+            CursorMode.from_string("")
+
+        assert "Invalid Cursor mode" in str(exc_info.value)
 
 
 class TestCursorAgentClientInit:
@@ -106,6 +142,40 @@ class TestCursorAgentClientInit:
 
         assert client.base_workdir == base_workdir
         assert client.log_base_dir == log_base_dir
+
+    def test_init_with_empty_cursor_mode_raises_error(self) -> None:
+        """Test that initialization raises AgentClientError when cursor_default_mode is empty."""
+        config = Config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_mode="",
+        )
+
+        with pytest.raises(AgentClientError) as exc_info:
+            CursorAgentClient(config)
+
+        assert "cursor_default_mode is not set" in str(exc_info.value)
+        assert "SENTINEL_CURSOR_DEFAULT_MODE" in str(exc_info.value)
+
+    def test_init_with_whitespace_cursor_mode_raises_error(self) -> None:
+        """Test that initialization raises AgentClientError when cursor_default_mode is whitespace."""
+        config = Config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_mode="   ",
+        )
+
+        with pytest.raises(AgentClientError) as exc_info:
+            CursorAgentClient(config)
+
+        assert "cursor_default_mode is not set" in str(exc_info.value)
+
+    def test_init_using_fixture(self, test_config: Config) -> None:
+        """Test initialization using pytest fixture."""
+        client = CursorAgentClient(test_config)
+
+        assert client.config is test_config
+        assert client.agent_type == "cursor"
+        assert client._cursor_path == "/usr/local/bin/cursor"
+        assert client._default_mode == CursorMode.AGENT
 
 
 class TestCursorAgentClientBuildCommand:
@@ -317,6 +387,86 @@ class TestCursorAgentClientRunAgent:
             client.run_agent("prompt", tools=[])
 
         assert "Failed to execute Cursor CLI" in str(exc_info.value)
+
+    @patch("sentinel.agent_clients.cursor.subprocess.run")
+    def test_run_agent_with_mode_override_enum(self, mock_run: MagicMock) -> None:
+        """Test agent execution with mode override using CursorMode enum."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="Response",
+            stderr="",
+        )
+
+        config = make_test_config(cursor_default_mode="agent")
+        client = CursorAgentClient(config)
+
+        client.run_agent("prompt", tools=[], mode=CursorMode.PLAN)
+
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]
+        assert "--mode=plan" in cmd
+
+    @patch("sentinel.agent_clients.cursor.subprocess.run")
+    def test_run_agent_with_mode_override_string(self, mock_run: MagicMock) -> None:
+        """Test agent execution with mode override using string."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="Response",
+            stderr="",
+        )
+
+        config = make_test_config(cursor_default_mode="agent")
+        client = CursorAgentClient(config)
+
+        client.run_agent("prompt", tools=[], mode="ask")
+
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]
+        assert "--mode=ask" in cmd
+
+    @patch("sentinel.agent_clients.cursor.subprocess.run")
+    def test_run_agent_with_mode_override_case_insensitive(self, mock_run: MagicMock) -> None:
+        """Test that mode override is case-insensitive when using string."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="Response",
+            stderr="",
+        )
+
+        config = make_test_config(cursor_default_mode="agent")
+        client = CursorAgentClient(config)
+
+        client.run_agent("prompt", tools=[], mode="PLAN")
+
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]
+        assert "--mode=plan" in cmd
+
+    @patch("sentinel.agent_clients.cursor.subprocess.run")
+    def test_run_agent_with_invalid_mode_override_raises_error(self, mock_run: MagicMock) -> None:
+        """Test that invalid mode override string raises ValueError."""
+        config = make_test_config()
+        client = CursorAgentClient(config)
+
+        with pytest.raises(ValueError) as exc_info:
+            client.run_agent("prompt", tools=[], mode="invalid_mode")
+
+        assert "Invalid Cursor mode: 'invalid_mode'" in str(exc_info.value)
+
+    @patch("sentinel.agent_clients.cursor.subprocess.run")
+    def test_run_agent_uses_fixture(self, mock_run: MagicMock, test_config: Config) -> None:
+        """Test run_agent using pytest fixture for config."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="Fixture test response",
+            stderr="",
+        )
+
+        client = CursorAgentClient(test_config)
+        result = client.run_agent("test prompt", tools=[])
+
+        assert result.response == "Fixture test response"
+        mock_run.assert_called_once()
 
 
 class TestCursorAgentClientWorkdir:
