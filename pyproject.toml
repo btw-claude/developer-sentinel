@@ -28,7 +28,10 @@ dependencies = [
     "claude-agent-sdk>=0.1.0,<1.0.0",
     "httpx>=0.27.0,<2.0.0",
     "python-dotenv>=1.0.0,<2.0.0",
+    # YAML Libraries - two libraries are needed for different purposes:
+    # - pyyaml: Used for general YAML parsing (simple read operations)
     "pyyaml>=6.0,<7.0.0",
+    # - ruamel.yaml: Used for round-trip YAML editing that preserves comments and formatting
     "ruamel.yaml>=0.18.0,<1.0.0",
     # Dashboard dependencies
     "fastapi>=0.109.0,<1.0.0",
