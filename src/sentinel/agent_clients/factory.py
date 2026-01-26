@@ -167,6 +167,24 @@ def _build_claude_sdk_client(config: Config) -> AgentClient:
     )
 
 
+def _build_cursor_client(config: Config) -> AgentClient:
+    """Builder function for CursorAgentClient.
+
+    Args:
+        config: Configuration object.
+
+    Returns:
+        A configured CursorAgentClient instance.
+    """
+    from sentinel.agent_clients.cursor import CursorAgentClient
+
+    return CursorAgentClient(
+        config=config,
+        base_workdir=config.agent_workdir,
+        log_base_dir=config.agent_logs_dir,
+    )
+
+
 def create_default_factory(config: Config) -> AgentClientFactory:
     """Create a factory with default builders registered.
 
@@ -184,8 +202,8 @@ def create_default_factory(config: Config) -> AgentClientFactory:
     # Register the Claude SDK builder
     factory.register("claude", _build_claude_sdk_client)
 
-    # Future: Register Cursor builder when CursorAgentClient is implemented
-    # factory.register("cursor", _build_cursor_client)
+    # Register the Cursor CLI builder (DS-294)
+    factory.register("cursor", _build_cursor_client)
 
     logger.info(f"Created default factory with registered types: {factory.registered_types}")
     return factory

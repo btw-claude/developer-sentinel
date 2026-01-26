@@ -20,6 +20,10 @@ from sentinel.agent_clients.claude_sdk import (
     request_shutdown,
     reset_shutdown,
 )
+from sentinel.agent_clients.cursor import (
+    CursorAgentClient,
+    CursorMode,
+)
 from sentinel.agent_clients.factory import (
     AgentClientFactory,
     create_default_factory,
@@ -40,6 +44,9 @@ __all__ = [
     "is_shutdown_requested",
     "request_shutdown",
     "reset_shutdown",
+    # Cursor CLI client
+    "CursorAgentClient",
+    "CursorMode",
     # Factory
     "AgentClientFactory",
     "create_default_factory",
