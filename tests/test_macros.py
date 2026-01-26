@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import pytest
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
 
 
 # DS-286: Helper assertion functions for badge testing
 # DS-288: Refactored helpers to use assert_badge_exists internally
-def assert_badge_exists(soup: BeautifulSoup):
+def assert_badge_exists(soup: BeautifulSoup) -> Tag:
     """Assert that a badge element exists in the parsed HTML.
 
     Args:
