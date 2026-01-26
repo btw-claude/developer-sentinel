@@ -15,8 +15,20 @@ from sentinel.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Default agent type used when None is provided to factory methods
+DEFAULT_AGENT_TYPE: AgentType = "claude"
+
 # Type alias for agent client builder functions
 AgentClientBuilder = Callable[[Config], AgentClient]
+
+# Cache key type aliases for documentation clarity:
+# - SimpleCacheKey: Used by get_or_create() - tuple of (agent_type, config_id)
+# - OrchestrationCacheKey: Used by get_or_create_for_orchestration() -
+#   tuple of (agent_type, config_id, kwargs_key) where kwargs_key is a
+#   hashable tuple representation of the kwargs dict
+SimpleCacheKey = tuple[AgentType, int]
+OrchestrationCacheKey = tuple[AgentType, int, tuple[tuple[str, Any], ...]]
+CacheKey = SimpleCacheKey | OrchestrationCacheKey
 
 
 class AgentClientFactory:
@@ -38,7 +50,7 @@ class AgentClientFactory:
     def __init__(self) -> None:
         """Initialize the factory with empty registries."""
         self._builders: dict[AgentType, AgentClientBuilder] = {}
-        self._cache: dict[tuple[AgentType, int], AgentClient] = {}
+        self._cache: dict[CacheKey, AgentClient] = {}
 
     def register(self, agent_type: AgentType, builder: AgentClientBuilder) -> None:
         """Register a builder function for an agent type.
@@ -63,7 +75,7 @@ class AgentClientFactory:
         Raises:
             ValueError: If no builder is registered for the agent type.
         """
-        resolved_type: AgentType = agent_type if agent_type is not None else "claude"
+        resolved_type: AgentType = agent_type if agent_type is not None else DEFAULT_AGENT_TYPE
 
         if resolved_type not in self._builders:
             available = list(self._builders.keys())
@@ -96,8 +108,8 @@ class AgentClientFactory:
         Raises:
             ValueError: If no builder is registered for the agent type.
         """
-        resolved_type: AgentType = agent_type if agent_type is not None else "claude"
-        cache_key = (resolved_type, id(config))
+        resolved_type: AgentType = agent_type if agent_type is not None else DEFAULT_AGENT_TYPE
+        cache_key: SimpleCacheKey = (resolved_type, id(config))
 
         if cache_key in self._cache:
             logger.debug(f"Returning cached {resolved_type} agent client")
@@ -151,9 +163,9 @@ class AgentClientFactory:
             ValueError: If no builder is registered for the agent type.
             TypeError: If any kwargs values are not hashable.
         """
-        resolved_type: AgentType = orch_agent_type if orch_agent_type is not None else "claude"
+        resolved_type: AgentType = orch_agent_type if orch_agent_type is not None else DEFAULT_AGENT_TYPE
         kwargs_key = self._make_kwargs_hashable(kwargs)
-        cache_key = (resolved_type, id(config), kwargs_key)
+        cache_key: OrchestrationCacheKey = (resolved_type, id(config), kwargs_key)
 
         if cache_key in self._cache:
             logger.debug(
