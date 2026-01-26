@@ -9,12 +9,14 @@ import pytest
 from sentinel.config import (
     MAX_PORT,
     MIN_PORT,
+    VALID_AGENT_TYPES,
     VALID_CURSOR_MODES,
     VALID_LOG_LEVELS,
     Config,
     _parse_bool,
     _parse_port,
     _parse_positive_int,
+    _validate_agent_type,
     _validate_cursor_mode,
     _validate_log_level,
     load_config,
@@ -655,6 +657,34 @@ class TestDisableStreamingLogsConfig:
         assert config.disable_streaming_logs is False
 
 
+class TestValidateAgentType:
+    """Tests for _validate_agent_type helper function (DS-300)."""
+
+    def test_valid_agent_types(self) -> None:
+        """Test that all valid agent types are accepted."""
+        for agent_type in VALID_AGENT_TYPES:
+            assert _validate_agent_type(agent_type) == agent_type
+
+    def test_case_insensitive(self) -> None:
+        """Test that agent type validation is case-insensitive."""
+        assert _validate_agent_type("CLAUDE") == "claude"
+        assert _validate_agent_type("Cursor") == "cursor"
+        assert _validate_agent_type("CURSOR") == "cursor"
+
+    def test_invalid_agent_type(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that invalid agent type returns default and logs warning."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_agent_type("invalid")
+        assert result == "claude"
+        assert "Invalid SENTINEL_DEFAULT_AGENT_TYPE: 'invalid' is not valid" in caplog.text
+
+    def test_invalid_with_custom_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that invalid agent type uses custom default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_agent_type("invalid", default="cursor")
+        assert result == "cursor"
+
+
 class TestValidateCursorMode:
     """Tests for _validate_cursor_mode helper function (DS-293)."""
 
@@ -777,3 +807,23 @@ class TestCursorConfig:
 
         assert config.cursor_default_mode == "agent"
         assert "Invalid SENTINEL_CURSOR_DEFAULT_MODE" in caplog.text
+
+    def test_default_agent_type_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that default_agent_type parsing is case-insensitive (DS-300)."""
+        monkeypatch.setenv("SENTINEL_DEFAULT_AGENT_TYPE", "CURSOR")
+
+        config = load_config()
+
+        assert config.default_agent_type == "cursor"
+
+    def test_default_agent_type_invalid_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid default_agent_type uses the default (DS-300)."""
+        monkeypatch.setenv("SENTINEL_DEFAULT_AGENT_TYPE", "invalid")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.default_agent_type == "claude"
+        assert "Invalid SENTINEL_DEFAULT_AGENT_TYPE" in caplog.text

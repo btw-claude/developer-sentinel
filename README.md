@@ -81,6 +81,17 @@ Configure these for direct REST API access, which is faster than SDK-based polli
 | `SENTINEL_AGENT_WORKDIR` | No | `./workdir` | Base directory for agent working directories |
 | `SENTINEL_AGENT_LOGS_DIR` | No | `./logs` | Base directory for agent execution logs |
 
+#### Cursor CLI Configuration
+
+Configure these to enable Cursor as an alternative agent type:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SENTINEL_DEFAULT_AGENT_TYPE` | No | `claude` | Default agent type (`claude`, `cursor`) |
+| `SENTINEL_CURSOR_PATH` | No | - | Path to Cursor CLI executable |
+| `SENTINEL_CURSOR_DEFAULT_MODEL` | No | - | Default model for Cursor agent |
+| `SENTINEL_CURSOR_DEFAULT_MODE` | No | `agent` | Default Cursor mode (`agent`, `plan`, `ask`) |
+
 ## Usage
 
 ```bash

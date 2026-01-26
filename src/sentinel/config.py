@@ -15,6 +15,9 @@ VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 # Valid Cursor modes
 VALID_CURSOR_MODES = frozenset({"agent", "plan", "ask"})
 
+# Valid agent types
+VALID_AGENT_TYPES = frozenset({"claude", "cursor"})
+
 # Port validation bounds
 MIN_PORT = 1
 MAX_PORT = 65535
@@ -225,6 +228,30 @@ def _validate_cursor_mode(value: str, default: str = "agent") -> str:
     return normalized
 
 
+def _validate_agent_type(value: str, default: str = "claude") -> str:
+    """Validate and normalize an agent type string.
+
+    Args:
+        value: The agent type string to validate.
+        default: The default value to use if invalid.
+
+    Returns:
+        The validated agent type (lowercase), or the default if invalid.
+
+    Logs a warning if the value is invalid.
+    """
+    normalized = value.lower()
+    if normalized not in VALID_AGENT_TYPES:
+        logging.warning(
+            "Invalid SENTINEL_DEFAULT_AGENT_TYPE: '%s' is not valid, using default '%s'. Valid values: %s",
+            value,
+            default,
+            ", ".join(sorted(VALID_AGENT_TYPES)),
+        )
+        return default
+    return normalized
+
+
 def load_config(env_file: Path | None = None) -> Config:
     """Load configuration from environment variables.
 
@@ -312,8 +339,10 @@ def load_config(env_file: Path | None = None) -> Config:
     orchestration_logs_dir_str = os.getenv("SENTINEL_ORCHESTRATION_LOGS_DIR", "")
     orchestration_logs_dir = Path(orchestration_logs_dir_str) if orchestration_logs_dir_str else None
 
-    # Parse Cursor CLI configuration (DS-293)
-    default_agent_type = os.getenv("SENTINEL_DEFAULT_AGENT_TYPE", "claude")
+    # Parse Cursor CLI configuration (DS-293, DS-300)
+    default_agent_type = _validate_agent_type(
+        os.getenv("SENTINEL_DEFAULT_AGENT_TYPE", "claude"),
+    )
     cursor_path = os.getenv("SENTINEL_CURSOR_PATH", "")
     cursor_default_model = os.getenv("SENTINEL_CURSOR_DEFAULT_MODEL", "")
     cursor_default_mode = _validate_cursor_mode(
