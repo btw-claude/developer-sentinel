@@ -175,6 +175,10 @@ class DashboardState:
     jira_projects: list[ProjectOrchestrations] = field(default_factory=list)
     github_repos: list[ProjectOrchestrations] = field(default_factory=list)
 
+    # Active orchestration counts (DS-255) - count of projects/repos with running orchestrations
+    active_jira_projects_count: int = 0
+    active_github_repos_count: int = 0
+
     # Execution state
     active_execution_count: int = 0
     available_slots: int = 0
@@ -325,6 +329,18 @@ class SentinelStateAccessor:
             uptime_seconds=(now - start_time).total_seconds(),
         )
 
+        # Count projects/repos with active orchestrations (DS-255)
+        # Build a mapping from orchestration name to its project/repo
+        active_orchestration_names = {step.orchestration_name for step in running_step_views}
+        active_jira_projects: set[str] = set()
+        active_github_repos: set[str] = set()
+        for orch in orchestration_infos:
+            if orch.name in active_orchestration_names:
+                if orch.trigger_source == "jira" and orch.trigger_project:
+                    active_jira_projects.add(orch.trigger_project)
+                elif orch.trigger_source == "github" and orch.trigger_repo:
+                    active_github_repos.add(orch.trigger_repo)
+
         return DashboardState(
             poll_interval=config.poll_interval,
             max_concurrent_executions=config.max_concurrent_executions,
@@ -334,6 +350,8 @@ class SentinelStateAccessor:
             pending_removal_versions=pending_removal_version_infos,
             jira_projects=jira_projects,
             github_repos=github_repos,
+            active_jira_projects_count=len(active_jira_projects),
+            active_github_repos_count=len(active_github_repos),
             active_execution_count=active_count,
             available_slots=available_slots,
             running_steps=running_step_views,
