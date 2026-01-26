@@ -226,14 +226,15 @@
          * DS-270: Centralized CSS fallback color constants for cross-browser compatibility.
          * These fallback values are used when CSS custom properties are not supported.
          * Matches the CSS custom properties defined in :root for consistency.
+         * DS-276: Added Object.freeze() for defensive programming best practices.
          * @constant {Object}
          */
-        const CSS_FALLBACK_COLORS = {
+        const CSS_FALLBACK_COLORS = Object.freeze({
             danger: '#e63946',
             success: '#00d26a',
             warning: '#f9c74f',
             textPrimary: '#ffffff'
-        };
+        });
 
         /**
          * Toggle a collapsible section's expanded state.
