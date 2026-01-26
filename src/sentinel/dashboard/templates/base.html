@@ -283,32 +283,53 @@
         }
 
         /**
-         * Handle toggle API response with optimistic updates and error handling (DS-254).
+         * Handle toggle API response with optimistic updates and error handling (DS-254, DS-261).
          * Reverts checkbox state on failure and updates status text on success.
+         * DS-261: Added try/catch for JSON.parse, null check for closest('td'),
+         *         success toast notification, and improved error handling.
          * @param {Event} event - The HTMX event containing the XHR response
          */
         function handleToggleResponse(event) {
             const response = event.detail.xhr.response;
-            const data = JSON.parse(response);
+
+            // DS-261: Wrap JSON.parse in try/catch for graceful error handling of malformed JSON
+            let data;
+            try {
+                data = JSON.parse(response);
+            } catch (parseError) {
+                console.error('handleToggleResponse: Failed to parse JSON response:', parseError);
+                // Revert checkbox state on parse error
+                event.target.checked = !event.target.checked;
+                showToast('error', 'Failed to process server response');
+                return;
+            }
 
             if (!data.success) {
                 // Revert checkbox state
                 event.target.checked = !event.target.checked;
                 // Show error toast/notification
-                showToast('error', data.message);
+                showToast('error', data.message || 'Toggle operation failed');
             } else {
-                // Update status text if present
-                const statusText = event.target.closest('td').querySelector('.status-text');
-                if (statusText) {
-                    statusText.textContent = data.enabled ? 'Enabled' : 'Disabled';
-                    statusText.className = 'status-text ' + (data.enabled ? 'status-ok' : 'status-warn');
+                // DS-261: Add null check for event.target.closest('td') to prevent potential errors
+                const parentCell = event.target.closest('td');
+                if (parentCell) {
+                    // Update status text if present
+                    const statusText = parentCell.querySelector('.status-text');
+                    if (statusText) {
+                        statusText.textContent = data.enabled ? 'Enabled' : 'Disabled';
+                        statusText.className = 'status-text ' + (data.enabled ? 'status-ok' : 'status-warn');
+                    }
                 }
+                // DS-261: Add success toast notification for positive user feedback
+                const statusMessage = data.enabled ? 'Enabled' : 'Disabled';
+                showToast('success', 'Orchestration ' + statusMessage.toLowerCase() + ' successfully');
             }
         }
 
         /**
-         * Display a toast notification for user feedback (DS-254).
+         * Display a toast notification for user feedback (DS-254, DS-261).
          * Creates a temporary notification that auto-dismisses after a duration.
+         * DS-261: Added CSS variable fallbacks for better cross-browser compatibility.
          * @param {string} type - The notification type: 'error', 'success', or 'warning'
          * @param {string} message - The message to display
          * @param {number} [duration=5000] - How long to show the toast in milliseconds
@@ -327,15 +348,16 @@
             const toast = document.createElement('div');
             toast.className = 'toast toast-' + type;
 
-            // Set colors based on type
+            // DS-261: Set colors based on type with CSS variable fallbacks for cross-browser compatibility
             const colors = {
-                error: 'var(--danger)',
-                success: 'var(--success)',
-                warning: 'var(--warning)'
+                error: 'var(--danger, #e63946)',
+                success: 'var(--success, #00d26a)',
+                warning: 'var(--warning, #f9c74f)'
             };
             const bgColor = colors[type] || colors.error;
 
-            toast.style.cssText = 'background-color: ' + bgColor + '; color: var(--text-primary); padding: 0.75rem 1rem; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); max-width: 300px; animation: slideIn 0.3s ease-out;';
+            // DS-261: Added fallback values for CSS variables (e.g., var(--text-primary, #ffffff))
+            toast.style.cssText = 'background-color: ' + bgColor + '; color: var(--text-primary, #ffffff); padding: 0.75rem 1rem; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); max-width: 300px; animation: slideIn 0.3s ease-out;';
             toast.textContent = message;
 
             // Add slide-in animation if not already defined
