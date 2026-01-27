@@ -100,10 +100,18 @@ class TriggerConfig:
         - query_filter: Additional GitHub search syntax (DEPRECATED for GitHub)
         - tags: List of tags/labels (DEPRECATED for GitHub, still used for Jira)
 
+    **GitHub labels field (preferred for source="github"):**
+        - labels: List of GitHub labels to filter by (case-insensitive matching)
+
     **Tag matching behavior (Jira only):**
         When multiple tags are specified, issues must have ALL tags to match (AND logic).
         For example, tags: ["needs-review", "priority-high"] will only match issues
         that have both labels applied.
+
+    **Label matching behavior (GitHub only):**
+        When multiple labels are specified, issues must have ALL labels to match (AND logic).
+        For example, labels: ["bug", "needs-triage"] will only match issues
+        that have both labels applied. Matching is case-insensitive.
 
     Attributes:
         source: The source system for triggers ("jira" or "github").
@@ -124,6 +132,9 @@ class TriggerConfig:
             Required when source is "github".
         project_filter: JQL-like query for filtering items by project field values.
             Only used when source is "github". Example: "Status = 'In Progress'"
+        labels: List of GitHub labels to filter by. Only used when source is "github".
+            Issues must have ALL specified labels to match (AND logic).
+            Matching is case-insensitive.
     """
 
     source: Literal["jira", "github"] = "jira"
@@ -138,6 +149,7 @@ class TriggerConfig:
     project_scope: Literal["org", "user"] = "org"
     project_owner: str = ""
     project_filter: str = ""
+    labels: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -499,6 +511,7 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     project_scope = data.get("project_scope", "org")
     project_owner = data.get("project_owner", "")
     project_filter = data.get("project_filter", "")
+    labels = data.get("labels", [])
 
     # Validation for GitHub triggers
     if source == "github":
@@ -554,6 +567,7 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
         project_scope=project_scope,
         project_owner=project_owner,
         project_filter=project_filter,
+        labels=labels,
     )
 
 
