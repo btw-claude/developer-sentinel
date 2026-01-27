@@ -700,6 +700,9 @@ class TestSentinelConcurrentExecution:
                 issue_key: str | None = None,
                 model: str | None = None,
                 orchestration_name: str | None = None,
+                branch: str | None = None,
+                create_branch: bool = False,
+                base_branch: str = "main",
             ) -> AgentRunResult:
                 nonlocal execution_count, max_concurrent_seen
                 with lock:
@@ -1334,6 +1337,9 @@ class TestPerOrchestrationConcurrencyLimits:
                 issue_key: str | None = None,
                 model: str | None = None,
                 orchestration_name: str | None = None,
+                branch: str | None = None,
+                create_branch: bool = False,
+                base_branch: str = "main",
             ) -> AgentRunResult:
                 time.sleep(0.05)
                 return AgentRunResult(response="FAILURE: Error occurred", workdir=None)
