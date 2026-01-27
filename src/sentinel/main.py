@@ -1488,8 +1488,12 @@ class Sentinel:
 
         for orch in orchestrations:
             # Build deduplication key from project configuration
+            # DS-340: Include project_filter and labels in deduplication key
+            # to allow separate polling for orchestrations with same project
+            # but different filter criteria
             trigger_key = (
                 f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+                f":{orch.trigger.project_filter}:{','.join(orch.trigger.labels)}"
             )
             if trigger_key not in seen_triggers:
                 seen_triggers.add(trigger_key)
