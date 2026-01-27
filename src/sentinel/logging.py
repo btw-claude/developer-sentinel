@@ -43,8 +43,8 @@ def parse_log_filename(filename: str) -> datetime | None:
         Parsed datetime, or None if the filename doesn't match the expected format.
     """
     try:
-        # Remove .log extension
-        name = filename.rsplit(".", 1)[0]
+        # Remove .log extension using explicit suffix removal
+        name = filename.removesuffix(LOG_FILENAME_EXTENSION)
         return datetime.strptime(name, LOG_FILENAME_FORMAT)
     except (ValueError, IndexError):
         return None
