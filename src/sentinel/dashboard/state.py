@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from sentinel.logging import LOG_FILENAME_FORMAT, generate_log_filename, parse_log_filename
+
 if TYPE_CHECKING:
     from sentinel.main import QueuedIssueInfo, RunningStepInfo, Sentinel
     from sentinel.orchestration import Orchestration, OrchestrationVersion
@@ -309,7 +311,7 @@ class SentinelStateAccessor:
                 attempt_number=step.attempt_number,
                 started_at=step.started_at,
                 elapsed_seconds=(now - step.started_at).total_seconds(),
-                log_filename=step.started_at.strftime("%Y%m%d_%H%M%S") + ".log",
+                log_filename=generate_log_filename(step.started_at),
                 issue_url=step.issue_url,  # DS-322: Pass through issue URL
             )
             for step in running_steps_raw
@@ -526,14 +528,10 @@ class SentinelStateAccessor:
         Returns:
             Human-readable display name.
         """
-        try:
-            # Remove .log extension
-            name = filename.rsplit(".", 1)[0]
-            # Parse datetime
-            dt = datetime.strptime(name, "%Y%m%d_%H%M%S")
+        dt = parse_log_filename(filename)
+        if dt is not None:
             return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return filename
+        return filename
 
     def get_log_file_path(self, orchestration: str, filename: str) -> Path | None:
         """Get the full path to a log file (DS-127).
