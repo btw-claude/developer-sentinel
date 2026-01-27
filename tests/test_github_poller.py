@@ -1402,6 +1402,75 @@ class TestGitHubPollerLabelFiltering:
         assert issues[0].number == 1
         assert issues[1].number == 2
 
+    def test_poll_labels_none_vs_empty_list_handled_identically(self) -> None:
+        """Test that labels=None and labels=[] both result in no filtering.
+
+        This ensures consistent behavior whether the labels parameter is
+        explicitly set to an empty list or left as None (the default).
+        """
+        project_items = [
+            {
+                "id": "item1",
+                "content": {
+                    "type": "Issue",
+                    "number": 1,
+                    "title": "Issue with labels",
+                    "state": "OPEN",
+                    "url": "https://github.com/org/repo/issues/1",
+                    "body": "",
+                    "labels": ["bug", "urgent"],
+                    "assignees": [],
+                    "author": "author",
+                },
+                "fieldValues": [],
+            },
+            {
+                "id": "item2",
+                "content": {
+                    "type": "Issue",
+                    "number": 2,
+                    "title": "Issue without labels",
+                    "state": "OPEN",
+                    "url": "https://github.com/org/repo/issues/2",
+                    "body": "",
+                    "labels": [],
+                    "assignees": [],
+                    "author": "author",
+                },
+                "fieldValues": [],
+            },
+        ]
+
+        # Test with labels=None (default)
+        client_none = MockGitHubClient(project_items=project_items)
+        poller_none = GitHubPoller(client_none)
+        trigger_none = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="org",
+            project_scope="org",
+            # labels not specified, defaults to None
+        )
+        issues_none = poller_none.poll(trigger_none)
+
+        # Test with labels=[]
+        client_empty = MockGitHubClient(project_items=project_items)
+        poller_empty = GitHubPoller(client_empty)
+        trigger_empty = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="org",
+            project_scope="org",
+            labels=[],  # Explicitly empty list
+        )
+        issues_empty = poller_empty.poll(trigger_empty)
+
+        # Both should return all issues (no filtering applied)
+        assert len(issues_none) == 2, "labels=None should return all issues"
+        assert len(issues_empty) == 2, "labels=[] should return all issues"
+        assert issues_none[0].number == issues_empty[0].number
+        assert issues_none[1].number == issues_empty[1].number
+
     def test_poll_labels_filter_issue_with_no_labels_rejected(self) -> None:
         """Test that issues without labels are rejected when filter requires labels."""
         client = MockGitHubClient(
