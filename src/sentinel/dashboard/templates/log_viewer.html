@@ -495,5 +495,24 @@ logfileSelect.addEventListener('change', loadLogFile);
 pauseBtn.addEventListener('click', togglePause);
 document.getElementById('refresh-btn').addEventListener('click', refreshLogFiles);
 scrollIndicator.addEventListener('click', scrollToBottom);
+
+// Auto-select from URL query parameters (for direct links from Running Steps)
+(function initFromUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const orchestration = params.get('orchestration');
+    const file = params.get('file');
+
+    if (orchestration) {
+        orchestrationSelect.value = orchestration;
+        updateLogFileOptions();
+
+        if (file) {
+            setTimeout(() => {
+                logfileSelect.value = file;
+                loadLogFile();
+            }, 0);
+        }
+    }
+})();
 </script>
 {% endblock %}
