@@ -695,3 +695,144 @@ class TestKwargsBasedCacheKeyDifferentiation:
         assert client2_again is client2, "Same kwargs should return cached instance"
         assert client3_again is client3, "Same kwargs should return cached instance"
         assert len(created_clients) == 3, "No new creations for cached kwargs"
+
+
+class TestEmptyKwargsEdgeCases:
+    """Tests for empty kwargs vs no kwargs edge cases in get_or_create_for_orchestration.
+
+    DS-316: These tests verify that get_or_create_for_orchestration handles
+    the edge case of empty kwargs {} vs no kwargs consistently, ensuring that
+    both calling patterns produce the same cache key and return the same
+    cached client instance.
+    """
+
+    def test_no_kwargs_vs_empty_kwargs_dict_returns_same_instance(self) -> None:
+        """Verify that no kwargs and explicit empty kwargs {} return the same cached instance.
+
+        DS-316: This test ensures that calling get_or_create_for_orchestration
+        without any kwargs and calling it with an explicit empty dict (**{})
+        produce identical cache keys and return the same cached instance.
+
+        This edge case is important for consistency when callers might
+        conditionally pass kwargs that could be empty.
+        """
+        factory = AgentClientFactory()
+        config = make_test_config()
+        creation_count = 0
+
+        def counting_builder(cfg: Config) -> MockAgentClient:
+            nonlocal creation_count
+            creation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", counting_builder)
+
+        # Call with no kwargs
+        client_no_kwargs = factory.get_or_create_for_orchestration("claude", config)
+        assert creation_count == 1, "First call should create a new instance"
+
+        # Call with explicit empty dict unpacked as kwargs
+        empty_dict: dict[str, Any] = {}
+        client_empty_kwargs = factory.get_or_create_for_orchestration(
+            "claude", config, **empty_dict
+        )
+
+        assert client_no_kwargs is client_empty_kwargs, (
+            "No kwargs and empty kwargs {} should return the same cached instance"
+        )
+        assert creation_count == 1, (
+            "Empty kwargs should use the same cache key as no kwargs - "
+            "builder should not be called again"
+        )
+
+    def test_empty_kwargs_cache_key_generation_consistency(self) -> None:
+        """Verify that _make_kwargs_hashable handles empty dict consistently.
+
+        DS-316: This test validates that the cache key generation produces
+        consistent results for empty kwargs scenarios, ensuring the tuple
+        representation is identical whether kwargs is implicitly or explicitly
+        empty.
+        """
+        factory = AgentClientFactory()
+
+        # Test that empty dict produces empty tuple
+        empty_result = factory._make_kwargs_hashable({})
+        assert empty_result == (), "Empty dict should produce empty tuple"
+
+        # Verify the tuple is hashable (can be used as cache key component)
+        assert hash(empty_result) is not None, "Result should be hashable"
+
+    def test_multiple_calls_with_various_empty_kwargs_patterns(self) -> None:
+        """Verify consistent caching across multiple empty kwargs call patterns.
+
+        DS-316: This comprehensive test verifies that all variations of
+        "empty kwargs" calls return the same cached instance:
+        1. No kwargs at all
+        2. Unpacked empty dict
+        3. Multiple sequential calls with mixed patterns
+        """
+        factory = AgentClientFactory()
+        config = make_test_config()
+        creation_count = 0
+
+        def counting_builder(cfg: Config) -> MockAgentClient:
+            nonlocal creation_count
+            creation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", counting_builder)
+
+        # Pattern 1: No kwargs
+        client1 = factory.get_or_create_for_orchestration("claude", config)
+
+        # Pattern 2: Explicit empty dict
+        client2 = factory.get_or_create_for_orchestration("claude", config, **{})
+
+        # Pattern 3: Variable containing empty dict
+        empty_kwargs: dict[str, Any] = {}
+        client3 = factory.get_or_create_for_orchestration("claude", config, **empty_kwargs)
+
+        # Pattern 4: Another no-kwargs call after the empty dict calls
+        client4 = factory.get_or_create_for_orchestration("claude", config)
+
+        # All should be the exact same instance
+        assert client1 is client2, "No kwargs and **{} should return same instance"
+        assert client2 is client3, "All empty kwargs patterns should return same instance"
+        assert client3 is client4, "Mixed call patterns should still return same instance"
+        assert creation_count == 1, (
+            "All empty kwargs variations should share the same cache key - "
+            "only one instance should be created"
+        )
+
+    def test_empty_kwargs_distinct_from_kwargs_with_none_value(self) -> None:
+        """Verify empty kwargs is distinct from kwargs containing None values.
+
+        DS-316: This test confirms that empty kwargs {} is correctly
+        differentiated from kwargs that contain explicit None values,
+        as these represent semantically different configurations.
+        """
+        factory = AgentClientFactory()
+        config = make_test_config()
+        creation_count = 0
+
+        def counting_builder(cfg: Config) -> MockAgentClient:
+            nonlocal creation_count
+            creation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", counting_builder)
+
+        # Empty kwargs
+        client_empty = factory.get_or_create_for_orchestration("claude", config)
+
+        # Kwargs with explicit None value - should be different
+        client_with_none = factory.get_or_create_for_orchestration(
+            "claude", config, some_option=None
+        )
+
+        assert client_empty is not client_with_none, (
+            "Empty kwargs should be distinct from kwargs containing None values"
+        )
+        assert creation_count == 2, (
+            "Empty kwargs and kwargs-with-None should create separate instances"
+        )
