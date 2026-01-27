@@ -394,6 +394,22 @@ class GitHubPoller:
                 fields[field_name] = value
         return fields
 
+    def _issue_has_all_labels(self, issue: GitHubIssue, required_labels: list[str]) -> bool:
+        """Check if issue has all required labels (case-insensitive AND logic).
+
+        Args:
+            issue: GitHubIssue to check labels on.
+            required_labels: List of labels that must all be present.
+
+        Returns:
+            True if issue has all required labels, False otherwise.
+        """
+        issue_labels_lower = {label.lower() for label in issue.labels}
+        for label in required_labels:
+            if label.lower() not in issue_labels_lower:
+                return False
+        return True
+
     def _apply_filter(
         self, items: list[dict[str, Any]], filter_expr: str
     ) -> list[dict[str, Any]]:
@@ -521,6 +537,9 @@ class GitHubPoller:
                 for item in filtered_items:
                     issue = GitHubIssue.from_project_item(item)
                     if issue is not None:
+                        if trigger.labels:
+                            if not self._issue_has_all_labels(issue, trigger.labels):
+                                continue
                         issues.append(issue)
 
                 logger.info(
