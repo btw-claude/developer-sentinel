@@ -2107,6 +2107,300 @@ orchestrations:
         assert orch.on_failure.add_tag == "review-failed"
 
 
+class TestLabelsAndTagsValidation:
+    """Tests for labels and tags field validation in TriggerConfig (DS-334).
+
+    These tests verify that labels and tags fields are properly validated:
+    - Must be a list if provided
+    - Each item must be a non-empty string
+    """
+
+    def test_labels_not_list_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when labels is not a list."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-labels"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      labels: "not-a-list"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "invalid_labels_type.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="labels must be a list"):
+            load_orchestration_file(file_path)
+
+    def test_labels_with_empty_string_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when labels contains an empty string."""
+        yaml_content = """
+orchestrations:
+  - name: "empty-label"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      labels:
+        - "bug"
+        - ""
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "empty_label.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="labels must contain non-empty strings"):
+            load_orchestration_file(file_path)
+
+    def test_labels_with_whitespace_only_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when labels contains whitespace-only string."""
+        yaml_content = """
+orchestrations:
+  - name: "whitespace-label"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      labels:
+        - "   "
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "whitespace_label.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="labels must contain non-empty strings"):
+            load_orchestration_file(file_path)
+
+    def test_labels_with_non_string_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when labels contains a non-string value."""
+        yaml_content = """
+orchestrations:
+  - name: "non-string-label"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      labels:
+        - "bug"
+        - 123
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "non_string_label.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="labels must contain non-empty strings"):
+            load_orchestration_file(file_path)
+
+    def test_valid_labels_list_loads_successfully(self, tmp_path: Path) -> None:
+        """Should load orchestration with valid labels list."""
+        yaml_content = """
+orchestrations:
+  - name: "valid-labels"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      labels:
+        - "bug"
+        - "urgent"
+        - "needs-triage"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "valid_labels.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.labels == ["bug", "urgent", "needs-triage"]
+
+    def test_tags_not_list_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when tags is not a list."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-tags"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: "not-a-list"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "invalid_tags_type.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="tags must be a list"):
+            load_orchestration_file(file_path)
+
+    def test_tags_with_empty_string_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when tags contains an empty string."""
+        yaml_content = """
+orchestrations:
+  - name: "empty-tag"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags:
+        - "review"
+        - ""
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "empty_tag.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="tags must contain non-empty strings"):
+            load_orchestration_file(file_path)
+
+    def test_tags_with_whitespace_only_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when tags contains whitespace-only string."""
+        yaml_content = """
+orchestrations:
+  - name: "whitespace-tag"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags:
+        - "   "
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "whitespace_tag.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="tags must contain non-empty strings"):
+            load_orchestration_file(file_path)
+
+    def test_tags_with_non_string_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when tags contains a non-string value."""
+        yaml_content = """
+orchestrations:
+  - name: "non-string-tag"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags:
+        - "review"
+        - 456
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "non_string_tag.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="tags must contain non-empty strings"):
+            load_orchestration_file(file_path)
+
+    def test_valid_tags_list_loads_successfully(self, tmp_path: Path) -> None:
+        """Should load orchestration with valid tags list."""
+        yaml_content = """
+orchestrations:
+  - name: "valid-tags"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags:
+        - "review"
+        - "priority-high"
+        - "backend"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "valid_tags.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.tags == ["review", "priority-high", "backend"]
+
+    def test_empty_labels_list_allowed(self, tmp_path: Path) -> None:
+        """Should allow empty labels list."""
+        yaml_content = """
+orchestrations:
+  - name: "empty-labels"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      labels: []
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "empty_labels_list.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.labels == []
+
+    def test_empty_tags_list_allowed(self, tmp_path: Path) -> None:
+        """Should allow empty tags list."""
+        yaml_content = """
+orchestrations:
+  - name: "empty-tags"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: []
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "empty_tags_list.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.tags == []
+
+    def test_labels_with_dict_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when labels is a dict instead of list."""
+        yaml_content = """
+orchestrations:
+  - name: "dict-labels"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      labels:
+        key: value
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "dict_labels.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="labels must be a list"):
+            load_orchestration_file(file_path)
+
+    def test_tags_with_dict_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when tags is a dict instead of list."""
+        yaml_content = """
+orchestrations:
+  - name: "dict-tags"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags:
+        key: value
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "dict_tags.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="tags must be a list"):
+            load_orchestration_file(file_path)
+
+
 class TestAgentType:
     """Tests for agent_type and cursor_mode fields in AgentConfig (DS-295).
 
