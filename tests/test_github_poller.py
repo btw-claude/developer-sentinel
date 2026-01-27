@@ -1100,3 +1100,396 @@ class TestGitHubPollerBuildQueryDeprecation:
             assert issubclass(w[0].category, DeprecationWarning)
             assert "deprecated" in str(w[0].message).lower()
             assert "project-based" in str(w[0].message).lower()
+
+
+class TestGitHubPollerLabelFiltering:
+    """Tests for label filtering in GitHubPoller.poll() (DS-333).
+
+    These tests verify the labels field filtering functionality:
+    - Test poll() with labels filter
+    - Test AND logic (must have ALL labels)
+    - Test case-insensitive matching
+    - Test combination of labels + project_filter
+    - Test empty labels list (no filtering)
+    """
+
+    def test_poll_with_label_filter(self) -> None:
+        """Test polling with label filtering returns only matching issues."""
+        client = MockGitHubClient(
+            project_items=[
+                {
+                    "id": "item1",
+                    "content": {
+                        "type": "Issue",
+                        "number": 1,
+                        "title": "Bug with urgent label",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/1",
+                        "body": "",
+                        "labels": ["bug", "urgent"],
+                        "assignees": [],
+                        "author": "author1",
+                    },
+                    "fieldValues": [],
+                },
+                {
+                    "id": "item2",
+                    "content": {
+                        "type": "Issue",
+                        "number": 2,
+                        "title": "Feature request",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/2",
+                        "body": "",
+                        "labels": ["feature"],
+                        "assignees": [],
+                        "author": "author2",
+                    },
+                    "fieldValues": [],
+                },
+            ]
+        )
+        poller = GitHubPoller(client)
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="org",
+            project_scope="org",
+            labels=["bug", "urgent"],
+        )
+
+        issues = poller.poll(trigger)
+
+        assert len(issues) == 1
+        assert issues[0].number == 1
+        assert issues[0].title == "Bug with urgent label"
+
+    def test_poll_labels_and_logic_must_have_all_labels(self) -> None:
+        """Test that issues must have ALL specified labels (AND logic)."""
+        client = MockGitHubClient(
+            project_items=[
+                {
+                    "id": "item1",
+                    "content": {
+                        "type": "Issue",
+                        "number": 1,
+                        "title": "Has both labels",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/1",
+                        "body": "",
+                        "labels": ["bug", "urgent", "needs-review"],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [],
+                },
+                {
+                    "id": "item2",
+                    "content": {
+                        "type": "Issue",
+                        "number": 2,
+                        "title": "Only has bug label",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/2",
+                        "body": "",
+                        "labels": ["bug"],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [],
+                },
+                {
+                    "id": "item3",
+                    "content": {
+                        "type": "Issue",
+                        "number": 3,
+                        "title": "Only has urgent label",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/3",
+                        "body": "",
+                        "labels": ["urgent"],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [],
+                },
+            ]
+        )
+        poller = GitHubPoller(client)
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="org",
+            project_scope="org",
+            labels=["bug", "urgent"],
+        )
+
+        issues = poller.poll(trigger)
+
+        # Only the first issue has BOTH "bug" AND "urgent"
+        assert len(issues) == 1
+        assert issues[0].number == 1
+
+    def test_poll_labels_case_insensitive_matching(self) -> None:
+        """Test that label matching is case-insensitive."""
+        client = MockGitHubClient(
+            project_items=[
+                {
+                    "id": "item1",
+                    "content": {
+                        "type": "Issue",
+                        "number": 1,
+                        "title": "Mixed case labels",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/1",
+                        "body": "",
+                        "labels": ["BUG", "Urgent"],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [],
+                },
+                {
+                    "id": "item2",
+                    "content": {
+                        "type": "Issue",
+                        "number": 2,
+                        "title": "Lowercase labels",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/2",
+                        "body": "",
+                        "labels": ["bug", "urgent"],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [],
+                },
+            ]
+        )
+        poller = GitHubPoller(client)
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="org",
+            project_scope="org",
+            labels=["bug", "URGENT"],  # Mixed case in filter
+        )
+
+        issues = poller.poll(trigger)
+
+        # Both issues should match due to case-insensitive comparison
+        assert len(issues) == 2
+        assert issues[0].number == 1
+        assert issues[1].number == 2
+
+    def test_poll_labels_combined_with_project_filter(self) -> None:
+        """Test polling with both labels and project_filter."""
+        client = MockGitHubClient(
+            project_items=[
+                {
+                    "id": "item1",
+                    "content": {
+                        "type": "Issue",
+                        "number": 1,
+                        "title": "Ready bug",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/1",
+                        "body": "",
+                        "labels": ["bug"],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [{"field": "Status", "value": "Ready"}],
+                },
+                {
+                    "id": "item2",
+                    "content": {
+                        "type": "Issue",
+                        "number": 2,
+                        "title": "In Progress bug",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/2",
+                        "body": "",
+                        "labels": ["bug"],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [{"field": "Status", "value": "In Progress"}],
+                },
+                {
+                    "id": "item3",
+                    "content": {
+                        "type": "Issue",
+                        "number": 3,
+                        "title": "Ready feature",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/3",
+                        "body": "",
+                        "labels": ["feature"],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [{"field": "Status", "value": "Ready"}],
+                },
+            ]
+        )
+        poller = GitHubPoller(client)
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="org",
+            project_scope="org",
+            project_filter='Status = "Ready"',
+            labels=["bug"],
+        )
+
+        issues = poller.poll(trigger)
+
+        # Only item1 matches both the project_filter AND labels
+        assert len(issues) == 1
+        assert issues[0].number == 1
+        assert issues[0].title == "Ready bug"
+
+    def test_poll_empty_labels_list_no_filtering(self) -> None:
+        """Test that empty labels list returns all issues (no filtering)."""
+        client = MockGitHubClient(
+            project_items=[
+                {
+                    "id": "item1",
+                    "content": {
+                        "type": "Issue",
+                        "number": 1,
+                        "title": "Issue with labels",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/1",
+                        "body": "",
+                        "labels": ["bug", "urgent"],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [],
+                },
+                {
+                    "id": "item2",
+                    "content": {
+                        "type": "Issue",
+                        "number": 2,
+                        "title": "Issue without labels",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/2",
+                        "body": "",
+                        "labels": [],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [],
+                },
+            ]
+        )
+        poller = GitHubPoller(client)
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="org",
+            project_scope="org",
+            labels=[],  # Empty labels - no filtering
+        )
+
+        issues = poller.poll(trigger)
+
+        # All issues should be returned
+        assert len(issues) == 2
+        assert issues[0].number == 1
+        assert issues[1].number == 2
+
+    def test_poll_labels_filter_issue_with_no_labels_rejected(self) -> None:
+        """Test that issues without labels are rejected when filter requires labels."""
+        client = MockGitHubClient(
+            project_items=[
+                {
+                    "id": "item1",
+                    "content": {
+                        "type": "Issue",
+                        "number": 1,
+                        "title": "No labels issue",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/issues/1",
+                        "body": "",
+                        "labels": [],
+                        "assignees": [],
+                        "author": "author",
+                    },
+                    "fieldValues": [],
+                },
+            ]
+        )
+        poller = GitHubPoller(client)
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="org",
+            project_scope="org",
+            labels=["bug"],
+        )
+
+        issues = poller.poll(trigger)
+
+        # Issue without labels should not match when labels filter is set
+        assert len(issues) == 0
+
+    def test_poll_labels_filter_with_pull_request(self) -> None:
+        """Test label filtering works with pull requests too."""
+        client = MockGitHubClient(
+            project_items=[
+                {
+                    "id": "item1",
+                    "content": {
+                        "type": "PullRequest",
+                        "number": 10,
+                        "title": "PR with review label",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/pull/10",
+                        "body": "",
+                        "labels": ["needs-review", "enhancement"],
+                        "assignees": [],
+                        "author": "prauthor",
+                        "isDraft": False,
+                        "headRefName": "feature",
+                        "baseRefName": "main",
+                    },
+                    "fieldValues": [],
+                },
+                {
+                    "id": "item2",
+                    "content": {
+                        "type": "PullRequest",
+                        "number": 11,
+                        "title": "PR without review label",
+                        "state": "OPEN",
+                        "url": "https://github.com/org/repo/pull/11",
+                        "body": "",
+                        "labels": ["enhancement"],
+                        "assignees": [],
+                        "author": "prauthor",
+                        "isDraft": False,
+                        "headRefName": "feature2",
+                        "baseRefName": "main",
+                    },
+                    "fieldValues": [],
+                },
+            ]
+        )
+        poller = GitHubPoller(client)
+        trigger = TriggerConfig(
+            source="github",
+            project_number=1,
+            project_owner="org",
+            project_scope="org",
+            labels=["needs-review"],
+        )
+
+        issues = poller.poll(trigger)
+
+        assert len(issues) == 1
+        assert issues[0].number == 10
+        assert issues[0].is_pull_request is True
