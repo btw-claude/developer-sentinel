@@ -36,8 +36,6 @@ from sentinel.agent_clients.claude_sdk import (
 
 logger = get_logger(__name__)
 
-# Re-export for backward compatibility
-# Note: _run_query is excluded as it's a private function (underscore prefix)
 __all__ = [
     "ClaudeProcessInterruptedError",
     "ClaudeSdkAgentClient",
