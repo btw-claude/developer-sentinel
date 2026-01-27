@@ -74,6 +74,9 @@ class Router:
         """
         trigger = orchestration.trigger
 
+        # Pre-compute lowercased issue labels for case-insensitive matching
+        issue_labels_lower = {label.lower() for label in issue.labels}
+
         # Check source type matches
         if isinstance(issue, JiraIssue):
             if trigger.source != "jira":
@@ -97,14 +100,12 @@ class Router:
 
             # For GitHub triggers, check labels field (in addition to existing tags check)
             if trigger.labels:
-                issue_labels_lower = {label.lower() for label in issue.labels}
                 for label in trigger.labels:
                     if label.lower() not in issue_labels_lower:
                         return False
 
         # Check tag/label filter - issue must have ALL specified tags (case-insensitive)
         if trigger.tags:
-            issue_labels_lower = {label.lower() for label in issue.labels}
             for tag in trigger.tags:
                 if tag.lower() not in issue_labels_lower:
                     return False
