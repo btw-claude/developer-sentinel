@@ -11,7 +11,7 @@
     <tr>
         <td>
             {% if step.issue_url %}
-            <a href="{{ step.issue_url }}" target="_blank">
+            <a href="{{ step.issue_url }}" target="_blank" rel="noopener noreferrer">
                 <strong>{{ step.issue_key }}</strong>
             </a>
             {% else %}
@@ -32,6 +32,7 @@
         <td>
             <a href="/logs?orchestration={{ step.orchestration_name | urlencode }}&file={{ step.log_filename | urlencode }}"
                target="_blank"
+               rel="noopener noreferrer"
                title="View log for {{ step.issue_key }}">
                 View
             </a>
