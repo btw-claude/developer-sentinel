@@ -513,6 +513,22 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     project_filter = data.get("project_filter", "")
     labels = data.get("labels", [])
 
+    # Validate labels field (used by GitHub triggers)
+    if labels:
+        if not isinstance(labels, list):
+            raise OrchestrationError("labels must be a list")
+        for label in labels:
+            if not isinstance(label, str) or not label.strip():
+                raise OrchestrationError("labels must contain non-empty strings")
+
+    # Validate tags field (used by Jira triggers)
+    if tags:
+        if not isinstance(tags, list):
+            raise OrchestrationError("tags must be a list")
+        for tag in tags:
+            if not isinstance(tag, str) or not tag.strip():
+                raise OrchestrationError("tags must contain non-empty strings")
+
     # Validation for GitHub triggers
     if source == "github":
         # Validate project_number is set for GitHub triggers
