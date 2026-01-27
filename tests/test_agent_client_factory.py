@@ -487,3 +487,85 @@ class TestOrchestrationKwargsCache:
         result = factory._make_kwargs_hashable({})
 
         assert result == ()
+
+
+class TestGetOrCreateForOrchestrationCachingBehavior:
+    """Tests for caching behavior of get_or_create_for_orchestration (DS-309).
+
+    These tests verify that the caching optimization introduced in DS-303
+    continues to work as expected - calling get_or_create_for_orchestration
+    with the same agent type returns the same client instance.
+    """
+
+    def test_same_agent_type_returns_same_instance(self) -> None:
+        """Verify same agent type with same config returns identical instance.
+
+        DS-309: This test ensures the caching optimization works correctly -
+        calling get_or_create_for_orchestration with the same agent type
+        should return the exact same client instance (identity check).
+        """
+        factory = AgentClientFactory()
+        config = make_test_config()
+
+        factory.register("claude", lambda cfg: MockAgentClient("claude"))
+
+        # Call get_or_create_for_orchestration multiple times with same agent type
+        client1 = factory.get_or_create_for_orchestration("claude", config)
+        client2 = factory.get_or_create_for_orchestration("claude", config)
+        client3 = factory.get_or_create_for_orchestration("claude", config)
+
+        # All should be the exact same instance (identity, not just equality)
+        assert client1 is client2, "Expected same instance for repeated calls"
+        assert client2 is client3, "Expected same instance for all calls"
+        assert id(client1) == id(client2) == id(client3), "Memory addresses should match"
+
+    def test_caching_prevents_redundant_client_creation(self) -> None:
+        """Verify caching prevents redundant client instantiation.
+
+        DS-309: This test documents that the caching behavior prevents
+        unnecessary overhead from creating multiple client instances.
+        """
+        factory = AgentClientFactory()
+        config = make_test_config()
+        instantiation_count = 0
+
+        def tracking_builder(cfg: Config) -> MockAgentClient:
+            nonlocal instantiation_count
+            instantiation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", tracking_builder)
+
+        # Multiple calls should only instantiate once
+        factory.get_or_create_for_orchestration("claude", config)
+        factory.get_or_create_for_orchestration("claude", config)
+        factory.get_or_create_for_orchestration("claude", config)
+
+        assert instantiation_count == 1, (
+            f"Expected exactly 1 instantiation but got {instantiation_count}. "
+            "Caching should prevent redundant client creation."
+        )
+
+    def test_different_agent_types_return_different_instances(self) -> None:
+        """Verify different agent types return separate cached instances.
+
+        DS-309: Confirms that caching is agent-type-specific - different
+        agent types should have their own cached instances.
+        """
+        factory = AgentClientFactory()
+        config = make_test_config()
+
+        factory.register("claude", lambda cfg: MockAgentClient("claude"))
+        factory.register("cursor", lambda cfg: MockAgentClient("cursor"))
+
+        claude_client = factory.get_or_create_for_orchestration("claude", config)
+        cursor_client = factory.get_or_create_for_orchestration("cursor", config)
+
+        # Different agent types should have different instances
+        assert claude_client is not cursor_client
+        assert claude_client.agent_type == "claude"
+        assert cursor_client.agent_type == "cursor"
+
+        # But same agent type should still return cached instance
+        claude_client2 = factory.get_or_create_for_orchestration("claude", config)
+        assert claude_client is claude_client2
