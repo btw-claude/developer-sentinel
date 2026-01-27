@@ -18,6 +18,10 @@ Developer Sentinel monitors Jira for issues with specific tags (e.g., `@code-rev
 - **Hot-reload orchestrations**: Automatically load, reload, and unload orchestration files without restart
 - **Eager polling**: Polls immediately when work is submitted to maximize throughput
 
+## Requirements
+
+- **Python 3.11 or later** is required. The codebase uses modern Python features including `typing.TypeAlias` and other 3.11+ syntax.
+
 ## Installation
 
 ```bash
@@ -25,8 +29,8 @@ Developer Sentinel monitors Jira for issues with specific tags (e.g., `@code-rev
 git clone https://github.com/btw-claude/developer-sentinel.git
 cd developer-sentinel
 
-# Create virtual environment
-python -m venv .venv
+# Create virtual environment (ensure Python 3.11+)
+python3.11 -m venv .venv  # or python3.12, python3.13
 source .venv/bin/activate
 
 # Install in development mode
