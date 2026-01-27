@@ -569,3 +569,129 @@ class TestGetOrCreateForOrchestrationCachingBehavior:
         # But same agent type should still return cached instance
         claude_client2 = factory.get_or_create_for_orchestration("claude", config)
         assert claude_client is claude_client2
+
+
+class TestKwargsBasedCacheKeyDifferentiation:
+    """Tests for kwargs-based cache key differentiation in get_or_create_for_orchestration.
+
+    DS-313: These tests verify that get_or_create_for_orchestration properly
+    differentiates cached clients based on the **kwargs parameter, ensuring that:
+    - Same agent type with different kwargs returns different client instances
+    - Same agent type with same kwargs returns the same cached instance
+    """
+
+    def test_kwargs_cache_key_differentiation(self) -> None:
+        """Verify kwargs properly differentiate cache keys for same agent type.
+
+        DS-313: This comprehensive test validates that the kwargs parameter
+        correctly influences cache key generation, ensuring:
+        1. Same agent type + same kwargs = same cached instance
+        2. Same agent type + different kwargs = different instances
+
+        This provides confidence in AgentClientFactory.get_or_create_for_orchestration()
+        cache key behavior when kwargs are used.
+        """
+        factory = AgentClientFactory()
+        config = make_test_config()
+        creation_count = 0
+
+        def counting_builder(cfg: Config) -> MockAgentClient:
+            nonlocal creation_count
+            creation_count += 1
+            return MockAgentClient("claude")
+
+        factory.register("claude", counting_builder)
+
+        # --- Test 1: Same agent type with SAME kwargs returns SAME instance ---
+        client_a1 = factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/project/a", timeout=30
+        )
+        client_a2 = factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/project/a", timeout=30
+        )
+
+        assert client_a1 is client_a2, (
+            "Same agent type with identical kwargs should return the same cached instance"
+        )
+        assert creation_count == 1, (
+            "Builder should only be called once for identical kwargs"
+        )
+
+        # --- Test 2: Same agent type with DIFFERENT kwargs returns DIFFERENT instance ---
+        client_b = factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/project/b", timeout=30
+        )
+
+        assert client_b is not client_a1, (
+            "Same agent type with different kwargs should return a different instance"
+        )
+        assert creation_count == 2, (
+            "Builder should be called again for different kwargs"
+        )
+
+        # --- Test 3: Verify original cached instance is still returned ---
+        client_a3 = factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/project/a", timeout=30
+        )
+
+        assert client_a3 is client_a1, (
+            "Original kwargs should still return the original cached instance"
+        )
+        assert creation_count == 2, (
+            "No additional builder calls for previously cached kwargs"
+        )
+
+        # --- Test 4: Different kwargs value for same key creates new instance ---
+        client_c = factory.get_or_create_for_orchestration(
+            "claude", config, working_dir="/project/a", timeout=60  # different timeout
+        )
+
+        assert client_c is not client_a1, (
+            "Same kwargs keys but different values should create a different instance"
+        )
+        assert creation_count == 3, (
+            "Builder should be called for kwargs with different values"
+        )
+
+    def test_kwargs_cache_key_with_multiple_kwargs_combinations(self) -> None:
+        """Verify cache correctly handles multiple distinct kwargs combinations.
+
+        DS-313: This test validates that the cache maintains separate entries
+        for each unique kwargs combination, and correctly returns cached
+        instances when the same combination is requested again.
+        """
+        factory = AgentClientFactory()
+        config = make_test_config()
+        created_clients: list[MockAgentClient] = []
+
+        def tracking_builder(cfg: Config) -> MockAgentClient:
+            client = MockAgentClient("claude")
+            created_clients.append(client)
+            return client
+
+        factory.register("claude", tracking_builder)
+
+        # Create multiple clients with different kwargs combinations
+        kwargs_set_1 = {"env": "dev", "region": "us-east"}
+        kwargs_set_2 = {"env": "prod", "region": "us-east"}
+        kwargs_set_3 = {"env": "dev", "region": "eu-west"}
+
+        client1 = factory.get_or_create_for_orchestration("claude", config, **kwargs_set_1)
+        client2 = factory.get_or_create_for_orchestration("claude", config, **kwargs_set_2)
+        client3 = factory.get_or_create_for_orchestration("claude", config, **kwargs_set_3)
+
+        # All three should be different instances
+        assert client1 is not client2, "Different kwargs should yield different instances"
+        assert client2 is not client3, "Different kwargs should yield different instances"
+        assert client1 is not client3, "Different kwargs should yield different instances"
+        assert len(created_clients) == 3, "Three unique kwargs combinations = three creations"
+
+        # Re-request each - should return cached instances
+        client1_again = factory.get_or_create_for_orchestration("claude", config, **kwargs_set_1)
+        client2_again = factory.get_or_create_for_orchestration("claude", config, **kwargs_set_2)
+        client3_again = factory.get_or_create_for_orchestration("claude", config, **kwargs_set_3)
+
+        assert client1_again is client1, "Same kwargs should return cached instance"
+        assert client2_again is client2, "Same kwargs should return cached instance"
+        assert client3_again is client3, "Same kwargs should return cached instance"
+        assert len(created_clients) == 3, "No new creations for cached kwargs"
