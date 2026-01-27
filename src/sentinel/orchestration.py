@@ -376,6 +376,24 @@ class OrchestrationVersion:
         return self.active_executions > 0
 
 
+def _validate_string_list(value: Any, field_name: str) -> None:
+    """Validate that a value is a list of non-empty strings.
+
+    Args:
+        value: The value to validate.
+        field_name: The name of the field for error messages.
+
+    Raises:
+        OrchestrationError: If validation fails.
+    """
+    if value:
+        if not isinstance(value, list):
+            raise OrchestrationError(f"{field_name} must be a list")
+        for item in value:
+            if not isinstance(item, str) or not item.strip():
+                raise OrchestrationError(f"{field_name} must contain non-empty strings")
+
+
 def _validate_github_repo_format(repo: str) -> ValidationResult:
     """Validate that a GitHub repo string is in 'owner/repo-name' format.
 
@@ -514,20 +532,10 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     labels = data.get("labels", [])
 
     # Validate labels field (used by GitHub triggers)
-    if labels:
-        if not isinstance(labels, list):
-            raise OrchestrationError("labels must be a list")
-        for label in labels:
-            if not isinstance(label, str) or not label.strip():
-                raise OrchestrationError("labels must contain non-empty strings")
+    _validate_string_list(labels, "labels")
 
     # Validate tags field (used by Jira triggers)
-    if tags:
-        if not isinstance(tags, list):
-            raise OrchestrationError("tags must be a list")
-        for tag in tags:
-            if not isinstance(tag, str) or not tag.strip():
-                raise OrchestrationError("tags must contain non-empty strings")
+    _validate_string_list(tags, "tags")
 
     # Validation for GitHub triggers
     if source == "github":
