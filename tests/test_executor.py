@@ -358,6 +358,202 @@ class TestAgentExecutorBuildPrompt:
         assert "Fifth" in prompt
 
 
+class TestAgentExecutorExpandBranchPattern:
+    """Tests for AgentExecutor._expand_branch_pattern."""
+
+    def test_returns_none_when_no_github_context(self) -> None:
+        """Should return None when no GitHub context is configured."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123")
+        orch = make_orchestration()  # No GitHub context
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result is None
+
+    def test_returns_none_when_no_branch_configured(self) -> None:
+        """Should return None when GitHub context exists but no branch pattern."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123")
+        orch = make_orchestration(
+            github=GitHubContext(host="github.com", org="myorg", repo="myrepo")
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result is None
+
+    def test_returns_none_when_branch_is_empty_string(self) -> None:
+        """Should return None when branch pattern is an empty string."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123")
+        orch = make_orchestration(
+            github=GitHubContext(host="github.com", org="myorg", repo="myrepo", branch="")
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result is None
+
+    def test_expands_jira_issue_key(self) -> None:
+        """Should expand {jira_issue_key} in branch pattern."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-290")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com", org="myorg", repo="myrepo", branch="feature/{jira_issue_key}"
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "feature/DS-290"
+
+    def test_expands_github_issue_number(self) -> None:
+        """Should expand {github_issue_number} in branch pattern."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=123, title="Test Issue")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com", org="myorg", repo="myrepo", branch="fix/{github_issue_number}"
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "fix/123"
+
+    def test_expands_jira_summary(self) -> None:
+        """Should expand {jira_summary} in branch pattern."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123", summary="Add login button")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com", org="myorg", repo="myrepo", branch="feature/{jira_summary}"
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "feature/Add login button"
+
+    def test_expands_github_issue_title(self) -> None:
+        """Should expand {github_issue_title} in branch pattern."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Fix authentication bug")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com", org="myorg", repo="myrepo", branch="fix/{github_issue_title}"
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "fix/Fix authentication bug"
+
+    def test_expands_multiple_variables(self) -> None:
+        """Should expand multiple variables in branch pattern."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-456", summary="Update docs")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="{jira_issue_key}-{jira_summary}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "DS-456-Update docs"
+
+    def test_preserves_unknown_variables(self) -> None:
+        """Should preserve unknown variables as-is."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_issue_key}/{unknown_var}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "feature/DS-123/{unknown_var}"
+
+    def test_returns_pattern_unchanged_when_no_variables(self) -> None:
+        """Should return pattern unchanged when no template variables present."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com", org="myorg", repo="myrepo", branch="static-branch-name"
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "static-branch-name"
+
+    def test_github_issue_jira_variables_empty(self) -> None:
+        """Jira variables should be empty for GitHub issues."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Test")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_issue_key}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        # jira_issue_key is empty for GitHub issues
+        assert result == "feature/"
+
+    def test_jira_issue_github_variables_empty(self) -> None:
+        """GitHub Issue variables should be empty for Jira issues."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="fix/{github_issue_number}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        # github_issue_number is empty for Jira issues
+        assert result == "fix/"
+
+
 class TestAgentExecutorMatchesPattern:
     """Tests for AgentExecutor._matches_pattern."""
 
