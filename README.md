@@ -175,6 +175,35 @@ orchestrations:
 
 See `orchestrations/README.md` for full configuration reference.
 
+### Failure Pattern Configuration
+
+Sentinel uses pattern matching to determine agent execution outcomes. Proper pattern selection is critical for reliable success/failure detection.
+
+**Recommended failure patterns:**
+
+| Pattern | Description |
+|---------|-------------|
+| `FAILURE` | All-caps keyword indicating explicit failure |
+| `TASK_FAILED` | Specific compound keyword for task failures |
+| `ERROR:` | Error prefix with colon (avoids matching "error" in prose) |
+| `COULD_NOT_COMPLETE:` | Specific prefix for incomplete tasks |
+
+**Avoid generic patterns** like `error`, `failed`, or `could not` as they may cause false positives (e.g., "No errors found" would incorrectly match `error`).
+
+Example configuration:
+
+```yaml
+retry:
+  max_attempts: 3
+  failure_patterns:
+    - "FAILURE"
+    - "TASK_FAILED"
+    - "ERROR:"
+    - "COULD_NOT_COMPLETE:"
+```
+
+See [docs/FAILURE_PATTERNS.md](docs/FAILURE_PATTERNS.md) for detailed guidance on pattern selection, examples of good vs. bad patterns, and migration recommendations.
+
 ### GitHub Project Triggers
 
 Sentinel also supports GitHub Projects (v2) as a trigger source:

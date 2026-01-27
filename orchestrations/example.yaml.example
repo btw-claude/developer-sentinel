@@ -183,11 +183,12 @@ orchestrations:
       # Patterns in agent response that indicate failure
       # Note: Use specific patterns to avoid false positives (e.g., "error" could
       # match "No errors found" - use "ERROR:" or "TASK_FAILED" instead)
+      # See docs/FAILURE_PATTERNS.md for detailed guidance on pattern selection.
       failure_patterns:
         - "FAILURE"
         - "TASK_FAILED"
         - "ERROR:"
-        - "could not complete"
+        - "COULD_NOT_COMPLETE:"
 
     # On start actions
     # What to do immediately when an issue is picked up
@@ -242,10 +243,11 @@ orchestrations:
       success_patterns:
         - "SUCCESS"
         - "documentation updated"
+      # Use specific patterns - see docs/FAILURE_PATTERNS.md for guidance
       failure_patterns:
         - "FAILURE"
         - "TASK_FAILED"
-        - "could not update"
+        - "COULD_NOT_COMPLETE:"
 
     on_start:
       add_tag: "sentinel-processing"
@@ -301,13 +303,14 @@ orchestrations:
 
     # Retry configuration
     # failure_patterns trigger retries for actual errors (API failures, etc.)
+    # Use specific patterns - see docs/FAILURE_PATTERNS.md for guidance
     retry:
       max_attempts: 3
       failure_patterns:
-        - "ERROR"
-        - "could not access"
-        - "API failed"
-        - "connection timeout"
+        - "ERROR:"
+        - "API_ERROR"
+        - "CONNECTION_TIMEOUT"
+        - "COULD_NOT_COMPLETE:"
       # default_outcome is used when no outcome patterns match (optional)
       # If not specified or set to "failure", triggers the failure/retry mechanism
       # If set to an outcome name (e.g., "approved"), uses that outcome on no match
@@ -404,11 +407,12 @@ orchestrations:
 
     retry:
       max_attempts: 3
+      # Use specific patterns - see docs/FAILURE_PATTERNS.md for guidance
       failure_patterns:
         - "FAILURE"
-        - "ERROR"
-        - "API error"
-        - "could not"
+        - "ERROR:"
+        - "API_ERROR"
+        - "COULD_NOT_COMPLETE:"
 
     outcomes:
       - name: approved
