@@ -721,7 +721,14 @@ class TestClaudeSdkAgentClientBranchSetup:
     def test_checkout_existing_branch(
         self, tmp_path: Path, mock_config: Config
     ) -> None:
-        """Should checkout and pull when branch exists on remote."""
+        """Should checkout and pull when branch exists on remote.
+
+        Mock behavior expectations:
+        - subprocess.run is mocked to track all git command invocations
+        - All commands return success (returncode=0)
+        - git ls-remote returns a SHA ref for the branch, simulating an existing remote branch
+        - The test verifies that fetch, ls-remote, checkout, and pull commands are invoked
+        """
         # Create a mock git repository
         workdir = tmp_path / "repo"
         workdir.mkdir()
