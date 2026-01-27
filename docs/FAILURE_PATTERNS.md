@@ -99,6 +99,8 @@ failure_patterns = ["FAILURE", "failed", "error"]
 - `failed` will match "failed" but NOT "Failed" or "FAILED"
 - `error` will match "error" but NOT "Error" or "ERROR"
 
+> **Example:** An agent outputting "Task Failed" would NOT trigger a match with the default `failed` pattern.
+
 If you need case-insensitive matching, use the `regex:` prefix with the `(?i)` flag (e.g., `regex:(?i)failed`).
 
 ## Pattern Matching Details
