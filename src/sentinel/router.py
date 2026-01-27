@@ -95,6 +95,13 @@ class Router:
             # The GitHubIssue doesn't store repo info directly, so we skip repo
             # validation here - it's enforced during polling via the search query
 
+            # For GitHub triggers, check labels field (in addition to existing tags check)
+            if trigger.labels:
+                issue_labels_lower = {label.lower() for label in issue.labels}
+                for label in trigger.labels:
+                    if label.lower() not in issue_labels_lower:
+                        return False
+
         # Check tag/label filter - issue must have ALL specified tags (case-insensitive)
         if trigger.tags:
             issue_labels_lower = {label.lower() for label in issue.labels}
