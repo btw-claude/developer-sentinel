@@ -417,13 +417,20 @@ class TestGitHubLabelsFieldRouting:
         assert result.orchestrations[0].name == "bug-triage"
 
     def test_github_labels_and_tags_can_be_used_together(self) -> None:
-        """Test that both labels (new) and tags (deprecated) fields are checked."""
+        """Test that both labels (new) and tags (deprecated) fields are checked.
+
+        Note: The 'tags' field is DEPRECATED and will be removed in a future release.
+        New code should use 'labels' exclusively. This test ensures backward
+        compatibility during the deprecation period where both fields may be used
+        together. When 'tags' is removed, this test should be updated to only
+        test 'labels' functionality.
+        """
         router = Router([])
         issue = make_github_issue(labels=["bug", "urgent", "team-a"])
         orch = make_orchestration(
             source="github",
-            tags=["team-a"],  # Deprecated tags field
-            labels=["bug"],   # New labels field
+            tags=["team-a"],  # Deprecated tags field - will be removed in future release
+            labels=["bug"],   # New labels field - preferred approach
         )
         # Both must match
         assert router._matches_trigger(issue, orch) is True
@@ -461,9 +468,20 @@ class TestGitHubLabelsFieldRouting:
 
         result = router.route(issue)
 
-        assert result.matched is True
-        assert len(result.orchestrations) == 2
+        assert result.matched is True, (
+            "Issue with ['bug', 'urgent'] labels should match at least one orchestration"
+        )
+        assert len(result.orchestrations) == 2, (
+            f"Expected 2 matching orchestrations (bug-handler and urgent-handler), "
+            f"but got {len(result.orchestrations)}: {[o.name for o in result.orchestrations]}"
+        )
         names = [o.name for o in result.orchestrations]
-        assert "bug-handler" in names
-        assert "urgent-handler" in names
-        assert "feature-handler" not in names
+        assert "bug-handler" in names, (
+            f"bug-handler should match issue with 'bug' label, but matched: {names}"
+        )
+        assert "urgent-handler" in names, (
+            f"urgent-handler should match issue with 'urgent' label, but matched: {names}"
+        )
+        assert "feature-handler" not in names, (
+            f"feature-handler should NOT match issue without 'feature' label, but it did"
+        )
