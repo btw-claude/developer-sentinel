@@ -112,6 +112,7 @@ class RunningStepInfoView:
     attempt_number: int
     started_at: datetime
     elapsed_seconds: float
+    log_filename: str  # derived from started_at (DS-319)
 
 
 @dataclass(frozen=True)
@@ -307,6 +308,7 @@ class SentinelStateAccessor:
                 attempt_number=step.attempt_number,
                 started_at=step.started_at,
                 elapsed_seconds=(now - step.started_at).total_seconds(),
+                log_filename=step.started_at.strftime("%Y%m%d_%H%M%S") + ".log",
             )
             for step in running_steps_raw
         ]
