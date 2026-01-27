@@ -5,6 +5,7 @@
         <th>Orchestration</th>
         <th>Attempt</th>
         <th>Elapsed</th>
+        <th>Log</th>
     </tr>
     {% for step in state.running_steps %}
     <tr>
@@ -19,6 +20,13 @@
             {% else %}
             {{ seconds }}s
             {% endif %}
+        </td>
+        <td>
+            <a href="/logs?orchestration={{ step.orchestration_name | urlencode }}&file={{ step.log_filename | urlencode }}"
+               target="_blank"
+               title="View log for {{ step.issue_key }}">
+                View
+            </a>
         </td>
     </tr>
     {% endfor %}
