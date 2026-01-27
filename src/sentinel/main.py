@@ -1491,9 +1491,13 @@ class Sentinel:
             # DS-340: Include project_filter and labels in deduplication key
             # to allow separate polling for orchestrations with same project
             # but different filter criteria
+            # DS-341: Handle None values explicitly for cleaner deduplication keys
+            # Use empty string when project_filter is None/empty for cleaner keys
+            filter_part = orch.trigger.project_filter or ""
+            labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
             trigger_key = (
                 f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-                f":{orch.trigger.project_filter}:{','.join(orch.trigger.labels)}"
+                f":{filter_part}:{labels_part}"
             )
             if trigger_key not in seen_triggers:
                 seen_triggers.add(trigger_key)
