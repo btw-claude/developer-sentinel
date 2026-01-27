@@ -329,6 +329,45 @@ class AgentExecutor:
 
         return variables
 
+    def _expand_branch_pattern(
+        self, issue: AnyIssue, orchestration: Orchestration
+    ) -> str | None:
+        """Expand template variables in the branch pattern.
+
+        Returns None if no branch pattern is configured.
+
+        Template variables available in the branch pattern:
+        - {jira_issue_key}: The Jira issue key (e.g., "DS-290")
+        - {github_issue_number}: The GitHub issue/PR number (e.g., "123")
+        - {jira_summary}: Issue summary (use with caution - may need slugification)
+        - {github_issue_title}: Issue/PR title (use with caution - may need slugification)
+
+        Example:
+        - Pattern: "feature/{jira_issue_key}"
+        - Result: "feature/DS-290"
+
+        Args:
+            issue: The issue to process (Jira or GitHub).
+            orchestration: The orchestration configuration.
+
+        Returns:
+            The expanded branch name, or None if no branch pattern is configured.
+        """
+        github = orchestration.agent.github
+        if not github or not github.branch:
+            return None
+
+        variables = self._build_template_variables(issue, orchestration)
+
+        # Expand variables in branch pattern
+        def replace_var(match: re.Match[str]) -> str:
+            var_name = match.group(1)
+            if var_name in variables:
+                return variables[var_name]
+            return match.group(0)
+
+        return re.sub(r"\{(\w+)\}", replace_var, github.branch)
+
     def build_prompt(self, issue: AnyIssue, orchestration: Orchestration) -> str:
         """Build the agent prompt by substituting template variables.
 
