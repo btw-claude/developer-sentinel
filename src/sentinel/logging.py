@@ -12,6 +12,44 @@ from pathlib import Path
 from typing import Any
 
 
+# Log filename format constant (DS-323)
+# Used across the codebase for consistent log file naming: YYYYMMDD_HHMMSS.log
+LOG_FILENAME_FORMAT = "%Y%m%d_%H%M%S"
+LOG_FILENAME_EXTENSION = ".log"
+
+
+def generate_log_filename(timestamp: datetime) -> str:
+    """Generate a log filename from a timestamp.
+
+    Creates a consistent log filename format (YYYYMMDD_HHMMSS.log) used
+    throughout the codebase for agent execution logs.
+
+    Args:
+        timestamp: The datetime to use for the filename.
+
+    Returns:
+        Log filename string in format YYYYMMDD_HHMMSS.log
+    """
+    return timestamp.strftime(LOG_FILENAME_FORMAT) + LOG_FILENAME_EXTENSION
+
+
+def parse_log_filename(filename: str) -> datetime | None:
+    """Parse a log filename back to a datetime.
+
+    Args:
+        filename: Log filename in format YYYYMMDD_HHMMSS.log
+
+    Returns:
+        Parsed datetime, or None if the filename doesn't match the expected format.
+    """
+    try:
+        # Remove .log extension
+        name = filename.rsplit(".", 1)[0]
+        return datetime.strptime(name, LOG_FILENAME_FORMAT)
+    except (ValueError, IndexError):
+        return None
+
+
 class StructuredFormatter(logging.Formatter):
     """Formatter that outputs structured log messages.
 

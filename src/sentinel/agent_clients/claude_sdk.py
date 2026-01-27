@@ -25,7 +25,7 @@ from sentinel.agent_clients.base import (
     AgentType,
 )
 from sentinel.config import Config
-from sentinel.logging import get_logger
+from sentinel.logging import generate_log_filename, get_logger
 
 logger = get_logger(__name__)
 
@@ -427,7 +427,7 @@ class ClaudeSdkAgentClient(AgentClient):
         start_time = datetime.now()
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / f"{start_time.strftime('%Y%m%d_%H%M%S')}.log"
+        log_path = log_dir / generate_log_filename(start_time)
 
         end_time = datetime.now()
         elapsed_time = (end_time - start_time).total_seconds()
@@ -472,7 +472,7 @@ class ClaudeSdkAgentClient(AgentClient):
         start_time = datetime.now()
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / f"{start_time.strftime('%Y%m%d_%H%M%S')}.log"
+        log_path = log_dir / generate_log_filename(start_time)
 
         # Initialize timing metrics
         metrics = TimingMetrics()

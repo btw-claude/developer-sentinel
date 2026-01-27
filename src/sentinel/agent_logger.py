@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import IO, TYPE_CHECKING
 
-from sentinel.logging import get_logger
+from sentinel.logging import generate_log_filename, get_logger
 
 if TYPE_CHECKING:
     from sentinel.executor import ExecutionStatus
@@ -69,7 +69,7 @@ class StreamingLogWriter:
         """Get the log file path for this execution."""
         orch_dir = self.base_dir / self.orchestration_name
         orch_dir.mkdir(parents=True, exist_ok=True)
-        filename = self.start_time.strftime("%Y%m%d_%H%M%S") + ".log"
+        filename = generate_log_filename(self.start_time)
         return orch_dir / filename
 
     def __enter__(self) -> StreamingLogWriter:
@@ -215,8 +215,8 @@ class AgentLogger:
         orch_dir = self.base_dir / orchestration_name
         orch_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate filename: YYYYMMDD_HHMMSS.log
-        filename = timestamp.strftime("%Y%m%d_%H%M%S") + ".log"
+        # Generate filename using centralized format (DS-323)
+        filename = generate_log_filename(timestamp)
         return orch_dir / filename
 
     def log_execution(
