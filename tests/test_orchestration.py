@@ -415,6 +415,46 @@ orchestrations:
         assert orch.agent.github.host == "github.com"
         assert orch.agent.github.org == "test-org"
         assert orch.agent.github.repo == "test-repo"
+        # Verify defaults for new branch fields
+        assert orch.agent.github.branch == ""
+        assert orch.agent.github.create_branch is False
+        assert orch.agent.github.base_branch == "main"
+
+    def test_load_file_with_github_context_branch_fields(self, tmp_path: Path) -> None:
+        """Should load orchestration with GitHub context branch fields."""
+        yaml_content = """
+orchestrations:
+  - name: "github-branch-orch"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["review"]
+    agent:
+      prompt: "Review code"
+      tools:
+        - github
+      github:
+        host: "github.com"
+        org: "test-org"
+        repo: "test-repo"
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: "develop"
+"""
+        file_path = tmp_path / "github-branch.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.github is not None
+        assert orch.agent.github.host == "github.com"
+        assert orch.agent.github.org == "test-org"
+        assert orch.agent.github.repo == "test-repo"
+        assert orch.agent.github.branch == "feature/{jira_issue_key}"
+        assert orch.agent.github.create_branch is True
+        assert orch.agent.github.base_branch == "develop"
 
     def test_load_file_with_timeout_seconds(self, tmp_path: Path) -> None:
         """Should load orchestration with timeout_seconds."""

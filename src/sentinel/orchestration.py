@@ -154,11 +154,24 @@ class TriggerConfig:
 
 @dataclass
 class GitHubContext:
-    """GitHub repository context for agent operations."""
+    """GitHub repository context for agent operations.
+
+    Attributes:
+        host: GitHub host (e.g., "github.com" or enterprise host).
+        org: GitHub organization or user name.
+        repo: Repository name.
+        branch: Branch pattern (e.g., "feature/{jira_issue_key}").
+            Supports template variables that are expanded at runtime.
+        create_branch: Whether to auto-create the branch if it doesn't exist.
+        base_branch: Base branch for new branch creation (default: "main").
+    """
 
     host: str = "github.com"
     org: str = ""
     repo: str = ""
+    branch: str = ""
+    create_branch: bool = False
+    base_branch: str = "main"
 
 
 @dataclass
@@ -603,6 +616,9 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
         host=data.get("host", "github.com"),
         org=data.get("org", ""),
         repo=data.get("repo", ""),
+        branch=data.get("branch", ""),
+        create_branch=data.get("create_branch", False),
+        base_branch=data.get("base_branch", "main"),
     )
 
 
