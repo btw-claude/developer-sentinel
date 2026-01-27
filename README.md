@@ -21,6 +21,7 @@ Developer Sentinel monitors Jira for issues with specific tags (e.g., `@code-rev
 ## Requirements
 
 - **Python 3.11 or later** is required. The codebase uses modern Python features including `typing.TypeAlias` and other 3.11+ syntax.
+- **Note:** pip will automatically enforce the Python version requirement during installation (via `requires-python` in pyproject.toml). If you attempt to install with an older Python version, pip will fail gracefully with a clear error message.
 
 ## Installation
 
