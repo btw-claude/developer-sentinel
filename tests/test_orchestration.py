@@ -124,6 +124,37 @@ class TestDataclasses:
         assert agent.agent_type is None
         assert agent.cursor_mode is None
 
+    def test_github_context_defaults(self) -> None:
+        """GitHubContext should have sensible defaults including branch fields."""
+        from sentinel.orchestration import GitHubContext
+
+        github = GitHubContext()
+        assert github.host == "github.com"
+        assert github.org == ""
+        assert github.repo == ""
+        assert github.branch == ""
+        assert github.create_branch is False
+        assert github.base_branch == "main"
+
+    def test_github_context_with_branch_fields(self) -> None:
+        """GitHubContext should accept branch pattern fields."""
+        from sentinel.orchestration import GitHubContext
+
+        github = GitHubContext(
+            host="github.enterprise.com",
+            org="my-org",
+            repo="my-repo",
+            branch="feature/{jira_issue_key}",
+            create_branch=True,
+            base_branch="develop",
+        )
+        assert github.host == "github.enterprise.com"
+        assert github.org == "my-org"
+        assert github.repo == "my-repo"
+        assert github.branch == "feature/{jira_issue_key}"
+        assert github.create_branch is True
+        assert github.base_branch == "develop"
+
     def test_agent_config_with_agent_type_claude(self) -> None:
         """AgentConfig should support agent_type='claude'."""
         agent = AgentConfig(agent_type="claude")
@@ -415,6 +446,69 @@ orchestrations:
         assert orch.agent.github.host == "github.com"
         assert orch.agent.github.org == "test-org"
         assert orch.agent.github.repo == "test-repo"
+
+    def test_load_file_with_github_context_branch_fields(self, tmp_path: Path) -> None:
+        """Should load orchestration with GitHub context including branch fields."""
+        yaml_content = """
+orchestrations:
+  - name: "github-branch-orch"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["review"]
+    agent:
+      prompt: "Review code"
+      tools:
+        - github
+      github:
+        host: "github.com"
+        org: "test-org"
+        repo: "test-repo"
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: "develop"
+"""
+        file_path = tmp_path / "github_branch.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.github is not None
+        assert orch.agent.github.host == "github.com"
+        assert orch.agent.github.org == "test-org"
+        assert orch.agent.github.repo == "test-repo"
+        assert orch.agent.github.branch == "feature/{jira_issue_key}"
+        assert orch.agent.github.create_branch is True
+        assert orch.agent.github.base_branch == "develop"
+
+    def test_load_file_with_github_context_branch_defaults(self, tmp_path: Path) -> None:
+        """Should use default values for branch fields when not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "github-default-branch"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["review"]
+    agent:
+      prompt: "Review code"
+      github:
+        org: "test-org"
+        repo: "test-repo"
+"""
+        file_path = tmp_path / "github_default_branch.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.github is not None
+        assert orch.agent.github.branch == ""
+        assert orch.agent.github.create_branch is False
+        assert orch.agent.github.base_branch == "main"
 
     def test_load_file_with_timeout_seconds(self, tmp_path: Path) -> None:
         """Should load orchestration with timeout_seconds."""
