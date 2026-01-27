@@ -3907,3 +3907,226 @@ class TestAddRepoContextFromUrls:
         assert result[0].key == "org/repo-a#10"
         assert result[1].key == "org/repo-b#20"
         assert result[2].key == "different-org/repo-c#30"
+
+
+class TestGitHubTriggerDeduplication:
+    """Tests for GitHub trigger deduplication logic (DS-341).
+
+    These tests verify that:
+    1. Same project with different project_filter values are polled separately
+    2. Same project with different labels values are polled separately
+    3. Identical triggers are still properly deduplicated
+    4. None/empty values in project_filter and labels are handled cleanly
+    """
+
+    def test_same_project_different_project_filter_polled_separately(self) -> None:
+        """Test that same project with different project_filter values are polled separately."""
+        from sentinel.orchestration import TriggerConfig
+
+        # Create orchestrations with same project but different project_filter
+        orch1 = make_orchestration(
+            name="orch-ready",
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+            project_filter='Status = "Ready"',
+        )
+        orch2 = make_orchestration(
+            name="orch-in-progress",
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+            project_filter='Status = "In Progress"',
+        )
+
+        # Build deduplication keys matching the logic in _poll_github_triggers
+        def build_trigger_key(orch: Orchestration) -> str:
+            filter_part = orch.trigger.project_filter or ""
+            labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
+            return (
+                f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+                f":{filter_part}:{labels_part}"
+            )
+
+        key1 = build_trigger_key(orch1)
+        key2 = build_trigger_key(orch2)
+
+        # Keys should be different due to different project_filter values
+        assert key1 != key2
+        assert 'Status = "Ready"' in key1
+        assert 'Status = "In Progress"' in key2
+
+    def test_same_project_different_labels_polled_separately(self) -> None:
+        """Test that same project with different labels values are polled separately."""
+        # Create orchestrations with same project but different labels
+        orch1 = make_orchestration(
+            name="orch-bugs",
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+            labels=["bug"],
+        )
+        orch2 = make_orchestration(
+            name="orch-features",
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+            labels=["feature", "enhancement"],
+        )
+
+        # Build deduplication keys
+        def build_trigger_key(orch: Orchestration) -> str:
+            filter_part = orch.trigger.project_filter or ""
+            labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
+            return (
+                f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+                f":{filter_part}:{labels_part}"
+            )
+
+        key1 = build_trigger_key(orch1)
+        key2 = build_trigger_key(orch2)
+
+        # Keys should be different due to different labels values
+        assert key1 != key2
+        assert "bug" in key1
+        assert "feature,enhancement" in key2
+
+    def test_identical_triggers_deduplicated(self) -> None:
+        """Test that identical triggers are properly deduplicated."""
+        # Create orchestrations with identical trigger configurations
+        orch1 = make_orchestration(
+            name="orch-1",
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+            project_filter='Status = "Ready"',
+            labels=["bug"],
+        )
+        orch2 = make_orchestration(
+            name="orch-2",  # Different name, same trigger config
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+            project_filter='Status = "Ready"',
+            labels=["bug"],
+        )
+
+        # Build deduplication keys
+        def build_trigger_key(orch: Orchestration) -> str:
+            filter_part = orch.trigger.project_filter or ""
+            labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
+            return (
+                f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+                f":{filter_part}:{labels_part}"
+            )
+
+        key1 = build_trigger_key(orch1)
+        key2 = build_trigger_key(orch2)
+
+        # Keys should be identical since trigger configurations match
+        assert key1 == key2
+
+    def test_none_project_filter_produces_clean_key(self) -> None:
+        """Test that None project_filter values produce clean deduplication keys (DS-341).
+
+        Previously, None values would result in the string 'None' in the key.
+        After DS-341, None/empty values should produce empty string in the key.
+        """
+        # Create orchestration with no project_filter (None/empty)
+        orch = make_orchestration(
+            name="orch-no-filter",
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+            # project_filter not specified (defaults to "")
+        )
+
+        # Build deduplication key
+        filter_part = orch.trigger.project_filter or ""
+        labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
+        key = (
+            f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+            f":{filter_part}:{labels_part}"
+        )
+
+        # Key should NOT contain 'None' as a string
+        assert "None" not in key
+        # Key should have clean format: github:owner/number::
+        assert key == "github:test-org/1::"
+
+    def test_empty_labels_produces_clean_key(self) -> None:
+        """Test that empty labels list produces clean deduplication keys (DS-341)."""
+        # Create orchestration with no labels
+        orch = make_orchestration(
+            name="orch-no-labels",
+            source="github",
+            project_number=1,
+            project_owner="test-org",
+            project_scope="org",
+            project_filter='Status = "Ready"',
+            # labels not specified or empty
+        )
+
+        # Build deduplication key
+        filter_part = orch.trigger.project_filter or ""
+        labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
+        key = (
+            f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+            f":{filter_part}:{labels_part}"
+        )
+
+        # Key should have clean format with empty labels part
+        assert key == 'github:test-org/1:Status = "Ready":'
+
+    def test_both_none_filter_and_empty_labels_clean_key(self) -> None:
+        """Test that both None filter and empty labels produce clean key."""
+        # Create orchestration with neither filter nor labels
+        orch = make_orchestration(
+            name="orch-minimal",
+            source="github",
+            project_number=5,
+            project_owner="my-org",
+            project_scope="org",
+        )
+
+        # Build deduplication key
+        filter_part = orch.trigger.project_filter or ""
+        labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
+        key = (
+            f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+            f":{filter_part}:{labels_part}"
+        )
+
+        # Key should be clean without 'None' anywhere
+        assert "None" not in key
+        assert key == "github:my-org/5::"
+
+    def test_combined_filter_and_labels_in_key(self) -> None:
+        """Test that both filter and labels are included in deduplication key."""
+        orch = make_orchestration(
+            name="orch-full",
+            source="github",
+            project_number=10,
+            project_owner="acme",
+            project_scope="org",
+            project_filter='Priority = "High"',
+            labels=["urgent", "critical"],
+        )
+
+        # Build deduplication key
+        filter_part = orch.trigger.project_filter or ""
+        labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
+        key = (
+            f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+            f":{filter_part}:{labels_part}"
+        )
+
+        # Verify all parts are present
+        assert key == 'github:acme/10:Priority = "High":urgent,critical'

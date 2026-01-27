@@ -44,7 +44,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -312,21 +312,47 @@ def make_orchestration(
     project: str = "TEST",
     tags: list[str] | None = None,
     max_concurrent: int | None = None,
+    # DS-341: Added GitHub-specific fields for trigger deduplication tests
+    source: Literal["jira", "github"] = "jira",
+    project_number: int | None = None,
+    project_owner: str = "",
+    project_scope: Literal["org", "user"] = "org",
+    project_filter: str = "",
+    labels: list[str] | None = None,
 ) -> Orchestration:
     """Helper to create an Orchestration for testing.
 
     Args:
         name: The orchestration name.
-        project: The Jira project key.
-        tags: List of tags to trigger on.
+        project: The Jira project key (for Jira triggers).
+        tags: List of tags to trigger on (for Jira triggers).
         max_concurrent: Optional per-orchestration concurrency limit (DS-181).
+        source: Trigger source, either "jira" or "github" (DS-341).
+        project_number: GitHub project number (for GitHub triggers).
+        project_owner: GitHub project owner (org or user name).
+        project_scope: GitHub project scope ("org" or "user").
+        project_filter: GitHub project filter expression.
+        labels: List of GitHub labels to filter by.
 
     Returns:
         An Orchestration instance configured for testing.
     """
+    # DS-341: Support both Jira and GitHub triggers
+    if source == "github":
+        trigger = TriggerConfig(
+            source="github",
+            project_number=project_number,
+            project_owner=project_owner,
+            project_scope=project_scope,
+            project_filter=project_filter,
+            labels=labels or [],
+        )
+    else:
+        trigger = TriggerConfig(project=project, tags=tags or [])
+
     return Orchestration(
         name=name,
-        trigger=TriggerConfig(project=project, tags=tags or []),
+        trigger=trigger,
         agent=AgentConfig(prompt="Test prompt", tools=["jira"]),
         max_concurrent=max_concurrent,
     )
