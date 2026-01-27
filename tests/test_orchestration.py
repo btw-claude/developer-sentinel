@@ -7,6 +7,7 @@ import pytest
 
 from sentinel.orchestration import (
     AgentConfig,
+    GitHubContext,
     OnCompleteConfig,
     OnFailureConfig,
     OnStartConfig,
@@ -145,6 +146,57 @@ class TestDataclasses:
         """AgentConfig should support cursor_mode='ask'."""
         agent = AgentConfig(agent_type="cursor", cursor_mode="ask")
         assert agent.cursor_mode == "ask"
+
+    def test_github_context_defaults(self) -> None:
+        """GitHubContext should have sensible defaults."""
+        github = GitHubContext()
+        assert github.host == "github.com"
+        assert github.org == ""
+        assert github.repo == ""
+        assert github.branch == ""
+        assert github.create_branch is False
+        assert github.base_branch == "main"
+
+    def test_github_context_with_branch_config(self) -> None:
+        """GitHubContext should support branch configuration."""
+        github = GitHubContext(
+            host="github.com",
+            org="myorg",
+            repo="myrepo",
+            branch="feature/{jira_issue_key}",
+            create_branch=True,
+            base_branch="develop",
+        )
+        assert github.host == "github.com"
+        assert github.org == "myorg"
+        assert github.repo == "myrepo"
+        assert github.branch == "feature/{jira_issue_key}"
+        assert github.create_branch is True
+        assert github.base_branch == "develop"
+
+    def test_github_context_empty_branch(self) -> None:
+        """GitHubContext with empty branch should work."""
+        github = GitHubContext(
+            host="github.com",
+            org="myorg",
+            repo="myrepo",
+            branch="",
+        )
+        assert github.branch == ""
+        assert github.create_branch is False  # Default
+        assert github.base_branch == "main"  # Default
+
+    def test_github_context_branch_without_create(self) -> None:
+        """GitHubContext can have branch pattern without create_branch."""
+        github = GitHubContext(
+            host="github.com",
+            org="myorg",
+            repo="myrepo",
+            branch="feature/existing-branch",
+            create_branch=False,
+        )
+        assert github.branch == "feature/existing-branch"
+        assert github.create_branch is False
 
     def test_retry_config_defaults(self) -> None:
         """RetryConfig should have sensible defaults."""
