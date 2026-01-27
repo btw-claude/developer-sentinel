@@ -9,7 +9,15 @@
     </tr>
     {% for step in state.running_steps %}
     <tr>
-        <td><strong>{{ step.issue_key }}</strong></td>
+        <td>
+            {% if step.issue_url %}
+            <a href="{{ step.issue_url }}" target="_blank">
+                <strong>{{ step.issue_key }}</strong>
+            </a>
+            {% else %}
+            <strong>{{ step.issue_key }}</strong>
+            {% endif %}
+        </td>
         <td>{{ step.orchestration_name }}</td>
         <td>{{ step.attempt_number }}</td>
         <td>

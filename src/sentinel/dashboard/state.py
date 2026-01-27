@@ -113,6 +113,7 @@ class RunningStepInfoView:
     started_at: datetime
     elapsed_seconds: float
     log_filename: str  # derived from started_at (DS-319)
+    issue_url: str  # URL to Jira or GitHub issue (DS-322)
 
 
 @dataclass(frozen=True)
@@ -309,6 +310,7 @@ class SentinelStateAccessor:
                 started_at=step.started_at,
                 elapsed_seconds=(now - step.started_at).total_seconds(),
                 log_filename=step.started_at.strftime("%Y%m%d_%H%M%S") + ".log",
+                issue_url=step.issue_url,  # DS-322: Pass through issue URL
             )
             for step in running_steps_raw
         ]
