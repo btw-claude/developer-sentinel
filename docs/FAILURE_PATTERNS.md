@@ -19,6 +19,7 @@ The following patterns are recommended for detecting agent failures:
 | `ERROR:` | Error prefix with colon (avoids matching "error" in prose) | Yes |
 | `COULD_NOT_COMPLETE:` | Specific prefix for incomplete tasks | Yes |
 | `COMPLETION_FAILED` | Specific compound keyword | Yes |
+| `CONNECTION_TIMEOUT` | Network timeout indicator for API failures | Yes |
 
 ### Example Configuration
 
@@ -93,6 +94,12 @@ failure_patterns = ["FAILURE", "failed", "error"]
 ```
 
 **Note:** The defaults include `failed` and `error` for backwards compatibility. For new orchestrations, we recommend using the more specific patterns documented above.
+
+**Important:** The default patterns `failed` and `error` are lowercase, while pattern matching is case-sensitive (as described in the [Pattern Matching Details](#pattern-matching-details) section). This means:
+- `failed` will match "failed" but NOT "Failed" or "FAILED"
+- `error` will match "error" but NOT "Error" or "ERROR"
+
+If you need case-insensitive matching, use the `regex:` prefix with the `(?i)` flag (e.g., `regex:(?i)failed`).
 
 ## Pattern Matching Details
 
