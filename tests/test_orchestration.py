@@ -57,6 +57,33 @@ class TestDataclasses:
         assert trigger.project_owner == "my-org"
         assert trigger.project_filter == "Status = 'In Progress'"
 
+    def test_trigger_config_labels_defaults_to_empty_list(self) -> None:
+        """TriggerConfig labels should default to empty list."""
+        trigger = TriggerConfig()
+        assert trigger.labels == []
+
+    def test_trigger_config_labels_field_parsed(self) -> None:
+        """TriggerConfig should parse labels field from configuration."""
+        trigger = TriggerConfig(
+            source="github",
+            project_number=42,
+            project_owner="my-org",
+            labels=["bug", "urgent"],
+        )
+        assert trigger.labels == ["bug", "urgent"]
+
+    def test_trigger_config_labels_combined_with_project_filter(self) -> None:
+        """TriggerConfig should support labels combined with project_filter."""
+        trigger = TriggerConfig(
+            source="github",
+            project_number=42,
+            project_owner="my-org",
+            project_filter="Status = 'Ready'",
+            labels=["needs-triage", "bug"],
+        )
+        assert trigger.labels == ["needs-triage", "bug"]
+        assert trigger.project_filter == "Status = 'Ready'"
+
     def test_trigger_config_github_user_scope(self) -> None:
         """TriggerConfig should support user-scoped GitHub projects."""
         trigger = TriggerConfig(
@@ -1500,6 +1527,75 @@ orchestrations:
 
         assert len(orchestrations) == 1
         assert orchestrations[0].trigger.project_number == 1
+
+    def test_github_trigger_labels_field_parsed(self, tmp_path: Path) -> None:
+        """Should load GitHub trigger with labels field."""
+        yaml_content = """
+orchestrations:
+  - name: "labels-trigger"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      labels:
+        - "bug"
+        - "urgent"
+    agent:
+      prompt: "Triage bugs"
+"""
+        file_path = tmp_path / "labels_trigger.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.labels == ["bug", "urgent"]
+
+    def test_github_trigger_empty_labels_list_default(self, tmp_path: Path) -> None:
+        """Should default labels to empty list when not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "no-labels"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+    agent:
+      prompt: "Process all"
+"""
+        file_path = tmp_path / "no_labels.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].trigger.labels == []
+
+    def test_github_trigger_labels_combined_with_project_filter(self, tmp_path: Path) -> None:
+        """Should support labels combined with project_filter."""
+        yaml_content = """
+orchestrations:
+  - name: "combined-filter"
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "my-org"
+      project_filter: "Status = 'Ready'"
+      labels:
+        - "needs-triage"
+        - "bug"
+    agent:
+      prompt: "Triage ready bugs"
+"""
+        file_path = tmp_path / "combined_filter.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.trigger.project_filter == "Status = 'Ready'"
+        assert orch.trigger.labels == ["needs-triage", "bug"]
 
 
 class TestOrchestrationEnabled:

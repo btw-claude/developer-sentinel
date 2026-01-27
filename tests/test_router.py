@@ -40,6 +40,7 @@ def make_orchestration(
     project: str = "",
     repo: str = "",
     tags: list[str] | None = None,
+    labels: list[str] | None = None,
 ) -> Orchestration:
     """Helper to create an Orchestration for testing."""
     return Orchestration(
@@ -49,6 +50,7 @@ def make_orchestration(
             project=project,
             repo=repo,
             tags=tags or [],
+            labels=labels or [],
         ),
         agent=AgentConfig(prompt="Test prompt"),
     )
@@ -345,3 +347,123 @@ class TestGitHubIssueRouting:
         # Second match should be the GitHub issue
         assert isinstance(results[1].issue, GitHubIssue)
         assert results[1].orchestrations[0].name == "github-review"
+
+
+class TestGitHubLabelsFieldRouting:
+    """Tests for routing GitHub issues using the labels field (DS-333).
+
+    These tests verify the labels field routing functionality:
+    - Test GitHub issue matches with correct labels
+    - Test GitHub issue rejected with missing labels
+    - Test case-insensitive label matching
+    """
+
+    def test_github_issue_matches_with_correct_labels(self) -> None:
+        """GitHub issue should match orchestration with matching labels."""
+        router = Router([])
+        issue = make_github_issue(labels=["bug", "urgent"])
+        orch = make_orchestration(source="github", labels=["bug", "urgent"])
+        assert router._matches_trigger(issue, orch) is True
+
+    def test_github_issue_rejected_with_missing_labels(self) -> None:
+        """GitHub issue should be rejected if it doesn't have all required labels."""
+        router = Router([])
+        issue = make_github_issue(labels=["bug"])  # Missing "urgent"
+        orch = make_orchestration(source="github", labels=["bug", "urgent"])
+        assert router._matches_trigger(issue, orch) is False
+
+    def test_github_issue_labels_case_insensitive_matching(self) -> None:
+        """GitHub issue label matching should be case-insensitive."""
+        router = Router([])
+        issue = make_github_issue(labels=["BUG", "Urgent"])
+        orch = make_orchestration(source="github", labels=["bug", "URGENT"])
+        assert router._matches_trigger(issue, orch) is True
+
+    def test_github_issue_matches_empty_labels_filter(self) -> None:
+        """GitHub issue should match when no labels filter is specified."""
+        router = Router([])
+        issue = make_github_issue(labels=["anything"])
+        orch = make_orchestration(source="github", labels=[])
+        assert router._matches_trigger(issue, orch) is True
+
+    def test_github_issue_matches_with_extra_labels(self) -> None:
+        """GitHub issue should match if it has all required labels plus extras."""
+        router = Router([])
+        issue = make_github_issue(labels=["bug", "urgent", "extra-label"])
+        orch = make_orchestration(source="github", labels=["bug", "urgent"])
+        assert router._matches_trigger(issue, orch) is True
+
+    def test_github_issue_no_labels_rejected_with_labels_filter(self) -> None:
+        """GitHub issue with no labels should be rejected when labels filter is set."""
+        router = Router([])
+        issue = make_github_issue(labels=[])
+        orch = make_orchestration(source="github", labels=["bug"])
+        assert router._matches_trigger(issue, orch) is False
+
+    def test_routes_github_issue_with_labels_to_matching_orchestration(self) -> None:
+        """GitHub issue should be routed to orchestration with matching labels."""
+        orch = make_orchestration(
+            name="bug-triage",
+            source="github",
+            labels=["bug", "needs-triage"],
+        )
+        router = Router([orch])
+        issue = make_github_issue(labels=["bug", "needs-triage", "high-priority"])
+
+        result = router.route(issue)
+
+        assert result.matched is True
+        assert len(result.orchestrations) == 1
+        assert result.orchestrations[0].name == "bug-triage"
+
+    def test_github_labels_and_tags_can_be_used_together(self) -> None:
+        """Test that both labels (new) and tags (deprecated) fields are checked."""
+        router = Router([])
+        issue = make_github_issue(labels=["bug", "urgent", "team-a"])
+        orch = make_orchestration(
+            source="github",
+            tags=["team-a"],  # Deprecated tags field
+            labels=["bug"],   # New labels field
+        )
+        # Both must match
+        assert router._matches_trigger(issue, orch) is True
+
+    def test_github_labels_rejected_when_tags_missing(self) -> None:
+        """Issue should be rejected if labels match but tags don't."""
+        router = Router([])
+        issue = make_github_issue(labels=["bug", "urgent"])
+        orch = make_orchestration(
+            source="github",
+            tags=["team-a"],  # Issue doesn't have this
+            labels=["bug"],   # Issue has this
+        )
+        assert router._matches_trigger(issue, orch) is False
+
+    def test_routes_to_multiple_orchestrations_with_labels(self) -> None:
+        """Issue should route to all matching orchestrations based on labels."""
+        orch1 = make_orchestration(
+            name="bug-handler",
+            source="github",
+            labels=["bug"],
+        )
+        orch2 = make_orchestration(
+            name="urgent-handler",
+            source="github",
+            labels=["urgent"],
+        )
+        orch3 = make_orchestration(
+            name="feature-handler",
+            source="github",
+            labels=["feature"],
+        )
+        router = Router([orch1, orch2, orch3])
+        issue = make_github_issue(labels=["bug", "urgent"])
+
+        result = router.route(issue)
+
+        assert result.matched is True
+        assert len(result.orchestrations) == 2
+        names = [o.name for o in result.orchestrations]
+        assert "bug-handler" in names
+        assert "urgent-handler" in names
+        assert "feature-handler" not in names
