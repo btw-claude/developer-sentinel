@@ -75,6 +75,7 @@ class RunningStepInfo:
     orchestration_name: str
     attempt_number: int
     started_at: datetime
+    issue_url: str  # URL to Jira or GitHub issue (DS-322)
 
 
 @dataclass
@@ -726,6 +727,48 @@ class Sentinel:
         """
         with self._per_orch_counts_lock:
             return dict(self._per_orch_active_counts)
+
+    def _construct_issue_url(
+        self,
+        issue: JiraIssue | GitHubIssueProtocol,
+        orchestration: Orchestration,
+    ) -> str:
+        """Construct a URL to the issue based on the trigger source (DS-322).
+
+        For Jira issues: https://{jira_host}/browse/{issue_key}
+        For GitHub issues/PRs: Uses the repo_url from the issue directly.
+
+        Args:
+            issue: The issue (Jira or GitHub) to construct a URL for.
+            orchestration: The orchestration containing trigger source info.
+
+        Returns:
+            The URL to the issue, or empty string if URL cannot be constructed.
+        """
+        trigger_source = getattr(orchestration.trigger, "source", "jira")
+
+        if trigger_source == "jira":
+            # Construct Jira URL from config base URL and issue key
+            if self.config.jira_base_url:
+                base_url = self.config.jira_base_url.rstrip("/")
+                return f"{base_url}/browse/{issue.key}"
+            return ""
+
+        elif trigger_source == "github":
+            # For GitHub, use the repo_url from the issue which contains the full URL
+            if hasattr(issue, "repo_url") and issue.repo_url:
+                return issue.repo_url
+            # Fallback: construct from agent.github context if available
+            github_ctx = orchestration.agent.github
+            if github_ctx and github_ctx.org and github_ctx.repo:
+                # Extract issue number from the key (e.g., "#123" -> 123 or "org/repo#123" -> 123)
+                issue_num = str(issue.key).split("#")[-1] if "#" in str(issue.key) else ""
+                if issue_num:
+                    host = github_ctx.host or "github.com"
+                    return f"https://{host}/{github_ctx.org}/{github_ctx.repo}/issues/{issue_num}"
+            return ""
+
+        return ""
 
     def _get_available_slots_for_orchestration(self, orchestration: Orchestration) -> int:
         """Get available slots for a specific orchestration considering both limits (DS-179).
@@ -1613,11 +1656,16 @@ class Sentinel:
                             attempt_number = self._get_and_increment_attempt_count(
                                 issue_key, matched_orch.name
                             )
+                            # DS-322: Construct issue URL for dashboard link
+                            issue_url = self._construct_issue_url(
+                                routing_result.issue, matched_orch
+                            )
                             self._running_steps[id(future)] = RunningStepInfo(
                                 issue_key=issue_key,
                                 orchestration_name=matched_orch.name,
                                 attempt_number=attempt_number,
                                 started_at=datetime.now(),
+                                issue_url=issue_url,
                             )
                         submitted_count += 1
                     else:
