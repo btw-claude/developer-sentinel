@@ -7,7 +7,7 @@ and orchestration-specific configuration.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, TypeAlias
 
 from sentinel.agent_clients.base import AgentClient, AgentType
 from sentinel.config import Config
@@ -26,9 +26,9 @@ AgentClientBuilder = Callable[[Config], AgentClient]
 # - OrchestrationCacheKey: Used by get_or_create_for_orchestration() -
 #   tuple of (agent_type, config_id, kwargs_key) where kwargs_key is a
 #   hashable tuple representation of the kwargs dict
-SimpleCacheKey = tuple[AgentType, int]
-OrchestrationCacheKey = tuple[AgentType, int, tuple[tuple[str, Any], ...]]
-CacheKey = SimpleCacheKey | OrchestrationCacheKey
+SimpleCacheKey: TypeAlias = tuple[AgentType, int]
+OrchestrationCacheKey: TypeAlias = tuple[AgentType, int, tuple[tuple[str, Any], ...]]
+CacheKey: TypeAlias = SimpleCacheKey | OrchestrationCacheKey
 
 
 class AgentClientFactory:
