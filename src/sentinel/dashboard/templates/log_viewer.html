@@ -497,6 +497,7 @@ document.getElementById('refresh-btn').addEventListener('click', refreshLogFiles
 scrollIndicator.addEventListener('click', scrollToBottom);
 
 // Auto-select from URL query parameters (for direct links from Running Steps)
+// DS-328: Added user feedback when invalid URL parameters are detected
 (function initFromUrlParams() {
     const params = new URLSearchParams(window.location.search);
     const orchestration = params.get('orchestration');
@@ -515,8 +516,16 @@ scrollIndicator.addEventListener('click', scrollToBottom);
                 if (fileOption) {
                     logfileSelect.value = file;
                     loadLogFile();
+                } else {
+                    // DS-328: User feedback for invalid file parameter
+                    console.warn('Invalid URL parameter: file "' + file + '" not found in orchestration "' + orchestration + '"');
+                    showToast('warning', 'Log file "' + file + '" not found in selected orchestration');
                 }
             }
+        } else {
+            // DS-328: User feedback for invalid orchestration parameter
+            console.warn('Invalid URL parameter: orchestration "' + orchestration + '" not found');
+            showToast('warning', 'Orchestration "' + orchestration + '" not found');
         }
     }
 })();
