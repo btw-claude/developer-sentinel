@@ -181,11 +181,13 @@ orchestrations:
         - "review complete"
 
       # Patterns in agent response that indicate failure
+      # Note: Use specific patterns to avoid false positives (e.g., "error" could
+      # match "No errors found" - use "ERROR:" or "TASK_FAILED" instead)
       failure_patterns:
         - "FAILURE"
-        - "failed"
-        - "error"
-        - "could not"
+        - "TASK_FAILED"
+        - "ERROR:"
+        - "could not complete"
 
     # On start actions
     # What to do immediately when an issue is picked up
@@ -242,6 +244,7 @@ orchestrations:
         - "documentation updated"
       failure_patterns:
         - "FAILURE"
+        - "TASK_FAILED"
         - "could not update"
 
     on_start:
@@ -469,7 +472,8 @@ orchestrations:
         - "triage complete"
       failure_patterns:
         - "FAILURE"
-        - "error"
+        - "ERROR:"
+        - "TASK_FAILED"
 
     on_start:
       add_tag: "sentinel-triaging"
@@ -537,7 +541,8 @@ orchestrations:
         - "SUCCESS"
       failure_patterns:
         - "FAILURE"
-        - "error"
+        - "ERROR:"
+        - "TASK_FAILED"
 
     on_start:
       add_tag: "cursor-processing"
@@ -600,7 +605,8 @@ orchestrations:
         - "SUCCESS"
       failure_patterns:
         - "FAILURE"
-        - "error"
+        - "ERROR:"
+        - "TASK_FAILED"
 
     on_start:
       add_tag: "planning-refactor"

@@ -166,6 +166,8 @@ orchestrations:
 - `claude` - Use Claude AI agent (default)
 - `cursor` - Use Cursor AI agent
 
+**Default Behavior:** When `agent_type` is omitted from an orchestration config, it defaults to the value of the `SENTINEL_DEFAULT_AGENT_TYPE` environment variable. If that environment variable is also not set, it defaults to `claude`.
+
 **Cursor Modes (only valid when `agent_type: cursor`):**
 - `agent` - Full autonomous agent mode (default)
 - `plan` - Planning mode - creates plans without executing
