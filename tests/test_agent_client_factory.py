@@ -42,6 +42,9 @@ class MockAgentClient(AgentClient):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
+        branch: str | None = None,
+        create_branch: bool = False,
+        base_branch: str = "main",
     ) -> AgentRunResult:
         return AgentRunResult(response="Mock response", workdir=None)
 

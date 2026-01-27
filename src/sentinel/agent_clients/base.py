@@ -69,6 +69,9 @@ class AgentClient(ABC):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
+        branch: str | None = None,
+        create_branch: bool = False,
+        base_branch: str = "main",
     ) -> AgentRunResult:
         """Run an agent with the given prompt and tools.
 
@@ -80,6 +83,9 @@ class AgentClient(ABC):
             issue_key: Optional issue key for creating a unique working directory.
             model: Optional model identifier. If None, uses the client's default model.
             orchestration_name: Optional orchestration name for streaming log files.
+            branch: Optional branch name to checkout/create before running the agent.
+            create_branch: If True and branch doesn't exist, create it from base_branch.
+            base_branch: Base branch to create new branches from. Defaults to "main".
 
         Returns:
             AgentRunResult containing the agent's response text and optional working directory path.

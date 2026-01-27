@@ -356,6 +356,94 @@ class ClaudeSdkAgentClient(AgentClient):
         logger.info(f"Created agent working directory: {workdir}")
         return workdir
 
+    def _setup_branch(
+        self,
+        workdir: Path,
+        branch: str,
+        create_branch: bool,
+        base_branch: str,
+    ) -> None:
+        """Setup the git branch in the working directory.
+
+        If the branch exists remotely, checks it out and pulls latest changes.
+        If it doesn't exist and create_branch is True, creates it from base_branch.
+        If it doesn't exist and create_branch is False, raises AgentClientError.
+
+        Args:
+            workdir: The working directory (must be a git repository).
+            branch: The branch name to checkout/create.
+            create_branch: If True, create the branch if it doesn't exist.
+            base_branch: The base branch to create new branches from.
+
+        Raises:
+            AgentClientError: If branch doesn't exist and create_branch is False,
+                or if git operations fail.
+        """
+        import subprocess
+
+        logger.info(f"Setting up branch '{branch}' in {workdir}")
+
+        try:
+            # Fetch latest from remote
+            subprocess.run(
+                ["git", "fetch", "origin"],
+                cwd=workdir,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            # Check if branch exists on remote
+            result = subprocess.run(
+                ["git", "ls-remote", "--heads", "origin", branch],
+                cwd=workdir,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            branch_exists = bool(result.stdout.strip())
+
+            if branch_exists:
+                # Branch exists - checkout and pull
+                logger.info(f"Branch '{branch}' exists, checking out and pulling")
+                subprocess.run(
+                    ["git", "checkout", branch],
+                    cwd=workdir,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                subprocess.run(
+                    ["git", "pull", "origin", branch],
+                    cwd=workdir,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            elif create_branch:
+                # Branch doesn't exist but we should create it
+                logger.info(
+                    f"Branch '{branch}' does not exist, creating from origin/{base_branch}"
+                )
+                subprocess.run(
+                    ["git", "checkout", "-b", branch, f"origin/{base_branch}"],
+                    cwd=workdir,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            else:
+                # Branch doesn't exist and we shouldn't create it
+                raise AgentClientError(
+                    f"Branch '{branch}' does not exist on remote and create_branch is False"
+                )
+
+        except subprocess.CalledProcessError as e:
+            raise AgentClientError(
+                f"Git operation failed: {e.cmd} returned {e.returncode}. "
+                f"stderr: {e.stderr}"
+            ) from e
+
     def run_agent(
         self,
         prompt: str,
@@ -365,11 +453,18 @@ class ClaudeSdkAgentClient(AgentClient):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
+        branch: str | None = None,
+        create_branch: bool = False,
+        base_branch: str = "main",
     ) -> AgentRunResult:
         """Run a Claude agent with the given prompt and tools."""
         workdir = None
         if self.base_workdir is not None and issue_key is not None:
             workdir = self._create_workdir(issue_key)
+
+        # Setup branch if specified and workdir exists
+        if branch and workdir:
+            self._setup_branch(workdir, branch, create_branch, base_branch)
 
         # Build full prompt with context section
         full_prompt = prompt

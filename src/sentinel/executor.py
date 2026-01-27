@@ -187,6 +187,9 @@ class AgentClient(ABC):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
+        branch: str | None = None,
+        create_branch: bool = False,
+        base_branch: str = "main",
     ) -> AgentRunResult:
         """Run a Claude agent with the given prompt and tools.
 
@@ -198,6 +201,9 @@ class AgentClient(ABC):
             issue_key: Optional issue key for creating a unique working directory.
             model: Optional model identifier. If None, uses the CLI's default model.
             orchestration_name: Optional orchestration name for streaming log files.
+            branch: Optional branch name to checkout/create before running the agent.
+            create_branch: If True and branch doesn't exist, create it from base_branch.
+            base_branch: Base branch to create new branches from. Defaults to "main".
 
         Returns:
             AgentRunResult containing the agent's response text and optional working directory path.
@@ -648,6 +654,9 @@ class AgentExecutor:
             )
 
             try:
+                # Get branch configuration
+                branch = self._expand_branch_pattern(issue, orchestration)
+
                 run_result = self.client.run_agent(
                     prompt,
                     tools,
@@ -656,6 +665,9 @@ class AgentExecutor:
                     issue_key=issue.key,
                     model=model,
                     orchestration_name=orchestration.name,
+                    branch=branch,
+                    create_branch=github.create_branch if github else False,
+                    base_branch=github.base_branch if github else "main",
                 )
                 response = run_result.response
                 last_response = response

@@ -178,6 +178,9 @@ class CursorAgentClient(AgentClient):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
+        branch: str | None = None,
+        create_branch: bool = False,
+        base_branch: str = "main",
         mode: CursorMode | str | None = None,
     ) -> AgentRunResult:
         """Run a Cursor agent with the given prompt.
@@ -190,6 +193,9 @@ class CursorAgentClient(AgentClient):
             issue_key: Optional issue key for creating a unique working directory.
             model: Optional model identifier. If None, uses the client's default model.
             orchestration_name: Optional orchestration name (reserved for future logging).
+            branch: Optional branch name (reserved for future implementation).
+            create_branch: If True and branch doesn't exist, create it (reserved for future).
+            base_branch: Base branch to create new branches from (reserved for future).
             mode: Optional operation mode (agent, plan, ask). Can be a CursorMode enum or string.
                   If None, uses the client's default mode.
 

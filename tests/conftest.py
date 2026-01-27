@@ -116,6 +116,9 @@ class MockAgentClient(AgentClient):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
+        branch: str | None = None,
+        create_branch: bool = False,
+        base_branch: str = "main",
     ) -> AgentRunResult:
         self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model, orchestration_name))
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
@@ -205,6 +208,9 @@ class TrackingAgentClient(AgentClient):
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
+        branch: str | None = None,
+        create_branch: bool = False,
+        base_branch: str = "main",
     ) -> AgentRunResult:
         with self.lock:
             # Track global execution count
