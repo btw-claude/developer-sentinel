@@ -221,7 +221,10 @@ orchestrations:
       project_number: 42          # Project number from URL
       project_owner: "your-org"   # Organization or username
       project_scope: "org"        # "org" or "user"
-      project_filter: 'Status = "Ready for Review"'
+      labels:                     # Filter by GitHub labels (optional)
+        - "bug"                   # Issues must have ALL labels (AND logic)
+        - "needs-triage"          # Case-insensitive matching
+      project_filter: 'Status = "Ready for Review"'  # Can combine with labels
     agent:
       prompt: |
         Review the code changes for this item.
@@ -235,6 +238,13 @@ orchestrations:
     on_complete:
       add_tag: "reviewed"
 ```
+
+**GitHub Labels Field:**
+- `labels`: List of GitHub labels to filter by
+- Issues must have **ALL** specified labels (AND logic)
+- Label matching is **case-insensitive** ("Bug" matches "bug", "BUG", etc.)
+- Can be combined with `project_filter` for more precise filtering
+- Similar to Jira's `tags` field for users familiar with Jira triggers
 
 See [docs/GITHUB_TRIGGER_MIGRATION.md](docs/GITHUB_TRIGGER_MIGRATION.md) for the migration guide from deprecated GitHub trigger fields.
 

@@ -13,7 +13,10 @@ orchestrations:
       source: github
       project_number: 42              # From your project URL
       project_owner: "my-org"         # Your org or username
-      project_filter: 'Status = "Ready"'  # Optional: filter items
+      labels:                         # Optional: filter by labels (AND logic)
+        - "bug"
+        - "needs-triage"
+      project_filter: 'Status = "Ready"'  # Optional: filter by project fields
     agent:
       prompt: "Process the issue"
       tools:
@@ -98,6 +101,7 @@ orchestrations:
 |-------|------|---------|-------------|
 | `project_scope` | string | `"org"` | Either `"org"` (organization project) or `"user"` (personal project) |
 | `project_filter` | string | `""` | JQL-like filter expression to select items |
+| `labels` | list | `[]` | List of GitHub labels to filter by (AND logic, case-insensitive) |
 
 ### Finding Your Project Number
 
@@ -115,6 +119,56 @@ https://github.com/users/YOUR-USERNAME/projects/5
                                                 ^
                                     project_number: 5
 ```
+
+## Label-Based Filtering
+
+The `labels` field provides label-based filtering for GitHub issues and PRs, similar to Jira's `tags` field.
+
+### Labels Field Behavior
+
+```yaml
+trigger:
+  source: github
+  project_number: 42
+  project_owner: "my-org"
+  # Filter by GitHub labels
+  labels:
+    - "bug"
+    - "needs-triage"
+```
+
+**Key characteristics:**
+
+- **AND logic**: Issues must have ALL specified labels to match
+- **Case-insensitive**: "Bug" matches "bug", "BUG", "Bug", etc.
+- **Can combine with project_filter**: For more precise filtering
+
+### Combining Labels with Project Filter
+
+```yaml
+trigger:
+  source: github
+  project_number: 42
+  project_owner: "my-org"
+  # Must have BOTH labels AND match the project filter
+  labels:
+    - "bug"
+    - "priority-high"
+  project_filter: 'Status = "Ready for Review"'
+```
+
+This configuration matches items that:
+1. Have both "bug" AND "priority-high" labels
+2. AND have Status = "Ready for Review" in the project board
+
+### Comparison with Jira Tags
+
+| Feature | GitHub `labels` | Jira `tags` |
+|---------|-----------------|-------------|
+| Field name | `labels` | `tags` |
+| Matching logic | AND (must have ALL) | AND (must have ALL) |
+| Case sensitivity | Case-insensitive | Case-insensitive |
+| Combinable with filter | Yes (`project_filter`) | Yes (`jql_filter`) |
 
 ## Filter Expression Syntax
 

@@ -380,6 +380,16 @@ orchestrations:
       # Field names must match the project's custom fields exactly (case-sensitive)
       project_filter: 'Status = "Ready for Review"'
 
+      # labels: List of GitHub labels to filter by (optional)
+      # ----------------------------------------------------------
+      # - Issues/PRs must have ALL specified labels to match (AND logic)
+      # - Label matching is case-insensitive ("Bug" matches "bug", "BUG", etc.)
+      # - Can be combined with project_filter for more precise filtering
+      # - Similar to Jira's tags field, but for GitHub issues/PRs
+      # labels:
+      #   - "needs-review"
+      #   - "priority-high"
+
     agent:
       prompt: |
         You are a code review assistant processing GitHub issues and PRs from a project board.
@@ -432,6 +442,70 @@ orchestrations:
 
     on_failure:
       add_tag: "review-failed"
+
+  # GitHub Project with Labels Filtering
+  # -------------------------------------
+  # This example demonstrates using the labels field to filter GitHub issues/PRs
+  # by their labels. Labels can be combined with project_filter for precise filtering.
+  - name: "github-labeled-bug-review"
+
+    trigger:
+      source: github
+      project_number: 42
+      project_owner: "your-org"
+      project_scope: "org"
+
+      # Filter by GitHub labels (issues must have ALL specified labels - AND logic)
+      # Label matching is case-insensitive ("Bug" matches "bug", "BUG", etc.)
+      labels:
+        - "bug"
+        - "needs-triage"
+
+      # Can combine labels with project_filter for more precise filtering
+      # This will match items that:
+      # 1. Have BOTH "bug" AND "needs-triage" labels
+      # 2. AND have Status = "Ready" in the project board
+      project_filter: 'Status = "Ready"'
+
+    agent:
+      prompt: |
+        You are a bug triage assistant. Review and triage the bug.
+
+        The issue has been pre-filtered to include only items with both
+        "bug" and "needs-triage" labels. Analyze the bug report and:
+        1. Verify it's a valid bug (not a feature request or user error)
+        2. Assess severity and priority
+        3. Add appropriate labels (severity, component, etc.)
+        4. Assign to the appropriate team member if possible
+
+        End with SUCCESS when triage is complete.
+
+      tools:
+        - github
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+        - "triage complete"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+        - "TASK_FAILED"
+
+    on_start:
+      add_tag: "sentinel-triaging"
+
+    on_complete:
+      add_tag: "triaged"
+
+    on_failure:
+      add_tag: "triage-failed"
 
   # GitHub Project with Multiple Repository Support
   # -----------------------------------------------
