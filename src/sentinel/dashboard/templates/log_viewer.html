@@ -503,14 +503,20 @@ scrollIndicator.addEventListener('click', scrollToBottom);
     const file = params.get('file');
 
     if (orchestration) {
-        orchestrationSelect.value = orchestration;
-        updateLogFileOptions();
+        // Validate orchestration parameter exists in dropdown before selecting
+        const orchOption = Array.from(orchestrationSelect.options).find(opt => opt.value === orchestration);
+        if (orchOption) {
+            orchestrationSelect.value = orchestration;
+            updateLogFileOptions();
 
-        if (file) {
-            setTimeout(() => {
-                logfileSelect.value = file;
-                loadLogFile();
-            }, 0);
+            if (file) {
+                // Validate file parameter exists in dropdown before selecting
+                const fileOption = Array.from(logfileSelect.options).find(opt => opt.value === file);
+                if (fileOption) {
+                    logfileSelect.value = file;
+                    loadLogFile();
+                }
+            }
         }
     }
 })();
