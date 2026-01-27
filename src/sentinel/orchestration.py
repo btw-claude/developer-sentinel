@@ -161,6 +161,8 @@ class GitHubContext:
         org: The GitHub organization name.
         repo: The GitHub repository name.
         branch: Branch pattern for operations (e.g., "feature/{jira_issue_key}").
+            Supports template variables that will be expanded at runtime:
+            - {jira_issue_key}: The Jira issue key (e.g., "PROJ-123")
         create_branch: Whether to auto-create the branch if it doesn't exist.
         base_branch: The base branch for new branch creation (defaults to "main").
     """
