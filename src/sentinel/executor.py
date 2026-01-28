@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import shutil
 import time
+import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,6 +25,76 @@ if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
 
 logger = get_logger(__name__)
+
+
+def slugify(text: str) -> str:
+    """Convert text to a branch-safe slug format.
+
+    Transforms arbitrary text into a format safe for use in git branch names:
+    - Converts to lowercase
+    - Normalizes unicode characters (e.g., é -> e)
+    - Replaces spaces and underscores with hyphens
+    - Removes characters invalid in git branch names
+    - Collapses multiple consecutive hyphens into one
+    - Strips leading/trailing hyphens
+
+    Git branch name restrictions handled:
+    - No spaces (replaced with hyphens)
+    - No ~ ^ : ? * [ \\ (removed)
+    - No leading/trailing dots or hyphens
+    - No consecutive dots (..)
+    - No @{ sequence
+
+    Args:
+        text: The text to convert to a slug.
+
+    Returns:
+        A branch-safe slug string. Returns empty string if input is empty
+        or results in an empty slug after processing.
+
+    Examples:
+        >>> slugify("Add login button")
+        'add-login-button'
+        >>> slugify("Fix: authentication bug!")
+        'fix-authentication-bug'
+        >>> slugify("Feature [WIP] - user profile")
+        'feature-wip-user-profile'
+        >>> slugify("Éclair résumé")
+        'eclair-resume'
+    """
+    if not text:
+        return ""
+
+    # Normalize unicode characters (e.g., é -> e)
+    normalized = unicodedata.normalize("NFKD", text)
+    # Remove combining characters (accents, etc.)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+
+    # Convert to lowercase
+    slug = ascii_text.lower()
+
+    # Replace spaces and underscores with hyphens
+    slug = re.sub(r"[\s_]+", "-", slug)
+
+    # Remove characters that are invalid in git branch names
+    # Keep only alphanumeric, hyphens, dots, and forward slashes
+    # Git disallows: ~ ^ : ? * [ \ space and control characters
+    # Also remove @{ sequence and .. (consecutive dots)
+    slug = re.sub(r"[~^:?*\[\]\\@{}!\"'#$%&()+,;<>=|`]", "", slug)
+
+    # Remove @ if followed by {
+    slug = re.sub(r"@\{", "", slug)
+
+    # Replace consecutive dots with single dot
+    slug = re.sub(r"\.{2,}", ".", slug)
+
+    # Collapse multiple consecutive hyphens into one
+    slug = re.sub(r"-{2,}", "-", slug)
+
+    # Strip leading/trailing hyphens and dots
+    slug = slug.strip("-.")
+
+    return slug
 
 
 @dataclass
@@ -277,6 +348,7 @@ class AgentExecutor:
                 # Jira context
                 "jira_issue_key": issue.key,
                 "jira_summary": issue.summary,
+                "jira_summary_slug": slugify(issue.summary),
                 "jira_description": issue.description or "",
                 "jira_status": issue.status or "",
                 "jira_assignee": issue.assignee or "",
@@ -288,6 +360,7 @@ class AgentExecutor:
                 # GitHub Issue variables (empty for Jira issues)
                 "github_issue_number": "",
                 "github_issue_title": "",
+                "github_issue_title_slug": "",
                 "github_issue_body": "",
                 "github_issue_state": "",
                 "github_issue_author": "",
@@ -314,6 +387,7 @@ class AgentExecutor:
                 # GitHub Issue context
                 "github_issue_number": str(issue.number),
                 "github_issue_title": issue.title,
+                "github_issue_title_slug": slugify(issue.title),
                 "github_issue_body": issue.body or "",
                 "github_issue_state": issue.state,
                 "github_issue_author": issue.author,
@@ -329,6 +403,7 @@ class AgentExecutor:
                 # Jira variables (empty for GitHub issues)
                 "jira_issue_key": "",
                 "jira_summary": "",
+                "jira_summary_slug": "",
                 "jira_description": "",
                 "jira_status": "",
                 "jira_assignee": "",
@@ -354,14 +429,31 @@ class AgentExecutor:
         - {jira_parent_key}: The parent issue key for sub-tasks (e.g., "DS-200")
         - {github_issue_number}: The GitHub issue/PR number (e.g., "123")
         - {github_parent_issue_number}: The parent issue number (e.g., "42")
-        - {jira_summary}: Issue summary (use with caution - may need slugification)
-        - {github_issue_title}: Issue/PR title (use with caution - may need slugification)
+        - {jira_summary}: Issue summary (raw - may contain spaces/special chars)
+        - {jira_summary_slug}: Issue summary slugified (branch-safe, e.g., "add-login-button")
+        - {github_issue_title}: Issue/PR title (raw - may contain spaces/special chars)
+        - {github_issue_title_slug}: Issue/PR title slugified (branch-safe)
+
+        Note on raw vs slug variables:
+        - Raw variables ({jira_summary}, {github_issue_title}) preserve the original text
+          but may contain characters invalid in git branch names (spaces, special chars).
+        - Slug variables ({jira_summary_slug}, {github_issue_title_slug}) are automatically
+          converted to branch-safe format: lowercase, spaces replaced with hyphens,
+          special characters removed.
+
+        Note on cross-source variables:
+        - Using Jira variables (e.g., {jira_issue_key}) with a GitHub issue results in
+          empty strings, which may produce branch names like "feature/".
+        - Similarly, using GitHub variables with Jira issues produces empty strings.
+        - Design your branch patterns with the source type in mind.
 
         Example:
         - Pattern: "feature/{jira_issue_key}"
         - Result: "feature/DS-290"
         - Pattern: "feature/{jira_epic_key}"
         - Result: "feature/DS-100" (allows multiple sub-issues to share a branch)
+        - Pattern: "feature/{jira_issue_key}-{jira_summary_slug}"
+        - Result: "feature/DS-290-add-login-button"
 
         Args:
             issue: The issue to process (Jira or GitHub).
@@ -393,6 +485,7 @@ class AgentExecutor:
         Jira context (populated for Jira issues):
         - {jira_issue_key}: The Jira issue key (e.g., "DS-123")
         - {jira_summary}: Issue summary/title
+        - {jira_summary_slug}: Issue summary slugified for branch names (e.g., "add-login-button")
         - {jira_description}: Full issue description
         - {jira_status}: Current issue status
         - {jira_assignee}: Assignee display name
@@ -410,6 +503,7 @@ class AgentExecutor:
         GitHub Issue context (populated for GitHub issues/PRs):
         - {github_issue_number}: The issue/PR number
         - {github_issue_title}: Issue/PR title
+        - {github_issue_title_slug}: Issue/PR title slugified for branch names
         - {github_issue_body}: Issue/PR body/description
         - {github_issue_state}: State (e.g., "open", "closed")
         - {github_issue_author}: Username of the author
