@@ -961,3 +961,40 @@ class TestClaudeSdkAgentClientBranchSetup:
         with patch("subprocess.run", side_effect=mock_run):
             with pytest.raises(AgentClientError, match="Git operation failed"):
                 client._setup_branch(workdir, "feature/DS-123", create_branch=False, base_branch="main")
+
+    def test_malformed_rev_parse_output_raises_error(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should raise AgentClientError when git rev-parse returns unexpected output (DS-373).
+
+        This test verifies the defensive validation added in DS-373 that checks for
+        the expected 3-line output from the combined rev-parse command. While check=True
+        catches most failures, malformed output could occur in edge cases.
+        """
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
+
+        call_history: list[list[str]] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            call_history.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stderr = ""
+
+            # ls-remote returns branch info when branch exists
+            if "ls-remote" in cmd:
+                result.stdout = "abc123\trefs/heads/feature/DS-123"
+            # DS-373: Return malformed output (only 2 lines instead of 3)
+            elif "rev-parse" in cmd and "--abbrev-ref" in cmd:
+                result.stdout = "main\nlocal123"  # Missing third line
+            else:
+                result.stdout = ""
+
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            with pytest.raises(AgentClientError, match="Unexpected git rev-parse output: expected 3 lines, got 2"):
+                client._setup_branch(workdir, "feature/DS-123", create_branch=False, base_branch="main")
