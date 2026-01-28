@@ -198,6 +198,8 @@ github:
   create_branch: true
 ```
 
+**Future Enhancement:** Automatic branch name sanitization (replacing spaces with dashes, removing slashes, etc.) could be implemented to make `{jira_summary}` and `{github_issue_title}` safer to use in branch patterns. This feature is being considered for a future release.
+
 #### Branch Behavior
 
 | Setting | Default | Description |
@@ -247,6 +249,8 @@ gh pr create --repo upstream-org/project-name --head my-username:feature/DS-290 
 # Or navigate to GitHub UI:
 # https://github.com/upstream-org/project-name/compare/main...my-username:feature/DS-290
 ```
+
+**Note:** Before using the GitHub CLI (`gh`) commands, ensure you have authenticated with GitHub by running `gh auth login`. This is required for the CLI to access your GitHub account and perform operations like creating pull requests.
 
 ### Agent Type Selection
 
