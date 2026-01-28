@@ -40,12 +40,12 @@ from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWrite
 
 # Rate limiting configuration for toggle endpoints
 # Cooldown period in seconds between writes to the same file
-# Configurable via environment variable for operational flexibility
-# Default values and reasonable bounds for each configuration
-# Bounds constants moved to sentinel.validation module
-_DEFAULT_TOGGLE_COOLDOWN: float = 2.0
-_DEFAULT_RATE_LIMIT_CACHE_TTL: int = 3600  # 1 hour
-_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE: int = 10000  # 10k entries
+# Configurable via SENTINEL_TOGGLE_COOLDOWN environment variable
+# Default values and reasonable bounds are now centralized in Config class
+# These module-level defaults are kept for backward compatibility
+_DEFAULT_TOGGLE_COOLDOWN: float = 2.0  # Use Config.toggle_cooldown_seconds instead
+_DEFAULT_RATE_LIMIT_CACHE_TTL: int = 3600  # Use Config.rate_limit_cache_ttl instead
+_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE: int = 10000  # Use Config.rate_limit_cache_maxsize instead
 
 # Backwards compatibility aliases for bounds constants
 # These are deprecated and will be removed in a future release.

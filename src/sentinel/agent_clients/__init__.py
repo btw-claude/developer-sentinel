@@ -12,6 +12,7 @@ from sentinel.agent_clients.base import (
     AgentType,
 )
 from sentinel.agent_clients.claude_sdk import (
+    DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD,
     ClaudeProcessInterruptedError,
     ClaudeSdkAgentClient,
     TimingMetrics,
@@ -39,6 +40,7 @@ __all__ = [
     # Claude SDK client
     "ClaudeProcessInterruptedError",
     "ClaudeSdkAgentClient",
+    "DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD",
     "TimingMetrics",
     "get_shutdown_event",
     "is_shutdown_requested",

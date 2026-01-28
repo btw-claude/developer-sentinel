@@ -14,6 +14,7 @@ from sentinel.config import (
     VALID_LOG_LEVELS,
     Config,
     _parse_bool,
+    _parse_non_negative_float,
     _parse_port,
     _parse_positive_int,
     _validate_agent_type,
@@ -250,6 +251,41 @@ class TestLoadConfig:
         config = load_config()
 
         assert config.log_json is False
+
+
+class TestParseNonNegativeFloat:
+    """Tests for _parse_non_negative_float helper function."""
+
+    def test_valid_positive_float(self) -> None:
+        assert _parse_non_negative_float("3.14", "TEST_VAR", 1.0) == 3.14
+        assert _parse_non_negative_float("1.0", "TEST_VAR", 1.0) == 1.0
+        assert _parse_non_negative_float("100.5", "TEST_VAR", 1.0) == 100.5
+
+    def test_valid_zero(self) -> None:
+        """Test that zero is accepted (non-negative)."""
+        assert _parse_non_negative_float("0", "TEST_VAR", 1.0) == 0.0
+        assert _parse_non_negative_float("0.0", "TEST_VAR", 1.0) == 0.0
+
+    def test_valid_integer_string(self) -> None:
+        """Test that integer strings are accepted."""
+        assert _parse_non_negative_float("5", "TEST_VAR", 1.0) == 5.0
+
+    def test_invalid_negative(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _parse_non_negative_float("-1.5", "TEST_VAR", 1.0)
+        assert result == 1.0
+        assert "Invalid TEST_VAR: -1.500000 is negative" in caplog.text
+
+    def test_invalid_non_numeric(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _parse_non_negative_float("abc", "TEST_VAR", 1.0)
+        assert result == 1.0
+        assert "Invalid TEST_VAR: 'abc' is not a valid number" in caplog.text
+
+    def test_invalid_empty_string(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.WARNING):
+            result = _parse_non_negative_float("", "TEST_VAR", 1.0)
+        assert result == 1.0
 
 
 class TestParseBool:
@@ -828,3 +864,163 @@ class TestCursorConfig:
 
         assert config.default_agent_type == "claude"
         assert "Invalid SENTINEL_DEFAULT_AGENT_TYPE" in caplog.text
+
+
+class TestInterMessageTimesThresholdConfig:
+    """Tests for inter_message_times_threshold configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that inter_message_times_threshold defaults to 100."""
+        monkeypatch.delenv("SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD", raising=False)
+
+        config = load_config()
+
+        assert config.inter_message_times_threshold == 100
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that inter_message_times_threshold loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD", "200")
+
+        config = load_config()
+
+        assert config.inter_message_times_threshold == 200
+
+    def test_invalid_value_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid values use the default."""
+        monkeypatch.setenv("SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD", "not-a-number")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.inter_message_times_threshold == 100
+        assert "Invalid SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD" in caplog.text
+
+    def test_zero_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that zero uses the default (must be positive)."""
+        monkeypatch.setenv("SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD", "0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.inter_message_times_threshold == 100
+        assert "not positive" in caplog.text
+
+
+class TestToggleCooldownConfig:
+    """Tests for toggle_cooldown_seconds configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that toggle_cooldown_seconds defaults to 2.0."""
+        monkeypatch.delenv("SENTINEL_TOGGLE_COOLDOWN", raising=False)
+
+        config = load_config()
+
+        assert config.toggle_cooldown_seconds == 2.0
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that toggle_cooldown_seconds loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "5.0")
+
+        config = load_config()
+
+        assert config.toggle_cooldown_seconds == 5.0
+
+    def test_zero_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that zero is allowed (to disable cooldown)."""
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "0")
+
+        config = load_config()
+
+        assert config.toggle_cooldown_seconds == 0.0
+
+    def test_negative_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that negative values use the default."""
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "-1.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.toggle_cooldown_seconds == 2.0
+        assert "negative" in caplog.text
+
+    def test_invalid_value_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid values use the default."""
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "not-a-number")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.toggle_cooldown_seconds == 2.0
+        assert "Invalid SENTINEL_TOGGLE_COOLDOWN" in caplog.text
+
+
+class TestRateLimitCacheTtlConfig:
+    """Tests for rate_limit_cache_ttl configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that rate_limit_cache_ttl defaults to 3600."""
+        monkeypatch.delenv("SENTINEL_RATE_LIMIT_CACHE_TTL", raising=False)
+
+        config = load_config()
+
+        assert config.rate_limit_cache_ttl == 3600
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that rate_limit_cache_ttl loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_TTL", "7200")
+
+        config = load_config()
+
+        assert config.rate_limit_cache_ttl == 7200
+
+    def test_zero_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that zero uses the default (must be positive)."""
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_TTL", "0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.rate_limit_cache_ttl == 3600
+        assert "not positive" in caplog.text
+
+
+class TestRateLimitCacheMaxsizeConfig:
+    """Tests for rate_limit_cache_maxsize configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that rate_limit_cache_maxsize defaults to 10000."""
+        monkeypatch.delenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", raising=False)
+
+        config = load_config()
+
+        assert config.rate_limit_cache_maxsize == 10000
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that rate_limit_cache_maxsize loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "50000")
+
+        config = load_config()
+
+        assert config.rate_limit_cache_maxsize == 50000
+
+    def test_zero_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that zero uses the default (must be positive)."""
+        monkeypatch.setenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.rate_limit_cache_maxsize == 10000
+        assert "not positive" in caplog.text

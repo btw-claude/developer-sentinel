@@ -87,6 +87,19 @@ class Config:
     cursor_default_model: str = ""  # Default model for Cursor agent
     cursor_default_mode: str = "agent"  # Default mode: agent, plan, or ask
 
+    # Timing metrics configuration
+    # Threshold for summarizing inter_message_times in TimingMetrics
+    # When message count exceeds this, store statistical summary instead of raw data
+    inter_message_times_threshold: int = 100
+
+    # Dashboard rate limiting configuration
+    # Cooldown period in seconds between writes to the same orchestration file
+    toggle_cooldown_seconds: float = 2.0
+    # TTL in seconds for rate limit cache entries
+    rate_limit_cache_ttl: int = 3600  # 1 hour
+    # Maximum number of entries in the rate limit cache
+    rate_limit_cache_maxsize: int = 10000  # 10k entries
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -202,6 +215,40 @@ def _parse_bool(value: str) -> bool:
         True if value is "true", "1", or "yes" (case-insensitive), False otherwise.
     """
     return value.lower() in ("true", "1", "yes")
+
+
+def _parse_non_negative_float(value: str, name: str, default: float) -> float:
+    """Parse a string as a non-negative float with validation.
+
+    Args:
+        value: The string value to parse.
+        name: The name of the setting (for error messages).
+        default: The default value to use if parsing fails.
+
+    Returns:
+        The parsed non-negative float, or the default if invalid.
+
+    Logs a warning if the value is invalid.
+    """
+    try:
+        parsed = float(value)
+        if parsed < 0:
+            logging.warning(
+                "Invalid %s: %f is negative, using default %f",
+                name,
+                parsed,
+                default,
+            )
+            return default
+        return parsed
+    except ValueError:
+        logging.warning(
+            "Invalid %s: '%s' is not a valid number, using default %f",
+            name,
+            value,
+            default,
+        )
+        return default
 
 
 def _validate_cursor_mode(value: str, default: str = "agent") -> str:
@@ -349,6 +396,30 @@ def load_config(env_file: Path | None = None) -> Config:
         os.getenv("SENTINEL_CURSOR_DEFAULT_MODE", "agent"),
     )
 
+    # Parse timing metrics threshold
+    inter_message_times_threshold = _parse_positive_int(
+        os.getenv("SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD", "100"),
+        "SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD",
+        100,
+    )
+
+    # Parse dashboard rate limiting configuration
+    toggle_cooldown_seconds = _parse_non_negative_float(
+        os.getenv("SENTINEL_TOGGLE_COOLDOWN", "2.0"),
+        "SENTINEL_TOGGLE_COOLDOWN",
+        2.0,
+    )
+    rate_limit_cache_ttl = _parse_positive_int(
+        os.getenv("SENTINEL_RATE_LIMIT_CACHE_TTL", "3600"),
+        "SENTINEL_RATE_LIMIT_CACHE_TTL",
+        3600,
+    )
+    rate_limit_cache_maxsize = _parse_positive_int(
+        os.getenv("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE", "10000"),
+        "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE",
+        10000,
+    )
+
     # Parse MCP server args (comma-separated)
     def parse_args(env_var: str) -> list[str]:
         value = os.getenv(env_var, "")
@@ -381,4 +452,8 @@ def load_config(env_file: Path | None = None) -> Config:
         cursor_path=cursor_path,
         cursor_default_model=cursor_default_model,
         cursor_default_mode=cursor_default_mode,
+        inter_message_times_threshold=inter_message_times_threshold,
+        toggle_cooldown_seconds=toggle_cooldown_seconds,
+        rate_limit_cache_ttl=rate_limit_cache_ttl,
+        rate_limit_cache_maxsize=rate_limit_cache_maxsize,
     )
