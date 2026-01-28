@@ -108,8 +108,8 @@ class GitHubIssue:
                 return number
             # Log warning for unexpected type and treat as None
             logger.warning(
-                f"Unexpected type for parent.number: {type(number).__name__}, "
-                f"expected int. Treating as None."
+                f"Unexpected type for parent.number: {type(number).__name__} "
+                f"(value: {number!r}), expected int. Treating as None."
             )
             return None
         return None
