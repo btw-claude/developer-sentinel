@@ -298,6 +298,22 @@
         }
 
         /**
+         * Handle collapsible section click with propagation control (DS-361).
+         * Encapsulates the collapse-with-propagation-stop logic for reusability.
+         * Only toggles and stops propagation if the section is already expanded,
+         * allowing HTMX to handle the initial expansion via lazy loading.
+         * @param {HTMLElement} element - The header element that was clicked
+         * @param {string} contentId - The ID of the collapsible content element
+         * @param {Event} event - The click event
+         */
+        function handleCollapsibleClick(element, contentId, event) {
+            if (isExpanded(contentId)) {
+                toggleCollapsibleSection(element);
+                event.stopImmediatePropagation();
+            }
+        }
+
+        /**
          * Handle toggle API response with optimistic updates and error handling (DS-254, DS-261).
          * Reverts checkbox state on failure and updates status text on success.
          * DS-261: Added try/catch for JSON.parse, null check for closest('td'),

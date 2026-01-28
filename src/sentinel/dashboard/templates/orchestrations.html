@@ -12,7 +12,7 @@
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('jira-orchestrations-content')]"
          hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(isExpanded('jira-orchestrations-content')) { toggleCollapsibleSection(this); event.stopImmediatePropagation(); }">
+         onclick="handleCollapsibleClick(this, 'jira-orchestrations-content', event)">
         <h2>
             <span class="collapse-icon rotated">&#9654;</span>
             Jira Orchestrations
@@ -34,7 +34,7 @@
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('github-orchestrations-content')]"
          hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(isExpanded('github-orchestrations-content')) { toggleCollapsibleSection(this); event.stopImmediatePropagation(); }">
+         onclick="handleCollapsibleClick(this, 'github-orchestrations-content', event)">
         <h2>
             <span class="collapse-icon rotated">&#9654;</span>
             GitHub Orchestrations
