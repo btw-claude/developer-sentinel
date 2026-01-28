@@ -7,12 +7,12 @@
 {% block content %}
 <div class="card collapsible-section">
     <div class="collapsible-header expanded"
+         data-collapsible-target="jira-orchestrations-content"
          hx-get="/partials/orchestrations?source=jira"
          hx-target="#jira-orchestrations-content"
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('jira-orchestrations-content')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="handleCollapsibleClick(this, 'jira-orchestrations-content', event)">
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon rotated">&#9654;</span>
             Jira Orchestrations
@@ -29,12 +29,12 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header expanded"
+         data-collapsible-target="github-orchestrations-content"
          hx-get="/partials/orchestrations?source=github"
          hx-target="#github-orchestrations-content"
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('github-orchestrations-content')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="handleCollapsibleClick(this, 'github-orchestrations-content', event)">
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon rotated">&#9654;</span>
             GitHub Orchestrations
