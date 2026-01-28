@@ -78,7 +78,7 @@ def slugify(text: str) -> str:
     # Remove characters that are invalid in git branch names
     # Keep only alphanumeric, hyphens, dots, and forward slashes
     # Git disallows: ~ ^ : ? * [ \ space and control characters
-    # Also remove @{ sequence and .. (consecutive dots)
+    # Remove invalid git branch characters including @ { } and handle consecutive dots
     slug = re.sub(r"[~^:?*\[\]\\@{}!\"'#$%&()+,;<>=|`]", "", slug)
 
     # Replace consecutive dots with single dot
