@@ -1562,3 +1562,116 @@ class TestGitHubPollerLabelFiltering:
         assert len(issues) == 1
         assert issues[0].number == 10
         assert issues[0].is_pull_request is True
+
+
+class TestGitHubIssueParentIssueNumber:
+    """Tests for GitHubIssue parent_issue_number field (DS-349).
+
+    These tests verify that the parent_issue_number field is correctly
+    populated from the GitHub API response, supporting the
+    {github_parent_issue_number} template variable.
+    """
+
+    def test_parent_issue_number_from_api_response(self) -> None:
+        """Test parent_issue_number is populated from API response."""
+        data = {
+            "number": 42,
+            "title": "Sub-issue",
+            "parent": {"number": 10},
+        }
+        issue = GitHubIssue.from_api_response(data)
+        assert issue.parent_issue_number == 10
+
+    def test_parent_issue_number_none_when_no_parent(self) -> None:
+        """Test parent_issue_number is None when no parent field."""
+        data = {
+            "number": 42,
+            "title": "Top-level issue",
+        }
+        issue = GitHubIssue.from_api_response(data)
+        assert issue.parent_issue_number is None
+
+    def test_parent_issue_number_none_when_parent_empty(self) -> None:
+        """Test parent_issue_number is None when parent field is empty dict."""
+        data = {
+            "number": 42,
+            "title": "Issue with empty parent",
+            "parent": {},
+        }
+        issue = GitHubIssue.from_api_response(data)
+        assert issue.parent_issue_number is None
+
+    def test_parent_issue_number_none_when_parent_not_dict(self) -> None:
+        """Test parent_issue_number is None when parent is not a dict."""
+        data = {
+            "number": 42,
+            "title": "Issue with invalid parent",
+            "parent": None,
+        }
+        issue = GitHubIssue.from_api_response(data)
+        assert issue.parent_issue_number is None
+
+    def test_parent_issue_number_from_project_item(self) -> None:
+        """Test parent_issue_number is populated from project item."""
+        item = {
+            "id": "PVTI_123",
+            "content": {
+                "type": "Issue",
+                "number": 42,
+                "title": "Sub-issue from project",
+                "state": "OPEN",
+                "url": "https://github.com/org/repo/issues/42",
+                "body": "",
+                "labels": [],
+                "assignees": [],
+                "author": "testuser",
+                "parent": {"number": 5},
+            },
+            "fieldValues": [],
+        }
+        issue = GitHubIssue.from_project_item(item)
+        assert issue is not None
+        assert issue.parent_issue_number == 5
+
+    def test_parent_issue_number_none_from_project_item_no_parent(self) -> None:
+        """Test parent_issue_number is None when project item has no parent."""
+        item = {
+            "id": "PVTI_456",
+            "content": {
+                "type": "Issue",
+                "number": 99,
+                "title": "Top-level issue from project",
+                "state": "OPEN",
+                "url": "https://github.com/org/repo/issues/99",
+                "body": "",
+                "labels": [],
+                "assignees": [],
+                "author": "testuser",
+            },
+            "fieldValues": [],
+        }
+        issue = GitHubIssue.from_project_item(item)
+        assert issue is not None
+        assert issue.parent_issue_number is None
+
+    def test_parent_issue_number_with_pull_request(self) -> None:
+        """Test parent_issue_number works with pull requests too."""
+        data = {
+            "number": 123,
+            "title": "Fix for sub-issue",
+            "pull_request": {"url": "https://api.github.com/repos/org/repo/pulls/123"},
+            "parent": {"number": 50},
+        }
+        issue = GitHubIssue.from_api_response(data)
+        assert issue.is_pull_request is True
+        assert issue.parent_issue_number == 50
+
+    def test_github_issue_dataclass_default(self) -> None:
+        """Test GitHubIssue dataclass has correct default for parent_issue_number."""
+        issue = GitHubIssue(number=1, title="Test")
+        assert issue.parent_issue_number is None
+
+    def test_github_issue_with_explicit_parent_issue_number(self) -> None:
+        """Test GitHubIssue can be created with explicit parent_issue_number."""
+        issue = GitHubIssue(number=42, title="Sub-issue", parent_issue_number=10)
+        assert issue.parent_issue_number == 10

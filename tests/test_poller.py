@@ -360,3 +360,116 @@ class TestJiraPollerPoll:
             poller.poll(trigger)
 
         assert len(client.search_calls) == 3
+
+
+class TestJiraIssueEpicAndParentFields:
+    """Tests for JiraIssue epic_key and parent_key fields (DS-348).
+
+    These tests verify that the epic_key and parent_key fields are correctly
+    populated from the Jira API response, supporting parent/epic template
+    variables in branch patterns and prompts.
+    """
+
+    def test_epic_key_from_parent_next_gen(self) -> None:
+        """Test epic_key is populated from parent field (next-gen projects)."""
+        data = {
+            "key": "TEST-123",
+            "fields": {
+                "summary": "Sub-task issue",
+                "parent": {"key": "EPIC-100"},
+            },
+        }
+        issue = JiraIssue.from_api_response(data)
+        assert issue.epic_key == "EPIC-100"
+
+    def test_epic_key_from_customfield_classic(self) -> None:
+        """Test epic_key is populated from customfield_10014 (classic projects)."""
+        data = {
+            "key": "TEST-456",
+            "fields": {
+                "summary": "Issue in epic",
+                "customfield_10014": "EPIC-200",
+            },
+        }
+        issue = JiraIssue.from_api_response(data)
+        assert issue.epic_key == "EPIC-200"
+
+    def test_epic_key_parent_takes_precedence_over_customfield(self) -> None:
+        """Test parent field takes precedence over customfield for epic_key."""
+        data = {
+            "key": "TEST-789",
+            "fields": {
+                "summary": "Issue with both",
+                "parent": {"key": "EPIC-300"},
+                "customfield_10014": "EPIC-OLD",
+            },
+        }
+        issue = JiraIssue.from_api_response(data)
+        # parent takes precedence
+        assert issue.epic_key == "EPIC-300"
+
+    def test_epic_key_none_when_no_parent_or_customfield(self) -> None:
+        """Test epic_key is None when neither parent nor customfield is present."""
+        data = {
+            "key": "TEST-999",
+            "fields": {
+                "summary": "Standalone issue",
+            },
+        }
+        issue = JiraIssue.from_api_response(data)
+        assert issue.epic_key is None
+
+    def test_parent_key_from_parent_field(self) -> None:
+        """Test parent_key is populated from parent field for sub-tasks."""
+        data = {
+            "key": "TEST-101",
+            "fields": {
+                "summary": "Sub-task",
+                "parent": {"key": "PARENT-500"},
+            },
+        }
+        issue = JiraIssue.from_api_response(data)
+        assert issue.parent_key == "PARENT-500"
+
+    def test_parent_key_none_when_no_parent(self) -> None:
+        """Test parent_key is None when parent field is not present."""
+        data = {
+            "key": "TEST-202",
+            "fields": {
+                "summary": "Top-level issue",
+            },
+        }
+        issue = JiraIssue.from_api_response(data)
+        assert issue.parent_key is None
+
+    def test_parent_key_none_when_parent_empty(self) -> None:
+        """Test parent_key is None when parent field is empty dict."""
+        data = {
+            "key": "TEST-303",
+            "fields": {
+                "summary": "Issue with empty parent",
+                "parent": {},
+            },
+        }
+        issue = JiraIssue.from_api_response(data)
+        assert issue.parent_key is None
+
+    def test_both_epic_and_parent_key_populated(self) -> None:
+        """Test both epic_key and parent_key can be populated from same parent."""
+        data = {
+            "key": "TEST-404",
+            "fields": {
+                "summary": "Issue with parent",
+                "parent": {"key": "PARENT-600"},
+            },
+        }
+        issue = JiraIssue.from_api_response(data)
+        # For next-gen projects, parent serves as both epic and parent
+        assert issue.epic_key == "PARENT-600"
+        assert issue.parent_key == "PARENT-600"
+
+    def test_jira_issue_dataclass_defaults(self) -> None:
+        """Test JiraIssue dataclass has correct defaults for new fields."""
+        issue = JiraIssue(key="TEST-1", summary="Test")
+        assert issue.epic_key is None
+        assert issue.parent_key is None
