@@ -15,7 +15,11 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from types import FrameType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import uvicorn
+    from starlette.types import ASGIApp
 
 from sentinel.agent_clients.factory import AgentClientFactory, create_default_factory
 from sentinel.agent_logger import AgentLogger
@@ -28,12 +32,13 @@ from sentinel.logging import OrchestrationLogManager, get_logger, setup_logging
 from sentinel.orchestration import (
     Orchestration,
     OrchestrationVersion,
+    TriggerConfig,
     load_orchestration_file,
     load_orchestrations,
 )
 from sentinel.poller import JiraClient, JiraIssue, JiraPoller
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
-from sentinel.router import Router
+from sentinel.router import Router, RoutingResult
 from sentinel.sdk_clients import (
     ClaudeProcessInterruptedError,
     JiraSdkClient,
@@ -215,14 +220,14 @@ class DashboardServer:
         """
         self._host = host
         self._port = port
-        self._server: Any = None
+        self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
 
-    def start(self, app: Any) -> None:
+    def start(self, app: ASGIApp) -> None:
         """Start the dashboard server in a background thread.
 
         Args:
-            app: The FastAPI application to serve.
+            app: The ASGI application to serve.
         """
         import uvicorn
 
@@ -234,10 +239,11 @@ class DashboardServer:
             access_log=False,
         )
         self._server = uvicorn.Server(config)
+        server = self._server  # Capture for closure
 
         def run_server() -> None:
             """Run the uvicorn server."""
-            self._server.run()
+            server.run()
 
         self._thread = threading.Thread(
             target=run_server,
@@ -1213,7 +1219,7 @@ class Sentinel:
 
     def _execute_orchestration_task(
         self,
-        issue: Any,
+        issue: JiraIssue | GitHubIssueProtocol,
         orchestration: Orchestration,
         version: OrchestrationVersion | None = None,
     ) -> ExecutionResult | None:
@@ -1227,7 +1233,7 @@ class Sentinel:
         allowing different orchestrations to use different agent types (claude, cursor).
 
         Args:
-            issue: The Jira issue to process.
+            issue: The Jira or GitHub issue to process.
             orchestration: The orchestration to execute.
             version: Optional OrchestrationVersion for execution tracking.
 
@@ -1408,7 +1414,7 @@ class Sentinel:
         """
         # Collect unique trigger configs to avoid duplicate polling
         seen_triggers: set[str] = set()
-        triggers_to_poll: list[tuple[Orchestration, Any]] = []
+        triggers_to_poll: list[tuple[Orchestration, TriggerConfig]] = []
 
         for orch in orchestrations:
             trigger_key = f"jira:{orch.trigger.project}:{','.join(orch.trigger.tags)}"
@@ -1489,7 +1495,7 @@ class Sentinel:
         # Collect unique trigger configs to avoid duplicate polling
         # Use shared build_github_trigger_key() for consistent key format
         seen_triggers: set[str] = set()
-        triggers_to_poll: list[tuple[Orchestration, Any]] = []
+        triggers_to_poll: list[tuple[Orchestration, TriggerConfig]] = []
 
         for orch in orchestrations:
             # Build deduplication key using shared utility
@@ -1575,7 +1581,7 @@ class Sentinel:
 
     def _submit_execution_tasks(
         self,
-        routing_results: list[Any],
+        routing_results: list[RoutingResult],
         all_results: list[ExecutionResult],
         submitted_pairs: set[tuple[str, str]] | None = None,
     ) -> int:
