@@ -2,6 +2,10 @@
 
 This module provides the foundation for multi-agent backend support,
 including the abstract base class for agent clients and common types.
+
+The AgentClient interface is async-native to enable proper async composition
+and avoid creating new event loops per call. Callers should use asyncio.run()
+at their entry points when needed.
 """
 
 from __future__ import annotations
@@ -60,7 +64,7 @@ class AgentClient(ABC):
         pass
 
     @abstractmethod
-    def run_agent(
+    async def run_agent(
         self,
         prompt: str,
         tools: list[str],
@@ -74,6 +78,10 @@ class AgentClient(ABC):
         base_branch: str = "main",
     ) -> AgentRunResult:
         """Run an agent with the given prompt and tools.
+
+        This is an async method to enable proper async composition and avoid
+        creating new event loops per call. Callers should use asyncio.run()
+        at their entry points when needed.
 
         Args:
             prompt: The prompt to send to the agent.

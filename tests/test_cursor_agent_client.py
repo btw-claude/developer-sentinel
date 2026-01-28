@@ -2,10 +2,13 @@
 
 Tests for the Cursor CLI agent client implementation.
 Test fixture improvements and additional validation tests.
+
+Tests use pytest-asyncio for async test support.
 """
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -226,7 +229,10 @@ class TestCursorAgentClientBuildCommand:
 
 
 class TestCursorAgentClientRunAgent:
-    """Tests for run_agent method."""
+    """Tests for run_agent method.
+
+    All tests use asyncio.run() to call the async run_agent method.
+    """
 
     @patch("sentinel.agent_clients.cursor.subprocess.run")
     def test_run_agent_success(self, mock_run: MagicMock) -> None:
@@ -240,7 +246,7 @@ class TestCursorAgentClientRunAgent:
         config = make_test_config()
         client = CursorAgentClient(config)
 
-        result = client.run_agent("test prompt", tools=[])
+        result = asyncio.run(client.run_agent("test prompt", tools=[]))
 
         assert result.response == "Agent response"
         assert result.workdir is None
@@ -258,10 +264,12 @@ class TestCursorAgentClientRunAgent:
         config = make_test_config()
         client = CursorAgentClient(config)
 
-        result = client.run_agent(
-            "test prompt",
-            tools=[],
-            context={"key": "value", "another": "context"},
+        result = asyncio.run(
+            client.run_agent(
+                "test prompt",
+                tools=[],
+                context={"key": "value", "another": "context"},
+            )
         )
 
         # Verify the prompt was augmented with context
@@ -285,7 +293,7 @@ class TestCursorAgentClientRunAgent:
         config = make_test_config()
         client = CursorAgentClient(config)
 
-        client.run_agent("prompt", tools=[], timeout_seconds=60)
+        asyncio.run(client.run_agent("prompt", tools=[], timeout_seconds=60))
 
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args[1]
@@ -303,7 +311,7 @@ class TestCursorAgentClientRunAgent:
         config = make_test_config(cursor_default_model="default-model")
         client = CursorAgentClient(config)
 
-        client.run_agent("prompt", tools=[], model="override-model")
+        asyncio.run(client.run_agent("prompt", tools=[], model="override-model"))
 
         call_args = mock_run.call_args
         cmd = call_args[0][0]
@@ -322,7 +330,7 @@ class TestCursorAgentClientRunAgent:
         config = make_test_config()
         client = CursorAgentClient(config, base_workdir=tmp_path)
 
-        result = client.run_agent("prompt", tools=[], issue_key="TEST-123")
+        result = asyncio.run(client.run_agent("prompt", tools=[], issue_key="TEST-123"))
 
         assert result.workdir is not None
         assert result.workdir.exists()
@@ -340,7 +348,7 @@ class TestCursorAgentClientRunAgent:
         client = CursorAgentClient(config)
 
         with pytest.raises(AgentTimeoutError) as exc_info:
-            client.run_agent("prompt", tools=[], timeout_seconds=60)
+            asyncio.run(client.run_agent("prompt", tools=[], timeout_seconds=60))
 
         assert "timed out after 60s" in str(exc_info.value)
 
@@ -357,7 +365,7 @@ class TestCursorAgentClientRunAgent:
         client = CursorAgentClient(config)
 
         with pytest.raises(AgentClientError) as exc_info:
-            client.run_agent("prompt", tools=[])
+            asyncio.run(client.run_agent("prompt", tools=[]))
 
         assert "Cursor CLI execution failed" in str(exc_info.value)
         assert "something went wrong" in str(exc_info.value)
@@ -371,7 +379,7 @@ class TestCursorAgentClientRunAgent:
         client = CursorAgentClient(config)
 
         with pytest.raises(AgentClientError) as exc_info:
-            client.run_agent("prompt", tools=[])
+            asyncio.run(client.run_agent("prompt", tools=[]))
 
         assert "Cursor CLI executable not found" in str(exc_info.value)
 
@@ -384,7 +392,7 @@ class TestCursorAgentClientRunAgent:
         client = CursorAgentClient(config)
 
         with pytest.raises(AgentClientError) as exc_info:
-            client.run_agent("prompt", tools=[])
+            asyncio.run(client.run_agent("prompt", tools=[]))
 
         assert "Failed to execute Cursor CLI" in str(exc_info.value)
 
@@ -400,7 +408,7 @@ class TestCursorAgentClientRunAgent:
         config = make_test_config(cursor_default_mode="agent")
         client = CursorAgentClient(config)
 
-        client.run_agent("prompt", tools=[], mode=CursorMode.PLAN)
+        asyncio.run(client.run_agent("prompt", tools=[], mode=CursorMode.PLAN))
 
         call_args = mock_run.call_args
         cmd = call_args[0][0]
@@ -418,7 +426,7 @@ class TestCursorAgentClientRunAgent:
         config = make_test_config(cursor_default_mode="agent")
         client = CursorAgentClient(config)
 
-        client.run_agent("prompt", tools=[], mode="ask")
+        asyncio.run(client.run_agent("prompt", tools=[], mode="ask"))
 
         call_args = mock_run.call_args
         cmd = call_args[0][0]
@@ -436,7 +444,7 @@ class TestCursorAgentClientRunAgent:
         config = make_test_config(cursor_default_mode="agent")
         client = CursorAgentClient(config)
 
-        client.run_agent("prompt", tools=[], mode="PLAN")
+        asyncio.run(client.run_agent("prompt", tools=[], mode="PLAN"))
 
         call_args = mock_run.call_args
         cmd = call_args[0][0]
@@ -449,7 +457,7 @@ class TestCursorAgentClientRunAgent:
         client = CursorAgentClient(config)
 
         with pytest.raises(ValueError) as exc_info:
-            client.run_agent("prompt", tools=[], mode="invalid_mode")
+            asyncio.run(client.run_agent("prompt", tools=[], mode="invalid_mode"))
 
         assert "Invalid Cursor mode: 'invalid_mode'" in str(exc_info.value)
 
@@ -463,7 +471,7 @@ class TestCursorAgentClientRunAgent:
         )
 
         client = CursorAgentClient(test_config)
-        result = client.run_agent("test prompt", tools=[])
+        result = asyncio.run(client.run_agent("test prompt", tools=[]))
 
         assert result.response == "Fixture test response"
         mock_run.assert_called_once()

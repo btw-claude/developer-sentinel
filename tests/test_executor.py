@@ -33,7 +33,10 @@ from sentinel.poller import JiraIssue
 
 
 class MockAgentClient(AgentClient):
-    """Mock agent client for testing."""
+    """Mock agent client for testing.
+
+    Implements the async AgentClient interface for use in tests.
+    """
 
     def __init__(
         self,
@@ -60,7 +63,7 @@ class MockAgentClient(AgentClient):
         """Return the type of agent this client implements."""
         return self._agent_type
 
-    def run_agent(
+    async def run_agent(
         self,
         prompt: str,
         tools: list[str],
@@ -73,6 +76,7 @@ class MockAgentClient(AgentClient):
         create_branch: bool = False,
         base_branch: str = "main",
     ) -> AgentRunResult:
+        """Async mock implementation of run_agent."""
         self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model))
 
         if self.should_timeout and self.timeout_count < self.max_timeouts:

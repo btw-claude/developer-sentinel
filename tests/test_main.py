@@ -693,7 +693,7 @@ class TestSentinelConcurrentExecution:
         class SlowAgentClient(AgentClient):
             """Agent client that tracks concurrent executions."""
 
-            def run_agent(
+            async def run_agent(
                 self,
                 prompt: str,
                 tools: list[str],
@@ -1330,7 +1330,7 @@ class TestPerOrchestrationConcurrencyLimits:
         """Test per-orchestration count is decremented even on execution failure."""
 
         class FailingAgentClient(AgentClient):
-            def run_agent(
+            async def run_agent(
                 self,
                 prompt: str,
                 tools: list[str],
@@ -2822,10 +2822,10 @@ class TestAttemptCountTracking:
         task_started_event = threading.Event()
 
         class BlockingAgentClient(MockAgentClient):
-            def run_agent(self, *args: Any, **kwargs: Any) -> AgentRunResult:
+            async def run_agent(self, *args: Any, **kwargs: Any) -> AgentRunResult:
                 task_started_event.set()  # Signal that task has started
                 blocking_event.wait(timeout=5)
-                return super().run_agent(*args, **kwargs)
+                return await super().run_agent(*args, **kwargs)
 
         agent_client = BlockingAgentClient(responses=["SUCCESS"])
         config = make_config(max_concurrent_executions=2)

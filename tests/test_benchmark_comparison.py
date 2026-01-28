@@ -650,11 +650,13 @@ class TestSdkStreamingVsNonStreaming:
                 disable_streaming_logs=False,
             )
 
-            result = client.run_agent(
-                prompt="test prompt",
-                tools=[],
-                issue_key="TEST-1",
-                orchestration_name="test_orch",
+            result = asyncio.run(
+                client.run_agent(
+                    prompt="test prompt",
+                    tools=[],
+                    issue_key="TEST-1",
+                    orchestration_name="test_orch",
+                )
             )
 
             assert result.response == "response"
@@ -676,11 +678,13 @@ class TestSdkStreamingVsNonStreaming:
                 disable_streaming_logs=True,
             )
 
-            result = client.run_agent(
-                prompt="test prompt",
-                tools=[],
-                issue_key="TEST-1",
-                orchestration_name="test_orch",
+            result = asyncio.run(
+                client.run_agent(
+                    prompt="test prompt",
+                    tools=[],
+                    issue_key="TEST-1",
+                    orchestration_name="test_orch",
+                )
             )
 
             assert result.response == "response"
@@ -735,11 +739,13 @@ class TestSdkStreamingVsNonStreaming:
                 disable_streaming_logs=False,
             )
 
-            client.run_agent(
-                prompt="test prompt",
-                tools=[],
-                issue_key="TEST-1",
-                orchestration_name="test_orch",
+            asyncio.run(
+                client.run_agent(
+                    prompt="test prompt",
+                    tools=[],
+                    issue_key="TEST-1",
+                    orchestration_name="test_orch",
+                )
             )
 
             log_files = list(logs.glob("test_orch/*.log"))
@@ -766,11 +772,13 @@ class TestSdkStreamingVsNonStreaming:
                 disable_streaming_logs=False,
             )
 
-            client.run_agent(
-                prompt="test prompt",
-                tools=[],
-                issue_key="TEST-1",
-                orchestration_name="test_orch",
+            asyncio.run(
+                client.run_agent(
+                    prompt="test prompt",
+                    tools=[],
+                    issue_key="TEST-1",
+                    orchestration_name="test_orch",
+                )
             )
 
             log_files = list(logs.glob("test_orch/*.log"))
@@ -800,11 +808,13 @@ class TestSdkStreamingVsNonStreaming:
                 disable_streaming_logs=True,
             )
 
-            client.run_agent(
-                prompt="test prompt",
-                tools=[],
-                issue_key="TEST-1",
-                orchestration_name="test_orch",
+            asyncio.run(
+                client.run_agent(
+                    prompt="test prompt",
+                    tools=[],
+                    issue_key="TEST-1",
+                    orchestration_name="test_orch",
+                )
             )
 
             log_files = list(logs.glob("test_orch/*.log"))
@@ -925,11 +935,13 @@ class TestMultipleResponseSimulation:
                 disable_streaming_logs=False,
             )
 
-            result = client.run_agent(
-                prompt="test prompt",
-                tools=[],
-                issue_key="TEST-1",
-                orchestration_name="test_orch",
+            result = asyncio.run(
+                client.run_agent(
+                    prompt="test prompt",
+                    tools=[],
+                    issue_key="TEST-1",
+                    orchestration_name="test_orch",
+                )
             )
 
             # Final response should be the last message
