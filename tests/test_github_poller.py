@@ -1640,15 +1640,12 @@ class TestGitHubIssueParentIssueNumber:
         issue = GitHubIssue.from_api_response(data)
         assert issue.parent_issue_number is None
 
-    def test_parent_issue_number_passes_through_invalid_type(self) -> None:
-        """Test current behavior: parent.number value is passed through regardless of type (DS-360).
+    def test_parent_issue_number_invalid_type_returns_none(self) -> None:
+        """Test that invalid type for parent.number returns None (DS-369).
 
-        This is a defensive test case documenting the current behavior where the
-        parent dict has a 'number' key but its value is an unexpected type.
-        The current implementation passes through whatever value is present.
-
-        Note: A future improvement could add type validation to ensure
-        parent_issue_number is always either None or an int.
+        This test verifies that when the parent dict has a 'number' key but its
+        value is an unexpected type (not int), the method returns None and logs
+        a warning. This ensures parent_issue_number is always either None or an int.
         """
         data = {
             "number": 42,
@@ -1656,8 +1653,8 @@ class TestGitHubIssueParentIssueNumber:
             "parent": {"number": "not-a-number"},
         }
         issue = GitHubIssue.from_api_response(data)
-        # Current behavior: the value is passed through without type validation
-        assert issue.parent_issue_number == "not-a-number"
+        # Invalid type should be treated as None
+        assert issue.parent_issue_number is None
 
     def test_parent_issue_number_from_project_item(self) -> None:
         """Test parent_issue_number is populated from project item."""
