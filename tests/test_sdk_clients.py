@@ -713,3 +713,192 @@ class TestDisableStreamingLogs:
         assert "non-streaming mode" not in content
         # Should have streaming format markers
         assert "AGENT EXECUTION LOG" in content
+
+
+class TestClaudeSdkAgentClientBranchSetup:
+    """Tests for ClaudeSdkAgentClient._setup_branch method."""
+
+    def test_checkout_existing_branch(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should checkout and pull when branch exists on remote.
+
+        Mock behavior expectations:
+        - subprocess.run is mocked to track all git command invocations
+        - All commands return success (returncode=0)
+        - git ls-remote returns a SHA ref for the branch, simulating an existing remote branch
+        - The test verifies that fetch, ls-remote, checkout, and pull commands are invoked
+        """
+        # Create a mock git repository
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
+
+        # Mock subprocess.run calls
+        call_history: list[list[str]] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            call_history.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+
+            # ls-remote returns branch info when branch exists
+            if "ls-remote" in cmd:
+                result.stdout = "abc123\trefs/heads/feature/DS-123"
+
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            client._setup_branch(workdir, "feature/DS-123", create_branch=False, base_branch="main")
+
+        # Verify the sequence of git commands
+        assert any("fetch" in " ".join(cmd) for cmd in call_history)
+        assert any("ls-remote" in " ".join(cmd) and "feature/DS-123" in " ".join(cmd) for cmd in call_history)
+        assert any("checkout" in " ".join(cmd) and "feature/DS-123" in " ".join(cmd) for cmd in call_history)
+        assert any("pull" in " ".join(cmd) for cmd in call_history)
+
+    def test_create_new_branch_when_create_branch_true(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should create branch from base_branch when branch doesn't exist and create_branch=True."""
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
+
+        call_history: list[list[str]] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            call_history.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            # ls-remote returns empty when branch doesn't exist
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            client._setup_branch(workdir, "feature/DS-456", create_branch=True, base_branch="develop")
+
+        # Verify branch creation command
+        checkout_with_b = [cmd for cmd in call_history if "checkout" in " ".join(cmd) and "-b" in cmd]
+        assert len(checkout_with_b) == 1
+        assert "feature/DS-456" in checkout_with_b[0]
+        assert "origin/develop" in checkout_with_b[0]
+
+    def test_error_when_branch_missing_and_create_branch_false(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should raise AgentClientError when branch doesn't exist and create_branch=False."""
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""  # Empty = branch doesn't exist
+            result.stderr = ""
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            with pytest.raises(AgentClientError, match="does not exist on remote"):
+                client._setup_branch(workdir, "nonexistent-branch", create_branch=False, base_branch="main")
+
+    def test_no_branch_operations_when_branch_is_none(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should not call _setup_branch when branch is None in run_agent."""
+        workdir = tmp_path / "work"
+
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
+            client = ClaudeSdkAgentClient(mock_config, base_workdir=workdir)
+            with patch.object(client, "_setup_branch") as mock_setup:
+                client.run_agent(
+                    "Do something",
+                    [],
+                    issue_key="DS-123",
+                    branch=None,  # No branch specified
+                )
+
+        # _setup_branch should not be called when branch is None
+        mock_setup.assert_not_called()
+
+    def test_branch_setup_called_when_branch_provided(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should call _setup_branch when branch is provided in run_agent."""
+        workdir = tmp_path / "work"
+
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
+            client = ClaudeSdkAgentClient(mock_config, base_workdir=workdir)
+            with patch.object(client, "_setup_branch") as mock_setup:
+                client.run_agent(
+                    "Do something",
+                    [],
+                    issue_key="DS-123",
+                    branch="feature/DS-123",
+                    create_branch=True,
+                    base_branch="develop",
+                )
+
+        # _setup_branch should be called with correct parameters
+        mock_setup.assert_called_once()
+        call_args = mock_setup.call_args
+        assert call_args[0][1] == "feature/DS-123"  # branch
+        assert call_args[0][2] is True  # create_branch
+        assert call_args[0][3] == "develop"  # base_branch
+
+    def test_git_fetch_failure_raises_error(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should raise AgentClientError when git fetch fails."""
+        import subprocess
+
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            if "fetch" in cmd:
+                error = subprocess.CalledProcessError(1, cmd)
+                error.stderr = "fatal: could not read from remote repository"
+                raise error
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            with pytest.raises(AgentClientError, match="Git operation failed"):
+                client._setup_branch(workdir, "feature/DS-123", create_branch=False, base_branch="main")
+
+    def test_git_checkout_failure_raises_error(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should raise AgentClientError when git checkout fails."""
+        import subprocess
+
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            if "checkout" in cmd:
+                error = subprocess.CalledProcessError(1, cmd)
+                error.stderr = "error: pathspec 'feature/DS-123' did not match any file(s)"
+                raise error
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "abc123\trefs/heads/feature/DS-123"  # Branch exists
+            result.stderr = ""
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            with pytest.raises(AgentClientError, match="Git operation failed"):
+                client._setup_branch(workdir, "feature/DS-123", create_branch=False, base_branch="main")
