@@ -161,7 +161,10 @@ class GitHubContext:
         org: GitHub organization or user name.
         repo: Repository name.
         branch: Branch pattern (e.g., "feature/{jira_issue_key}").
-            Supports template variables that are expanded at runtime.
+            Supports template variables like {jira_issue_key} that are
+            expanded at runtime by the executor. Available variables depend
+            on the execution context (e.g., Jira issue key when triggered
+            by a Jira workflow).
         create_branch: Whether to auto-create the branch if it doesn't exist.
         base_branch: Base branch for new branch creation (default: "main").
     """
