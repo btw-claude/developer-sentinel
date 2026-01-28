@@ -88,6 +88,21 @@ class GitHubIssue:
         """
         return f"#{self.number}"
 
+    @staticmethod
+    def _extract_parent_issue_number(data: dict[str, Any]) -> int | None:
+        """Extract parent issue number from data dictionary.
+
+        Args:
+            data: Dictionary containing potential parent issue data.
+
+        Returns:
+            The parent issue number if present, None otherwise.
+        """
+        parent_data = data.get("parent")
+        if parent_data and isinstance(parent_data, dict):
+            return parent_data.get("number")
+        return None
+
     @classmethod
     def from_api_response(cls, data: dict[str, Any]) -> GitHubIssue:
         """Create a GitHubIssue from GitHub API response data.
@@ -140,12 +155,6 @@ class GitHubIssue:
 
             draft = data.get("draft", False)
 
-        # Extract parent issue number (for sub-issues)
-        parent_issue_number: int | None = None
-        parent_data = data.get("parent")
-        if parent_data and isinstance(parent_data, dict):
-            parent_issue_number = parent_data.get("number")
-
         return cls(
             number=data.get("number", 0),
             title=data.get("title", ""),
@@ -158,7 +167,7 @@ class GitHubIssue:
             head_ref=head_ref,
             base_ref=base_ref,
             draft=draft,
-            parent_issue_number=parent_issue_number,
+            parent_issue_number=cls._extract_parent_issue_number(data),
         )
 
     @classmethod
@@ -220,12 +229,6 @@ class GitHubIssue:
         # Extract URL for repo context extraction
         repo_url = content.get("url", "")
 
-        # Extract parent issue number (for sub-issues)
-        parent_issue_number: int | None = None
-        parent_data = content.get("parent")
-        if parent_data and isinstance(parent_data, dict):
-            parent_issue_number = parent_data.get("number")
-
         return cls(
             number=content.get("number", 0),
             title=content.get("title", ""),
@@ -239,7 +242,7 @@ class GitHubIssue:
             base_ref=base_ref,
             draft=draft,
             repo_url=repo_url,
-            parent_issue_number=parent_issue_number,
+            parent_issue_number=cls._extract_parent_issue_number(content),
         )
 
 
