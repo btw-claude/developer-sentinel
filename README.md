@@ -140,6 +140,80 @@ orchestrations:
       add_tag: "reviewed"
 ```
 
+### Branch Pattern Support
+
+Orchestrations can specify a branch pattern to automatically checkout or create a branch before the agent runs. This is useful for feature development workflows where each Jira issue or GitHub issue gets its own branch.
+
+```yaml
+orchestrations:
+  - name: "feature-development"
+    trigger:
+      source: jira
+      project: DS
+      tags: ["ready-for-dev"]
+    agent:
+      prompt: "Implement the feature described in {jira_summary}..."
+      github:
+        org: my-org
+        repo: my-project
+        branch: "feature/{jira_issue_key}"  # Creates feature/DS-290
+        create_branch: true
+        base_branch: main
+```
+
+#### Branch Pattern Template Variables
+
+The following template variables can be used in branch patterns:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{jira_issue_key}` | Jira issue key | `DS-290` |
+| `{github_issue_number}` | GitHub issue/PR number | `123` |
+| `{jira_summary}` | Issue summary (use with caution) | `Add login feature` |
+| `{github_issue_title}` | Issue/PR title (use with caution) | `Fix bug in auth` |
+
+**Note:** When using `{jira_summary}` or `{github_issue_title}` in branch names, be aware that these may contain characters that are invalid for Git branch names. Consider using `{jira_issue_key}` or `{github_issue_number}` for safer branch names.
+
+#### Branch Behavior
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `branch` | (none) | Branch pattern to checkout. If not specified, uses the repository's default branch. |
+| `create_branch` | `false` | If `true`, creates the branch from `base_branch` if it doesn't exist. If `false`, fails if the branch doesn't exist. |
+| `base_branch` | `main` | The base branch to create new branches from when `create_branch` is `true`. |
+
+**Execution flow:**
+1. Branch checkout happens **before** the agent runs
+2. If `create_branch: true` and the branch doesn't exist, it's created from `base_branch`
+3. If `create_branch: false` (default) and the branch doesn't exist, the execution fails
+4. If no branch is specified, the repository's default branch is used
+
+#### Fork Workflow Example
+
+When working with forks, configure the `org` to point to your fork:
+
+```yaml
+orchestrations:
+  - name: "fork-feature-development"
+    trigger:
+      source: jira
+      project: DS
+      tags: ["ready-for-dev"]
+    agent:
+      prompt: "Implement the feature described in {jira_summary}..."
+      tools:
+        - jira
+        - github
+      github:
+        org: my-username     # Your fork
+        repo: project-name
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: main
+```
+
+This allows agents to push changes to a fork branch, which can then be used to create a pull request to the upstream repository.
+
 ### Agent Type Selection
 
 You can select which AI agent to use for each orchestration:

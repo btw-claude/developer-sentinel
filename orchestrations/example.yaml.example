@@ -47,6 +47,12 @@
 #   {github_org}        - Organization name
 #   {github_repo}       - Repository name
 #
+# Branch Pattern Variables (available for branch patterns):
+#   {jira_issue_key}       - e.g., "DS-290" -> branch: "feature/{jira_issue_key}"
+#   {github_issue_number}  - e.g., "123" -> branch: "issue-{github_issue_number}"
+#   Other variables from the executor (jira_summary, github_issue_title, etc.)
+#   Note: Use {jira_issue_key} or {github_issue_number} for safe branch names
+#
 # Tag-based Workflow:
 # -------------------
 # Sentinel uses a stateless, tag-based workflow:
@@ -168,6 +174,10 @@ orchestrations:
         host: "github.com"
         org: "your-org"
         repo: "your-repo"
+        # Branch pattern support (optional):
+        # branch: "feature/{jira_issue_key}"  # Pattern with template variables
+        # create_branch: true                  # Create branch if it doesn't exist
+        # base_branch: main                    # Base branch for new branches
 
     # Retry configuration
     # Defines how to handle agent failures
@@ -694,3 +704,149 @@ orchestrations:
 
     on_failure:
       add_tag: "planning-failed"
+
+  # Feature Development with Branch Patterns
+  # ----------------------------------------
+  # This example demonstrates using branch patterns to automatically create
+  # feature branches for each Jira issue. The agent will work on a dedicated
+  # branch, making it easy to create pull requests afterward.
+  - name: "feature-development"
+
+    trigger:
+      source: jira
+      project: "PROJ"
+      tags:
+        - "ready-for-dev"
+
+    agent:
+      prompt: |
+        You are a development assistant. Implement the feature for {jira_issue_key}.
+
+        ## Issue Details
+        **Summary:** {jira_summary}
+
+        **Description:**
+        {jira_description}
+
+        ## Repository
+        You are working on branch: feature/{jira_issue_key}
+        Repository: {github_org}/{github_repo}
+
+        ## Your Task
+        1. Implement the feature as described in the issue
+        2. Write appropriate tests
+        3. Commit your changes with clear commit messages
+        4. Update the Jira issue with a summary of what was implemented
+
+        End with SUCCESS when the feature is implemented, or FAILURE if blocked.
+
+      tools:
+        - jira
+        - github
+
+      # GitHub context with branch pattern
+      # -----------------------------------
+      # The branch field supports template variables that are expanded at runtime.
+      # Available variables:
+      #   {jira_issue_key}       - e.g., "DS-290" -> creates "feature/DS-290"
+      #   {github_issue_number}  - e.g., "123" -> creates "feature/123"
+      #
+      # Branch behavior:
+      #   - Branch checkout happens BEFORE the agent runs
+      #   - create_branch: true  -> Creates branch from base_branch if not exists
+      #   - create_branch: false -> Fails if branch doesn't exist (default)
+      #   - No branch specified  -> Uses repository's default branch
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "feature/{jira_issue_key}"  # Creates e.g., feature/PROJ-123
+        create_branch: true                  # Auto-create if doesn't exist
+        base_branch: main                    # Create from main branch
+
+      timeout_seconds: 900  # 15 minutes for feature implementation
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+        - "feature implemented"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+        - "BLOCKED:"
+
+    on_start:
+      add_tag: "sentinel-implementing"
+
+    on_complete:
+      add_tag: "feature-implemented"
+
+    on_failure:
+      add_tag: "implementation-failed"
+
+  # Fork Workflow with Branch Patterns
+  # ----------------------------------
+  # This example demonstrates working with forks. The org is set to your
+  # personal account (the fork), while the agent can still reference the
+  # upstream repository context in its work.
+  - name: "fork-feature-development"
+
+    trigger:
+      source: jira
+      project: "PROJ"
+      tags:
+        - "fork-dev"
+
+    agent:
+      prompt: |
+        You are a development assistant working on a fork.
+
+        ## Issue Details
+        **Issue:** {jira_issue_key} - {jira_summary}
+
+        **Description:**
+        {jira_description}
+
+        ## Repository
+        Working on fork: {github_org}/{github_repo}
+        Branch: feature/{jira_issue_key}
+
+        ## Your Task
+        1. Implement the feature on your fork branch
+        2. Commit changes with clear messages
+        3. The branch can later be used to create a PR to upstream
+
+        End with SUCCESS when complete.
+
+      tools:
+        - jira
+        - github
+
+      # Fork workflow: org points to your fork (personal account)
+      # The agent will clone and work on your fork, creating branches there.
+      # You can then create pull requests from your fork to the upstream repo.
+      github:
+        host: "github.com"
+        org: "my-username"           # Your GitHub username (fork owner)
+        repo: "project-name"          # Repository name (same as upstream)
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: main
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+
+    on_start:
+      add_tag: "fork-processing"
+
+    on_complete:
+      add_tag: "fork-ready-for-pr"
+
+    on_failure:
+      add_tag: "fork-failed"
