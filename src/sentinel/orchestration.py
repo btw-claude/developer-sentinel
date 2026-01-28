@@ -164,7 +164,8 @@ class GitHubContext:
             Supports template variables like {jira_issue_key} that are
             expanded at runtime by the executor. Available variables depend
             on the execution context (e.g., Jira issue key when triggered
-            by a Jira workflow).
+            by a Jira workflow). Template expansion is performed by the
+            executor (see DS-343).
         create_branch: Whether to auto-create the branch if it doesn't exist.
         base_branch: Base branch for new branch creation (default: "main").
     """
