@@ -7,6 +7,9 @@ combination within a single polling cycle.
 DS-138: Refactored from inline implementations in _poll_jira_triggers() and
 _poll_github_triggers() (DS-130, DS-131) into a shared utility.
 
+DS-362: Added build_github_trigger_key() to centralize GitHub trigger key building
+logic, ensuring test and production code use the same key format.
+
 Note: Some features in this module (cycle_tracker, CycleTracker class, reset_cycle,
 _current_cycle_pairs) are designed for future concurrent polling patterns and are not
 yet used in the current implementation. See individual method docstrings for details.
@@ -16,11 +19,52 @@ from __future__ import annotations
 
 import threading
 from contextlib import contextmanager
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 from sentinel.logging import get_logger
 
+if TYPE_CHECKING:
+    from sentinel.orchestration import Orchestration
+
 logger = get_logger(__name__)
+
+
+def build_github_trigger_key(orch: "Orchestration") -> str:
+    """Build a deduplication key for a GitHub trigger.
+
+    This is the single source of truth for GitHub trigger key format, ensuring
+    test and production code use the same key structure.
+
+    The key format is: github:{project_owner}/{project_number}:{project_filter}:{labels}
+
+    This format allows different filter/label combinations on the same project to be
+    polled separately. For example:
+    - github:org/123::              (no filter, no labels)
+    - github:org/123:Status=Done:   (filter only)
+    - github:org/123::bug,urgent    (labels only)
+    - github:org/123:Status=Done:bug,urgent  (both filter and labels)
+
+    DS-340: Include project_filter and labels in deduplication key to allow separate
+    polling for orchestrations with same project but different filter criteria.
+
+    DS-341: Handle None values explicitly for cleaner deduplication keys.
+    Use empty string when project_filter is None/empty for cleaner keys.
+
+    DS-362: Extracted from inline implementation in Sentinel._poll_github_triggers()
+    to provide a shared utility for both production and test code.
+
+    Args:
+        orch: The orchestration containing a GitHub trigger configuration.
+
+    Returns:
+        A string key for deduplicating GitHub triggers.
+    """
+    filter_part = orch.trigger.project_filter or ""
+    labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
+    return (
+        f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+        f":{filter_part}:{labels_part}"
+    )
 
 
 class DeduplicationManager:

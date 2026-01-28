@@ -51,10 +51,15 @@ import pytest
 from sentinel.agent_clients.base import AgentType
 from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.config import Config
+from sentinel.deduplication import build_github_trigger_key
 from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.orchestration import AgentConfig, Orchestration, TriggerConfig
 from sentinel.poller import JiraClient
 from sentinel.tag_manager import JiraTagClient
+
+# DS-362: Re-export build_github_trigger_key from deduplication module
+# This provides backwards compatibility for tests that imported from conftest
+__all__ = ["build_github_trigger_key"]
 
 
 class MockJiraClient(JiraClient):
@@ -313,29 +318,9 @@ def make_config(
     )
 
 
-def build_github_trigger_key(orch: Orchestration) -> str:
-    """Build a deduplication key for a GitHub trigger.
-
-    This helper mirrors the key-building logic from Sentinel._poll_github_triggers
-    to ensure test assertions stay in sync with production code.
-
-    DS-347: Extracted from duplicated definitions in TestGitHubTriggerDeduplication
-    to improve test maintainability.
-
-    The key format is: github:{project_owner}/{project_number}:{project_filter}:{labels}
-
-    Args:
-        orch: The orchestration containing a GitHub trigger configuration.
-
-    Returns:
-        A string key for deduplicating GitHub triggers.
-    """
-    filter_part = orch.trigger.project_filter or ""
-    labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
-    return (
-        f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-        f":{filter_part}:{labels_part}"
-    )
+# DS-362: build_github_trigger_key is now imported from sentinel.deduplication
+# and re-exported above for backwards compatibility with tests that import from conftest.
+# The previous inline implementation has been removed in favor of the shared utility.
 
 
 def make_orchestration(
