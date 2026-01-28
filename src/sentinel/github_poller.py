@@ -96,11 +96,22 @@ class GitHubIssue:
             data: Dictionary containing potential parent issue data.
 
         Returns:
-            The parent issue number if present, None otherwise.
+            The parent issue number if present and valid, None otherwise.
+            If an unexpected type is encountered, logs a warning and returns None.
         """
         parent_data = data.get("parent")
         if parent_data and isinstance(parent_data, dict):
-            return parent_data.get("number")
+            number = parent_data.get("number")
+            if number is None:
+                return None
+            if isinstance(number, int):
+                return number
+            # Log warning for unexpected type and treat as None
+            logger.warning(
+                f"Unexpected type for parent.number: {type(number).__name__}, "
+                f"expected int. Treating as None."
+            )
+            return None
         return None
 
     @classmethod
