@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from sentinel.agent_clients import DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD
 from sentinel.config import Config
 from sentinel.sdk_clients import ClaudeSdkAgentClient, TimingMetrics
 
@@ -304,8 +305,8 @@ class TestTimingMetrics:
     def test_inter_message_times_at_threshold_returns_raw_array(self) -> None:
         """Should return raw array when exactly at threshold."""
         metrics = TimingMetrics()
-        # Add exactly threshold number of items
-        metrics.inter_message_times = [0.1] * TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD
+        # Add exactly threshold number of items (default is 100)
+        metrics.inter_message_times = [0.1] * metrics.inter_message_times_threshold
 
         result = metrics.to_dict()
 
@@ -381,24 +382,19 @@ class TestTimingMetrics:
         assert metrics._calculate_percentile(data, 100) == 3.0
 
     def test_threshold_is_configurable(self) -> None:
-        """Should respect the INTER_MESSAGE_TIMES_THRESHOLD value."""
+        """Should respect the inter_message_times_threshold value."""
         # Verify the default threshold value
-        assert TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD == 100
+        default_metrics = TimingMetrics()
+        assert default_metrics.inter_message_times_threshold == 100
 
-        # Temporarily modify the threshold for this test
-        original_threshold = TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD
-        try:
-            TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD = 5
-            # Create metrics AFTER modifying threshold (dataclass copies class attr to instance)
-            metrics = TimingMetrics()
-            metrics.inter_message_times = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]  # 6 items > 5
+        # Create metrics with custom threshold
+        metrics = TimingMetrics(inter_message_times_threshold=5)
+        metrics.inter_message_times = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]  # 6 items > 5
 
-            result = metrics.to_dict()
+        result = metrics.to_dict()
 
-            assert "inter_message_times_summary" in result
-            assert "inter_message_times" not in result
-        finally:
-            TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD = original_threshold
+        assert "inter_message_times_summary" in result
+        assert "inter_message_times" not in result
 
     # Error scenario tests
 

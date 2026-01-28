@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 from claude_agent_sdk import ClaudeAgentOptions, query
 
@@ -31,6 +31,11 @@ from sentinel.logging import generate_log_filename, get_logger
 logger = get_logger(__name__)
 
 
+# Default threshold for summarizing inter_message_times
+# Kept for backward compatibility - prefer using Config.inter_message_times_threshold
+DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD: int = 100
+
+
 @dataclass
 class TimingMetrics:
     """Timing metrics for performance instrumentation.
@@ -44,11 +49,12 @@ class TimingMetrics:
     For long-running operations, inter_message_times can be summarized
     to statistical values (min, max, p50, p95, p99) to reduce log file size
     while preserving meaningful performance insights.
-    """
 
-    # Threshold for summarizing inter_message_times
-    # When message count exceeds this, store statistical summary instead of raw data
-    INTER_MESSAGE_TIMES_THRESHOLD: ClassVar[int] = 100
+    Args:
+        inter_message_times_threshold: Threshold for summarizing inter_message_times.
+            When message count exceeds this, store statistical summary instead of raw data.
+            Configurable via SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD environment variable.
+    """
 
     query_start_time: float = 0.0
     first_message_time: float | None = None
@@ -58,6 +64,9 @@ class TimingMetrics:
     inter_message_times: list[float] = field(default_factory=list)
     file_io_time: float = 0.0
     api_wait_time: float = 0.0
+    # Threshold for summarizing inter_message_times
+    # When message count exceeds this, store statistical summary instead of raw data
+    inter_message_times_threshold: int = DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD
 
     def start_query(self) -> None:
         """Mark the start of a query call."""
@@ -187,7 +196,7 @@ class TimingMetrics:
         """Convert metrics to dictionary for logging/reporting.
 
         For long-running operations, when the number of inter_message_times
-        exceeds INTER_MESSAGE_TIMES_THRESHOLD, statistical summaries are stored
+        exceeds inter_message_times_threshold, statistical summaries are stored
         instead of the raw array to reduce log file size while preserving
         meaningful performance insights.
 
@@ -206,7 +215,7 @@ class TimingMetrics:
         }
 
         # Optimize storage for long-running operations
-        if len(self.inter_message_times) > self.INTER_MESSAGE_TIMES_THRESHOLD:
+        if len(self.inter_message_times) > self.inter_message_times_threshold:
             result["inter_message_times_summary"] = self.get_inter_message_times_summary()
         else:
             result["inter_message_times"] = self.inter_message_times
@@ -613,8 +622,10 @@ class ClaudeSdkAgentClient(AgentClient):
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / generate_log_filename(start_time)
 
-        # Initialize timing metrics
-        metrics = TimingMetrics()
+        # Initialize timing metrics with configured threshold
+        metrics = TimingMetrics(
+            inter_message_times_threshold=self.config.inter_message_times_threshold
+        )
 
         sep = "=" * 80
         io_start = time.perf_counter()
