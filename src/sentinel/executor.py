@@ -283,6 +283,8 @@ class AgentExecutor:
                 "jira_labels": ", ".join(issue.labels) if issue.labels else "",
                 "jira_comments": comments_text,
                 "jira_links": ", ".join(issue.links) if issue.links else "",
+                "jira_epic_key": issue.epic_key or "",
+                "jira_parent_key": issue.parent_key or "",
                 # GitHub Issue variables (empty for Jira issues)
                 "github_issue_number": "",
                 "github_issue_title": "",
@@ -296,6 +298,7 @@ class AgentExecutor:
                 "github_pr_head": "",
                 "github_pr_base": "",
                 "github_pr_draft": "",
+                "github_parent_issue_number": "",
             })
         elif isinstance(issue, GitHubIssue):
             # Build GitHub issue URL if we have the necessary info
@@ -322,6 +325,7 @@ class AgentExecutor:
                 "github_pr_head": issue.head_ref if issue.is_pull_request else "",
                 "github_pr_base": issue.base_ref if issue.is_pull_request else "",
                 "github_pr_draft": str(issue.draft).lower() if issue.is_pull_request else "",
+                "github_parent_issue_number": str(issue.parent_issue_number) if issue.parent_issue_number else "",
                 # Jira variables (empty for GitHub issues)
                 "jira_issue_key": "",
                 "jira_summary": "",
@@ -331,6 +335,8 @@ class AgentExecutor:
                 "jira_labels": "",
                 "jira_comments": "",
                 "jira_links": "",
+                "jira_epic_key": "",
+                "jira_parent_key": "",
             })
 
         return variables
@@ -344,13 +350,18 @@ class AgentExecutor:
 
         Template variables available in the branch pattern:
         - {jira_issue_key}: The Jira issue key (e.g., "DS-290")
+        - {jira_epic_key}: The epic key for the current issue (e.g., "DS-100")
+        - {jira_parent_key}: The parent issue key for sub-tasks (e.g., "DS-200")
         - {github_issue_number}: The GitHub issue/PR number (e.g., "123")
+        - {github_parent_issue_number}: The parent issue number (e.g., "42")
         - {jira_summary}: Issue summary (use with caution - may need slugification)
         - {github_issue_title}: Issue/PR title (use with caution - may need slugification)
 
         Example:
         - Pattern: "feature/{jira_issue_key}"
         - Result: "feature/DS-290"
+        - Pattern: "feature/{jira_epic_key}"
+        - Result: "feature/DS-100" (allows multiple sub-issues to share a branch)
 
         Args:
             issue: The issue to process (Jira or GitHub).
@@ -388,6 +399,8 @@ class AgentExecutor:
         - {jira_labels}: Comma-separated list of labels
         - {jira_comments}: Recent comments (last 3)
         - {jira_links}: Comma-separated list of linked issue keys
+        - {jira_epic_key}: The epic key for the current issue (e.g., "DS-100")
+        - {jira_parent_key}: The parent issue key for sub-tasks (e.g., "DS-200")
 
         GitHub repository context (from orchestration config):
         - {github_host}: GitHub host (e.g., "github.com")
@@ -407,6 +420,7 @@ class AgentExecutor:
         - {github_pr_head}: Head branch reference (for PRs)
         - {github_pr_base}: Base branch reference (for PRs)
         - {github_pr_draft}: "true" if draft PR, "false" otherwise (for PRs)
+        - {github_parent_issue_number}: The parent issue number (e.g., "42")
 
         Args:
             issue: The issue to process (Jira or GitHub).
