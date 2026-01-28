@@ -17,6 +17,7 @@ from sentinel.sdk_clients import (
     ClaudeSdkAgentClient,
     JiraSdkClient,
     JiraSdkTagClient,
+    ShutdownController,
     request_shutdown,
     reset_shutdown,
 )
@@ -394,6 +395,45 @@ class TestClaudeSdkAgentClient:
             client = ClaudeSdkAgentClient(mock_config)
             with pytest.raises(ClaudeProcessInterruptedError):
                 asyncio.run(client.run_agent("Do something", []))
+
+    def test_shutdown_interrupts_agent_with_injected_controller(
+        self, mock_config: Config
+    ) -> None:
+        """Should raise ClaudeProcessInterruptedError with injected ShutdownController.
+
+        This test demonstrates the improved testability with dependency injection.
+        By injecting a dedicated ShutdownController, tests can control shutdown
+        behavior independently without affecting global state.
+        """
+        # Create an isolated controller for this test
+        controller = ShutdownController()
+        controller.request_shutdown()
+
+        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
+            # Inject the controller - no global state needed
+            client = ClaudeSdkAgentClient(mock_config, shutdown_controller=controller)
+            with pytest.raises(ClaudeProcessInterruptedError):
+                asyncio.run(client.run_agent("Do something", []))
+
+    def test_controller_isolation(self, mock_config: Config) -> None:
+        """Test that different controllers are truly isolated.
+
+        Verifies that shutdown on one controller doesn't affect another,
+        demonstrating the improved testability of the dependency injection approach.
+        """
+        controller1 = ShutdownController()
+        controller2 = ShutdownController()
+
+        # Shutdown only controller1
+        controller1.request_shutdown()
+
+        assert controller1.is_shutdown_requested()
+        assert not controller2.is_shutdown_requested()
+
+        # Reset controller1 and verify it's truly reset
+        controller1.reset()
+        assert not controller1.is_shutdown_requested()
+        assert not controller2.is_shutdown_requested()
 
 
 class TestClaudeSdkAgentClientStreaming:
