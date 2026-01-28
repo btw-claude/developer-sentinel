@@ -40,10 +40,9 @@ def slugify(text: str) -> str:
 
     Git branch name restrictions handled:
     - No spaces (replaced with hyphens)
-    - No ~ ^ : ? * [ \\ (removed)
+    - No ~ ^ : ? * [ \\ @ { } (removed)
     - No leading/trailing dots or hyphens
     - No consecutive dots (..)
-    - No @{ sequence
 
     Args:
         text: The text to convert to a slug.
@@ -81,9 +80,6 @@ def slugify(text: str) -> str:
     # Git disallows: ~ ^ : ? * [ \ space and control characters
     # Also remove @{ sequence and .. (consecutive dots)
     slug = re.sub(r"[~^:?*\[\]\\@{}!\"'#$%&()+,;<>=|`]", "", slug)
-
-    # Remove @ if followed by {
-    slug = re.sub(r"@\{", "", slug)
 
     # Replace consecutive dots with single dot
     slug = re.sub(r"\.{2,}", ".", slug)
