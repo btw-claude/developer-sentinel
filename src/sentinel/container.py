@@ -1,0 +1,521 @@
+"""Dependency Injection container for the Sentinel application.
+
+This module provides a centralized dependency injection container using the
+dependency-injector library. It enables:
+
+- Testability: Easy swapping of implementations for testing
+- Loose coupling: Components depend on abstractions, not concrete implementations
+- Configuration management: Centralized configuration through providers
+- Lifecycle management: Singleton instances managed by the container
+
+Usage:
+    # Production setup
+    container = create_container()
+    sentinel = container.sentinel()
+
+    # Test setup with mocks
+    container = create_container()
+    container.jira_client.override(MockJiraClient())
+    sentinel = container.sentinel()
+
+See docs/dependency-injection.md for more patterns and examples.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from dependency_injector import containers, providers
+
+if TYPE_CHECKING:
+    from sentinel.agent_clients.factory import AgentClientFactory
+    from sentinel.agent_logger import AgentLogger
+    from sentinel.config import Config
+    from sentinel.github_poller import GitHubClient
+    from sentinel.github_rest_client import GitHubTagClient
+    from sentinel.orchestration import Orchestration
+    from sentinel.poller import JiraClient
+    from sentinel.tag_manager import JiraTagClient, TagManager
+
+
+class ClientsContainer(containers.DeclarativeContainer):
+    """Container for API clients (Jira, GitHub).
+
+    This sub-container groups all API client dependencies, making it easy
+    to swap entire client sets for integration testing or different environments.
+    """
+
+    config = providers.Dependency()
+
+    # Jira clients - provided lazily to support both REST and SDK implementations
+    jira_client = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+    jira_tag_client = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+
+    # GitHub clients - optional, may be None if not configured
+    github_client = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+    github_tag_client = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+
+
+class ServicesContainer(containers.DeclarativeContainer):
+    """Container for core services.
+
+    This sub-container groups service-layer dependencies that coordinate
+    between clients and business logic.
+    """
+
+    config = providers.Dependency()
+    clients = providers.DependenciesContainer()
+
+    # AgentClientFactory - creates agent clients based on orchestration config
+    agent_factory = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+
+    # AgentLogger - logs agent execution output
+    agent_logger = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+
+    # TagManager - manages issue labels/tags
+    tag_manager = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+
+
+class SentinelContainer(containers.DeclarativeContainer):
+    """Main dependency injection container for the Sentinel application.
+
+    This is the root container that wires together all sub-containers and
+    provides the main Sentinel instance. It follows a hierarchical structure:
+
+    SentinelContainer
+    ├── config (Config)
+    ├── orchestrations (list[Orchestration])
+    ├── clients (ClientsContainer)
+    │   ├── jira_client
+    │   ├── jira_tag_client
+    │   ├── github_client
+    │   └── github_tag_client
+    └── services (ServicesContainer)
+        ├── agent_factory
+        ├── agent_logger
+        └── tag_manager
+
+    Usage:
+        # Create container with providers
+        container = create_container()
+
+        # Override for testing
+        container.clients.jira_client.override(mock_jira)
+
+        # Get Sentinel instance
+        sentinel = container.sentinel()
+    """
+
+    # Wiring configuration - modules that use @inject decorator
+    wiring_config = containers.WiringConfiguration(
+        modules=[
+            "sentinel.main",
+        ]
+    )
+
+    # Core configuration
+    config = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, set via factory
+    )
+
+    # Orchestrations list
+    orchestrations = providers.Singleton(
+        providers.Callable(lambda: [])  # Placeholder, set via factory
+    )
+
+    # Sub-containers
+    clients = providers.Container(
+        ClientsContainer,
+        config=config,
+    )
+
+    services = providers.Container(
+        ServicesContainer,
+        config=config,
+        clients=clients,
+    )
+
+    # Main Sentinel instance - Factory provider allows creating multiple instances
+    sentinel = providers.Factory(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+
+
+def create_jira_rest_client(config: "Config") -> "JiraClient":
+    """Create a Jira REST API client.
+
+    Args:
+        config: Application configuration.
+
+    Returns:
+        JiraRestClient instance configured with credentials from config.
+    """
+    from sentinel.rest_clients import JiraRestClient
+
+    return JiraRestClient(
+        base_url=config.jira_base_url,
+        email=config.jira_email,
+        api_token=config.jira_api_token,
+    )
+
+
+def create_jira_sdk_client(config: "Config") -> "JiraClient":
+    """Create a Jira SDK client (uses Claude for API calls).
+
+    Args:
+        config: Application configuration.
+
+    Returns:
+        JiraSdkClient instance.
+    """
+    from sentinel.sdk_clients import JiraSdkClient
+
+    return JiraSdkClient(config)
+
+
+def create_jira_rest_tag_client(config: "Config") -> "JiraTagClient":
+    """Create a Jira REST API tag client.
+
+    Args:
+        config: Application configuration.
+
+    Returns:
+        JiraRestTagClient instance configured with credentials from config.
+    """
+    from sentinel.rest_clients import JiraRestTagClient
+
+    return JiraRestTagClient(
+        base_url=config.jira_base_url,
+        email=config.jira_email,
+        api_token=config.jira_api_token,
+    )
+
+
+def create_jira_sdk_tag_client(config: "Config") -> "JiraTagClient":
+    """Create a Jira SDK tag client (uses Claude for API calls).
+
+    Args:
+        config: Application configuration.
+
+    Returns:
+        JiraSdkTagClient instance.
+    """
+    from sentinel.sdk_clients import JiraSdkTagClient
+
+    return JiraSdkTagClient(config)
+
+
+def create_github_rest_client(config: "Config") -> "GitHubClient | None":
+    """Create a GitHub REST API client if configured.
+
+    Args:
+        config: Application configuration.
+
+    Returns:
+        GitHubRestClient instance if GitHub is configured, None otherwise.
+    """
+    if not config.github_configured:
+        return None
+
+    from sentinel.github_rest_client import GitHubRestClient
+
+    return GitHubRestClient(
+        token=config.github_token,
+        base_url=config.github_api_url if config.github_api_url else None,
+    )
+
+
+def create_github_rest_tag_client(config: "Config") -> "GitHubTagClient | None":
+    """Create a GitHub REST API tag client if configured.
+
+    Args:
+        config: Application configuration.
+
+    Returns:
+        GitHubRestTagClient instance if GitHub is configured, None otherwise.
+    """
+    if not config.github_configured:
+        return None
+
+    from sentinel.github_rest_client import GitHubRestTagClient
+
+    return GitHubRestTagClient(
+        token=config.github_token,
+        base_url=config.github_api_url if config.github_api_url else None,
+    )
+
+
+def create_agent_factory(config: "Config") -> "AgentClientFactory":
+    """Create the agent client factory with default builders.
+
+    Args:
+        config: Application configuration.
+
+    Returns:
+        AgentClientFactory with claude and cursor builders registered.
+    """
+    from sentinel.agent_clients.factory import create_default_factory
+
+    return create_default_factory(config)
+
+
+def create_agent_logger(config: "Config") -> "AgentLogger":
+    """Create the agent execution logger.
+
+    Args:
+        config: Application configuration.
+
+    Returns:
+        AgentLogger configured with the logs directory from config.
+    """
+    from sentinel.agent_logger import AgentLogger
+
+    return AgentLogger(base_dir=config.agent_logs_dir)
+
+
+def create_tag_manager(
+    jira_tag_client: "JiraTagClient",
+    github_tag_client: "GitHubTagClient | None",
+) -> "TagManager":
+    """Create the tag manager with configured clients.
+
+    Args:
+        jira_tag_client: Jira tag client for label operations.
+        github_tag_client: Optional GitHub tag client for label operations.
+
+    Returns:
+        TagManager configured with the provided clients.
+    """
+    from sentinel.tag_manager import TagManager
+
+    return TagManager(
+        client=jira_tag_client,
+        github_client=github_tag_client,
+    )
+
+
+def create_sentinel(
+    config: "Config",
+    orchestrations: "list[Orchestration]",
+    jira_client: "JiraClient",
+    jira_tag_client: "JiraTagClient",
+    agent_factory: "AgentClientFactory",
+    agent_logger: "AgentLogger",
+    github_client: "GitHubClient | None" = None,
+    github_tag_client: "GitHubTagClient | None" = None,
+) -> "Sentinel":
+    """Create a Sentinel instance with all dependencies.
+
+    This factory function creates a Sentinel instance with all required
+    dependencies injected. It's the primary way to instantiate Sentinel
+    when using the DI container.
+
+    Args:
+        config: Application configuration.
+        orchestrations: List of orchestration configurations.
+        jira_client: Jira client for polling issues.
+        jira_tag_client: Jira client for tag operations.
+        agent_factory: Factory for creating agent clients.
+        agent_logger: Logger for agent execution.
+        github_client: Optional GitHub client for polling.
+        github_tag_client: Optional GitHub client for tag operations.
+
+    Returns:
+        Configured Sentinel instance.
+    """
+    from sentinel.main import Sentinel
+
+    return Sentinel(
+        config=config,
+        orchestrations=orchestrations,
+        jira_client=jira_client,
+        tag_client=jira_tag_client,
+        agent_factory=agent_factory,
+        agent_logger=agent_logger,
+        github_client=github_client,
+        github_tag_client=github_tag_client,
+    )
+
+
+def create_container(
+    config: "Config | None" = None,
+    orchestrations: "list[Orchestration] | None" = None,
+) -> SentinelContainer:
+    """Create and configure the main DI container.
+
+    This is the recommended way to create a container for production use.
+    It sets up all providers with their default implementations based on
+    the provided configuration.
+
+    Args:
+        config: Optional configuration. If not provided, loads from environment.
+        orchestrations: Optional list of orchestrations. If not provided,
+                       loads from the orchestrations directory.
+
+    Returns:
+        Fully configured SentinelContainer ready for use.
+
+    Example:
+        # Production usage
+        container = create_container()
+        sentinel = container.sentinel()
+        sentinel.run()
+
+        # Testing with mock Jira client
+        container = create_container()
+        container.clients.jira_client.override(providers.Object(mock_jira))
+        sentinel = container.sentinel()
+    """
+    from sentinel.config import load_config
+    from sentinel.orchestration import load_orchestrations
+
+    # Load config if not provided
+    if config is None:
+        config = load_config()
+
+    # Load orchestrations if not provided
+    if orchestrations is None:
+        orchestrations = load_orchestrations(config.orchestrations_dir)
+
+    # Create container
+    container = SentinelContainer()
+
+    # Configure core providers
+    container.config.override(providers.Object(config))
+    container.orchestrations.override(providers.Object(orchestrations))
+
+    # Configure Jira clients based on configuration
+    if config.jira_configured:
+        container.clients.jira_client.override(
+            providers.Singleton(create_jira_rest_client, config)
+        )
+        container.clients.jira_tag_client.override(
+            providers.Singleton(create_jira_rest_tag_client, config)
+        )
+    else:
+        container.clients.jira_client.override(
+            providers.Singleton(create_jira_sdk_client, config)
+        )
+        container.clients.jira_tag_client.override(
+            providers.Singleton(create_jira_sdk_tag_client, config)
+        )
+
+    # Configure GitHub clients (may be None)
+    container.clients.github_client.override(
+        providers.Singleton(create_github_rest_client, config)
+    )
+    container.clients.github_tag_client.override(
+        providers.Singleton(create_github_rest_tag_client, config)
+    )
+
+    # Configure services
+    container.services.agent_factory.override(
+        providers.Singleton(create_agent_factory, config)
+    )
+    container.services.agent_logger.override(
+        providers.Singleton(create_agent_logger, config)
+    )
+    container.services.tag_manager.override(
+        providers.Singleton(
+            create_tag_manager,
+            container.clients.jira_tag_client,
+            container.clients.github_tag_client,
+        )
+    )
+
+    # Configure Sentinel factory
+    container.sentinel.override(
+        providers.Factory(
+            create_sentinel,
+            config=container.config,
+            orchestrations=container.orchestrations,
+            jira_client=container.clients.jira_client,
+            jira_tag_client=container.clients.jira_tag_client,
+            agent_factory=container.services.agent_factory,
+            agent_logger=container.services.agent_logger,
+            github_client=container.clients.github_client,
+            github_tag_client=container.clients.github_tag_client,
+        )
+    )
+
+    return container
+
+
+def create_test_container(
+    config: "Config | None" = None,
+    orchestrations: "list[Orchestration] | None" = None,
+) -> SentinelContainer:
+    """Create a container pre-configured for testing.
+
+    This creates a container with placeholder providers that are easy to
+    override with mocks. Unlike create_container(), this doesn't require
+    valid Jira/GitHub credentials.
+
+    Args:
+        config: Optional test configuration.
+        orchestrations: Optional list of test orchestrations.
+
+    Returns:
+        SentinelContainer configured for testing.
+
+    Example:
+        from unittest.mock import Mock
+
+        container = create_test_container()
+        container.clients.jira_client.override(providers.Object(Mock()))
+        container.clients.jira_tag_client.override(providers.Object(Mock()))
+        sentinel = container.sentinel()
+    """
+    from sentinel.config import Config
+
+    # Use default test config if not provided
+    if config is None:
+        config = Config()
+
+    if orchestrations is None:
+        orchestrations = []
+
+    container = SentinelContainer()
+
+    # Set up basic providers
+    container.config.override(providers.Object(config))
+    container.orchestrations.override(providers.Object(orchestrations))
+
+    # Leave client providers as placeholders - tests should override them
+    # This makes it explicit that tests need to provide their own mocks
+
+    return container
+
+
+# Convenience exports for common patterns
+__all__ = [
+    "SentinelContainer",
+    "ClientsContainer",
+    "ServicesContainer",
+    "create_container",
+    "create_test_container",
+    "create_sentinel",
+    "create_jira_rest_client",
+    "create_jira_sdk_client",
+    "create_jira_rest_tag_client",
+    "create_jira_sdk_tag_client",
+    "create_github_rest_client",
+    "create_github_rest_tag_client",
+    "create_agent_factory",
+    "create_agent_logger",
+    "create_tag_manager",
+]
