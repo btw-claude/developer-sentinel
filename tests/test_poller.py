@@ -513,7 +513,7 @@ class TestJiraIssueEpicAndParentFields:
         assert issue.epic_key is None  # Task parent should NOT populate epic_key
 
     def test_parent_without_issuetype_does_not_populate_either(self) -> None:
-        """Test parent without issuetype info doesn't populate either field (DS-358)."""
+        """Test parent without issuetype info defaults to sub-task relationship (DS-358)."""
         data = {
             "key": "TEST-406",
             "fields": {
