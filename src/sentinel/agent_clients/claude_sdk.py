@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
@@ -379,8 +380,6 @@ class ClaudeSdkAgentClient(AgentClient):
             AgentClientError: If branch doesn't exist and create_branch is False,
                 or if git operations fail.
         """
-        import subprocess
-
         logger.info(f"Setting up branch '{branch}' in {workdir}")
 
         try:
@@ -404,22 +403,56 @@ class ClaudeSdkAgentClient(AgentClient):
             branch_exists = bool(result.stdout.strip())
 
             if branch_exists:
-                # Branch exists - checkout and pull
-                logger.info(f"Branch '{branch}' exists, checking out and pulling")
-                subprocess.run(
-                    ["git", "checkout", branch],
+                # Check if we're already on the branch and up to date with remote
+                current_branch_result = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
                     cwd=workdir,
                     check=True,
                     capture_output=True,
                     text=True,
                 )
-                subprocess.run(
-                    ["git", "pull", "origin", branch],
+                current_branch = current_branch_result.stdout.strip()
+
+                local_sha_result = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
                     cwd=workdir,
                     check=True,
                     capture_output=True,
                     text=True,
                 )
+                local_sha = local_sha_result.stdout.strip()
+
+                remote_sha_result = subprocess.run(
+                    ["git", "rev-parse", f"origin/{branch}"],
+                    cwd=workdir,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                remote_sha = remote_sha_result.stdout.strip()
+
+                if current_branch == branch and local_sha == remote_sha:
+                    # Already on the correct branch and up to date
+                    logger.info(
+                        f"Branch '{branch}' already checked out and up to date with remote"
+                    )
+                else:
+                    # Branch exists - checkout and pull
+                    logger.info(f"Branch '{branch}' exists, checking out and pulling")
+                    subprocess.run(
+                        ["git", "checkout", branch],
+                        cwd=workdir,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    subprocess.run(
+                        ["git", "pull", "origin", branch],
+                        cwd=workdir,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
             elif create_branch:
                 # Branch doesn't exist but we should create it
                 logger.info(
