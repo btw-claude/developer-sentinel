@@ -23,12 +23,14 @@ from sentinel.orchestration import Orchestration
 # make_config, make_orchestration, and set_mtime_in_future
 # DS-188: Added TrackingAgentClient for concurrency tracking tests
 # DS-296: Added MockAgentClientFactory for factory pattern tests
+# DS-347: Added build_github_trigger_key for GitHub trigger deduplication tests
 from tests.conftest import (
     MockJiraClient,
     MockAgentClient,
     MockAgentClientFactory,
     MockTagClient,
     TrackingAgentClient,
+    build_github_trigger_key,
     make_config,
     make_orchestration,
     set_mtime_in_future,
@@ -3947,17 +3949,9 @@ class TestGitHubTriggerDeduplication:
             project_filter='Status = "In Progress"',
         )
 
-        # Build deduplication keys matching the logic in _poll_github_triggers
-        def build_trigger_key(orch: Orchestration) -> str:
-            filter_part = orch.trigger.project_filter or ""
-            labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
-            return (
-                f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-                f":{filter_part}:{labels_part}"
-            )
-
-        key1 = build_trigger_key(orch1)
-        key2 = build_trigger_key(orch2)
+        # DS-347: Use shared helper for deduplication keys
+        key1 = build_github_trigger_key(orch1)
+        key2 = build_github_trigger_key(orch2)
 
         # Keys should be different due to different project_filter values
         assert key1 != key2
@@ -3984,17 +3978,9 @@ class TestGitHubTriggerDeduplication:
             labels=["feature", "enhancement"],
         )
 
-        # Build deduplication keys
-        def build_trigger_key(orch: Orchestration) -> str:
-            filter_part = orch.trigger.project_filter or ""
-            labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
-            return (
-                f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-                f":{filter_part}:{labels_part}"
-            )
-
-        key1 = build_trigger_key(orch1)
-        key2 = build_trigger_key(orch2)
+        # DS-347: Use shared helper for deduplication keys
+        key1 = build_github_trigger_key(orch1)
+        key2 = build_github_trigger_key(orch2)
 
         # Keys should be different due to different labels values
         assert key1 != key2
@@ -4023,17 +4009,9 @@ class TestGitHubTriggerDeduplication:
             labels=["bug"],
         )
 
-        # Build deduplication keys
-        def build_trigger_key(orch: Orchestration) -> str:
-            filter_part = orch.trigger.project_filter or ""
-            labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
-            return (
-                f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-                f":{filter_part}:{labels_part}"
-            )
-
-        key1 = build_trigger_key(orch1)
-        key2 = build_trigger_key(orch2)
+        # DS-347: Use shared helper for deduplication keys
+        key1 = build_github_trigger_key(orch1)
+        key2 = build_github_trigger_key(orch2)
 
         # Keys should be identical since trigger configurations match
         assert key1 == key2
@@ -4054,13 +4032,8 @@ class TestGitHubTriggerDeduplication:
             # project_filter not specified (defaults to "")
         )
 
-        # Build deduplication key
-        filter_part = orch.trigger.project_filter or ""
-        labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
-        key = (
-            f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-            f":{filter_part}:{labels_part}"
-        )
+        # DS-347: Use shared helper for deduplication key
+        key = build_github_trigger_key(orch)
 
         # Key should NOT contain 'None' as a string
         assert "None" not in key
@@ -4080,13 +4053,8 @@ class TestGitHubTriggerDeduplication:
             # labels not specified or empty
         )
 
-        # Build deduplication key
-        filter_part = orch.trigger.project_filter or ""
-        labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
-        key = (
-            f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-            f":{filter_part}:{labels_part}"
-        )
+        # DS-347: Use shared helper for deduplication key
+        key = build_github_trigger_key(orch)
 
         # Key should have clean format with empty labels part
         assert key == 'github:test-org/1:Status = "Ready":'
@@ -4102,13 +4070,8 @@ class TestGitHubTriggerDeduplication:
             project_scope="org",
         )
 
-        # Build deduplication key
-        filter_part = orch.trigger.project_filter or ""
-        labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
-        key = (
-            f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-            f":{filter_part}:{labels_part}"
-        )
+        # DS-347: Use shared helper for deduplication key
+        key = build_github_trigger_key(orch)
 
         # Key should be clean without 'None' anywhere
         assert "None" not in key
@@ -4126,13 +4089,8 @@ class TestGitHubTriggerDeduplication:
             labels=["urgent", "critical"],
         )
 
-        # Build deduplication key
-        filter_part = orch.trigger.project_filter or ""
-        labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
-        key = (
-            f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-            f":{filter_part}:{labels_part}"
-        )
+        # DS-347: Use shared helper for deduplication key
+        key = build_github_trigger_key(orch)
 
         # Verify all parts are present
         assert key == 'github:acme/10:Priority = "High":urgent,critical'

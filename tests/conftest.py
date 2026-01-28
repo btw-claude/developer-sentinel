@@ -313,6 +313,31 @@ def make_config(
     )
 
 
+def build_github_trigger_key(orch: Orchestration) -> str:
+    """Build a deduplication key for a GitHub trigger.
+
+    This helper mirrors the key-building logic from Sentinel._poll_github_triggers
+    to ensure test assertions stay in sync with production code.
+
+    DS-347: Extracted from duplicated definitions in TestGitHubTriggerDeduplication
+    to improve test maintainability.
+
+    The key format is: github:{project_owner}/{project_number}:{project_filter}:{labels}
+
+    Args:
+        orch: The orchestration containing a GitHub trigger configuration.
+
+    Returns:
+        A string key for deduplicating GitHub triggers.
+    """
+    filter_part = orch.trigger.project_filter or ""
+    labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
+    return (
+        f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
+        f":{filter_part}:{labels_part}"
+    )
+
+
 def make_orchestration(
     name: str = "test-orch",
     project: str = "TEST",
