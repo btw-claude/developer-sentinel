@@ -38,6 +38,7 @@ class GitHubIssueProtocol(Protocol):
     base_ref: str
     draft: bool
     repo_url: str
+    parent_issue_number: int | None
 
     @property
     def key(self) -> str:
@@ -62,6 +63,7 @@ class GitHubIssue:
         base_ref: The base branch reference (for PRs).
         draft: Whether this PR is a draft (for PRs).
         repo_url: The full URL to the issue/PR (used to extract repo context).
+        parent_issue_number: The parent issue number (if this issue has a parent).
     """
 
     number: int
@@ -76,6 +78,7 @@ class GitHubIssue:
     base_ref: str = ""
     draft: bool = False
     repo_url: str = ""
+    parent_issue_number: int | None = None
 
     @property
     def key(self) -> str:
@@ -137,6 +140,12 @@ class GitHubIssue:
 
             draft = data.get("draft", False)
 
+        # Extract parent issue number (for sub-issues)
+        parent_issue_number: int | None = None
+        parent_data = data.get("parent")
+        if parent_data and isinstance(parent_data, dict):
+            parent_issue_number = parent_data.get("number")
+
         return cls(
             number=data.get("number", 0),
             title=data.get("title", ""),
@@ -149,6 +158,7 @@ class GitHubIssue:
             head_ref=head_ref,
             base_ref=base_ref,
             draft=draft,
+            parent_issue_number=parent_issue_number,
         )
 
     @classmethod
@@ -210,6 +220,12 @@ class GitHubIssue:
         # Extract URL for repo context extraction
         repo_url = content.get("url", "")
 
+        # Extract parent issue number (for sub-issues)
+        parent_issue_number: int | None = None
+        parent_data = content.get("parent")
+        if parent_data and isinstance(parent_data, dict):
+            parent_issue_number = parent_data.get("number")
+
         return cls(
             number=content.get("number", 0),
             title=content.get("title", ""),
@@ -223,6 +239,7 @@ class GitHubIssue:
             base_ref=base_ref,
             draft=draft,
             repo_url=repo_url,
+            parent_issue_number=parent_issue_number,
         )
 
 
