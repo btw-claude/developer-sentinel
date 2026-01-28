@@ -3749,7 +3749,7 @@ class TestGitHubIssueWithRepo:
         assert wrapper.key == "org/repo#123"
 
     def test_delegates_all_properties(self) -> None:
-        """Test that all properties are properly delegated."""
+        """Test that all properties are properly delegated via __getattr__."""
         from sentinel.github_poller import GitHubIssue
         from sentinel.main import GitHubIssueWithRepo
 
@@ -3766,9 +3766,11 @@ class TestGitHubIssueWithRepo:
             base_ref="main",
             draft=False,
             repo_url="https://github.com/org/repo/pull/42",
+            parent_issue_number=100,
         )
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
 
+        # Verify all GitHubIssueProtocol properties are delegated
         assert wrapper.number == 42
         assert wrapper.title == "Test Title"
         assert wrapper.body == "Test Body"
@@ -3781,6 +3783,18 @@ class TestGitHubIssueWithRepo:
         assert wrapper.base_ref == "main"
         assert wrapper.draft is False
         assert wrapper.repo_url == "https://github.com/org/repo/pull/42"
+        assert wrapper.parent_issue_number == 100
+
+    def test_raises_attribute_error_for_invalid_attribute(self) -> None:
+        """Test that AttributeError is raised for non-existent attributes."""
+        from sentinel.github_poller import GitHubIssue
+        from sentinel.main import GitHubIssueWithRepo
+
+        issue = GitHubIssue(number=123, title="Test")
+        wrapper = GitHubIssueWithRepo(issue, "org/repo")
+
+        with pytest.raises(AttributeError):
+            _ = wrapper.nonexistent_attribute
 
 
 class TestAddRepoContextFromUrls:

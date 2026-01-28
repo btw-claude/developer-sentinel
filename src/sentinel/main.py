@@ -100,8 +100,11 @@ class GitHubIssueWithRepo:
     """Wrapper for GitHubIssue that provides full key with repo context.
 
     The GitHubIssue.key property returns "#123" but tag operations need "org/repo#123".
-    This wrapper provides the full key while explicitly implementing all GitHubIssueProtocol
-    properties for better static type checking support.
+    This wrapper provides the full key while delegating all other GitHubIssueProtocol
+    properties to the wrapped issue via __getattr__.
+
+    Uses __getattr__ for automatic delegation to avoid DRY violations when implementing
+    all protocol properties explicitly. The only explicit override is the `key` property.
     """
 
     __slots__ = ("_issue", "_repo")
@@ -121,65 +124,24 @@ class GitHubIssueWithRepo:
         """Return the full issue key including repo context."""
         return f"{self._repo}#{self._issue.number}"
 
-    @property
-    def number(self) -> int:
-        """Return the issue/PR number."""
-        return self._issue.number
+    def __getattr__(self, name: str) -> Any:
+        """Delegate attribute access to the wrapped GitHubIssue.
 
-    @property
-    def title(self) -> str:
-        """Return the issue/PR title."""
-        return self._issue.title
+        This enables automatic delegation of all GitHubIssueProtocol properties
+        (number, title, body, state, author, assignees, labels, is_pull_request,
+        head_ref, base_ref, draft, repo_url, parent_issue_number) without explicit
+        property definitions.
 
-    @property
-    def body(self) -> str:
-        """Return the issue/PR body/description."""
-        return self._issue.body
+        Args:
+            name: The attribute name being accessed.
 
-    @property
-    def state(self) -> str:
-        """Return the state of the issue/PR."""
-        return self._issue.state
+        Returns:
+            The attribute value from the wrapped issue.
 
-    @property
-    def author(self) -> str:
-        """Return the username of the author."""
-        return self._issue.author
-
-    @property
-    def assignees(self) -> list[str]:
-        """Return the list of assigned usernames."""
-        return self._issue.assignees
-
-    @property
-    def labels(self) -> list[str]:
-        """Return the list of label names."""
-        return self._issue.labels
-
-    @property
-    def is_pull_request(self) -> bool:
-        """Return whether this is a pull request."""
-        return self._issue.is_pull_request
-
-    @property
-    def head_ref(self) -> str:
-        """Return the head branch reference (for PRs)."""
-        return self._issue.head_ref
-
-    @property
-    def base_ref(self) -> str:
-        """Return the base branch reference (for PRs)."""
-        return self._issue.base_ref
-
-    @property
-    def draft(self) -> bool:
-        """Return whether this PR is a draft."""
-        return self._issue.draft
-
-    @property
-    def repo_url(self) -> str:
-        """Return the full URL to the issue/PR."""
-        return self._issue.repo_url
+        Raises:
+            AttributeError: If the attribute doesn't exist on the wrapped issue.
+        """
+        return getattr(self._issue, name)
 
 
 def extract_repo_from_url(url: str) -> str | None:
