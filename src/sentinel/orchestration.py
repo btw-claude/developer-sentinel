@@ -161,13 +161,83 @@ class GitHubContext:
         org: GitHub organization or user name.
         repo: Repository name.
         branch: Branch pattern (e.g., "feature/{jira_issue_key}").
-            Supports template variables like {jira_issue_key} that are
-            expanded at runtime by the executor. Available variables depend
-            on the execution context (e.g., Jira issue key when triggered
-            by a Jira workflow). Template expansion is performed by the
-            executor (see DS-343).
+            Supports template variables that are expanded at runtime by the
+            executor. See "Template Variables" section below for the complete list.
         create_branch: Whether to auto-create the branch if it doesn't exist.
         base_branch: Base branch for new branch creation (default: "main").
+
+    Template Variables:
+        The ``branch`` field supports template variables that are expanded at runtime.
+        Variables are specified using ``{variable_name}`` syntax (e.g., ``feature/{jira_issue_key}``).
+
+        **GitHub Repository Context** (always available from orchestration config):
+            - ``{github_host}``: GitHub host (e.g., "github.com")
+            - ``{github_org}``: GitHub organization or username
+            - ``{github_repo}``: Repository name
+
+        **Jira Context** (populated when triggered by Jira issues, empty for GitHub triggers):
+            - ``{jira_issue_key}``: Jira issue key (e.g., "DS-123")
+            - ``{jira_summary}``: Issue summary/title (raw text, may contain spaces)
+            - ``{jira_summary_slug}``: Issue summary slugified for branch names (e.g., "add-login-button")
+            - ``{jira_description}``: Full issue description
+            - ``{jira_status}``: Current issue status
+            - ``{jira_assignee}``: Assignee display name
+            - ``{jira_labels}``: Comma-separated list of labels
+            - ``{jira_comments}``: Recent comments (last 3, truncated to 500 chars each)
+            - ``{jira_links}``: Comma-separated list of linked issue keys
+            - ``{jira_epic_key}``: Epic key for the current issue (e.g., "DS-100")
+            - ``{jira_parent_key}``: Parent issue key for sub-tasks (e.g., "DS-200")
+
+        **GitHub Issue Context** (populated when triggered by GitHub issues/PRs, empty for Jira triggers):
+            - ``{github_issue_number}``: Issue or PR number (e.g., "123")
+            - ``{github_issue_title}``: Issue/PR title (raw text, may contain spaces)
+            - ``{github_issue_title_slug}``: Issue/PR title slugified for branch names
+            - ``{github_issue_body}``: Issue/PR body/description
+            - ``{github_issue_state}``: State (e.g., "open", "closed")
+            - ``{github_issue_author}``: Username of the author
+            - ``{github_issue_assignees}``: Comma-separated list of assignees
+            - ``{github_issue_labels}``: Comma-separated list of labels
+            - ``{github_issue_url}``: Full URL to the issue/PR
+            - ``{github_is_pr}``: "true" if this is a pull request, "false" otherwise
+            - ``{github_pr_head}``: Head branch reference (for PRs only)
+            - ``{github_pr_base}``: Base branch reference (for PRs only)
+            - ``{github_pr_draft}``: "true" if draft PR, "false" otherwise (for PRs only)
+            - ``{github_parent_issue_number}``: Parent issue number if set (e.g., "42")
+
+    Branch Pattern Examples:
+        Simple Jira-triggered patterns::
+
+            branch: "feature/{jira_issue_key}"
+            # Result: "feature/DS-123"
+
+            branch: "feature/{jira_issue_key}-{jira_summary_slug}"
+            # Result: "feature/DS-123-add-login-button"
+
+            branch: "feature/{jira_epic_key}"
+            # Result: "feature/DS-100" (allows multiple sub-issues to share a branch)
+
+        Simple GitHub-triggered patterns::
+
+            branch: "feature/issue-{github_issue_number}"
+            # Result: "feature/issue-123"
+
+            branch: "fix/{github_issue_number}-{github_issue_title_slug}"
+            # Result: "fix/123-fix-null-pointer-exception"
+
+    Important Notes:
+        - **Cross-source variables**: Using Jira variables with GitHub triggers (or vice versa)
+          results in empty strings, which may produce branch names like "feature/".
+          Design branch patterns with the expected trigger source in mind.
+        - **Slug vs raw variables**: Use slug variables (``{jira_summary_slug}``,
+          ``{github_issue_title_slug}``) for branch names as they are automatically
+          converted to branch-safe format (lowercase, hyphens, no special characters).
+          Raw variables may contain spaces and special characters invalid in branch names.
+        - **Unknown variables**: Variables not in the above list are preserved as-is
+          in the expanded string (e.g., ``{unknown}`` remains ``{unknown}``).
+
+    See Also:
+        - ``AgentExecutor._build_template_variables()`` in executor.py for implementation details.
+        - ``AgentExecutor._expand_branch_pattern()`` in executor.py for branch expansion logic.
     """
 
     host: str = "github.com"
