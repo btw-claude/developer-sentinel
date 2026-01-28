@@ -48,12 +48,12 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
+         data-collapsible-target="system-status-content"
          hx-get="/partials/system_status"
          hx-target="#system-status-content"
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('system-status-content')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="handleCollapsibleClick(this, 'system-status-content', event)">
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             System Status
@@ -69,12 +69,12 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
+         data-collapsible-target="running-steps-content"
          hx-get="/partials/running_steps"
          hx-target="#running-steps-content"
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('running-steps-content')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="handleCollapsibleClick(this, 'running-steps-content', event)">
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Running Steps
@@ -91,12 +91,12 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
+         data-collapsible-target="issue-queue-content"
          hx-get="/partials/issue_queue"
          hx-target="#issue-queue-content"
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('issue-queue-content')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="handleCollapsibleClick(this, 'issue-queue-content', event)">
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Issue Queue
@@ -113,12 +113,12 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
+         data-collapsible-target="jira-projects-content"
          hx-get="/partials/orchestrations?source=jira"
          hx-target="#jira-projects-content"
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('jira-projects-content')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="handleCollapsibleClick(this, 'jira-projects-content', event)">
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Jira Projects
@@ -132,12 +132,12 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
+         data-collapsible-target="github-repos-content"
          hx-get="/partials/orchestrations?source=github"
          hx-target="#github-repos-content"
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('github-repos-content')]"
-         hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="handleCollapsibleClick(this, 'github-repos-content', event)">
+         hx-on::after-request="toggleCollapsibleSection(this)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             GitHub Repos

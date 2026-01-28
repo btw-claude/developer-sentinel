@@ -298,10 +298,11 @@
         }
 
         /**
-         * Handle collapsible section click with propagation control (DS-361).
+         * Handle collapsible section click with propagation control (DS-361, DS-370).
          * Encapsulates the collapse-with-propagation-stop logic for reusability.
          * Only toggles and stops propagation if the section is already expanded,
          * allowing HTMX to handle the initial expansion via lazy loading.
+         * DS-370: Refactored to use data-collapsible-target attribute instead of inline onclick.
          * @param {HTMLElement} element - The header element that was clicked
          * @param {string} contentId - The ID of the collapsible content element
          * @param {Event} event - The click event
@@ -312,6 +313,25 @@
                 event.stopImmediatePropagation();
             }
         }
+
+        /**
+         * Initialize collapsible section event listeners (DS-370).
+         * Attaches click event listeners to all collapsible headers using
+         * data-collapsible-target attribute for cleaner HTML/JS separation.
+         * This replaces inline onclick handlers with addEventListener pattern.
+         */
+        function initCollapsibleSections() {
+            const collapsibleHeaders = document.querySelectorAll('[data-collapsible-target]');
+            collapsibleHeaders.forEach(function(header) {
+                const contentId = header.getAttribute('data-collapsible-target');
+                header.addEventListener('click', function(event) {
+                    handleCollapsibleClick(header, contentId, event);
+                });
+            });
+        }
+
+        // DS-370: Initialize collapsible sections when DOM is ready
+        document.addEventListener('DOMContentLoaded', initCollapsibleSections);
 
         /**
          * Handle toggle API response with optimistic updates and error handling (DS-254, DS-261).
