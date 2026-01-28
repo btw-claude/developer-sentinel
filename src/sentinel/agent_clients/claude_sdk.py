@@ -497,7 +497,7 @@ class ClaudeSdkAgentClient(AgentClient):
                 f"stderr: {e.stderr}"
             ) from e
 
-    def run_agent(
+    async def run_agent(
         self,
         prompt: str,
         tools: list[str],
@@ -510,7 +510,11 @@ class ClaudeSdkAgentClient(AgentClient):
         create_branch: bool = False,
         base_branch: str = "main",
     ) -> AgentRunResult:
-        """Run a Claude agent with the given prompt and tools."""
+        """Run a Claude agent with the given prompt and tools.
+
+        This is an async method that properly composes with other async code
+        without creating new event loops per call.
+        """
         workdir = None
         if self.base_workdir is not None and issue_key is not None:
             workdir = self._create_workdir(issue_key)
@@ -531,9 +535,9 @@ class ClaudeSdkAgentClient(AgentClient):
         use_streaming = can_stream and not self._disable_streaming_logs
 
         if use_streaming:
-            response = asyncio.run(self._run_with_log(full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name))  # type: ignore
+            response = await self._run_with_log(full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name)  # type: ignore
         else:
-            response = asyncio.run(self._run_simple(full_prompt, tools, timeout_seconds, workdir, model))
+            response = await self._run_simple(full_prompt, tools, timeout_seconds, workdir, model)
             # When streaming is disabled but we have logging params, write full response after completion
             if can_stream and self._disable_streaming_logs:
                 self._write_simple_log(full_prompt, response, issue_key, orchestration_name)  # type: ignore

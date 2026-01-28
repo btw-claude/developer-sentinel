@@ -2,10 +2,14 @@
 
 This module provides the Cursor CLI client for running agents via subprocess,
 supporting different modes (agent, plan, ask) and model selection.
+
+The run_agent method is async to conform to the AgentClient interface,
+using asyncio.to_thread() for subprocess operations.
 """
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 from datetime import datetime
 from enum import Enum
@@ -169,7 +173,7 @@ class CursorAgentClient(AgentClient):
 
         return cmd
 
-    def run_agent(
+    async def run_agent(
         self,
         prompt: str,
         tools: list[str],
@@ -184,6 +188,9 @@ class CursorAgentClient(AgentClient):
         mode: CursorMode | str | None = None,
     ) -> AgentRunResult:
         """Run a Cursor agent with the given prompt.
+
+        This is an async method that uses asyncio.to_thread() to run the
+        subprocess without blocking the event loop.
 
         Args:
             prompt: The prompt to send to the agent.
@@ -232,14 +239,18 @@ class CursorAgentClient(AgentClient):
         )
         logger.debug(f"Cursor command: {' '.join(cmd[:3])}...")
 
-        try:
-            result = subprocess.run(
+        def _run_subprocess() -> subprocess.CompletedProcess[str]:
+            """Run subprocess in a thread to avoid blocking the event loop."""
+            return subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
                 cwd=str(workdir) if workdir else None,
             )
+
+        try:
+            result = await asyncio.to_thread(_run_subprocess)
 
             if result.returncode != 0:
                 error_msg = result.stderr.strip() or f"Exit code: {result.returncode}"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import shutil
 import time
@@ -204,10 +205,14 @@ class AgentClient(ABC):
     This allows the executor to work with different implementations:
     - Real Claude Agent SDK client (production)
     - Mock client (testing)
+
+    The run_agent method is async to enable proper async composition and avoid
+    creating new event loops per call. The executor uses asyncio.run() at its
+    entry point to drive the async execution.
     """
 
     @abstractmethod
-    def run_agent(
+    async def run_agent(
         self,
         prompt: str,
         tools: list[str],
@@ -221,6 +226,10 @@ class AgentClient(ABC):
         base_branch: str = "main",
     ) -> AgentRunResult:
         """Run a Claude agent with the given prompt and tools.
+
+        This is an async method to enable proper async composition and avoid
+        creating new event loops per call. Callers should use asyncio.run()
+        at their entry points when needed.
 
         Args:
             prompt: The prompt to send to the agent.
@@ -645,17 +654,23 @@ class AgentExecutor:
                 # Get branch configuration
                 branch = self._expand_branch_pattern(issue, orchestration)
 
-                run_result = self.client.run_agent(
-                    prompt,
-                    tools,
-                    context,
-                    timeout_seconds,
-                    issue_key=issue.key,
-                    model=model,
-                    orchestration_name=orchestration.name,
-                    branch=branch,
-                    create_branch=github.create_branch if github else False,
-                    base_branch=github.base_branch if github else "main",
+                # Use asyncio.run() to drive the async agent execution
+                # This is the single entry point for async code, avoiding
+                # nested event loops that would occur if run_agent called
+                # asyncio.run() internally for each execution
+                run_result = asyncio.run(
+                    self.client.run_agent(
+                        prompt,
+                        tools,
+                        context,
+                        timeout_seconds,
+                        issue_key=issue.key,
+                        model=model,
+                        orchestration_name=orchestration.name,
+                        branch=branch,
+                        create_branch=github.create_branch if github else False,
+                        base_branch=github.base_branch if github else "main",
+                    )
                 )
                 response = run_result.response
                 last_response = response

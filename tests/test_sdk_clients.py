@@ -261,7 +261,10 @@ class TestJiraSdkTagClient:
 
 
 class TestClaudeSdkAgentClient:
-    """Tests for ClaudeSdkAgentClient."""
+    """Tests for ClaudeSdkAgentClient.
+
+    All run_agent calls use asyncio.run() since the method is async.
+    """
 
     def test_run_agent_returns_response(self, mock_config: Config) -> None:
         """Should return AgentRunResult with agent response."""
@@ -270,7 +273,7 @@ class TestClaudeSdkAgentClient:
             create_mock_query("Agent completed successfully"),
         ):
             client = ClaudeSdkAgentClient(mock_config)
-            result = client.run_agent("Do something", ["jira"])
+            result = asyncio.run(client.run_agent("Do something", ["jira"]))
 
         assert result.response == "Agent completed successfully"
         assert result.workdir is None
@@ -281,10 +284,12 @@ class TestClaudeSdkAgentClient:
 
         with patch("sentinel.agent_clients.claude_sdk.query", create_capturing_mock_query(captured_prompt)):
             client = ClaudeSdkAgentClient(mock_config)
-            client.run_agent(
-                "Do something",
-                ["jira"],
-                context={"repo": "test-repo", "branch": "main"},
+            asyncio.run(
+                client.run_agent(
+                    "Do something",
+                    ["jira"],
+                    context={"repo": "test-repo", "branch": "main"},
+                )
             )
 
         called_prompt = captured_prompt[0]
@@ -300,7 +305,7 @@ class TestClaudeSdkAgentClient:
         ):
             client = ClaudeSdkAgentClient(mock_config)
             with pytest.raises(AgentTimeoutError, match="timed out"):
-                client.run_agent("Do something", [], timeout_seconds=300)
+                asyncio.run(client.run_agent("Do something", [], timeout_seconds=300))
 
     def test_run_agent_handles_generic_exception(self, mock_config: Config) -> None:
         """Should wrap generic exceptions in AgentClientError."""
@@ -310,7 +315,7 @@ class TestClaudeSdkAgentClient:
         ):
             client = ClaudeSdkAgentClient(mock_config)
             with pytest.raises(AgentClientError, match="unexpected error"):
-                client.run_agent("Do something", [])
+                asyncio.run(client.run_agent("Do something", []))
 
     def test_constructor_accepts_base_workdir(self, tmp_path: Path, mock_config: Config) -> None:
         """Should accept base_workdir in constructor."""
@@ -357,7 +362,7 @@ class TestClaudeSdkAgentClient:
         """Should create workdir when base_workdir and issue_key provided."""
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
-            client.run_agent("Do something", [], issue_key="DS-100")
+            asyncio.run(client.run_agent("Do something", [], issue_key="DS-100"))
 
         # Check that workdir was created
         workdirs = list(tmp_path.glob("DS-100_*"))
@@ -367,7 +372,7 @@ class TestClaudeSdkAgentClient:
         """Should not create workdir when base_workdir not configured."""
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config)
-            client.run_agent("Do something", [], issue_key="DS-200")
+            asyncio.run(client.run_agent("Do something", [], issue_key="DS-200"))
         # No exception should be raised
 
     def test_run_agent_no_workdir_without_issue_key(
@@ -376,7 +381,7 @@ class TestClaudeSdkAgentClient:
         """Should not create workdir when issue_key not provided."""
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
-            client.run_agent("Do something", [])
+            asyncio.run(client.run_agent("Do something", []))
 
         # No workdir should be created
         assert len(list(tmp_path.iterdir())) == 0
@@ -388,7 +393,7 @@ class TestClaudeSdkAgentClient:
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config)
             with pytest.raises(ClaudeProcessInterruptedError):
-                client.run_agent("Do something", [])
+                asyncio.run(client.run_agent("Do something", []))
 
 
 class TestClaudeSdkAgentClientStreaming:
@@ -419,11 +424,13 @@ class TestClaudeSdkAgentClientStreaming:
                 base_workdir=work_dir,
                 log_base_dir=log_dir,
             )
-            client.run_agent(
-                "Test prompt",
-                [],
-                issue_key="DS-123",
-                orchestration_name="test-orch",
+            asyncio.run(
+                client.run_agent(
+                    "Test prompt",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test-orch",
+                )
             )
 
         # Log directory should be created
@@ -440,11 +447,13 @@ class TestClaudeSdkAgentClientStreaming:
 
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("Agent completed task")):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
-            result = client.run_agent(
-                "Test prompt",
-                [],
-                issue_key="DS-123",
-                orchestration_name="test",
+            result = asyncio.run(
+                client.run_agent(
+                    "Test prompt",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test",
+                )
             )
 
         assert result.response == "Agent completed task"
@@ -463,11 +472,13 @@ class TestClaudeSdkAgentClientStreaming:
         """Should not create streaming logs when log_base_dir not set."""
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config)
-            client.run_agent(
-                "Test",
-                [],
-                issue_key="DS-123",
-                orchestration_name="test",
+            asyncio.run(
+                client.run_agent(
+                    "Test",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test",
+                )
             )
 
         # No logs directory should be created in tmp_path
@@ -481,10 +492,12 @@ class TestClaudeSdkAgentClientStreaming:
 
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
-            client.run_agent(
-                "Test",
-                [],
-                orchestration_name="test",
+            asyncio.run(
+                client.run_agent(
+                    "Test",
+                    [],
+                    orchestration_name="test",
+                )
             )
 
         # Logs directory should not be created
@@ -498,10 +511,12 @@ class TestClaudeSdkAgentClientStreaming:
 
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
-            client.run_agent(
-                "Test",
-                [],
-                issue_key="DS-123",
+            asyncio.run(
+                client.run_agent(
+                    "Test",
+                    [],
+                    issue_key="DS-123",
+                )
             )
 
         # Logs directory should not be created
@@ -515,11 +530,13 @@ class TestClaudeSdkAgentClientStreaming:
 
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
-            client.run_agent(
-                "Test",
-                [],
-                issue_key="DS-123",
-                orchestration_name="test",
+            asyncio.run(
+                client.run_agent(
+                    "Test",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test",
+                )
             )
 
         log_files = list((log_dir / "test").glob("*.log"))
@@ -539,12 +556,14 @@ class TestClaudeSdkAgentClientStreaming:
         ):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
             with pytest.raises(AgentTimeoutError):
-                client.run_agent(
-                    "Test",
-                    [],
-                    issue_key="DS-123",
-                    orchestration_name="test",
-                    timeout_seconds=60,
+                asyncio.run(
+                    client.run_agent(
+                        "Test",
+                        [],
+                        issue_key="DS-123",
+                        orchestration_name="test",
+                        timeout_seconds=60,
+                    )
                 )
 
         log_files = list((log_dir / "test").glob("*.log"))
@@ -563,11 +582,13 @@ class TestClaudeSdkAgentClientStreaming:
         ):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
             with pytest.raises(AgentClientError):
-                client.run_agent(
-                    "Test",
-                    [],
-                    issue_key="DS-123",
-                    orchestration_name="test",
+                asyncio.run(
+                    client.run_agent(
+                        "Test",
+                        [],
+                        issue_key="DS-123",
+                        orchestration_name="test",
+                    )
                 )
 
         log_files = list((log_dir / "test").glob("*.log"))
@@ -616,11 +637,13 @@ class TestDisableStreamingLogs:
                 log_base_dir=log_dir,
                 disable_streaming_logs=True,
             )
-            result = client.run_agent(
-                "Test prompt",
-                [],
-                issue_key="DS-123",
-                orchestration_name="test-orch",
+            result = asyncio.run(
+                client.run_agent(
+                    "Test prompt",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test-orch",
+                )
             )
 
         assert result.response == "done"
@@ -643,11 +666,13 @@ class TestDisableStreamingLogs:
                 log_base_dir=log_dir,
                 disable_streaming_logs=True,
             )
-            client.run_agent(
-                "Test prompt",
-                [],
-                issue_key="DS-123",
-                orchestration_name="test-orch",
+            asyncio.run(
+                client.run_agent(
+                    "Test prompt",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test-orch",
+                )
             )
 
         # Check log file content
@@ -677,10 +702,12 @@ class TestDisableStreamingLogs:
                 disable_streaming_logs=True,
             )
             # Missing issue_key
-            client.run_agent(
-                "Test prompt",
-                [],
-                orchestration_name="test-orch",
+            asyncio.run(
+                client.run_agent(
+                    "Test prompt",
+                    [],
+                    orchestration_name="test-orch",
+                )
             )
 
         # No log should be created
@@ -698,11 +725,13 @@ class TestDisableStreamingLogs:
                 log_base_dir=log_dir,
                 disable_streaming_logs=False,
             )
-            client.run_agent(
-                "Test prompt",
-                [],
-                issue_key="DS-123",
-                orchestration_name="test-orch",
+            asyncio.run(
+                client.run_agent(
+                    "Test prompt",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test-orch",
+                )
             )
 
         # Log file should be created with streaming format
@@ -869,11 +898,13 @@ class TestClaudeSdkAgentClientBranchSetup:
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, base_workdir=workdir)
             with patch.object(client, "_setup_branch") as mock_setup:
-                client.run_agent(
-                    "Do something",
-                    [],
-                    issue_key="DS-123",
-                    branch=None,  # No branch specified
+                asyncio.run(
+                    client.run_agent(
+                        "Do something",
+                        [],
+                        issue_key="DS-123",
+                        branch=None,  # No branch specified
+                    )
                 )
 
         # _setup_branch should not be called when branch is None
@@ -888,13 +919,15 @@ class TestClaudeSdkAgentClientBranchSetup:
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, base_workdir=workdir)
             with patch.object(client, "_setup_branch") as mock_setup:
-                client.run_agent(
-                    "Do something",
-                    [],
-                    issue_key="DS-123",
-                    branch="feature/DS-123",
-                    create_branch=True,
-                    base_branch="develop",
+                asyncio.run(
+                    client.run_agent(
+                        "Do something",
+                        [],
+                        issue_key="DS-123",
+                        branch="feature/DS-123",
+                        create_branch=True,
+                        base_branch="develop",
+                    )
                 )
 
         # _setup_branch should be called with correct parameters

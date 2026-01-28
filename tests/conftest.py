@@ -93,7 +93,10 @@ class MockJiraClient(JiraClient):
 
 
 class MockAgentClient(AgentClient):
-    """Mock agent client for testing."""
+    """Mock agent client for testing.
+
+    Implements the async AgentClient interface for use in tests.
+    """
 
     def __init__(
         self,
@@ -112,7 +115,7 @@ class MockAgentClient(AgentClient):
         """Return the type of agent this client implements."""
         return self._agent_type
 
-    def run_agent(
+    async def run_agent(
         self,
         prompt: str,
         tools: list[str],
@@ -125,6 +128,7 @@ class MockAgentClient(AgentClient):
         create_branch: bool = False,
         base_branch: str = "main",
     ) -> AgentRunResult:
+        """Async mock implementation of run_agent."""
         self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model, orchestration_name))
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
@@ -204,7 +208,7 @@ class TrackingAgentClient(AgentClient):
         """Return the type of agent this client implements."""
         return self._agent_type
 
-    def run_agent(
+    async def run_agent(
         self,
         prompt: str,
         tools: list[str],
@@ -217,6 +221,7 @@ class TrackingAgentClient(AgentClient):
         create_branch: bool = False,
         base_branch: str = "main",
     ) -> AgentRunResult:
+        """Async mock implementation of run_agent with tracking."""
         with self.lock:
             # Track global execution count
             self.execution_count += 1
