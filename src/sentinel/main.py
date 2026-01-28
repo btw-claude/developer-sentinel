@@ -487,6 +487,82 @@ class Sentinel:
         """
         return self._last_github_poll
 
+    def get_active_versions(self) -> list[dict]:
+        """Get snapshots of active orchestration versions.
+
+        Returns immutable snapshots instead of exposing internal OrchestrationVersion
+        objects, maintaining encapsulation. This is part of the SentinelStateProvider
+        protocol for dashboard decoupling.
+
+        Returns:
+            List of version snapshot dictionaries with name, version_id, source_file,
+            loaded_at, and active_executions fields.
+        """
+        from sentinel.dashboard.state import OrchestrationVersionSnapshot
+
+        with self._versions_lock:
+            return [
+                OrchestrationVersionSnapshot(
+                    name=v.name,
+                    version_id=v.version_id,
+                    source_file=str(v.source_file),
+                    loaded_at=v.loaded_at,
+                    active_executions=v.active_executions,
+                )
+                for v in self._active_versions
+            ]
+
+    def get_pending_removal_versions(self) -> list[dict]:
+        """Get snapshots of versions pending removal.
+
+        Returns immutable snapshots instead of exposing internal OrchestrationVersion
+        objects, maintaining encapsulation. This is part of the SentinelStateProvider
+        protocol for dashboard decoupling.
+
+        Returns:
+            List of version snapshot dictionaries with name, version_id, source_file,
+            loaded_at, and active_executions fields.
+        """
+        from sentinel.dashboard.state import OrchestrationVersionSnapshot
+
+        with self._versions_lock:
+            return [
+                OrchestrationVersionSnapshot(
+                    name=v.name,
+                    version_id=v.version_id,
+                    source_file=str(v.source_file),
+                    loaded_at=v.loaded_at,
+                    active_executions=v.active_executions,
+                )
+                for v in self._pending_removal_versions
+            ]
+
+    def get_execution_state(self) -> dict:
+        """Get a snapshot of the current execution state.
+
+        Returns an immutable snapshot instead of exposing internal threading
+        primitives or Future objects. This is part of the SentinelStateProvider
+        protocol for dashboard decoupling.
+
+        Returns:
+            ExecutionStateSnapshot with active_count field.
+        """
+        from sentinel.dashboard.state import ExecutionStateSnapshot
+
+        with self._futures_lock:
+            active_count = sum(1 for f in self._active_futures if not f.done())
+            return ExecutionStateSnapshot(active_count=active_count)
+
+    def is_shutdown_requested(self) -> bool:
+        """Check if shutdown has been requested.
+
+        This is part of the SentinelStateProvider protocol for dashboard decoupling.
+
+        Returns:
+            True if shutdown has been requested, False otherwise.
+        """
+        return self._shutdown_requested
+
     def _clear_issue_queue(self) -> None:
         """Clear the issue queue at the start of a new polling cycle.
 

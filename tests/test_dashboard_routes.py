@@ -20,20 +20,25 @@ from fastapi.testclient import TestClient
 
 from sentinel.config import Config
 from sentinel.dashboard.routes import create_routes
-from sentinel.dashboard.state import OrchestrationInfo, SentinelStateAccessor
+from sentinel.dashboard.state import (
+    ExecutionStateSnapshot,
+    OrchestrationInfo,
+    OrchestrationVersionSnapshot,
+    SentinelStateAccessor,
+)
 
 
 class MockSentinel:
-    """Mock Sentinel instance for testing dashboard state accessor."""
+    """Mock Sentinel instance for testing dashboard state accessor.
+
+    This mock implements the SentinelStateProvider protocol, providing all the
+    public methods that the dashboard needs to access state. It does not expose
+    any private attributes, demonstrating the decoupled interface.
+    """
 
     def __init__(self, config: Config) -> None:
         self.config = config
         self._shutdown_requested = False
-        self._versions_lock = MagicMock()
-        self._futures_lock = MagicMock()
-        self._active_versions: list[Any] = []
-        self._pending_removal_versions: list[Any] = []
-        self._active_futures: list[Any] = []
         self._start_time = datetime.now()
         self._last_jira_poll: datetime | None = None
         self._last_github_poll: datetime | None = None
@@ -63,6 +68,22 @@ class MockSentinel:
 
     def get_last_github_poll(self) -> datetime | None:
         return self._last_github_poll
+
+    def get_active_versions(self) -> list[OrchestrationVersionSnapshot]:
+        """Return empty list of active version snapshots."""
+        return []
+
+    def get_pending_removal_versions(self) -> list[OrchestrationVersionSnapshot]:
+        """Return empty list of pending removal version snapshots."""
+        return []
+
+    def get_execution_state(self) -> ExecutionStateSnapshot:
+        """Return execution state snapshot with zero active executions."""
+        return ExecutionStateSnapshot(active_count=0)
+
+    def is_shutdown_requested(self) -> bool:
+        """Return whether shutdown has been requested."""
+        return self._shutdown_requested
 
 
 class TestApiLogsFilesEndpoint:
