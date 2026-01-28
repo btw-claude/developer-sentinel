@@ -53,7 +53,7 @@
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('system-status-content')]"
          hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(isExpanded('system-status-content')) { toggleCollapsibleSection(this); event.stopImmediatePropagation(); }">
+         onclick="handleCollapsibleClick(this, 'system-status-content', event)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             System Status
@@ -74,7 +74,7 @@
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('running-steps-content')]"
          hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(isExpanded('running-steps-content')) { toggleCollapsibleSection(this); event.stopImmediatePropagation(); }">
+         onclick="handleCollapsibleClick(this, 'running-steps-content', event)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Running Steps
@@ -96,7 +96,7 @@
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('issue-queue-content')]"
          hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(isExpanded('issue-queue-content')) { toggleCollapsibleSection(this); event.stopImmediatePropagation(); }">
+         onclick="handleCollapsibleClick(this, 'issue-queue-content', event)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Issue Queue
@@ -118,7 +118,7 @@
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('jira-projects-content')]"
          hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(isExpanded('jira-projects-content')) { toggleCollapsibleSection(this); event.stopImmediatePropagation(); }">
+         onclick="handleCollapsibleClick(this, 'jira-projects-content', event)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             Jira Projects
@@ -137,7 +137,7 @@
          hx-swap="innerHTML"
          hx-trigger="click[!isExpanded('github-repos-content')]"
          hx-on::after-request="toggleCollapsibleSection(this)"
-         onclick="if(isExpanded('github-repos-content')) { toggleCollapsibleSection(this); event.stopImmediatePropagation(); }">
+         onclick="handleCollapsibleClick(this, 'github-repos-content', event)">
         <h2>
             <span class="collapse-icon">&#9654;</span>
             GitHub Repos
