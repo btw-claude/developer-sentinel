@@ -30,36 +30,10 @@ logger = get_logger(__name__)
 def slugify(text: str) -> str:
     """Convert text to a branch-safe slug format.
 
-    Transforms arbitrary text into a format safe for use in git branch names:
-    - Converts to lowercase
-    - Normalizes unicode characters (e.g., é -> e)
-    - Replaces spaces and underscores with hyphens
-    - Removes characters invalid in git branch names
-    - Collapses multiple consecutive hyphens into one
-    - Strips leading/trailing hyphens
+    Transforms text to lowercase, normalizes unicode, replaces spaces/underscores
+    with hyphens, removes git-invalid characters, and strips leading/trailing hyphens.
 
-    Git branch name restrictions handled:
-    - No spaces (replaced with hyphens)
-    - No ~ ^ : ? * [ \\ @ { } (removed)
-    - No leading/trailing dots or hyphens
-    - No consecutive dots (..)
-
-    Args:
-        text: The text to convert to a slug.
-
-    Returns:
-        A branch-safe slug string. Returns empty string if input is empty
-        or results in an empty slug after processing.
-
-    Examples:
-        >>> slugify("Add login button")
-        'add-login-button'
-        >>> slugify("Fix: authentication bug!")
-        'fix-authentication-bug'
-        >>> slugify("Feature [WIP] - user profile")
-        'feature-wip-user-profile'
-        >>> slugify("Éclair résumé")
-        'eclair-resume'
+    Example: "Add login button" -> "add-login-button"
     """
     if not text:
         return ""
@@ -114,21 +88,9 @@ def cleanup_workdir(
 ) -> bool:
     """Clean up an agent's working directory.
 
-    Safely removes the working directory and all its contents using shutil.rmtree().
-    Handles errors gracefully and logs any issues encountered.
-
-    Args:
-        workdir: Path to the working directory to clean up. If None, returns True.
-        force: If True, enables aggressive cleanup with retries on recoverable errors
-            (PermissionError, OSError) and uses ignore_errors on final attempt.
-            Useful for handling transient file locks or permission issues.
-        max_retries: Maximum number of retry attempts when force=True. Default is 3.
-            Only applies when force=True.
-        retry_delay: Delay in seconds between retry attempts when force=True.
-            Default is 0.5 seconds. Only applies when force=True.
-
-    Returns:
-        True if cleanup was successful or workdir was None, False if an error occurred.
+    Returns True if cleanup succeeded or workdir is None. When force=True,
+    retries on PermissionError/OSError up to max_retries times with retry_delay
+    between attempts, using ignore_errors on final attempt.
     """
     if workdir is None:
         return True
@@ -307,14 +269,12 @@ class AgentExecutor:
     def _build_template_variables(
         self, issue: AnyIssue, orchestration: Orchestration
     ) -> dict[str, str]:
-        """Build the dictionary of template variables for prompt substitution.
+        """Build template variables dict from issue and orchestration context.
 
-        Args:
-            issue: The issue to process (Jira or GitHub).
-            orchestration: The orchestration configuration.
-
-        Returns:
-            Dictionary mapping variable names to their values.
+        Returns a dict with keys for Jira context (jira_issue_key, jira_summary,
+        jira_summary_slug, etc.) and GitHub context (github_issue_number,
+        github_issue_title, github_host, github_org, github_repo, etc.).
+        Variables for the non-matching source type are set to empty strings.
         """
         # Get GitHub context from orchestration
         github = orchestration.agent.github
@@ -417,46 +377,9 @@ class AgentExecutor:
     ) -> str | None:
         """Expand template variables in the branch pattern.
 
-        Returns None if no branch pattern is configured.
-
-        Template variables available in the branch pattern:
-        - {jira_issue_key}: The Jira issue key (e.g., "DS-290")
-        - {jira_epic_key}: The epic key for the current issue (e.g., "DS-100")
-        - {jira_parent_key}: The parent issue key for sub-tasks (e.g., "DS-200")
-        - {github_issue_number}: The GitHub issue/PR number (e.g., "123")
-        - {github_parent_issue_number}: The parent issue number (e.g., "42")
-        - {jira_summary}: Issue summary (raw - may contain spaces/special chars)
-        - {jira_summary_slug}: Issue summary slugified (branch-safe, e.g., "add-login-button")
-        - {github_issue_title}: Issue/PR title (raw - may contain spaces/special chars)
-        - {github_issue_title_slug}: Issue/PR title slugified (branch-safe)
-
-        Note on raw vs slug variables:
-        - Raw variables ({jira_summary}, {github_issue_title}) preserve the original text
-          but may contain characters invalid in git branch names (spaces, special chars).
-        - Slug variables ({jira_summary_slug}, {github_issue_title_slug}) are automatically
-          converted to branch-safe format: lowercase, spaces replaced with hyphens,
-          special characters removed.
-
-        Note on cross-source variables:
-        - Using Jira variables (e.g., {jira_issue_key}) with a GitHub issue results in
-          empty strings, which may produce branch names like "feature/".
-        - Similarly, using GitHub variables with Jira issues produces empty strings.
-        - Design your branch patterns with the source type in mind.
-
-        Example:
-        - Pattern: "feature/{jira_issue_key}"
-        - Result: "feature/DS-290"
-        - Pattern: "feature/{jira_epic_key}"
-        - Result: "feature/DS-100" (allows multiple sub-issues to share a branch)
-        - Pattern: "feature/{jira_issue_key}-{jira_summary_slug}"
-        - Result: "feature/DS-290-add-login-button"
-
-        Args:
-            issue: The issue to process (Jira or GitHub).
-            orchestration: The orchestration configuration.
-
-        Returns:
-            The expanded branch name, or None if no branch pattern is configured.
+        Returns None if no branch pattern is configured. Uses variables from
+        _build_template_variables(). See GitHubContext docstring for available
+        template variables and usage notes.
         """
         github = orchestration.agent.github
         if not github or not github.branch:
@@ -476,48 +399,9 @@ class AgentExecutor:
     def build_prompt(self, issue: AnyIssue, orchestration: Orchestration) -> str:
         """Build the agent prompt by substituting template variables.
 
-        Template variables available in the prompt:
-
-        Jira context (populated for Jira issues):
-        - {jira_issue_key}: The Jira issue key (e.g., "DS-123")
-        - {jira_summary}: Issue summary/title
-        - {jira_summary_slug}: Issue summary slugified for branch names (e.g., "add-login-button")
-        - {jira_description}: Full issue description
-        - {jira_status}: Current issue status
-        - {jira_assignee}: Assignee display name
-        - {jira_labels}: Comma-separated list of labels
-        - {jira_comments}: Recent comments (last 3)
-        - {jira_links}: Comma-separated list of linked issue keys
-        - {jira_epic_key}: The epic key for the current issue (e.g., "DS-100")
-        - {jira_parent_key}: The parent issue key for sub-tasks (e.g., "DS-200")
-
-        GitHub repository context (from orchestration config):
-        - {github_host}: GitHub host (e.g., "github.com")
-        - {github_org}: GitHub organization
-        - {github_repo}: GitHub repository name
-
-        GitHub Issue context (populated for GitHub issues/PRs):
-        - {github_issue_number}: The issue/PR number
-        - {github_issue_title}: Issue/PR title
-        - {github_issue_title_slug}: Issue/PR title slugified for branch names
-        - {github_issue_body}: Issue/PR body/description
-        - {github_issue_state}: State (e.g., "open", "closed")
-        - {github_issue_author}: Username of the author
-        - {github_issue_assignees}: Comma-separated list of assignees
-        - {github_issue_labels}: Comma-separated list of labels
-        - {github_issue_url}: Full URL to the issue/PR
-        - {github_is_pr}: "true" if this is a pull request, "false" otherwise
-        - {github_pr_head}: Head branch reference (for PRs)
-        - {github_pr_base}: Base branch reference (for PRs)
-        - {github_pr_draft}: "true" if draft PR, "false" otherwise (for PRs)
-        - {github_parent_issue_number}: The parent issue number (e.g., "42")
-
-        Args:
-            issue: The issue to process (Jira or GitHub).
-            orchestration: The orchestration configuration.
-
-        Returns:
-            The prompt with all template variables substituted.
+        Uses variables from _build_template_variables(). Unknown variables
+        are preserved as-is in the output. See GitHubContext docstring for
+        available template variables.
         """
         template = orchestration.agent.prompt
         variables = self._build_template_variables(issue, orchestration)
