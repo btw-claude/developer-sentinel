@@ -20,14 +20,12 @@ For deprecating an entire section or group of related styles, use a multi-line c
 ```css
 /* -----------------------------------------------------------------------------
    SECTION TITLE
-   @deprecated <TICKET-ID> - <Reason for deprecation>
+   @deprecated <Reason for deprecation>
    @since <YYYY-MM-DD> (deprecation added)
    @removal Planned removal: <Quarter Year> (<version>)
 
    Migration Guide:
    <Describe how to migrate from deprecated styles to new styles>
-
-   See: <Related ticket IDs>
    ----------------------------------------------------------------------------- */
 ```
 
@@ -36,7 +34,7 @@ For deprecating an entire section or group of related styles, use a multi-line c
 ```css
 /* -----------------------------------------------------------------------------
    LEGACY TOGGLE SLIDER STYLES
-   @deprecated DS-260 - These styles are deprecated and will be removed in a future release.
+   @deprecated - These styles are deprecated and will be removed in a future release.
    @since 2026-01-26 (deprecation added)
    @removal Planned removal: Q2 2026 (v2.0)
 
@@ -52,8 +50,6 @@ For deprecating an entire section or group of related styles, use a multi-line c
        <input type="checkbox" class="toggle-switch__input">
        <span class="toggle-switch__slider"></span>
      </label>
-
-   See: DS-253 (original implementation), DS-260 (deprecation)
    ----------------------------------------------------------------------------- */
 ```
 
@@ -78,17 +74,16 @@ For deprecating individual rules, use single-line comments:
 
 | Annotation | Required | Format | Description |
 |------------|----------|--------|-------------|
-| `@deprecated` | Yes | `@deprecated <TICKET-ID> - <reason>` | Marks the style as deprecated with the related ticket and reason |
+| `@deprecated` | Yes | `@deprecated <reason>` | Marks the style as deprecated with the reason |
 | `@since` | Yes (for blocks) | `@since <YYYY-MM-DD> (deprecation added)` | Date when the deprecation was added |
 | `@removal` | Yes (for blocks) | `@removal Planned removal: <Quarter Year> (<version>)` | Planned removal timeline |
 
 ### Best Practices
 
-1. **Always reference a ticket**: Link deprecation to a tracking ticket (e.g., `DS-260`)
+1. **Provide clear reasoning**: Explain why the style is deprecated
 2. **Provide migration guidance**: Include clear instructions for migrating to new styles
 3. **Set a removal timeline**: Specify when the deprecated styles will be removed
 4. **Group related deprecations**: Place deprecated styles together in clearly marked sections
-5. **Cross-reference related tickets**: List related tickets in the `See:` section
 
 ## Comment Blocks
 
@@ -98,7 +93,7 @@ Use double-line borders for major sections:
 
 ```css
 /* =============================================================================
-   SECTION TITLE (TICKET-IDS)
+   SECTION TITLE
    Description of the section.
    ============================================================================= */
 ```

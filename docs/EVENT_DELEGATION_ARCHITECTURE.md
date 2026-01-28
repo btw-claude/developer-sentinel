@@ -14,10 +14,10 @@ This document describes the event delegation pattern used in the Developer Senti
 
 ## Overview
 
-As of DS-376, the dashboard uses event delegation for handling collapsible section interactions. Instead of attaching individual event listeners to each collapsible header element, a single event listener is attached to the `<main>` container that handles all collapsible section clicks.
+The dashboard uses event delegation for handling collapsible section interactions. Instead of attaching individual event listeners to each collapsible header element, a single event listener is attached to the `<main>` container that handles all collapsible section clicks.
 
 ```javascript
-// Event delegation pattern (DS-376)
+// Event delegation pattern
 const mainContainer = document.querySelector('main');
 mainContainer.addEventListener('click', function(event) {
     const header = event.target.closest('[data-collapsible-target]');
@@ -182,11 +182,3 @@ This ensures graceful degradation if the page structure changes unexpectedly.
 
 - [CSS Style Guide](./CSS_STYLE_GUIDE.md)
 - [HTMX Documentation](https://htmx.org/) - For understanding HTMX content swapping and how it works with event delegation
-- DS-370: Initial refactoring from inline onclick to data attributes
-- DS-376: Event delegation implementation
-- DS-377: This documentation
-- DS-378: Added HTMX documentation link
-
----
-
-*Last updated: DS-378*

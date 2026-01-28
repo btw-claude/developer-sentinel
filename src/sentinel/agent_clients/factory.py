@@ -282,7 +282,7 @@ def create_default_factory(config: Config) -> AgentClientFactory:
     # Register the Claude SDK builder
     factory.register("claude", _build_claude_sdk_client)
 
-    # Register the Cursor CLI builder (DS-294)
+    # Register the Cursor CLI builder
     factory.register("cursor", _build_cursor_client)
 
     logger.info(f"Created default factory with registered types: {factory.registered_types}")

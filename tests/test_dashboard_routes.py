@@ -1,8 +1,8 @@
 """Tests for dashboard routes.
 
-DS-125: Tests for the log file discovery API endpoint.
-DS-126: Tests for the SSE log streaming endpoint.
-DS-250: Tests for orchestration toggle API endpoints.
+Tests for the log file discovery API endpoint.
+Tests for the SSE log streaming endpoint.
+Tests for orchestration toggle API endpoints.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ class MockSentinel:
 
 
 class TestApiLogsFilesEndpoint:
-    """Tests for GET /api/logs/files endpoint (DS-125)."""
+    """Tests for GET /api/logs/files endpoint."""
 
     def test_returns_empty_list_when_no_logs_dir(self) -> None:
         """Test that endpoint returns empty list when logs directory doesn't exist."""
@@ -125,7 +125,7 @@ class TestApiLogsFilesEndpoint:
             assert len(result[1]["files"]) == 2
 
     def test_log_files_sorted_by_modification_time_newest_first(self) -> None:
-        """Test that log files are sorted with most recent first (DS-125 requirement)."""
+        """Test that log files are sorted with most recent first."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
@@ -196,7 +196,7 @@ class TestApiLogsFilesEndpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            # Create the exact structure specified in DS-125
+            # Create the expected directory structure
             # {base_dir}/{orchestration_name}/{timestamp}.log
             orch_name = "my-workflow"
             timestamp = "20260114_143022"
@@ -288,7 +288,7 @@ class TestApiLogsFilesEndpoint:
 
 
 class TestSseLogStreamingEndpoint:
-    """Tests for GET /api/logs/stream/{orchestration}/{filename} endpoint (DS-126).
+    """Tests for GET /api/logs/stream/{orchestration}/{filename} endpoint.
 
     Tests the Server-Sent Events log streaming endpoint that tails log files
     and streams new lines in real-time.
@@ -306,7 +306,7 @@ class TestSseLogStreamingEndpoint:
         return app
 
     def test_stream_returns_error_when_log_file_not_found(self) -> None:
-        """Test that streaming returns error event when log file doesn't exist (DS-126)."""
+        """Test that streaming returns error event when log file doesn't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
             config = Config(agent_logs_dir=logs_dir)
@@ -328,7 +328,7 @@ class TestSseLogStreamingEndpoint:
                 assert "Log file not found" in content
 
     def test_stream_error_event_contains_json_data(self) -> None:
-        """Test that error event data is valid JSON with error field (DS-126)."""
+        """Test that error event data is valid JSON with error field."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
             config = Config(agent_logs_dir=logs_dir)
@@ -353,7 +353,7 @@ class TestSseLogStreamingEndpoint:
                         break
 
     def test_stream_handles_path_traversal_attack(self) -> None:
-        """Test that path traversal attempts are blocked (DS-126 security)."""
+        """Test that path traversal attempts are blocked."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
             logs_dir.mkdir(exist_ok=True)
@@ -383,7 +383,7 @@ class TestSseLogStreamingEndpoint:
                     assert "error" in response.text.lower() or "not found" in response.text.lower()
 
     def test_get_log_file_path_returns_valid_path(self) -> None:
-        """Test that get_log_file_path returns correct path for valid file (DS-126)."""
+        """Test that get_log_file_path returns correct path for valid file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
@@ -403,7 +403,7 @@ class TestSseLogStreamingEndpoint:
             assert result.exists()
 
     def test_get_log_file_path_returns_none_for_missing_file(self) -> None:
-        """Test that get_log_file_path returns None for non-existent file (DS-126)."""
+        """Test that get_log_file_path returns None for non-existent file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
             config = Config(agent_logs_dir=logs_dir)
@@ -415,7 +415,7 @@ class TestSseLogStreamingEndpoint:
             assert result is None
 
     def test_get_log_file_path_blocks_path_traversal(self) -> None:
-        """Test that get_log_file_path blocks path traversal attempts (DS-126 security)."""
+        """Test that get_log_file_path blocks path traversal attempts."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
@@ -436,7 +436,7 @@ class TestSseLogStreamingEndpoint:
             assert result3 is None
 
     def test_stream_endpoint_uses_sse_starlette(self) -> None:
-        """Test that the streaming endpoint imports and uses sse-starlette (DS-126)."""
+        """Test that the streaming endpoint imports and uses sse-starlette."""
         # Verify that sse_starlette.sse.EventSourceResponse is used
         from sentinel.dashboard.routes import EventSourceResponse
         from sse_starlette.sse import EventSourceResponse as SSEResponse
@@ -444,7 +444,7 @@ class TestSseLogStreamingEndpoint:
         assert EventSourceResponse is SSEResponse
 
     def test_stream_endpoint_exists_with_correct_path(self) -> None:
-        """Test that the stream endpoint exists at /api/logs/stream/{orchestration}/{filename} (DS-126)."""
+        """Test that the stream endpoint exists at /api/logs/stream/{orchestration}/{filename}."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
             config = Config(agent_logs_dir=logs_dir)
@@ -491,7 +491,7 @@ class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
 
 
 class TestToggleOrchestrationEndpoint:
-    """Tests for POST /api/orchestrations/{name}/toggle endpoint (DS-250)."""
+    """Tests for POST /api/orchestrations/{name}/toggle endpoint."""
 
     def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
         """Create a test FastAPI app with dashboard routes."""
@@ -665,7 +665,7 @@ orchestrations:
 
 
 class TestBulkToggleOrchestrationEndpoint:
-    """Tests for POST /api/orchestrations/bulk-toggle endpoint (DS-250)."""
+    """Tests for POST /api/orchestrations/bulk-toggle endpoint."""
 
     def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
         """Create a test FastAPI app with dashboard routes."""
@@ -880,7 +880,7 @@ orchestrations:
 
 
 class TestToggleRateLimiting:
-    """Tests for rate limiting on toggle endpoints (DS-259)."""
+    """Tests for rate limiting on toggle endpoints."""
 
     def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
         """Create a test FastAPI app with dashboard routes."""
@@ -890,7 +890,7 @@ class TestToggleRateLimiting:
         return app
 
     def test_toggle_rate_limit_enforced(self) -> None:
-        """Test that rapid toggles are rate limited (DS-259)."""
+        """Test that rapid toggles are rate limited."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
@@ -945,7 +945,7 @@ orchestrations:
                 assert "Rate limit exceeded" in response2.json()["detail"]
 
     def test_rate_limit_allows_after_cooldown(self) -> None:
-        """Test that toggles are allowed after cooldown period (DS-259)."""
+        """Test that toggles are allowed after cooldown period."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
@@ -1007,7 +1007,7 @@ orchestrations:
                 routes.TOGGLE_COOLDOWN_SECONDS = original_cooldown
 
     def test_bulk_toggle_rate_limit_enforced(self) -> None:
-        """Test that rapid bulk toggles are rate limited (DS-259)."""
+        """Test that rapid bulk toggles are rate limited."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
@@ -1064,14 +1064,14 @@ orchestrations:
 
 
 class TestToggleRateLimitConfiguration:
-    """Tests for rate limiting configuration (DS-268, DS-278).
+    """Tests for rate limiting configuration.
 
-    DS-278: Tests now use pytest.monkeypatch for cleaner environment variable management
+    Tests now use pytest.monkeypatch for cleaner environment variable management
     instead of manual env var management with importlib.reload().
     """
 
     def test_cooldown_configurable_via_environment_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that TOGGLE_COOLDOWN_SECONDS is configurable via SENTINEL_TOGGLE_COOLDOWN env var (DS-268)."""
+        """Test that TOGGLE_COOLDOWN_SECONDS is configurable via SENTINEL_TOGGLE_COOLDOWN env var."""
         import importlib
 
         # Set a custom cooldown value via environment variable using monkeypatch
@@ -1086,7 +1086,7 @@ class TestToggleRateLimitConfiguration:
         assert routes.TOGGLE_COOLDOWN_SECONDS == 5.0
 
     def test_cooldown_defaults_to_two_seconds(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that TOGGLE_COOLDOWN_SECONDS defaults to 2.0 when env var not set (DS-268)."""
+        """Test that TOGGLE_COOLDOWN_SECONDS defaults to 2.0 when env var not set."""
         import importlib
 
         # Remove env var using monkeypatch
@@ -1101,7 +1101,7 @@ class TestToggleRateLimitConfiguration:
         assert routes.TOGGLE_COOLDOWN_SECONDS == 2.0
 
     def test_last_write_times_uses_ttl_cache(self) -> None:
-        """Test that _last_write_times uses TTLCache for automatic cleanup (DS-268)."""
+        """Test that _last_write_times uses TTLCache for automatic cleanup."""
         from cachetools import TTLCache
 
         from sentinel.dashboard import routes
@@ -1110,7 +1110,7 @@ class TestToggleRateLimitConfiguration:
         assert isinstance(routes._last_write_times, TTLCache)
 
     def test_ttl_cache_has_reasonable_limits(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that TTLCache has reasonable maxsize and ttl settings (DS-268)."""
+        """Test that TTLCache has reasonable maxsize and ttl settings."""
         import importlib
 
         from sentinel.dashboard import routes
@@ -1126,7 +1126,7 @@ class TestToggleRateLimitConfiguration:
         assert routes._RATE_LIMIT_CACHE_MAXSIZE == 10000  # 10k entries
 
     def test_cache_ttl_configurable_via_environment_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that _RATE_LIMIT_CACHE_TTL is configurable via SENTINEL_RATE_LIMIT_CACHE_TTL env var (DS-274)."""
+        """Test that _RATE_LIMIT_CACHE_TTL is configurable via SENTINEL_RATE_LIMIT_CACHE_TTL env var."""
         import importlib
 
         # Set a custom TTL value via environment variable using monkeypatch
@@ -1143,7 +1143,7 @@ class TestToggleRateLimitConfiguration:
         assert routes._last_write_times.ttl == 7200
 
     def test_cache_maxsize_configurable_via_environment_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that _RATE_LIMIT_CACHE_MAXSIZE is configurable via SENTINEL_RATE_LIMIT_CACHE_MAXSIZE env var (DS-274)."""
+        """Test that _RATE_LIMIT_CACHE_MAXSIZE is configurable via SENTINEL_RATE_LIMIT_CACHE_MAXSIZE env var."""
         import importlib
 
         # Set a custom maxsize value via environment variable using monkeypatch
@@ -1160,7 +1160,7 @@ class TestToggleRateLimitConfiguration:
         assert routes._last_write_times.maxsize == 5000
 
     def test_cache_ttl_defaults_to_3600_seconds(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that _RATE_LIMIT_CACHE_TTL defaults to 3600 (1 hour) when env var not set (DS-274)."""
+        """Test that _RATE_LIMIT_CACHE_TTL defaults to 3600 (1 hour) when env var not set."""
         import importlib
 
         # Remove env var using monkeypatch
@@ -1175,7 +1175,7 @@ class TestToggleRateLimitConfiguration:
         assert routes._RATE_LIMIT_CACHE_TTL == 3600
 
     def test_cache_maxsize_defaults_to_10000_entries(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that _RATE_LIMIT_CACHE_MAXSIZE defaults to 10000 when env var not set (DS-274)."""
+        """Test that _RATE_LIMIT_CACHE_MAXSIZE defaults to 10000 when env var not set."""
         import importlib
 
         # Remove env var using monkeypatch
@@ -1191,7 +1191,7 @@ class TestToggleRateLimitConfiguration:
 
 
 class TestEnvironmentVariableInputValidation:
-    """Tests for environment variable input validation (DS-278).
+    """Tests for environment variable input validation.
 
     Tests that environment variables are properly validated:
     - Numeric values must be positive (greater than 0 for integers)
@@ -1200,7 +1200,7 @@ class TestEnvironmentVariableInputValidation:
     """
 
     def test_toggle_cooldown_rejects_negative_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that negative SENTINEL_TOGGLE_COOLDOWN is rejected with error log (DS-278)."""
+        """Test that negative SENTINEL_TOGGLE_COOLDOWN is rejected with error log."""
         import importlib
         import logging
 
@@ -1217,7 +1217,7 @@ class TestEnvironmentVariableInputValidation:
         assert "SENTINEL_TOGGLE_COOLDOWN must be non-negative" in caplog.text
 
     def test_toggle_cooldown_rejects_invalid_string(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that invalid SENTINEL_TOGGLE_COOLDOWN string is rejected with error log (DS-278)."""
+        """Test that invalid SENTINEL_TOGGLE_COOLDOWN string is rejected with error log."""
         import importlib
         import logging
 
@@ -1234,7 +1234,7 @@ class TestEnvironmentVariableInputValidation:
         assert "SENTINEL_TOGGLE_COOLDOWN must be a valid float" in caplog.text
 
     def test_toggle_cooldown_warns_and_clamps_excessive_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that excessive SENTINEL_TOGGLE_COOLDOWN is clamped with warning log (DS-278)."""
+        """Test that excessive SENTINEL_TOGGLE_COOLDOWN is clamped with warning log."""
         import importlib
         import logging
 
@@ -1252,7 +1252,7 @@ class TestEnvironmentVariableInputValidation:
         assert "exceeds maximum" in caplog.text
 
     def test_toggle_cooldown_allows_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that SENTINEL_TOGGLE_COOLDOWN=0 is allowed to disable cooldown (DS-278)."""
+        """Test that SENTINEL_TOGGLE_COOLDOWN=0 is allowed to disable cooldown."""
         import importlib
 
         monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "0.0")
@@ -1265,7 +1265,7 @@ class TestEnvironmentVariableInputValidation:
         assert routes.TOGGLE_COOLDOWN_SECONDS == 0.0
 
     def test_cache_ttl_rejects_zero_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that SENTINEL_RATE_LIMIT_CACHE_TTL=0 is rejected with error log (DS-278)."""
+        """Test that SENTINEL_RATE_LIMIT_CACHE_TTL=0 is rejected with error log."""
         import importlib
         import logging
 
@@ -1282,7 +1282,7 @@ class TestEnvironmentVariableInputValidation:
         assert "SENTINEL_RATE_LIMIT_CACHE_TTL must be positive" in caplog.text
 
     def test_cache_ttl_rejects_negative_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that negative SENTINEL_RATE_LIMIT_CACHE_TTL is rejected with error log (DS-278)."""
+        """Test that negative SENTINEL_RATE_LIMIT_CACHE_TTL is rejected with error log."""
         import importlib
         import logging
 
@@ -1299,7 +1299,7 @@ class TestEnvironmentVariableInputValidation:
         assert "SENTINEL_RATE_LIMIT_CACHE_TTL must be positive" in caplog.text
 
     def test_cache_ttl_rejects_invalid_string(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that invalid SENTINEL_RATE_LIMIT_CACHE_TTL string is rejected with error log (DS-278)."""
+        """Test that invalid SENTINEL_RATE_LIMIT_CACHE_TTL string is rejected with error log."""
         import importlib
         import logging
 
@@ -1316,7 +1316,7 @@ class TestEnvironmentVariableInputValidation:
         assert "SENTINEL_RATE_LIMIT_CACHE_TTL must be a valid integer" in caplog.text
 
     def test_cache_ttl_warns_and_clamps_excessive_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that excessive SENTINEL_RATE_LIMIT_CACHE_TTL is clamped with warning log (DS-278)."""
+        """Test that excessive SENTINEL_RATE_LIMIT_CACHE_TTL is clamped with warning log."""
         import importlib
         import logging
 
@@ -1334,7 +1334,7 @@ class TestEnvironmentVariableInputValidation:
         assert "exceeds maximum" in caplog.text
 
     def test_cache_maxsize_rejects_zero_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that SENTINEL_RATE_LIMIT_CACHE_MAXSIZE=0 is rejected with error log (DS-278)."""
+        """Test that SENTINEL_RATE_LIMIT_CACHE_MAXSIZE=0 is rejected with error log."""
         import importlib
         import logging
 
@@ -1351,7 +1351,7 @@ class TestEnvironmentVariableInputValidation:
         assert "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE must be positive" in caplog.text
 
     def test_cache_maxsize_rejects_negative_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that negative SENTINEL_RATE_LIMIT_CACHE_MAXSIZE is rejected with error log (DS-278)."""
+        """Test that negative SENTINEL_RATE_LIMIT_CACHE_MAXSIZE is rejected with error log."""
         import importlib
         import logging
 
@@ -1368,7 +1368,7 @@ class TestEnvironmentVariableInputValidation:
         assert "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE must be positive" in caplog.text
 
     def test_cache_maxsize_rejects_invalid_string(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that invalid SENTINEL_RATE_LIMIT_CACHE_MAXSIZE string is rejected with error log (DS-278)."""
+        """Test that invalid SENTINEL_RATE_LIMIT_CACHE_MAXSIZE string is rejected with error log."""
         import importlib
         import logging
 
@@ -1385,7 +1385,7 @@ class TestEnvironmentVariableInputValidation:
         assert "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE must be a valid integer" in caplog.text
 
     def test_cache_maxsize_warns_and_clamps_excessive_value(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that excessive SENTINEL_RATE_LIMIT_CACHE_MAXSIZE is clamped with warning log (DS-278)."""
+        """Test that excessive SENTINEL_RATE_LIMIT_CACHE_MAXSIZE is clamped with warning log."""
         import importlib
         import logging
 
@@ -1403,7 +1403,7 @@ class TestEnvironmentVariableInputValidation:
         assert "exceeds maximum" in caplog.text
 
     def test_valid_values_within_bounds_accepted(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that valid values within reasonable bounds are accepted without warnings (DS-278)."""
+        """Test that valid values within reasonable bounds are accepted without warnings."""
         import importlib
         import logging
 
@@ -1427,7 +1427,7 @@ class TestEnvironmentVariableInputValidation:
 
 
 class TestToggleOpenApiDocs:
-    """Tests for OpenAPI documentation on toggle endpoints (DS-259)."""
+    """Tests for OpenAPI documentation on toggle endpoints."""
 
     def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
         """Create a test FastAPI app with dashboard routes."""
@@ -1437,7 +1437,7 @@ class TestToggleOpenApiDocs:
         return app
 
     def test_toggle_endpoint_has_openapi_summary(self) -> None:
-        """Test that single toggle endpoint has OpenAPI summary (DS-259)."""
+        """Test that single toggle endpoint has OpenAPI summary."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
             config = Config(agent_logs_dir=logs_dir)
@@ -1454,7 +1454,7 @@ class TestToggleOpenApiDocs:
             assert toggle_path["post"]["summary"] == "Toggle orchestration enabled status"
 
     def test_toggle_endpoint_has_openapi_description(self) -> None:
-        """Test that single toggle endpoint has OpenAPI description (DS-259)."""
+        """Test that single toggle endpoint has OpenAPI description."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
             config = Config(agent_logs_dir=logs_dir)
@@ -1470,7 +1470,7 @@ class TestToggleOpenApiDocs:
             assert "rate limited" in toggle_path["post"]["description"].lower()
 
     def test_bulk_toggle_endpoint_has_openapi_summary(self) -> None:
-        """Test that bulk toggle endpoint has OpenAPI summary (DS-259)."""
+        """Test that bulk toggle endpoint has OpenAPI summary."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
             config = Config(agent_logs_dir=logs_dir)
@@ -1487,7 +1487,7 @@ class TestToggleOpenApiDocs:
             assert bulk_toggle_path["post"]["summary"] == "Bulk toggle orchestrations by source"
 
     def test_bulk_toggle_endpoint_has_openapi_description(self) -> None:
-        """Test that bulk toggle endpoint has OpenAPI description (DS-259)."""
+        """Test that bulk toggle endpoint has OpenAPI description."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
             config = Config(agent_logs_dir=logs_dir)

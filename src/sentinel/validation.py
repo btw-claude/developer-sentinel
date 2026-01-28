@@ -2,9 +2,6 @@
 
 This module provides reusable validation functions for parsing and validating
 environment variables with proper error handling and bounds checking.
-
-DS-282: Consolidate validation helpers from routes.py into a dedicated module.
-DS-285: Add __all__ to explicitly define the public API.
 """
 
 from __future__ import annotations
@@ -13,8 +10,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Explicitly define public API (DS-285)
-# This makes it clear which symbols are intended for external use
+# Explicitly define public API - this makes it clear which symbols are intended for external use
 __all__ = [
     # Bounds constants for rate limiting configuration
     "MIN_TOGGLE_COOLDOWN",
@@ -30,7 +26,7 @@ __all__ = [
 ]
 
 
-# Bounds constants for rate limiting configuration (DS-278, DS-282)
+# Bounds constants for rate limiting configuration
 # These bounds help catch configuration errors and prevent resource exhaustion
 MIN_TOGGLE_COOLDOWN: float = 0.0  # Allow 0 to effectively disable cooldown
 MAX_TOGGLE_COOLDOWN: float = 86400.0  # 24 hours is a reasonable upper bound
@@ -43,7 +39,7 @@ MAX_CACHE_MAXSIZE: int = 1000000  # 1 million entries
 def validate_positive_float(
     env_var: str, value_str: str, default: float, min_val: float, max_val: float
 ) -> float:
-    """Validate and parse a non-negative float environment variable (DS-278, DS-282).
+    """Validate and parse a non-negative float environment variable.
 
     This function accepts values >= 0 (non-negative). Use validate_strictly_positive_float
     for values that must be > 0.
@@ -90,7 +86,7 @@ def validate_positive_float(
 def validate_strictly_positive_float(
     env_var: str, value_str: str, default: float, min_val: float, max_val: float
 ) -> float:
-    """Validate and parse a strictly positive float environment variable (DS-282).
+    """Validate and parse a strictly positive float environment variable.
 
     This function requires values > 0 (strictly positive), paralleling the
     validate_positive_int function behavior. Use validate_positive_float for
@@ -138,7 +134,7 @@ def validate_strictly_positive_float(
 def validate_positive_int(
     env_var: str, value_str: str, default: int, min_val: int, max_val: int
 ) -> int:
-    """Validate and parse a positive integer environment variable (DS-278, DS-282).
+    """Validate and parse a positive integer environment variable.
 
     This function requires values > 0 (strictly positive).
 

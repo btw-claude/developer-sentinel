@@ -3,12 +3,6 @@
 This module defines the HTTP route handlers for the dashboard web interface.
 All handlers receive state through the SentinelStateAccessor to ensure
 read-only access to the orchestrator's state.
-
-DS-250: Add API endpoints for orchestration toggle actions.
-DS-259: Add rate limiting and OpenAPI documentation to toggle endpoints.
-DS-282: Refactored to use validation helpers from sentinel.validation module.
-DS-285: Add deprecation warnings to backwards compatibility aliases.
-DS-287: Add version numbers to deprecation warnings.
 """
 
 from __future__ import annotations
@@ -44,20 +38,20 @@ from sentinel.validation import (
 )
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
-# Rate limiting configuration for toggle endpoints (DS-259, DS-268, DS-274, DS-278, DS-282)
+# Rate limiting configuration for toggle endpoints
 # Cooldown period in seconds between writes to the same file
-# Configurable via environment variable for operational flexibility (DS-268)
-# Default values and reasonable bounds for each configuration (DS-278)
-# Bounds constants moved to sentinel.validation module (DS-282)
+# Configurable via environment variable for operational flexibility
+# Default values and reasonable bounds for each configuration
+# Bounds constants moved to sentinel.validation module
 _DEFAULT_TOGGLE_COOLDOWN: float = 2.0
 _DEFAULT_RATE_LIMIT_CACHE_TTL: int = 3600  # 1 hour
 _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE: int = 10000  # 10k entries
 
-# Backwards compatibility aliases for bounds constants (DS-282, DS-285)
+# Backwards compatibility aliases for bounds constants
 # These are deprecated and will be removed in a future release.
 # Users should import directly from sentinel.validation instead.
 def __getattr__(name: str) -> float | int:
-    """Provide deprecated access to bounds constants (DS-285).
+    """Provide deprecated access to bounds constants.
 
     This function intercepts attribute access for deprecated module-level
     constants and emits a deprecation warning, guiding users to import
@@ -86,7 +80,7 @@ def __getattr__(name: str) -> float | int:
 def _validate_positive_float(
     env_var: str, value_str: str, default: float, min_val: float, max_val: float
 ) -> float:
-    """Deprecated wrapper for validate_positive_float (DS-285).
+    """Deprecated wrapper for validate_positive_float.
 
     This function is deprecated. Import validate_positive_float from
     sentinel.validation directly instead.
@@ -103,7 +97,7 @@ def _validate_positive_float(
 def _validate_positive_int(
     env_var: str, value_str: str, default: int, min_val: int, max_val: int
 ) -> int:
-    """Deprecated wrapper for validate_positive_int (DS-285).
+    """Deprecated wrapper for validate_positive_int.
 
     This function is deprecated. Import validate_positive_int from
     sentinel.validation directly instead.
@@ -117,7 +111,7 @@ def _validate_positive_int(
     return validate_positive_int(env_var, value_str, default, min_val, max_val)
 
 
-# Parse and validate environment variables with input validation (DS-278)
+# Parse and validate environment variables with input validation
 _toggle_cooldown_env = os.environ.get("SENTINEL_TOGGLE_COOLDOWN")
 if _toggle_cooldown_env is not None:
     TOGGLE_COOLDOWN_SECONDS: float = validate_positive_float(
@@ -130,9 +124,9 @@ if _toggle_cooldown_env is not None:
 else:
     TOGGLE_COOLDOWN_SECONDS = _DEFAULT_TOGGLE_COOLDOWN
 
-# Track last write time per file path for rate limiting (DS-268, DS-274)
+# Track last write time per file path for rate limiting
 # Using TTLCache to automatically clean up stale entries
-# Cache TTL and maxsize are configurable via environment variables (DS-274)
+# Cache TTL and maxsize are configurable via environment variables
 # Allows operators to tune cache behavior for different memory constraints and usage patterns
 _cache_ttl_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL")
 if _cache_ttl_env is not None:
@@ -167,7 +161,7 @@ def _check_rate_limit(file_path: str) -> None:
     """Check if a file write is allowed based on rate limiting.
 
     Raises HTTPException with 429 status if the cooldown period has not elapsed
-    since the last write to the same file. (DS-259)
+    since the last write to the same file.
 
     Args:
         file_path: The path to the file being written.
@@ -194,7 +188,7 @@ def _check_rate_limit(file_path: str) -> None:
 
 
 def _record_write(file_path: str) -> None:
-    """Record the write time for a file for rate limiting purposes. (DS-259)
+    """Record the write time for a file for rate limiting purposes.
 
     Args:
         file_path: The path to the file that was written.
@@ -206,7 +200,7 @@ if TYPE_CHECKING:
     from sentinel.dashboard.state import SentinelStateAccessor
 
 
-# Request/Response models for orchestration toggle endpoints (DS-250)
+# Request/Response models for orchestration toggle endpoints
 class ToggleRequest(BaseModel):
     """Request model for single orchestration toggle."""
 
@@ -362,7 +356,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
 
     @dashboard_router.get("/partials/orchestrations", response_class=HTMLResponse)
     async def partial_orchestrations(request: Request, source: str = "jira") -> HTMLResponse:
-        """Render the orchestrations partial for HTMX updates (DS-224).
+        """Render the orchestrations partial for HTMX updates.
 
         Args:
             request: The incoming HTTP request.
@@ -390,7 +384,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
 
     @dashboard_router.get("/partials/running_steps", response_class=HTMLResponse)
     async def partial_running_steps(request: Request) -> HTMLResponse:
-        """Render the running steps partial for HTMX updates (DS-122).
+        """Render the running steps partial for HTMX updates.
 
         This endpoint returns the running steps section HTML for efficient
         live updates without full page reloads. Auto-refreshes every 1s.
@@ -411,7 +405,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
 
     @dashboard_router.get("/partials/issue_queue", response_class=HTMLResponse)
     async def partial_issue_queue(request: Request) -> HTMLResponse:
-        """Render the issue queue partial for HTMX updates (DS-123).
+        """Render the issue queue partial for HTMX updates.
 
         This endpoint returns the issue queue section HTML for efficient
         live updates without full page reloads. Shows issues waiting for
@@ -433,7 +427,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
 
     @dashboard_router.get("/partials/system_status", response_class=HTMLResponse)
     async def partial_system_status(request: Request) -> HTMLResponse:
-        """Render the system status partial for HTMX updates (DS-124).
+        """Render the system status partial for HTMX updates.
 
         This endpoint returns the system status section HTML for efficient
         live updates without full page reloads. Shows thread pool usage,
@@ -464,7 +458,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
 
     @dashboard_router.get("/logs", response_class=HTMLResponse)
     async def logs(request: Request) -> HTMLResponse:
-        """Render the log viewer page (DS-127).
+        """Render the log viewer page.
 
         This page allows users to view log files from orchestration executions
         with real-time updates via SSE.
@@ -485,7 +479,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
 
     @dashboard_router.get("/api/logs/files")
     async def api_logs_files() -> list[dict]:
-        """Return the list of available log files per orchestration (DS-125).
+        """Return the list of available log files per orchestration.
 
         This endpoint discovers log files in the agent_logs_dir, grouped by
         orchestration name. Files are sorted by modification time with most
@@ -506,7 +500,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         orchestration: str,
         filename: str,
     ) -> EventSourceResponse:
-        """Stream log file content via SSE (DS-127).
+        """Stream log file content via SSE.
 
         This endpoint streams the content of a log file in real-time using
         Server-Sent Events. It sends the initial content and then watches
@@ -592,7 +586,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                         last_mtime = current_mtime
 
                 except Exception:
-                    # Log file access errors for debugging (DS-144)
+                    # Log file access errors for debugging
                     logger.warning(
                         "Error accessing log file %s/%s",
                         orchestration,
@@ -611,7 +605,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         "the next hot-reload cycle. Rate limited to prevent rapid file writes.",
     )
     async def toggle_orchestration(name: str, request_body: ToggleRequest) -> ToggleResponse:
-        """Toggle the enabled status of a single orchestration (DS-250, DS-259).
+        """Toggle the enabled status of a single orchestration.
 
         This endpoint toggles the enabled field in the orchestration's YAML file.
         The change takes effect on the next hot-reload cycle.
@@ -655,7 +649,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                 detail=f"Orchestration file not found: {source_file}",
             )
 
-        # Check rate limit before writing (DS-259)
+        # Check rate limit before writing
         _check_rate_limit(str(source_file))
 
         try:
@@ -668,7 +662,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                     detail=f"Orchestration '{name}' not found in file {source_file}",
                 )
 
-            # Record successful write for rate limiting (DS-259)
+            # Record successful write for rate limiting
             _record_write(str(source_file))
 
             return ToggleResponse(
@@ -693,7 +687,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
         "Rate limited per file to prevent rapid writes.",
     )
     async def bulk_toggle_orchestrations(request_body: BulkToggleRequest) -> BulkToggleResponse:
-        """Toggle the enabled status of orchestrations by source and identifier (DS-250, DS-259).
+        """Toggle the enabled status of orchestrations by source and identifier.
 
         This endpoint bulk toggles orchestrations based on their source type
         (jira or github) and identifier (project key or org/repo).
@@ -741,7 +735,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                 detail=f"No orchestrations found for {request_body.source} '{request_body.identifier}'",
             )
 
-        # Check rate limit for all unique files before writing (DS-259)
+        # Check rate limit for all unique files before writing
         unique_files = set(str(f) for f in orch_files.values())
         for file_path in unique_files:
             _check_rate_limit(file_path)
@@ -758,7 +752,7 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
                     orch_files, request_body.identifier, request_body.enabled
                 )
 
-            # Record successful writes for rate limiting (DS-259)
+            # Record successful writes for rate limiting
             for file_path in unique_files:
                 _record_write(file_path)
 

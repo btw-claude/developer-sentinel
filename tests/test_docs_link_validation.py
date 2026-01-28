@@ -1,4 +1,4 @@
-"""Tests for documentation link validation (DS-211).
+"""Tests for documentation link validation.
 
 This module verifies that all markdown links in documentation files resolve
 to valid targets. This helps catch broken links early in CI before they

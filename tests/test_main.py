@@ -18,12 +18,12 @@ from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.main import Sentinel, parse_args, setup_logging
 from sentinel.orchestration import Orchestration
 
-# DS-100: Import shared fixtures and helpers from conftest.py
+# Import shared fixtures and helpers from conftest.py
 # These provide MockJiraClient, MockAgentClient, MockTagClient,
 # make_config, make_orchestration, and set_mtime_in_future
-# DS-188: Added TrackingAgentClient for concurrency tracking tests
-# DS-296: Added MockAgentClientFactory for factory pattern tests
-# DS-347: Added build_github_trigger_key for GitHub trigger deduplication tests
+# Added TrackingAgentClient for concurrency tracking tests
+# Added MockAgentClientFactory for factory pattern tests
+# Added build_github_trigger_key for GitHub trigger deduplication tests
 from tests.conftest import (
     MockJiraClient,
     MockAgentClient,
@@ -207,7 +207,7 @@ class TestSentinelRunOnce:
 
 
 class TestSentinelEagerPolling:
-    """Tests for Sentinel eager polling feature (DS-94)."""
+    """Tests for Sentinel eager polling feature."""
 
     def test_run_once_returns_submitted_count(self) -> None:
         """Test that run_once returns the number of submitted tasks."""
@@ -297,9 +297,9 @@ class TestSentinelEagerPolling:
         sentinel._thread_pool = None
 
     def test_max_eager_iterations_config_respected(self) -> None:
-        """Test that max_eager_iterations config is stored correctly (DS-98).
+        """Test that max_eager_iterations config is stored correctly.
 
-        Note: DS-133 deprecated max_eager_iterations, but we keep this test
+        Note: max_eager_iterations is deprecated, but we keep this test
         for backward compatibility since the config parameter still exists.
         """
         jira_client = MockJiraClient(issues=[])
@@ -319,7 +319,7 @@ class TestSentinelEagerPolling:
         assert sentinel.config.max_eager_iterations == 5
 
     def test_completion_driven_polling_waits_for_task_completion(self) -> None:
-        """Integration test: verify polling waits for task completion (DS-133).
+        """Integration test: verify polling waits for task completion.
 
         This test verifies the completion-driven polling behavior:
         1. When tasks are submitted, the sentinel waits for at least one to complete
@@ -431,7 +431,7 @@ class TestSentinelEagerPolling:
         )
 
     def test_polling_sleeps_when_no_work_found(self) -> None:
-        """Integration test: verify polling sleeps when no work is found (DS-133).
+        """Integration test: verify polling sleeps when no work is found.
 
         This verifies that when a poll cycle returns no work and there are
         no pending tasks, the sentinel sleeps for poll_interval before polling again.
@@ -829,7 +829,7 @@ class TestSentinelConcurrentExecution:
 
     def test_concurrent_execution_with_thread_pool(self) -> None:
         """Test that run() uses thread pool correctly."""
-        # DS-188: Use shared TrackingAgentClient with order tracking enabled
+        # Use shared TrackingAgentClient with order tracking enabled
         agent_client = TrackingAgentClient(execution_delay=0.05, track_order=True)
 
         tag_client = MockTagClient()
@@ -870,7 +870,7 @@ class TestSentinelConcurrentExecution:
 
 
 class TestPerOrchestrationConcurrencyLimits:
-    """Tests for per-orchestration concurrency limits (DS-181).
+    """Tests for per-orchestration concurrency limits.
 
     These tests verify:
     - max_concurrent parsing and validation
@@ -881,7 +881,7 @@ class TestPerOrchestrationConcurrencyLimits:
 
     def test_orchestration_without_max_concurrent_uses_global_limit(self) -> None:
         """Test that orchestrations without max_concurrent use only global limit."""
-        # DS-188: Use shared TrackingAgentClient for concurrent execution tracking
+        # Use shared TrackingAgentClient for concurrent execution tracking
         agent_client = TrackingAgentClient(execution_delay=0.05)
 
         tag_client = MockTagClient()
@@ -914,7 +914,7 @@ class TestPerOrchestrationConcurrencyLimits:
 
     def test_per_orch_limit_stricter_than_global(self) -> None:
         """Test per-orchestration limit is respected when stricter than global."""
-        # DS-188: Use shared TrackingAgentClient for concurrent execution tracking
+        # Use shared TrackingAgentClient for concurrent execution tracking
         agent_client = TrackingAgentClient(execution_delay=0.1)
 
         tag_client = MockTagClient()
@@ -946,7 +946,7 @@ class TestPerOrchestrationConcurrencyLimits:
 
     def test_global_limit_stricter_than_per_orch(self) -> None:
         """Test global limit is respected when stricter than per-orchestration."""
-        # DS-188: Use shared TrackingAgentClient for concurrent execution tracking
+        # Use shared TrackingAgentClient for concurrent execution tracking
         agent_client = TrackingAgentClient(execution_delay=0.1)
 
         tag_client = MockTagClient()
@@ -978,7 +978,7 @@ class TestPerOrchestrationConcurrencyLimits:
 
     def test_multiple_orchestrations_with_different_limits(self) -> None:
         """Test multiple orchestrations respect their individual limits."""
-        # DS-188: Use shared TrackingAgentClient with per-orchestration tracking enabled
+        # Use shared TrackingAgentClient with per-orchestration tracking enabled
         agent_client = TrackingAgentClient(execution_delay=0.05, track_per_orch=True)
 
         tag_client = MockTagClient()
@@ -1019,7 +1019,7 @@ class TestPerOrchestrationConcurrencyLimits:
 
     def test_per_orch_count_increment_and_decrement(self) -> None:
         """Test that per-orchestration counts are properly tracked."""
-        # DS-188: Use shared TrackingAgentClient for consistent test behavior
+        # Use shared TrackingAgentClient for consistent test behavior
         agent_client = TrackingAgentClient(execution_delay=0.05)
 
         tag_client = MockTagClient()
@@ -1140,7 +1140,7 @@ class TestPerOrchestrationConcurrencyLimits:
         assert count == 0
 
     def test_decrement_per_orch_count_cleans_up_at_zero(self) -> None:
-        """Test _decrement_per_orch_count removes entry when count reaches 0 (DS-187)."""
+        """Test _decrement_per_orch_count removes entry when count reaches 0."""
         tag_client = MockTagClient()
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -1162,11 +1162,11 @@ class TestPerOrchestrationConcurrencyLimits:
         # Decrement to 0 - should clean up entry
         count = sentinel._decrement_per_orch_count("test-orch")
         assert count == 0
-        # DS-187: Entry should be removed when count reaches 0
+        # Entry should be removed when count reaches 0
         assert "test-orch" not in sentinel._per_orch_active_counts
 
     def test_get_per_orch_count_returns_count(self) -> None:
-        """Test get_per_orch_count returns the current count for observability (DS-187)."""
+        """Test get_per_orch_count returns the current count for observability."""
         tag_client = MockTagClient()
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -1195,7 +1195,7 @@ class TestPerOrchestrationConcurrencyLimits:
         assert sentinel.get_per_orch_count("other-orch") == 0
 
     def test_get_all_per_orch_counts_returns_all_counts(self) -> None:
-        """Test get_all_per_orch_counts returns all counts for observability (DS-187)."""
+        """Test get_all_per_orch_counts returns all counts for observability."""
         tag_client = MockTagClient()
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -1585,7 +1585,7 @@ class TestSentinelOrchestrationHotReload:
     def test_no_router_rebuild_for_empty_or_invalid_files(self) -> None:
         """Test that Router is not rebuilt when files contain no valid orchestrations.
 
-        DS-99: This optimization ensures that finding new files that are empty,
+        This optimization ensures that finding new files that are empty,
         invalid, or contain no enabled orchestrations does not trigger an unnecessary
         Router rebuild. The Router should only be rebuilt when actual orchestrations
         are loaded.
@@ -1640,7 +1640,7 @@ class TestSentinelOrchestrationHotReload:
             assert len(sentinel.orchestrations) == 0
 
             # Router should NOT have been rebuilt (same object reference)
-            # This verifies the DS-99 optimization: Router rebuild only happens
+            # This verifies the optimization: Router rebuild only happens
             # when actual orchestrations are loaded, not just when files are found
             assert sentinel.router is original_router
 
@@ -2392,7 +2392,7 @@ class TestSentinelOrchestrationHotReload:
 
 
 class TestSentinelHotReloadMetrics:
-    """Tests for hot-reload observability metrics (DS-97)."""
+    """Tests for hot-reload observability metrics."""
 
     def test_get_hot_reload_metrics_returns_dict(
         self,
@@ -2630,7 +2630,7 @@ class TestSentinelHotReloadMetrics:
 
 
 class TestAttemptCountTracking:
-    """Tests for DS-141: Track retry attempt numbers in Running Steps dashboard."""
+    """Tests for retry attempt number tracking in Running Steps dashboard."""
 
     def test_get_and_increment_attempt_count_starts_at_one(self) -> None:
         """Test that first attempt for an issue/orchestration pair returns 1."""
@@ -2756,7 +2756,7 @@ class TestAttemptCountTracking:
         assert sorted(results) == list(range(1, num_threads + 1))
 
     def test_running_steps_use_tracked_attempt_number(self) -> None:
-        """Test that Running Steps dashboard uses the tracked attempt number (DS-141).
+        """Test that Running Steps dashboard uses the tracked attempt number.
 
         This test verifies that the attempt_number in RunningStepInfo is correctly
         tracked across multiple executions of the same issue/orchestration pair.
@@ -2783,7 +2783,7 @@ class TestAttemptCountTracking:
         )
 
         # Simulate multiple executions by directly calling the attempt count tracker
-        # This is the core functionality that DS-141 implements
+        # This is the core functionality for attempt tracking
         count1 = sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
         count2 = sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
         count3 = sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
@@ -2794,7 +2794,7 @@ class TestAttemptCountTracking:
         assert count3 == 3, "Third attempt should be 3"
 
         # Verify the internal state matches
-        # DS-152: Now stores AttemptCountEntry with count and last_access
+        # Now stores AttemptCountEntry with count and last_access
         key = ("TEST-1", "test-orch")
         with sentinel._attempt_counts_lock:
             entry = sentinel._attempt_counts.get(key)
@@ -2802,7 +2802,7 @@ class TestAttemptCountTracking:
         assert stored_count == 3, "Stored count should be 3 after 3 increments"
 
     def test_running_step_info_contains_attempt_number(self) -> None:
-        """Test that RunningStepInfo is created with correct attempt_number (DS-141).
+        """Test that RunningStepInfo is created with correct attempt_number.
 
         This test verifies that when an execution is submitted to the thread pool,
         the RunningStepInfo correctly uses the attempt_number from the tracker.
@@ -2868,7 +2868,7 @@ class TestAttemptCountTracking:
             sentinel._thread_pool = None
 
     def test_cleanup_stale_attempt_counts(self) -> None:
-        """Test that stale attempt count entries are cleaned up based on TTL (DS-152).
+        """Test that stale attempt count entries are cleaned up based on TTL.
 
         This test verifies that the cleanup mechanism removes entries that haven't
         been accessed within the configured TTL period.
@@ -2918,7 +2918,7 @@ class TestAttemptCountTracking:
         assert ("RECENT-1", "test-orch") in sentinel._attempt_counts
 
     def test_cleanup_attempt_counts_called_in_run_once(self) -> None:
-        """Test that _cleanup_stale_attempt_counts is called during run_once (DS-152).
+        """Test that _cleanup_stale_attempt_counts is called during run_once.
 
         This ensures the cleanup is integrated into the main polling cycle.
         """
@@ -2945,7 +2945,7 @@ class TestAttemptCountTracking:
             mock_cleanup.assert_called_once()
 
     def test_attempt_count_entry_updates_last_access(self) -> None:
-        """Test that accessing an attempt count updates its last_access time (DS-152).
+        """Test that accessing an attempt count updates its last_access time.
 
         This verifies that the TTL clock is reset each time an issue is processed,
         ensuring active issues are not prematurely cleaned up.
@@ -2998,7 +2998,7 @@ class TestAttemptCountTracking:
         assert entry.last_access >= time_before_second
 
     def test_cleanup_logs_debug_when_no_stale_entries(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that cleanup logs at debug level when no stale entries are found (DS-157).
+        """Test that cleanup logs at debug level when no stale entries are found.
 
         This test verifies that the cleanup method logs a debug message when it runs
         but finds no stale entries to clean up, improving operational visibility.
@@ -3035,7 +3035,7 @@ class TestAttemptCountTracking:
             f"Expected debug log about no stale entries, got: {debug_messages}"
         )
 
-        # DS-160: Verify TTL value is included in the debug message
+        # Verify TTL value is included in the debug message
         ttl_value = config.attempt_counts_ttl
         assert any(f"TTL: {ttl_value}s" in msg for msg in debug_messages), (
             f"Expected TTL value ({ttl_value}s) in debug message, got: {debug_messages}"
@@ -3043,10 +3043,10 @@ class TestAttemptCountTracking:
 
 
 class TestQueueEvictionBehavior:
-    """Tests for DS-158: Queue eviction behavior - tests and logging."""
+    """Tests for queue eviction behavior and logging."""
 
     def test_queue_evicts_oldest_item_when_full(self) -> None:
-        """Test that the oldest item is evicted when queue reaches maxlen (DS-158).
+        """Test that the oldest item is evicted when queue reaches maxlen.
 
         This test verifies that the deque-based queue correctly evicts the oldest
         (leftmost) item when a new item is added at capacity, maintaining FIFO ordering.
@@ -3085,7 +3085,7 @@ class TestQueueEvictionBehavior:
         assert "TEST-1" not in queue_keys
 
     def test_queue_maintains_fifo_ordering(self) -> None:
-        """Test that the queue maintains FIFO ordering as items are added (DS-158).
+        """Test that the queue maintains FIFO ordering as items are added.
 
         This test verifies that items are ordered from oldest (leftmost) to newest
         (rightmost), which is the expected deque behavior for FIFO eviction.
@@ -3120,13 +3120,13 @@ class TestQueueEvictionBehavior:
     def test_eviction_logging_includes_evicted_item_key(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that eviction logging includes the evicted item's key (DS-158).
+        """Test that eviction logging includes the evicted item's key.
 
         This test verifies that when an item is evicted due to queue being at
         capacity, the log message includes the key of the evicted item for
         better debugging and observability.
 
-        DS-161: Improved to use structured logging assertions - instead of
+        Improved to use structured logging assertions - instead of
         string matching with 'evicted' in msg.lower(), we now verify the
         logger name, log level, and use more robust content assertions.
         """
@@ -3155,7 +3155,7 @@ class TestQueueEvictionBehavior:
         with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
             sentinel._add_to_issue_queue("NEW-ITEM", "orch-new")
 
-        # DS-161: Use structured logging verification - check logger name,
+        # Use structured logging verification - check logger name,
         # level, and presence of expected structured content in the message
         eviction_records = [
             r for r in caplog.records
@@ -3185,7 +3185,7 @@ class TestQueueEvictionBehavior:
         )
 
     def test_dashboard_shows_most_recent_queued_issues(self) -> None:
-        """Test that get_issue_queue returns most recent items after eviction (DS-158).
+        """Test that get_issue_queue returns most recent items after eviction.
 
         This test verifies that after eviction, the dashboard API (get_issue_queue)
         returns the most recently queued issues, not the oldest ones that were evicted.
@@ -3222,12 +3222,12 @@ class TestQueueEvictionBehavior:
     def test_no_eviction_log_when_queue_not_full(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that no eviction log is produced when queue is not full (DS-158).
+        """Test that no eviction log is produced when queue is not full.
 
         This test ensures that eviction logging only occurs when an item is
         actually evicted, not on every add operation.
 
-        DS-161: Improved to use structured logging assertions - instead of
+        Improved to use structured logging assertions - instead of
         string matching, we verify using logger name and log level checks.
         """
         jira_client = MockJiraClient(issues=[])
@@ -3250,7 +3250,7 @@ class TestQueueEvictionBehavior:
             sentinel._add_to_issue_queue("TEST-2", "orch-2")
             sentinel._add_to_issue_queue("TEST-3", "orch-3")
 
-        # DS-161: Use structured logging verification - check for eviction logs
+        # Use structured logging verification - check for eviction logs
         # by logger name, level, and presence of eviction-related keywords
         eviction_records = [
             r for r in caplog.records
@@ -3266,12 +3266,12 @@ class TestQueueEvictionBehavior:
     def test_multiple_evictions_log_each_evicted_item(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that each eviction produces a log with the correct evicted item (DS-158).
+        """Test that each eviction produces a log with the correct evicted item.
 
         This test verifies that when multiple items are evicted in sequence,
         each eviction is logged with the correct evicted item's key.
 
-        DS-161: Improved to use structured logging assertions - instead of
+        Improved to use structured logging assertions - instead of
         string matching, we verify using logger name and log level checks.
         """
         jira_client = MockJiraClient(issues=[])
@@ -3298,7 +3298,7 @@ class TestQueueEvictionBehavior:
             # Add ITEM-D -> evicts ITEM-B
             sentinel._add_to_issue_queue("ITEM-D", "orch-d")
 
-        # DS-161: Use structured logging verification - check logger name,
+        # Use structured logging verification - check logger name,
         # level, and presence of expected structured content in the message
         eviction_records = [
             r for r in caplog.records
@@ -3323,7 +3323,7 @@ class TestQueueEvictionBehavior:
         )
 
     def test_queue_clear_resets_for_new_cycle(self) -> None:
-        """Test that _clear_issue_queue properly resets the queue (DS-158).
+        """Test that _clear_issue_queue properly resets the queue.
 
         This test verifies that the queue can be cleared (as happens at the
         start of each polling cycle) and new items can be added fresh.
@@ -3360,12 +3360,12 @@ class TestQueueEvictionBehavior:
         assert sentinel._issue_queue[0].issue_key == "NEW-1"
 
     def test_eviction_preserves_queued_at_timestamp_ordering(self) -> None:
-        """Test that queued_at timestamps are preserved and ordered correctly (DS-158).
+        """Test that queued_at timestamps are preserved and ordered correctly.
 
         This test verifies that the queued_at timestamp for each item is preserved
         after eviction, ensuring proper ordering for dashboard display.
 
-        DS-161: Improved to use mocked datetime.now() instead of time.sleep()
+        Improved to use mocked datetime.now() instead of time.sleep()
         for deterministic testing. The original implementation used time.sleep(0.01)
         which could theoretically be flaky on heavily loaded CI systems.
         """
@@ -3383,7 +3383,7 @@ class TestQueueEvictionBehavior:
             tag_client=tag_client,
         )
 
-        # DS-161: Use deterministic timestamps via mocking instead of time.sleep()
+        # Use deterministic timestamps via mocking instead of time.sleep()
         # This ensures reliable test behavior regardless of system load
         mock_times = [
             datetime(2026, 1, 15, 10, 0, 0),  # TEST-1 timestamp (will be evicted)
@@ -3410,13 +3410,13 @@ class TestQueueEvictionBehavior:
         assert queue_items[0].issue_key == "TEST-2"
         assert queue_items[1].issue_key == "TEST-3"
         assert queue_items[0].queued_at < queue_items[1].queued_at
-        # DS-161: Verify exact timestamps for deterministic assertion
+        # Verify exact timestamps for deterministic assertion
         assert queue_items[0].queued_at == datetime(2026, 1, 15, 10, 0, 1)
         assert queue_items[1].queued_at == datetime(2026, 1, 15, 10, 0, 2)
 
 
 class TestSentinelOrchestrationLogging:
-    """Tests for Sentinel integration with per-orchestration logging (DS-185)."""
+    """Tests for Sentinel integration with per-orchestration logging."""
 
     def test_sentinel_initializes_orch_log_manager_when_configured(
         self, tmp_path: Path
@@ -3677,7 +3677,7 @@ class TestSentinelOrchestrationLogging:
 
 
 class TestExtractRepoFromUrl:
-    """Tests for extract_repo_from_url function (DS-204)."""
+    """Tests for extract_repo_from_url function."""
 
     def test_extracts_from_issue_url(self) -> None:
         """Test extraction from GitHub issue URL."""
@@ -3736,7 +3736,7 @@ class TestExtractRepoFromUrl:
 
 
 class TestGitHubIssueWithRepo:
-    """Tests for GitHubIssueWithRepo class (DS-204)."""
+    """Tests for GitHubIssueWithRepo class."""
 
     def test_key_includes_repo_context(self) -> None:
         """Test that key property includes full repo context."""
@@ -3784,7 +3784,7 @@ class TestGitHubIssueWithRepo:
 
 
 class TestAddRepoContextFromUrls:
-    """Tests for _add_repo_context_from_urls method (DS-204)."""
+    """Tests for _add_repo_context_from_urls method."""
 
     def test_wraps_issues_with_repo_context(self) -> None:
         """Test that issues are wrapped with repo context from URL."""
@@ -3918,7 +3918,7 @@ class TestAddRepoContextFromUrls:
 
 
 class TestGitHubTriggerDeduplication:
-    """Tests for GitHub trigger deduplication logic (DS-341).
+    """Tests for GitHub trigger deduplication logic.
 
     These tests verify that:
     1. Same project with different project_filter values are polled separately
@@ -3949,7 +3949,7 @@ class TestGitHubTriggerDeduplication:
             project_filter='Status = "In Progress"',
         )
 
-        # DS-347: Use shared helper for deduplication keys
+        # Use shared helper for deduplication keys
         key1 = build_github_trigger_key(orch1)
         key2 = build_github_trigger_key(orch2)
 
@@ -3978,7 +3978,7 @@ class TestGitHubTriggerDeduplication:
             labels=["feature", "enhancement"],
         )
 
-        # DS-347: Use shared helper for deduplication keys
+        # Use shared helper for deduplication keys
         key1 = build_github_trigger_key(orch1)
         key2 = build_github_trigger_key(orch2)
 
@@ -4009,7 +4009,7 @@ class TestGitHubTriggerDeduplication:
             labels=["bug"],
         )
 
-        # DS-347: Use shared helper for deduplication keys
+        # Use shared helper for deduplication keys
         key1 = build_github_trigger_key(orch1)
         key2 = build_github_trigger_key(orch2)
 
@@ -4017,10 +4017,10 @@ class TestGitHubTriggerDeduplication:
         assert key1 == key2
 
     def test_none_project_filter_produces_clean_key(self) -> None:
-        """Test that None project_filter values produce clean deduplication keys (DS-341).
+        """Test that None project_filter values produce clean deduplication keys.
 
         Previously, None values would result in the string 'None' in the key.
-        After DS-341, None/empty values should produce empty string in the key.
+        None/empty values should now produce empty string in the key.
         """
         # Create orchestration with no project_filter (None/empty)
         orch = make_orchestration(
@@ -4032,7 +4032,7 @@ class TestGitHubTriggerDeduplication:
             # project_filter not specified (defaults to "")
         )
 
-        # DS-347: Use shared helper for deduplication key
+        # Use shared helper for deduplication key
         key = build_github_trigger_key(orch)
 
         # Key should NOT contain 'None' as a string
@@ -4041,7 +4041,7 @@ class TestGitHubTriggerDeduplication:
         assert key == "github:test-org/1::"
 
     def test_empty_labels_produces_clean_key(self) -> None:
-        """Test that empty labels list produces clean deduplication keys (DS-341)."""
+        """Test that empty labels list produces clean deduplication keys."""
         # Create orchestration with no labels
         orch = make_orchestration(
             name="orch-no-labels",
@@ -4053,7 +4053,7 @@ class TestGitHubTriggerDeduplication:
             # labels not specified or empty
         )
 
-        # DS-347: Use shared helper for deduplication key
+        # Use shared helper for deduplication key
         key = build_github_trigger_key(orch)
 
         # Key should have clean format with empty labels part
@@ -4070,7 +4070,7 @@ class TestGitHubTriggerDeduplication:
             project_scope="org",
         )
 
-        # DS-347: Use shared helper for deduplication key
+        # Use shared helper for deduplication key
         key = build_github_trigger_key(orch)
 
         # Key should be clean without 'None' anywhere
@@ -4089,7 +4089,7 @@ class TestGitHubTriggerDeduplication:
             labels=["urgent", "critical"],
         )
 
-        # DS-347: Use shared helper for deduplication key
+        # Use shared helper for deduplication key
         key = build_github_trigger_key(orch)
 
         # Verify all parts are present

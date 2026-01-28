@@ -1,6 +1,6 @@
 """Tests for the deduplication module.
 
-DS-138: Tests for the DeduplicationManager and CycleTracker classes.
+Tests for the DeduplicationManager and CycleTracker classes.
 """
 
 from __future__ import annotations

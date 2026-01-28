@@ -1514,7 +1514,6 @@ class TestGitHubTemplateVariables:
 
     These tests ensure comprehensive coverage of GitHub template variables,
     particularly edge cases and interactions between Jira and GitHub contexts.
-    Added as follow-up from DS-55 code review.
     """
 
     def test_github_issue_url_empty_when_no_github_context(self) -> None:
@@ -2294,7 +2293,7 @@ class TestAgentRunResult:
 
 
 class TestParentEpicTemplateVariables:
-    """Tests for parent/epic template variables (DS-350, DS-351).
+    """Tests for parent/epic template variables.
 
     These tests verify that the new template variables for parent and epic
     relationships are correctly resolved in both prompts and branch patterns:
@@ -2431,7 +2430,7 @@ class TestParentEpicTemplateVariables:
 
 
 class TestParentEpicBranchPatternExpansion:
-    """Tests for parent/epic template variables in branch patterns (DS-350, DS-351).
+    """Tests for parent/epic template variables in branch patterns.
 
     These tests verify branch pattern expansion with the new parent/epic
     template variables, enabling patterns like:
@@ -2593,7 +2592,7 @@ class TestParentEpicBranchPatternExpansion:
 
 
 class TestParentEpicIntegration:
-    """Integration tests for parent/epic template variables (DS-351).
+    """Integration tests for parent/epic template variables.
 
     These tests verify end-to-end integration of parent/epic template
     variables with the executor, ensuring they work correctly in

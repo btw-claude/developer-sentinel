@@ -1,6 +1,6 @@
 """Benchmark comparison tests for CLI vs SDK streaming vs SDK non-streaming.
 
-DS-172: Create baseline comparison tests to measure performance across configurations.
+Create baseline comparison tests to measure performance across configurations.
 
 This module provides a benchmark suite comparing three execution paths:
 1. Direct claude CLI command
@@ -268,10 +268,10 @@ class TestTimingMetrics:
         assert "api_wait_time" in result
         assert "inter_message_times" in result
 
-    # DS-189: Optimize inter_message_times storage for long-running operations
+    # Optimize inter_message_times storage for long-running operations
 
     def test_inter_message_times_below_threshold_returns_raw_array(self) -> None:
-        """Should return raw inter_message_times array when below threshold (DS-189)."""
+        """Should return raw inter_message_times array when below threshold."""
         metrics = TimingMetrics()
         # Add fewer times than the threshold
         metrics.inter_message_times = [0.1, 0.2, 0.3, 0.15, 0.25]
@@ -283,7 +283,7 @@ class TestTimingMetrics:
         assert result["inter_message_times"] == [0.1, 0.2, 0.3, 0.15, 0.25]
 
     def test_inter_message_times_above_threshold_returns_summary(self) -> None:
-        """Should return summary when inter_message_times exceeds threshold (DS-189)."""
+        """Should return summary when inter_message_times exceeds threshold."""
         metrics = TimingMetrics()
         # Add more times than the threshold (default is 100)
         metrics.inter_message_times = [0.1 * i for i in range(1, 102)]  # 101 items
@@ -302,7 +302,7 @@ class TestTimingMetrics:
         assert "p99" in summary
 
     def test_inter_message_times_at_threshold_returns_raw_array(self) -> None:
-        """Should return raw array when exactly at threshold (DS-189)."""
+        """Should return raw array when exactly at threshold."""
         metrics = TimingMetrics()
         # Add exactly threshold number of items
         metrics.inter_message_times = [0.1] * TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD
@@ -314,7 +314,7 @@ class TestTimingMetrics:
         assert "inter_message_times_summary" not in result
 
     def test_get_inter_message_times_summary_empty_data(self) -> None:
-        """Should return appropriate summary for empty data (DS-189)."""
+        """Should return appropriate summary for empty data."""
         metrics = TimingMetrics()
 
         summary = metrics.get_inter_message_times_summary()
@@ -328,7 +328,7 @@ class TestTimingMetrics:
         assert summary["p99"] is None
 
     def test_get_inter_message_times_summary_single_value(self) -> None:
-        """Should handle single value correctly (DS-189)."""
+        """Should handle single value correctly."""
         metrics = TimingMetrics()
         metrics.inter_message_times = [0.5]
 
@@ -343,7 +343,7 @@ class TestTimingMetrics:
         assert summary["p99"] == 0.5
 
     def test_get_inter_message_times_summary_known_values(self) -> None:
-        """Should calculate correct statistics for known values (DS-189)."""
+        """Should calculate correct statistics for known values."""
         metrics = TimingMetrics()
         # Create a list with known statistical properties
         # Values 1-100 (so p50=50.5, min=1, max=100)
@@ -363,7 +363,7 @@ class TestTimingMetrics:
         assert 98 <= summary["p99"] <= 100
 
     def test_calculate_percentile_edge_cases(self) -> None:
-        """Should calculate percentiles correctly for edge cases (DS-189)."""
+        """Should calculate percentiles correctly for edge cases."""
         metrics = TimingMetrics()
 
         # Empty data should return 0.0
@@ -381,7 +381,7 @@ class TestTimingMetrics:
         assert metrics._calculate_percentile(data, 100) == 3.0
 
     def test_threshold_is_configurable(self) -> None:
-        """Should respect the INTER_MESSAGE_TIMES_THRESHOLD value (DS-189)."""
+        """Should respect the INTER_MESSAGE_TIMES_THRESHOLD value."""
         # Verify the default threshold value
         assert TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD == 100
 
@@ -400,7 +400,7 @@ class TestTimingMetrics:
         finally:
             TimingMetrics.INTER_MESSAGE_TIMES_THRESHOLD = original_threshold
 
-    # Error scenario tests (DS-176 improvement #3)
+    # Error scenario tests
 
     def test_record_message_before_start_query(self) -> None:
         """Should handle record_message_received() called before start_query().
@@ -759,7 +759,7 @@ class TestSdkStreamingVsNonStreaming:
     def test_streaming_log_contains_json_metrics_export(
         self, mock_config: Config, temp_dirs: tuple[Path, Path]
     ) -> None:
-        """Streaming logs should contain JSON metrics export for programmatic access (DS-173)."""
+        """Streaming logs should contain JSON metrics export for programmatic access."""
         workdir, logs = temp_dirs
 
         with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
@@ -978,7 +978,7 @@ class TestBenchmarkHelpers:
         assert results == ["a", "b"]
         assert elapsed >= 0.1  # At least 50ms + 50ms
 
-    # DS-176 improvement #1: Validation tests for create_timed_mock_query
+    # Validation tests for create_timed_mock_query
 
     def test_create_timed_mock_query_mismatched_lengths_raises_error(self) -> None:
         """Should raise ValueError when responses and delays have different lengths."""
@@ -1026,7 +1026,7 @@ class TestBenchmarkHelpers:
 
 
 class TestPerformanceInstrumentation:
-    """Tests verifying performance instrumentation from DS-169."""
+    """Tests verifying performance instrumentation."""
 
     def test_timing_metrics_integration_with_query(self) -> None:
         """TimingMetrics should integrate with _run_query pattern."""
@@ -1078,7 +1078,7 @@ class TestPerformanceInstrumentation:
         metrics.log_metrics("complete_test")
 
 
-# DS-176 improvement #4: Subprocess-based CLI integration tests
+# Subprocess-based CLI integration tests
 class TestCliSubprocessIntegration:
     """Subprocess-based CLI integration tests for real-world performance validation.
 
@@ -1258,7 +1258,7 @@ class TestCliSubprocessIntegration:
         assert summary["speedup"]["non_streaming_vs_streaming"] is not None
 
 
-# DS-176 improvement #2: Time-based test stability improvements
+# Time-based test stability improvements
 class TestDeterministicTiming:
     """Tests demonstrating deterministic timing patterns for CI stability.
 

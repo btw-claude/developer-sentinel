@@ -41,12 +41,12 @@ class TimingMetrics:
     - Time spent in file I/O vs API wait
     - Total elapsed time
 
-    For long-running operations (DS-189), inter_message_times can be summarized
+    For long-running operations, inter_message_times can be summarized
     to statistical values (min, max, p50, p95, p99) to reduce log file size
     while preserving meaningful performance insights.
     """
 
-    # Threshold for summarizing inter_message_times (DS-189)
+    # Threshold for summarizing inter_message_times
     # When message count exceeds this, store statistical summary instead of raw data
     INTER_MESSAGE_TIMES_THRESHOLD: ClassVar[int] = 100
 
@@ -135,7 +135,7 @@ class TimingMetrics:
         return data[lower] * (1 - weight) + data[upper] * weight
 
     def get_inter_message_times_summary(self) -> dict[str, Any]:
-        """Get statistical summary of inter_message_times (DS-189).
+        """Get statistical summary of inter_message_times.
 
         Returns a dictionary with min, max, p50, p95, p99 statistics
         for inter_message_times data.
@@ -186,7 +186,7 @@ class TimingMetrics:
     def to_dict(self) -> dict[str, Any]:
         """Convert metrics to dictionary for logging/reporting.
 
-        For long-running operations (DS-189), when the number of inter_message_times
+        For long-running operations, when the number of inter_message_times
         exceeds INTER_MESSAGE_TIMES_THRESHOLD, statistical summaries are stored
         instead of the raw array to reduce log file size while preserving
         meaningful performance insights.
@@ -205,7 +205,7 @@ class TimingMetrics:
             "api_wait_time": self.api_wait_time,
         }
 
-        # DS-189: Optimize storage for long-running operations
+        # Optimize storage for long-running operations
         if len(self.inter_message_times) > self.INTER_MESSAGE_TIMES_THRESHOLD:
             result["inter_message_times_summary"] = self.get_inter_message_times_summary()
         else:
@@ -404,10 +404,10 @@ class ClaudeSdkAgentClient(AgentClient):
 
             if branch_exists:
                 # Check if we're already on the branch and up to date with remote
-                # DS-366: Combine three git rev-parse calls into a single subprocess
+                # Combine three git rev-parse calls into a single subprocess
                 # to reduce process spawns. Uses newline-separated output format.
                 #
-                # DS-373: Command structure explanation:
+                # Command structure explanation:
                 # The --abbrev-ref flag only affects the FIRST argument (HEAD), returning
                 # the branch name instead of the SHA. The second HEAD and origin/{branch}
                 # are unaffected by --abbrev-ref and return full SHA hashes. This allows
@@ -430,7 +430,7 @@ class ClaudeSdkAgentClient(AgentClient):
                     text=True,
                 )
                 lines = branch_state_result.stdout.strip().split("\n")
-                # DS-373: Defensive validation for expected 3-line output.
+                # Defensive validation for expected 3-line output.
                 # While check=True should catch most failures, malformed output
                 # could still occur in edge cases (e.g., unusual git configurations).
                 if len(lines) != 3:
@@ -517,7 +517,7 @@ class ClaudeSdkAgentClient(AgentClient):
 
         # Determine whether to use streaming logs
         # Use streaming if: log_base_dir and issue_key and orchestration_name are all provided
-        # AND streaming is not disabled via config (DS-170)
+        # AND streaming is not disabled via config
         can_stream = bool(self.log_base_dir and issue_key and orchestration_name)
         use_streaming = can_stream and not self._disable_streaming_logs
 
@@ -525,7 +525,7 @@ class ClaudeSdkAgentClient(AgentClient):
             response = asyncio.run(self._run_with_log(full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name))  # type: ignore
         else:
             response = asyncio.run(self._run_simple(full_prompt, tools, timeout_seconds, workdir, model))
-            # When streaming is disabled but we have logging params, write full response after completion (DS-170)
+            # When streaming is disabled but we have logging params, write full response after completion
             if can_stream and self._disable_streaming_logs:
                 self._write_simple_log(full_prompt, response, issue_key, orchestration_name)  # type: ignore
         return AgentRunResult(response=response, workdir=workdir)
@@ -548,7 +548,7 @@ class ClaudeSdkAgentClient(AgentClient):
     def _write_simple_log(
         self, prompt: str, response: str, issue_key: str, orch_name: str
     ) -> None:
-        """Write a simple (non-streaming) log file after execution completes (DS-170).
+        """Write a simple (non-streaming) log file after execution completes.
 
         This is used when streaming logs are disabled via SENTINEL_DISABLE_STREAMING_LOGS.
         Instead of writing incrementally during execution, this writes the full response
@@ -702,11 +702,11 @@ class ClaudeSdkAgentClient(AgentClient):
                 f.write(f"File I/O time:          {metrics.file_io_time:.3f}s\n")
                 f.write(f"API wait time:          {metrics.api_wait_time:.3f}s\n")
             # Track the file I/O time for writing timing metrics BEFORE writing final summary
-            # This ensures the JSON metrics export includes complete I/O timing (DS-173)
+            # This ensures the JSON metrics export includes complete I/O timing
             metrics.add_file_io_time(time.perf_counter() - io_start)
             io_start = time.perf_counter()
             with open(log_path, "a", encoding="utf-8") as f:
-                # Write JSON metrics export for programmatic access (DS-173)
+                # Write JSON metrics export for programmatic access
                 f.write(f"\n{sep}\nMETRICS JSON\n{sep}\n\n")
                 f.write(json.dumps(metrics.to_dict(), indent=2))
                 f.write("\n")

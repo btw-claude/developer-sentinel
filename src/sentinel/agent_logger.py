@@ -215,7 +215,7 @@ class AgentLogger:
         orch_dir = self.base_dir / orchestration_name
         orch_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate filename using centralized format (DS-323)
+        # Generate filename using centralized format
         filename = generate_log_filename(timestamp)
         return orch_dir / filename
 

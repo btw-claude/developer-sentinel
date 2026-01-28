@@ -15,7 +15,7 @@
  * - --warning: Warning state color (#f9c74f)
  * - --danger: Danger state color (#e63946)
  *
- * Accordion Component Variables (DS-240):
+ * Accordion Component Variables:
  * - --accordion-border: Border color for accordion items
  * - --accordion-radius: Border radius for accordion items
  * - --accordion-header-bg: Background color for accordion headers
@@ -29,19 +29,8 @@
  * - All variables include fallback values for graceful degradation
  * - Use BEM naming convention for component classes (Block__Element--Modifier)
  *
- * Related: DS-154 (original implementation), DS-159 (extraction to this file),
- *          DS-162 (CSS variable fallbacks and organization),
- *          DS-163 (axis-specific spacing, extended scale, text-accent),
- *          DS-164 (CSS logical properties, my-auto documentation),
- *          DS-165 (RTL layout examples for logical property utilities),
- *          DS-166 (MDN documentation links for CSS logical properties),
- *          DS-167 (MDN documentation links for CSS block-level logical properties),
- *          DS-240 (CSS architecture review, BEM methodology, removed !important),
- *          DS-260 (deprecated legacy .toggle-slider class, scoped selectors),
- *          DS-269 (added deprecation timeline and date stamp for .toggle-slider removal)
- *
  * Deprecation Notice (added 2026-01-26):
- * - Legacy .toggle-slider styles deprecated in DS-260, planned removal Q2 2026 (v2.0)
+ * - Legacy .toggle-slider styles deprecated, planned removal Q2 2026 (v2.0)
  */
 
 /* =============================================================================
@@ -252,8 +241,6 @@
    - padding-inline-end:
      https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-end
 
-   See: DS-164 for implementation details, DS-165 for RTL examples, DS-166 for MDN links,
-        DS-167 for block-level property MDN links
 
    -----------------------------------------------------------------------------
    RTL/LTR LAYOUT EXAMPLES
@@ -441,7 +428,6 @@
    - padding-block-end:
      https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block-end
 
-   See: DS-167 for block-level MDN documentation links
    ============================================================================= */
 
 /* Margin block-start utilities (mbs-*) */
@@ -551,19 +537,8 @@
 .overflow-scroll { overflow: scroll; }
 
 /* =============================================================================
-   NESTED ACCORDION COMPONENT (DS-224, DS-227, DS-240)
+   NESTED ACCORDION COMPONENT
    Styles for nested accordions used in grouped orchestrations display.
-
-   DS-227: Template updates for grouped orchestrations display including:
-   - Nested accordion structure for project/repo groupings
-   - Proper indentation for child items
-   - Expansion/collapse visual feedback
-
-   DS-240: CSS Architecture Refactoring
-   - Adopted BEM (Block Element Modifier) methodology for class naming
-   - Removed !important declarations by restructuring specificity
-   - Used CSS custom properties for consistent theming
-   - Flattened CSS specificity to prevent selector conflicts
 
    BEM Structure:
    - Block: .accordion
@@ -637,7 +612,6 @@
    ACCORDION CONTENT ELEMENT
    Hidden by default, shown when parent item is expanded
 
-   DS-240: Removed !important by using proper selector specificity.
    The content visibility is controlled via explicit state selectors rather
    than specificity wars. This approach:
    1. Uses attribute selectors [data-state] for cleaner state management
@@ -663,7 +637,7 @@
    NESTED TABLE ELEMENT
    Table styling within accordion content
 
-   DS-240: Isolated table styles to prevent conflicts with global table rules.
+   Isolated table styles to prevent conflicts with global table rules.
    Using component-scoped selectors ensures these styles only apply within
    the accordion context, avoiding specificity issues with base.html table styles.
    ----------------------------------------------------------------------------- */
@@ -702,7 +676,7 @@
 }
 
 /* =============================================================================
-   TOGGLE SWITCH COMPONENT (DS-253)
+   TOGGLE SWITCH COMPONENT
    Styles for toggle switch component used in orchestration enable/disable.
 
    BEM Structure:
@@ -804,7 +778,7 @@
 
 /* -----------------------------------------------------------------------------
    LEGACY TOGGLE SLIDER STYLES
-   @deprecated DS-260 - These styles are deprecated and will be removed in a future release.
+   @deprecated - These styles are deprecated and will be removed in a future release.
    @since 2026-01-26 (deprecation added)
    @removal Planned removal: Q2 2026 (v2.0)
 
@@ -827,7 +801,6 @@
    - No conflicts with generic input selectors
 
    TODO: Remove this section once all usages have been migrated to BEM classes.
-   See: DS-253 (original implementation), DS-260 (deprecation), DS-262 (BEM class verification)
    ----------------------------------------------------------------------------- */
 
 /* @deprecated - Use .toggle-switch__slider instead */
@@ -882,17 +855,11 @@
 }
 
 /* =============================================================================
-   BULK TOGGLE BUTTONS (DS-264, DS-265)
+   BULK TOGGLE BUTTONS
    Styles for bulk enable/disable buttons in orchestration accordion headers.
 
    This rule pushes the bulk toggle buttons to the right side of the flex container.
    Extracted from inline styles for better maintainability per code review feedback.
-
-   DS-265 improvements:
-   - Added aria-label attributes for accessibility
-   - Updated hx-vals to use js: syntax with encodeURIComponent for special characters
-
-   See: DS-252 (code review), DS-264 (refactoring task), DS-265 (accessibility cleanup)
    ============================================================================= */
 
 .bulk-toggle-buttons {
@@ -900,7 +867,7 @@
 }
 
 /* =============================================================================
-   BADGE VARIANT STYLES (DS-271)
+   BADGE VARIANT STYLES
    Visual styling variants for badges based on state (e.g., active/total counts).
 
    Variants:
@@ -919,8 +886,6 @@
      {% else %}
        <span class="badge">{{ active_count }}/{{ total_count }}</span>
      {% endif %}
-
-   See: DS-263 (original badge format), DS-271 (styling variants)
    ============================================================================= */
 
 /* Inactive state - muted/gray style for 0 active items */
@@ -951,5 +916,4 @@
    - lg:mx-4 - Apply horizontal margin-4 on large screens and up
 
    This would require @media queries with the appropriate breakpoints.
-   See: DS-163 for original discussion
    ============================================================================= */

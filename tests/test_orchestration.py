@@ -1271,7 +1271,7 @@ orchestrations:
 
 
 class TestGitHubProjectTrigger:
-    """Tests for GitHub Project-based trigger configuration (DS-201).
+    """Tests for GitHub Project-based trigger configuration.
 
     These tests verify the new GitHub Project-based polling fields:
     - project_number: Required positive integer for GitHub triggers
@@ -1940,14 +1940,14 @@ orchestrations:
 class TestMaxConcurrent:
     """Tests for max_concurrent field validation in _parse_orchestration().
 
-    These tests verify the max_concurrent field handling as specified in DS-186:
+    These tests verify the max_concurrent field handling:
     - Orchestration loads without max_concurrent field (backwards compatible)
     - Orchestration loads with valid max_concurrent value
     - OrchestrationError is raised for zero value
     - OrchestrationError is raised for negative values
     - OrchestrationError is raised for non-integer values (string, float)
 
-    Related: DS-181 (per-orchestration concurrency limits)
+    Related to per-orchestration concurrency limits.
     """
 
     def test_orchestration_max_concurrent_defaults_to_none(self) -> None:
@@ -2200,7 +2200,7 @@ orchestrations:
 
 
 class TestLabelsAndTagsValidation:
-    """Tests for labels and tags field validation in TriggerConfig (DS-334).
+    """Tests for labels and tags field validation in TriggerConfig.
 
     These tests verify that labels and tags fields are properly validated:
     - Must be a list if provided
@@ -2494,7 +2494,7 @@ orchestrations:
 
 
 class TestAgentType:
-    """Tests for agent_type and cursor_mode fields in AgentConfig (DS-295).
+    """Tests for agent_type and cursor_mode fields in AgentConfig.
 
     These tests verify the new agent type selection fields:
     - agent_type: Optional field with values 'claude' or 'cursor'

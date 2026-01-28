@@ -4,12 +4,6 @@ This module provides shared deduplication logic used by both Jira and GitHub
 trigger polling to prevent spawning multiple agents for the same issue/orchestration
 combination within a single polling cycle.
 
-DS-138: Refactored from inline implementations in _poll_jira_triggers() and
-_poll_github_triggers() (DS-130, DS-131) into a shared utility.
-
-DS-362: Added build_github_trigger_key() to centralize GitHub trigger key building
-logic, ensuring test and production code use the same key format.
-
 Note: Some features in this module (cycle_tracker, CycleTracker class, reset_cycle,
 _current_cycle_pairs) are designed for future concurrent polling patterns and are not
 yet used in the current implementation. See individual method docstrings for details.
@@ -43,15 +37,6 @@ def build_github_trigger_key(orch: "Orchestration") -> str:
     - github:org/123:Status=Done:   (filter only)
     - github:org/123::bug,urgent    (labels only)
     - github:org/123:Status=Done:bug,urgent  (both filter and labels)
-
-    DS-340: Include project_filter and labels in deduplication key to allow separate
-    polling for orchestrations with same project but different filter criteria.
-
-    DS-341: Handle None values explicitly for cleaner deduplication keys.
-    Use empty string when project_filter is None/empty for cleaner keys.
-
-    DS-362: Extracted from inline implementation in Sentinel._poll_github_triggers()
-    to provide a shared utility for both production and test code.
 
     Args:
         orch: The orchestration containing a GitHub trigger configuration.
@@ -101,16 +86,11 @@ class DeduplicationManager:
         """Initialize the deduplication manager."""
         self._lock = threading.Lock()
         # Global set tracking all submitted pairs across all trigger types in current cycle.
-        #
-        # FUTURE USE (DS-151): This internal tracking enables cross-trigger deduplication,
-        # where the same issue processed by both Jira and GitHub triggers within a single
-        # polling cycle would only spawn one agent. Currently, triggers are polled
-        # sequentially and use separate per-call sets (via create_cycle_set()), but this
-        # global state supports a future optimization where:
-        # 1. Multiple trigger types poll concurrently
-        # 2. A shared DeduplicationManager instance coordinates deduplication across all
-        #    trigger types in real-time
-        # 3. The cycle_tracker() context manager merges local tracking into this global set
+        # This internal tracking enables cross-trigger deduplication, where the same issue
+        # processed by both Jira and GitHub triggers within a single polling cycle would
+        # only spawn one agent. Currently, triggers are polled sequentially and use
+        # separate per-call sets (via create_cycle_set()), but this global state supports
+        # a future optimization where multiple trigger types poll concurrently.
         self._current_cycle_pairs: set[tuple[str, str]] = set()
 
     def reset_cycle(self) -> None:
@@ -119,13 +99,13 @@ class DeduplicationManager:
         Call this at the start of each polling cycle to clear the tracking
         of previously submitted pairs.
 
-        FUTURE USE (DS-151): This method supports a persistent DeduplicationManager
-        pattern where a single instance is reused across multiple polling cycles.
-        Currently, a new DeduplicationManager is created for each run_once() call,
-        making this method unnecessary. However, if the architecture evolves to use
-        a long-lived manager (e.g., for performance optimization or state persistence),
-        this method would be called at the start of each cycle to clear stale data
-        while preserving the manager instance.
+        This method supports a persistent DeduplicationManager pattern where a single
+        instance is reused across multiple polling cycles. Currently, a new
+        DeduplicationManager is created for each run_once() call, making this method
+        unnecessary. However, if the architecture evolves to use a long-lived manager
+        (e.g., for performance optimization or state persistence), this method would
+        be called at the start of each cycle to clear stale data while preserving the
+        manager instance.
         """
         with self._lock:
             self._current_cycle_pairs.clear()
@@ -218,24 +198,11 @@ class DeduplicationManager:
         This provides a more object-oriented interface for tracking duplicates
         within a single polling cycle.
 
-        FUTURE USE (DS-151): This context manager enables a cleaner API for
-        concurrent trigger polling. Instead of passing sets between functions,
-        each trigger type would use its own CycleTracker:
-
-            async def poll_all_triggers(dedup_manager):
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(poll_jira(dedup_manager))
-                    tg.create_task(poll_github(dedup_manager))
-
-            async def poll_jira(dedup_manager):
-                with dedup_manager.cycle_tracker() as tracker:
-                    for issue in issues:
-                        if tracker.should_submit(issue.key, orch.name):
-                            submit_task(issue, orch)
-
-        The context manager automatically merges each tracker's local pairs into
-        the global _current_cycle_pairs set on exit, enabling cross-trigger
-        deduplication even with concurrent polling.
+        This context manager enables a cleaner API for concurrent trigger polling.
+        Instead of passing sets between functions, each trigger type would use its
+        own CycleTracker. The context manager automatically merges each tracker's
+        local pairs into the global _current_cycle_pairs set on exit, enabling
+        cross-trigger deduplication even with concurrent polling.
 
         Yields:
             A CycleTracker instance for checking and marking submissions.
@@ -255,9 +222,9 @@ class CycleTracker:
     This class provides a clean interface for deduplication within a polling
     cycle, encapsulating the set operations.
 
-    FUTURE USE (DS-151): While the current implementation uses the simpler
-    create_cycle_set() + check_and_mark() pattern, CycleTracker is designed
-    for a future where trigger polling is more modular and concurrent. Benefits:
+    While the current implementation uses the simpler create_cycle_set() +
+    check_and_mark() pattern, CycleTracker is designed for a future where
+    trigger polling is more modular and concurrent. Benefits:
     1. Encapsulation: Each polling context manages its own tracker without
        passing sets between functions
     2. Automatic merging: On context exit, local pairs merge into the global set

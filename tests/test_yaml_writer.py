@@ -1,8 +1,8 @@
 """Tests for YAML writer module.
 
-DS-248: Create YAML writer module for safe orchestration file modification
-DS-257: Add timeout and cleanup improvements
-DS-267: Minor enhancements from code review
+Create YAML writer module for safe orchestration file modification.
+Add timeout and cleanup improvements.
+Minor enhancements from code review.
 """
 
 import fcntl
@@ -627,7 +627,7 @@ orchestrations:
 
 
 class TestToggleByRepo:
-    """Tests for toggle_by_repo method (DS-250)."""
+    """Tests for toggle_by_repo method."""
 
     def test_toggle_by_repo_success(self, tmp_path: Path) -> None:
         """Should toggle orchestrations matching the repo."""
@@ -802,7 +802,7 @@ orchestrations:
 
 
 class TestFileLockTimeout:
-    """Tests for file lock timeout functionality (DS-257)."""
+    """Tests for file lock timeout functionality."""
 
     def test_file_lock_with_default_timeout(self, tmp_path: Path) -> None:
         """File lock should use default timeout when not specified."""
@@ -900,7 +900,7 @@ orchestrations:
 
 
 class TestFileLockCleanup:
-    """Tests for file lock cleanup functionality (DS-257)."""
+    """Tests for file lock cleanup functionality."""
 
     def test_file_lock_cleanup_removes_lock_file(self, tmp_path: Path) -> None:
         """File lock should remove lock file when cleanup is enabled."""
@@ -983,7 +983,7 @@ orchestrations:
 
 
 class TestBackupFunctionality:
-    """Tests for backup before modification functionality (DS-257)."""
+    """Tests for backup before modification functionality."""
 
     def test_backup_creates_bak_file(self, tmp_path: Path) -> None:
         """Writer should create .bak file when backups are enabled."""
@@ -1047,7 +1047,7 @@ orchestrations:
         writer = OrchestrationYamlWriter(create_backups=True, backup_suffix="timestamp")
         writer.toggle_orchestration(file_path, "test-orch", False)
 
-        # Find timestamped backup (DS-267: now uses test.TIMESTAMP.bak format)
+        # Find timestamped backup (now uses test.TIMESTAMP.bak format)
         backup_files = list(tmp_path.glob("test.*.bak"))
         assert len(backup_files) == 1
         assert "enabled: true" in backup_files[0].read_text()
@@ -1152,7 +1152,7 @@ orchestrations:
 
 
 class TestWriterConfiguration:
-    """Tests for OrchestrationYamlWriter configuration options (DS-257)."""
+    """Tests for OrchestrationYamlWriter configuration options."""
 
     def test_default_configuration(self) -> None:
         """Writer should have sensible defaults."""
@@ -1191,14 +1191,14 @@ orchestrations:
 
         writer = OrchestrationYamlWriter(
             lock_timeout_seconds=5.0,
-            retry_interval_seconds=0.2,  # DS-267
+            retry_interval_seconds=0.2,
             cleanup_lock_files=True,
             create_backups=True,
             backup_suffix="timestamp",
         )
         writer.toggle_orchestration(file_path, "test-orch", False)
 
-        # Should have created timestamped backup (DS-267: uses test.TIMESTAMP.bak format)
+        # Should have created timestamped backup (uses test.TIMESTAMP.bak format)
         backup_files = list(tmp_path.glob("test.*.bak"))
         assert len(backup_files) == 1
 
@@ -1210,8 +1210,8 @@ orchestrations:
         assert "enabled: false" in file_path.read_text()
 
 
-class TestDS267Enhancements:
-    """Tests for DS-267 enhancements from code review."""
+class TestCodeReviewEnhancements:
+    """Tests for enhancements from code review."""
 
     def test_configurable_retry_interval(self, tmp_path: Path) -> None:
         """Writer should accept custom retry interval parameter."""
@@ -1328,11 +1328,11 @@ orchestrations:
         assert writer._retry_interval_seconds is None
 
 
-class TestDS259Enhancements:
-    """Tests for DS-259 enhancements from code review."""
+class TestLoggingEnhancements:
+    """Tests for logging enhancements from code review."""
 
     def test_toggle_by_repo_logs_debug_at_start(self, tmp_path: Path, caplog) -> None:
-        """toggle_by_repo should log debug message at start (DS-259)."""
+        """toggle_by_repo should log debug message at start."""
         import logging
 
         caplog.set_level(logging.DEBUG)
@@ -1363,7 +1363,7 @@ orchestrations:
         )
 
     def test_toggle_by_project_logs_debug_at_start(self, tmp_path: Path, caplog) -> None:
-        """toggle_by_project should log debug message at start (DS-259)."""
+        """toggle_by_project should log debug message at start."""
         import logging
 
         caplog.set_level(logging.DEBUG)

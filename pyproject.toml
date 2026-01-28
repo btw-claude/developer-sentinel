@@ -40,7 +40,7 @@ dependencies = [
     "uvicorn>=0.27.0,<1.0.0",
     "jinja2>=3.1.0,<4.0.0",
     "sse-starlette>=2.0.0,<3.0.0",
-    # TTL-based cache for rate limiting cleanup (DS-268)
+    # TTL-based cache for rate limiting cleanup
     "cachetools>=5.3.0,<6.0.0",
 ]
 
@@ -52,7 +52,7 @@ dev = [
     "ruff>=0.1.0,<1.0.0",
     "mypy>=1.8.0,<2.0.0",
     "types-PyYAML>=6.0,<7.0.0",
-    # BeautifulSoup for HTML parsing in tests (DS-284)
+    # BeautifulSoup for HTML parsing in tests
     "beautifulsoup4>=4.12.0,<5.0.0",
 ]
 

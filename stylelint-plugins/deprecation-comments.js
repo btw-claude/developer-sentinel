@@ -8,8 +8,6 @@
  * - @deprecated annotations include a ticket reference (e.g., DS-123)
  * - @since annotations use YYYY-MM-DD date format
  * - @removal annotations include quarter/year information
- *
- * Related: DS-275 (standardization task), DS-269 (original implementation)
  */
 
 const stylelint = require("stylelint");

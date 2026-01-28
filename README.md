@@ -198,7 +198,7 @@ github:
   create_branch: true
 ```
 
-**Future Enhancement:** Automatic branch name sanitization (replacing spaces with dashes, removing slashes, etc.) could be implemented to make `{jira_summary}` and `{github_issue_title}` safer to use in branch patterns. This feature is being tracked in [DS-375](https://brentthomaswalker.atlassian.net/browse/DS-375).
+**Future Enhancement:** Automatic branch name sanitization (replacing spaces with dashes, removing slashes, etc.) could be implemented to make `{jira_summary}` and `{github_issue_title}` safer to use in branch patterns.
 
 #### Branch Behavior
 
@@ -388,6 +388,33 @@ ruff check src/ tests/
 # Run type checking
 mypy src/
 ```
+
+### Contribution Guidelines
+
+When contributing to this project, please follow these guidelines:
+
+#### Code Comments
+
+- **Do not include ticket references in code comments** (e.g., "DS-123:", "PROJ-456:"). These make the code read like a changelog rather than maintainable source code.
+- Ticket references belong in commit messages and pull request descriptions where they provide valuable context for git blame and code review.
+- Comments should explain *why* code exists, not *when* it was added or which ticket requested it.
+
+**Bad:**
+```python
+# DS-123: Add rate limiting to prevent abuse
+rate_limiter = RateLimiter()
+```
+
+**Good:**
+```python
+# Rate limiting prevents abuse from excessive API calls
+rate_limiter = RateLimiter()
+```
+
+#### Commit Messages
+
+- Reference tickets in commit messages where appropriate (e.g., "Add rate limiting [DS-123]")
+- This preserves the connection between code and tickets via git blame without cluttering the source code
 
 ## License
 
