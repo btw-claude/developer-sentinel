@@ -2,6 +2,10 @@
 
 This module provides the Claude Agent SDK client for running agents,
 along with supporting code for timing metrics and shutdown handling.
+
+Shutdown handling uses dependency injection to avoid global mutable state.
+The ShutdownController class encapsulates shutdown event management,
+making the code more testable and avoiding hidden dependencies.
 """
 
 from __future__ import annotations
@@ -223,42 +227,128 @@ class TimingMetrics:
         return result
 
 
-# Module-level shutdown event for interrupting async operations
-_shutdown_event: asyncio.Event | None = None
-_shutdown_lock = threading.Lock()
+class ShutdownController:
+    """Controller for managing shutdown events in agent operations.
+
+    This class encapsulates the shutdown event and related operations,
+    replacing the previous module-level global mutable state. It can be
+    injected as a dependency into agent clients and query functions,
+    making the code more testable and avoiding hidden dependencies.
+
+    Usage:
+        # Create a controller (or use the default shared one)
+        controller = ShutdownController()
+
+        # Pass to agent client
+        client = ClaudeSdkAgentClient(config, shutdown_controller=controller)
+
+        # Request shutdown
+        controller.request_shutdown()
+
+        # Check shutdown status
+        if controller.is_shutdown_requested():
+            ...
+
+        # Reset for testing
+        controller.reset()
+    """
+
+    def __init__(self) -> None:
+        """Initialize the shutdown controller with no active shutdown event."""
+        self._shutdown_event: asyncio.Event | None = None
+        self._lock = threading.Lock()
+
+    def get_shutdown_event(self) -> asyncio.Event:
+        """Get or create the shutdown event for async operations.
+
+        Returns:
+            The asyncio.Event used for shutdown signaling.
+        """
+        with self._lock:
+            if self._shutdown_event is None:
+                self._shutdown_event = asyncio.Event()
+            return self._shutdown_event
+
+    def request_shutdown(self) -> None:
+        """Request shutdown of any running Claude agent operations."""
+        logger.debug("Shutdown requested for Claude agent operations")
+        with self._lock:
+            if self._shutdown_event is None:
+                self._shutdown_event = asyncio.Event()
+            self._shutdown_event.set()
+
+    def reset(self) -> None:
+        """Reset the shutdown flag. Used for testing."""
+        with self._lock:
+            self._shutdown_event = None
+
+    def is_shutdown_requested(self) -> bool:
+        """Check if shutdown has been requested.
+
+        Returns:
+            True if shutdown has been requested, False otherwise.
+        """
+        with self._lock:
+            return self._shutdown_event is not None and self._shutdown_event.is_set()
+
+
+# Default shared shutdown controller for backward compatibility.
+# New code should inject a ShutdownController instance for better testability.
+_default_shutdown_controller = ShutdownController()
+
+
+def get_default_shutdown_controller() -> ShutdownController:
+    """Get the default shared shutdown controller.
+
+    This is provided for backward compatibility. New code should create
+    and inject ShutdownController instances for better testability.
+
+    Returns:
+        The default shared ShutdownController instance.
+    """
+    return _default_shutdown_controller
 
 
 def get_shutdown_event() -> asyncio.Event:
-    """Get or create the shutdown event for async operations."""
-    global _shutdown_event
-    with _shutdown_lock:
-        if _shutdown_event is None:
-            _shutdown_event = asyncio.Event()
-        return _shutdown_event
+    """Get or create the shutdown event for async operations.
+
+    This is a backward-compatible wrapper around the default shutdown controller.
+    New code should use ShutdownController.get_shutdown_event() directly.
+
+    Returns:
+        The asyncio.Event used for shutdown signaling.
+    """
+    return _default_shutdown_controller.get_shutdown_event()
 
 
 def request_shutdown() -> None:
-    """Request shutdown of any running Claude agent operations."""
-    global _shutdown_event
-    logger.debug("Shutdown requested for Claude agent operations")
-    with _shutdown_lock:
-        if _shutdown_event is None:
-            _shutdown_event = asyncio.Event()
-        _shutdown_event.set()
+    """Request shutdown of any running Claude agent operations.
+
+    This is a backward-compatible wrapper around the default shutdown controller.
+    New code should use ShutdownController.request_shutdown() directly.
+    """
+    _default_shutdown_controller.request_shutdown()
 
 
 def reset_shutdown() -> None:
-    """Reset the shutdown flag. Used for testing."""
-    global _shutdown_event
-    with _shutdown_lock:
-        _shutdown_event = None
+    """Reset the shutdown flag. Used for testing.
+
+    This is a backward-compatible wrapper around the default shutdown controller.
+    New code should use ShutdownController.reset() directly.
+    """
+    _default_shutdown_controller.reset()
 
 
 def is_shutdown_requested() -> bool:
-    """Check if shutdown has been requested."""
-    global _shutdown_event
-    with _shutdown_lock:
-        return _shutdown_event is not None and _shutdown_event.is_set()
+    """Check if shutdown has been requested.
+
+    This is a backward-compatible wrapper around the default shutdown controller.
+    New code should use ShutdownController.is_shutdown_requested() directly.
+
+    Returns:
+        True if shutdown has been requested, False otherwise.
+    """
+    return _default_shutdown_controller.is_shutdown_requested()
 
 
 class ClaudeProcessInterruptedError(Exception):
@@ -272,6 +362,7 @@ async def _run_query(
     model: str | None = None,
     cwd: str | None = None,
     collect_metrics: bool = True,
+    shutdown_controller: ShutdownController | None = None,
 ) -> str:
     """Run a query using the Claude Agent SDK.
 
@@ -280,6 +371,8 @@ async def _run_query(
         model: Optional model identifier.
         cwd: Optional working directory.
         collect_metrics: Whether to collect and log timing metrics.
+        shutdown_controller: Optional ShutdownController for shutdown handling.
+            If not provided, uses the default shared controller.
 
     Returns:
         The response text.
@@ -296,7 +389,9 @@ async def _run_query(
         setting_sources=["project", "user"],  # Load skills from project and ~/.claude/skills
     )
 
-    shutdown_event = get_shutdown_event()
+    # Use provided controller or fall back to default
+    controller = shutdown_controller if shutdown_controller is not None else _default_shutdown_controller
+    shutdown_event = controller.get_shutdown_event()
     response_text = ""
 
     if metrics:
@@ -340,7 +435,20 @@ class ClaudeSdkAgentClient(AgentClient):
         base_workdir: Path | None = None,
         log_base_dir: Path | None = None,
         disable_streaming_logs: bool | None = None,
+        shutdown_controller: ShutdownController | None = None,
     ) -> None:
+        """Initialize the Claude SDK agent client.
+
+        Args:
+            config: Application configuration.
+            base_workdir: Optional base directory for agent working directories.
+            log_base_dir: Optional base directory for streaming logs.
+            disable_streaming_logs: Whether to disable streaming logs.
+                If not provided, uses config.disable_streaming_logs.
+            shutdown_controller: Optional ShutdownController for shutdown handling.
+                If not provided, uses the default shared controller. Inject a
+                custom controller for testing or isolated shutdown handling.
+        """
         self.config = config
         self.base_workdir = base_workdir
         self.log_base_dir = log_base_dir
@@ -349,6 +457,12 @@ class ClaudeSdkAgentClient(AgentClient):
             disable_streaming_logs
             if disable_streaming_logs is not None
             else config.disable_streaming_logs
+        )
+        # Use provided controller or fall back to default
+        self._shutdown_controller = (
+            shutdown_controller
+            if shutdown_controller is not None
+            else _default_shutdown_controller
         )
 
     @property
@@ -547,7 +661,12 @@ class ClaudeSdkAgentClient(AgentClient):
         self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None
     ) -> str:
         try:
-            coro = _run_query(prompt, model, str(workdir) if workdir else None)
+            coro = _run_query(
+                prompt,
+                model,
+                str(workdir) if workdir else None,
+                shutdown_controller=self._shutdown_controller,
+            )
             response = await asyncio.wait_for(coro, timeout=timeout) if timeout else await coro
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
@@ -645,7 +764,7 @@ class ClaudeSdkAgentClient(AgentClient):
                 cwd=str(workdir) if workdir else None,
                 setting_sources=["project", "user"],  # Load skills from project and ~/.claude/skills
             )
-            shutdown_event = get_shutdown_event()
+            shutdown_event = self._shutdown_controller.get_shutdown_event()
 
             async def run_streaming() -> str:
                 response_text = ""
