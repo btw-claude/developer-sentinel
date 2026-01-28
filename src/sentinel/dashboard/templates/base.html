@@ -315,18 +315,32 @@
         }
 
         /**
-         * Initialize collapsible section event listeners (DS-370).
-         * Attaches click event listeners to all collapsible headers using
-         * data-collapsible-target attribute for cleaner HTML/JS separation.
-         * This replaces inline onclick handlers with addEventListener pattern.
+         * Initialize collapsible section event listeners using event delegation (DS-370, DS-376).
+         * Uses a single event listener on the main container instead of attaching
+         * individual listeners to each collapsible header.
+         * DS-376: Refactored to use event delegation pattern for improved performance
+         * and automatic support for dynamically added collapsible sections.
+         * Benefits:
+         * - Reduced memory usage with fewer event listeners
+         * - Automatically handles dynamically added collapsible sections
+         * - Single point of attachment for easier debugging
          */
         function initCollapsibleSections() {
-            const collapsibleHeaders = document.querySelectorAll('[data-collapsible-target]');
-            collapsibleHeaders.forEach(function(header) {
+            const mainContainer = document.querySelector('main');
+            if (!mainContainer) {
+                console.warn('initCollapsibleSections: Could not find main container for event delegation');
+                return;
+            }
+
+            mainContainer.addEventListener('click', function(event) {
+                // Find the closest element with data-collapsible-target attribute
+                const header = event.target.closest('[data-collapsible-target]');
+                if (!header) {
+                    return; // Click was not on a collapsible header
+                }
+
                 const contentId = header.getAttribute('data-collapsible-target');
-                header.addEventListener('click', function(event) {
-                    handleCollapsibleClick(header, contentId, event);
-                });
+                handleCollapsibleClick(header, contentId, event);
             });
         }
 
