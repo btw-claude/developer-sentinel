@@ -80,16 +80,26 @@ class JiraIssue:
             if "inwardIssue" in link:
                 links.append(link["inwardIssue"]["key"])
 
-        # Extract epic link (customfield_10014 or parent for next-gen projects)
-        epic_key = fields.get("parent", {}).get("key")  # For next-gen projects
-        if not epic_key:
-            epic_key = fields.get("customfield_10014")  # Classic epic link field
-
-        # Extract parent for sub-tasks
+        # Extract epic link and parent key, distinguishing by parent issue type
+        # For next-gen projects, the parent field can represent either an epic or a story/task
+        epic_key = None
         parent_key = None
         parent_data = fields.get("parent")
         if parent_data:
-            parent_key = parent_data.get("key")
+            parent_issue_key = parent_data.get("key")
+            parent_type_data = parent_data.get("fields", {}).get("issuetype", {})
+            parent_type_name = parent_type_data.get("name", "").lower()
+
+            # Check if parent is an Epic type
+            if parent_type_name == "epic":
+                epic_key = parent_issue_key
+            else:
+                # Non-epic parent (Story, Task, etc.) - this is a sub-task relationship
+                parent_key = parent_issue_key
+
+        # Fallback to classic epic link field if no epic found from parent
+        if not epic_key:
+            epic_key = fields.get("customfield_10014")  # Classic epic link field
 
         return cls(
             key=data.get("key", ""),
