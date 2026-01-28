@@ -20,7 +20,7 @@ from typing import Any
 from sentinel.agent_clients.factory import AgentClientFactory, create_default_factory
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config, load_config
-from sentinel.deduplication import DeduplicationManager
+from sentinel.deduplication import DeduplicationManager, build_github_trigger_key
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
 from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubIssueProtocol, GitHubPoller
 from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
@@ -1466,8 +1466,15 @@ class Sentinel:
         """Poll GitHub for issues/PRs matching orchestration triggers.
 
         Uses project-based polling via GitHub Projects (v2) GraphQL API.
-        Deduplication is based on project_owner/project_number to avoid
-        polling the same project multiple times with different filters.
+        Deduplication is based on the full trigger key which includes:
+        project_owner, project_number, project_filter, and labels.
+
+        This allows different filter/label combinations on the same project to be
+        polled separately. For example, two orchestrations with the same project
+        but different filters (e.g., "Status=Done" vs "Status=InProgress") will
+        each trigger their own polling.
+
+        See build_github_trigger_key() in deduplication.py for the key format.
 
         Args:
             orchestrations: List of GitHub-triggered orchestrations.
@@ -1482,23 +1489,13 @@ class Sentinel:
             return 0
 
         # Collect unique trigger configs to avoid duplicate polling
-        # DS-204: Use project_owner/project_number for deduplication key
+        # DS-362: Use shared build_github_trigger_key() for consistent key format
         seen_triggers: set[str] = set()
         triggers_to_poll: list[tuple[Orchestration, Any]] = []
 
         for orch in orchestrations:
-            # Build deduplication key from project configuration
-            # DS-340: Include project_filter and labels in deduplication key
-            # to allow separate polling for orchestrations with same project
-            # but different filter criteria
-            # DS-341: Handle None values explicitly for cleaner deduplication keys
-            # Use empty string when project_filter is None/empty for cleaner keys
-            filter_part = orch.trigger.project_filter or ""
-            labels_part = ",".join(orch.trigger.labels) if orch.trigger.labels else ""
-            trigger_key = (
-                f"github:{orch.trigger.project_owner}/{orch.trigger.project_number}"
-                f":{filter_part}:{labels_part}"
-            )
+            # Build deduplication key using shared utility
+            trigger_key = build_github_trigger_key(orch)
             if trigger_key not in seen_triggers:
                 seen_triggers.add(trigger_key)
                 triggers_to_poll.append((orch, orch.trigger))
