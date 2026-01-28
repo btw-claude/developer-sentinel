@@ -25,6 +25,8 @@ class JiraIssue:
     labels: list[str] = field(default_factory=list)
     comments: list[str] = field(default_factory=list)
     links: list[str] = field(default_factory=list)
+    epic_key: str | None = None  # Parent epic key
+    parent_key: str | None = None  # Parent issue key (for sub-tasks)
 
     @classmethod
     def from_api_response(cls, data: dict[str, Any]) -> JiraIssue:
@@ -78,6 +80,17 @@ class JiraIssue:
             if "inwardIssue" in link:
                 links.append(link["inwardIssue"]["key"])
 
+        # Extract epic link (customfield_10014 or parent for next-gen projects)
+        epic_key = fields.get("parent", {}).get("key")  # For next-gen projects
+        if not epic_key:
+            epic_key = fields.get("customfield_10014")  # Classic epic link field
+
+        # Extract parent for sub-tasks
+        parent_key = None
+        parent_data = fields.get("parent")
+        if parent_data:
+            parent_key = parent_data.get("key")
+
         return cls(
             key=data.get("key", ""),
             summary=fields.get("summary", ""),
@@ -87,6 +100,8 @@ class JiraIssue:
             labels=fields.get("labels", []),
             comments=comments,
             links=links,
+            epic_key=epic_key,
+            parent_key=parent_key,
         )
 
 
