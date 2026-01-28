@@ -1611,6 +1611,54 @@ class TestGitHubIssueParentIssueNumber:
         issue = GitHubIssue.from_api_response(data)
         assert issue.parent_issue_number is None
 
+    def test_parent_issue_number_none_when_parent_missing_number(self) -> None:
+        """Test parent_issue_number is None when parent field present but number missing (DS-360).
+
+        This is a defensive test case for malformed GitHub API responses where
+        the parent field is present (as a dict) but doesn't contain the expected
+        'number' key. This could happen due to API inconsistencies or partial data.
+        """
+        data = {
+            "number": 42,
+            "title": "Issue with malformed parent",
+            "parent": {"id": "some_id", "url": "https://example.com"},  # number key missing
+        }
+        issue = GitHubIssue.from_api_response(data)
+        assert issue.parent_issue_number is None
+
+    def test_parent_issue_number_none_when_parent_number_is_none(self) -> None:
+        """Test parent_issue_number is None when parent.number is explicitly None (DS-360).
+
+        This is a defensive test case where the parent dict has a 'number' key
+        but its value is None instead of an integer.
+        """
+        data = {
+            "number": 42,
+            "title": "Issue with null parent number",
+            "parent": {"number": None},
+        }
+        issue = GitHubIssue.from_api_response(data)
+        assert issue.parent_issue_number is None
+
+    def test_parent_issue_number_passes_through_invalid_type(self) -> None:
+        """Test current behavior: parent.number value is passed through regardless of type (DS-360).
+
+        This is a defensive test case documenting the current behavior where the
+        parent dict has a 'number' key but its value is an unexpected type.
+        The current implementation passes through whatever value is present.
+
+        Note: A future improvement could add type validation to ensure
+        parent_issue_number is always either None or an int.
+        """
+        data = {
+            "number": 42,
+            "title": "Issue with string parent number",
+            "parent": {"number": "not-a-number"},
+        }
+        issue = GitHubIssue.from_api_response(data)
+        # Current behavior: the value is passed through without type validation
+        assert issue.parent_issue_number == "not-a-number"
+
     def test_parent_issue_number_from_project_item(self) -> None:
         """Test parent_issue_number is populated from project item."""
         item = {
