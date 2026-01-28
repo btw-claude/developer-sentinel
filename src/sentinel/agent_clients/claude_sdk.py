@@ -404,32 +404,26 @@ class ClaudeSdkAgentClient(AgentClient):
 
             if branch_exists:
                 # Check if we're already on the branch and up to date with remote
-                current_branch_result = subprocess.run(
-                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                # DS-366: Combine three git rev-parse calls into a single subprocess
+                # to reduce process spawns. Uses newline-separated output format.
+                branch_state_result = subprocess.run(
+                    [
+                        "git",
+                        "rev-parse",
+                        "--abbrev-ref",
+                        "HEAD",
+                        "HEAD",
+                        f"origin/{branch}",
+                    ],
                     cwd=workdir,
                     check=True,
                     capture_output=True,
                     text=True,
                 )
-                current_branch = current_branch_result.stdout.strip()
-
-                local_sha_result = subprocess.run(
-                    ["git", "rev-parse", "HEAD"],
-                    cwd=workdir,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                local_sha = local_sha_result.stdout.strip()
-
-                remote_sha_result = subprocess.run(
-                    ["git", "rev-parse", f"origin/{branch}"],
-                    cwd=workdir,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                remote_sha = remote_sha_result.stdout.strip()
+                lines = branch_state_result.stdout.strip().split("\n")
+                current_branch = lines[0]
+                local_sha = lines[1]
+                remote_sha = lines[2]
 
                 if current_branch == branch and local_sha == remote_sha:
                     # Already on the correct branch and up to date

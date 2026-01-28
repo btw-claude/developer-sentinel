@@ -748,6 +748,10 @@ class TestClaudeSdkAgentClientBranchSetup:
             # ls-remote returns branch info when branch exists
             if "ls-remote" in cmd:
                 result.stdout = "abc123\trefs/heads/feature/DS-123"
+            # DS-366: rev-parse with multiple args returns newline-separated output
+            # Current branch, local SHA, and remote SHA (return different SHAs to trigger checkout)
+            elif "rev-parse" in cmd and "--abbrev-ref" in cmd:
+                result.stdout = "main\nlocal123\nremote456"
 
             return result
 
@@ -757,8 +761,55 @@ class TestClaudeSdkAgentClientBranchSetup:
         # Verify the sequence of git commands
         assert any("fetch" in " ".join(cmd) for cmd in call_history)
         assert any("ls-remote" in " ".join(cmd) and "feature/DS-123" in " ".join(cmd) for cmd in call_history)
+        # DS-366: Verify the optimized rev-parse call with multiple arguments
+        assert any("rev-parse" in " ".join(cmd) and "--abbrev-ref" in cmd for cmd in call_history)
         assert any("checkout" in " ".join(cmd) and "feature/DS-123" in " ".join(cmd) for cmd in call_history)
         assert any("pull" in " ".join(cmd) for cmd in call_history)
+
+    def test_skip_checkout_when_already_up_to_date(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should skip checkout and pull when already on branch and up to date (DS-366).
+
+        This test verifies the optimization where we skip checkout/pull operations
+        when the branch is already checked out and the local SHA matches the remote SHA.
+        The combined rev-parse call (DS-366) returns all three values in one subprocess call.
+        """
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
+
+        call_history: list[list[str]] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            call_history.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+
+            # ls-remote returns branch info when branch exists
+            if "ls-remote" in cmd:
+                result.stdout = "abc123\trefs/heads/feature/DS-123"
+            # DS-366: rev-parse returns current branch, local SHA, and remote SHA
+            # Return same SHA for local and remote to simulate "already up to date"
+            elif "rev-parse" in cmd and "--abbrev-ref" in cmd:
+                result.stdout = "feature/DS-123\nabc123\nabc123"
+
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            client._setup_branch(workdir, "feature/DS-123", create_branch=False, base_branch="main")
+
+        # Verify fetch and ls-remote were called
+        assert any("fetch" in " ".join(cmd) for cmd in call_history)
+        assert any("ls-remote" in " ".join(cmd) for cmd in call_history)
+        # DS-366: Verify the optimized rev-parse call
+        assert any("rev-parse" in " ".join(cmd) and "--abbrev-ref" in cmd for cmd in call_history)
+        # Checkout and pull should NOT be called since branch is up to date
+        assert not any("checkout" in " ".join(cmd) for cmd in call_history)
+        assert not any("pull" in " ".join(cmd) for cmd in call_history)
 
     def test_create_new_branch_when_create_branch_true(
         self, tmp_path: Path, mock_config: Config
@@ -895,8 +946,16 @@ class TestClaudeSdkAgentClientBranchSetup:
                 raise error
             result = MagicMock()
             result.returncode = 0
-            result.stdout = "abc123\trefs/heads/feature/DS-123"  # Branch exists
             result.stderr = ""
+            # ls-remote returns branch info when branch exists
+            if "ls-remote" in cmd:
+                result.stdout = "abc123\trefs/heads/feature/DS-123"
+            # DS-366: rev-parse with multiple args returns newline-separated output
+            # Return different SHAs to trigger the checkout path
+            elif "rev-parse" in cmd and "--abbrev-ref" in cmd:
+                result.stdout = "main\nlocal123\nremote456"
+            else:
+                result.stdout = ""
             return result
 
         with patch("subprocess.run", side_effect=mock_run):
