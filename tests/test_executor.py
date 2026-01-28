@@ -17,6 +17,7 @@ from sentinel.executor import (
     ExecutionResult,
     ExecutionStatus,
     cleanup_workdir,
+    slugify,
 )
 from sentinel.orchestration import (
     AgentConfig,
@@ -2710,3 +2711,236 @@ class TestParentEpicIntegration:
         assert result.succeeded is True
         prompt = client.calls[0][0]
         assert "Complete #55: Sub-task implementation (child of #20)" == prompt
+
+
+class TestSlugify:
+    """Tests for the slugify utility function."""
+
+    def test_converts_spaces_to_hyphens(self) -> None:
+        """Should convert spaces to hyphens."""
+        assert slugify("Add login button") == "add-login-button"
+
+    def test_converts_to_lowercase(self) -> None:
+        """Should convert to lowercase."""
+        assert slugify("Fix Authentication Bug") == "fix-authentication-bug"
+
+    def test_removes_special_characters(self) -> None:
+        """Should remove special characters invalid in git branch names."""
+        assert slugify("Fix: bug!") == "fix-bug"
+        assert slugify("Feature [WIP]") == "feature-wip"
+        assert slugify("Test?") == "test"
+        assert slugify("Hello*World") == "helloworld"
+
+    def test_normalizes_unicode(self) -> None:
+        """Should normalize unicode characters to ASCII equivalents."""
+        assert slugify("Éclair résumé") == "eclair-resume"
+        assert slugify("Café") == "cafe"
+        assert slugify("naïve") == "naive"
+
+    def test_collapses_multiple_hyphens(self) -> None:
+        """Should collapse multiple consecutive hyphens into one."""
+        assert slugify("foo  bar") == "foo-bar"
+        assert slugify("foo---bar") == "foo-bar"
+        assert slugify("foo - bar") == "foo-bar"
+
+    def test_strips_leading_trailing_hyphens(self) -> None:
+        """Should strip leading and trailing hyphens."""
+        assert slugify("-hello-") == "hello"
+        assert slugify("--test--") == "test"
+        assert slugify(" hello ") == "hello"
+
+    def test_handles_underscores(self) -> None:
+        """Should convert underscores to hyphens."""
+        assert slugify("foo_bar") == "foo-bar"
+        assert slugify("hello_world_test") == "hello-world-test"
+
+    def test_handles_empty_string(self) -> None:
+        """Should return empty string for empty input."""
+        assert slugify("") == ""
+
+    def test_handles_only_special_chars(self) -> None:
+        """Should return empty string when input is only special chars."""
+        assert slugify("!@#$%") == ""
+
+    def test_preserves_dots(self) -> None:
+        """Should preserve single dots (valid in git branch names)."""
+        assert slugify("v1.0.0") == "v1.0.0"
+
+    def test_collapses_consecutive_dots(self) -> None:
+        """Should collapse consecutive dots (invalid in git branch names)."""
+        assert slugify("test..case") == "test.case"
+
+    def test_preserves_forward_slashes(self) -> None:
+        """Should preserve forward slashes (valid in git branch names)."""
+        # Note: slashes in input are typically from path-like structures
+        # but slugify doesn't add slashes, it just processes the text
+        assert slugify("feature/test") == "feature/test"
+
+    def test_complex_example(self) -> None:
+        """Should handle complex real-world examples."""
+        assert slugify("Add user authentication [URGENT]") == "add-user-authentication-urgent"
+        assert slugify("Fix: Login bug (critical!)") == "fix-login-bug-critical"
+        assert slugify("JIRA-123: Implement feature") == "jira-123-implement-feature"
+
+
+class TestSlugTemplateVariables:
+    """Tests for slugified template variables in branch patterns."""
+
+    def test_jira_summary_slug_in_branch_pattern(self) -> None:
+        """Should expand {jira_summary_slug} with slugified summary."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123", summary="Add login button")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_issue_key}-{jira_summary_slug}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "feature/DS-123-add-login-button"
+
+    def test_jira_summary_slug_with_special_chars(self) -> None:
+        """Should handle special characters in Jira summary when slugified."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-456", summary="Fix: Critical bug [URGENT]!")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="fix/{jira_summary_slug}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "fix/fix-critical-bug-urgent"
+
+    def test_github_issue_title_slug_in_branch_pattern(self) -> None:
+        """Should expand {github_issue_title_slug} with slugified title."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Add authentication flow")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{github_issue_number}-{github_issue_title_slug}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "feature/42-add-authentication-flow"
+
+    def test_github_issue_title_slug_with_special_chars(self) -> None:
+        """Should handle special characters in GitHub title when slugified."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=99, title="Bug: Login fails [priority: high]")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="fix/{github_issue_title_slug}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "fix/bug-login-fails-priority-high"
+
+    def test_raw_vs_slug_comparison(self) -> None:
+        """Should show difference between raw and slug variables."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-789", summary="Add User Profile Page")
+
+        # Test raw (non-slugified)
+        orch_raw = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_summary}",
+            )
+        )
+        result_raw = executor._expand_branch_pattern(issue, orch_raw)
+        assert result_raw == "feature/Add User Profile Page"  # Contains spaces
+
+        # Test slugified
+        orch_slug = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_summary_slug}",
+            )
+        )
+        result_slug = executor._expand_branch_pattern(issue, orch_slug)
+        assert result_slug == "feature/add-user-profile-page"  # Branch-safe
+
+    def test_cross_source_jira_slug_with_github_issue(self) -> None:
+        """Should return empty slug when using Jira slug with GitHub issue."""
+        from sentinel.github_poller import GitHubIssue
+
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = GitHubIssue(number=42, title="Some title")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_summary_slug}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        # jira_summary_slug is empty for GitHub issues
+        assert result == "feature/"
+
+    def test_cross_source_github_slug_with_jira_issue(self) -> None:
+        """Should return empty slug when using GitHub slug with Jira issue."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123", summary="Some summary")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{github_issue_title_slug}",
+            )
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        # github_issue_title_slug is empty for Jira issues
+        assert result == "feature/"
+
+    def test_slug_in_prompt_substitution(self) -> None:
+        """Should substitute slug variables in prompts as well."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-100", summary="Add Login Button")
+        orch = make_orchestration(
+            prompt="Create branch: feature/{jira_summary_slug}"
+        )
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Create branch: feature/add-login-button"
