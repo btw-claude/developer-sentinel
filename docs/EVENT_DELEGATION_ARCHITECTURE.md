@@ -114,6 +114,8 @@ const modalContainer = document.querySelector('#modal-root');
 
 ## Impact on Dynamically Loaded Content
 
+This section covers how dynamically loaded content interacts with the event delegation pattern. For applications using [HTMX](https://htmx.org/), this pattern is particularly beneficial.
+
 ### Content Within `<main>` (Works Automatically)
 
 - HTMX-loaded content injected into `<main>` or its descendants works immediately
@@ -179,10 +181,12 @@ This ensures graceful degradation if the page structure changes unexpectedly.
 ## Related Resources
 
 - [CSS Style Guide](./CSS_STYLE_GUIDE.md)
+- [HTMX Documentation](https://htmx.org/) - For understanding HTMX content swapping and how it works with event delegation
 - DS-370: Initial refactoring from inline onclick to data attributes
 - DS-376: Event delegation implementation
 - DS-377: This documentation
+- DS-378: Added HTMX documentation link
 
 ---
 
-*Last updated: DS-377*
+*Last updated: DS-378*
