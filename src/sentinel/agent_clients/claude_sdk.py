@@ -406,6 +406,15 @@ class ClaudeSdkAgentClient(AgentClient):
                 # Check if we're already on the branch and up to date with remote
                 # DS-366: Combine three git rev-parse calls into a single subprocess
                 # to reduce process spawns. Uses newline-separated output format.
+                #
+                # DS-373: Command structure explanation:
+                # The --abbrev-ref flag only affects the FIRST argument (HEAD), returning
+                # the branch name instead of the SHA. The second HEAD and origin/{branch}
+                # are unaffected by --abbrev-ref and return full SHA hashes. This allows
+                # us to get branch name, local SHA, and remote SHA in a single call:
+                #   Line 0: current branch name (from --abbrev-ref HEAD)
+                #   Line 1: local HEAD SHA (from plain HEAD)
+                #   Line 2: remote branch SHA (from origin/{branch})
                 branch_state_result = subprocess.run(
                     [
                         "git",
@@ -421,6 +430,14 @@ class ClaudeSdkAgentClient(AgentClient):
                     text=True,
                 )
                 lines = branch_state_result.stdout.strip().split("\n")
+                # DS-373: Defensive validation for expected 3-line output.
+                # While check=True should catch most failures, malformed output
+                # could still occur in edge cases (e.g., unusual git configurations).
+                if len(lines) != 3:
+                    raise AgentClientError(
+                        f"Unexpected git rev-parse output: expected 3 lines, got {len(lines)}. "
+                        f"Output: {branch_state_result.stdout!r}"
+                    )
                 current_branch = lines[0]
                 local_sha = lines[1]
                 remote_sha = lines[2]
