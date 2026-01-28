@@ -36,42 +36,19 @@ _GITHUB_REPO_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$|^[a-zA-Z0-9]$")
 
 
 class ValidationResult(NamedTuple):
-    """Result of a validation operation.
-
-    Provides a structured result with named fields for better semantics
-    and self-documenting code.
-
-    Attributes:
-        is_valid: Whether the validation passed.
-        error_message: Error message if validation failed, empty string if valid.
-
-    Example usage:
-        return ValidationResult.success()
-        return ValidationResult.failure("error details")
-    """
+    """Result of a validation operation with is_valid flag and error_message."""
 
     is_valid: bool
     error_message: str
 
     @classmethod
     def success(cls) -> "ValidationResult":
-        """Create a successful validation result.
-
-        Returns:
-            A ValidationResult with is_valid=True and empty error_message.
-        """
+        """Create a successful validation result."""
         return cls(is_valid=True, error_message="")
 
     @classmethod
     def failure(cls, message: str) -> "ValidationResult":
-        """Create a failed validation result.
-
-        Args:
-            message: The error message describing why validation failed.
-
-        Returns:
-            A ValidationResult with is_valid=False and the provided error_message.
-        """
+        """Create a failed validation result with the given error message."""
         return cls(is_valid=False, error_message=message)
 
 
@@ -79,62 +56,13 @@ class ValidationResult(NamedTuple):
 class TriggerConfig:
     """Configuration for what triggers an orchestration.
 
-    This class supports both Jira and GitHub triggers. Fields are source-specific:
+    Supports Jira triggers (source="jira") with project, jql_filter, tags fields,
+    and GitHub triggers (source="github") with project_number, project_scope,
+    project_owner, project_filter, and labels fields.
 
-    **Common fields (used by both sources):**
-        - source: The source system ("jira" or "github")
+    Multiple tags/labels use AND logic (issue must have all specified).
 
-    **Jira-specific fields (ignored when source="github"):**
-        - project: Jira project key (e.g., "PROJ")
-        - jql_filter: Additional JQL filter conditions
-        - tags: List of tags/labels to filter by (case-insensitive matching)
-
-    **GitHub Project-based fields (preferred for source="github"):**
-        - project_number: The GitHub project number (required for GitHub triggers)
-        - project_scope: Whether the project belongs to "org" or "user"
-        - project_owner: The organization name or username that owns the project
-        - project_filter: JQL-like query for filtering by project field values
-
-    **Deprecated GitHub fields (use project-based fields instead):**
-        - repo: Repository in "owner/repo-name" format (DEPRECATED for GitHub)
-        - query_filter: Additional GitHub search syntax (DEPRECATED for GitHub)
-        - tags: List of tags/labels (DEPRECATED for GitHub, still used for Jira)
-
-    **GitHub labels field (preferred for source="github"):**
-        - labels: List of GitHub labels to filter by (case-insensitive matching)
-
-    **Tag matching behavior (Jira only):**
-        When multiple tags are specified, issues must have ALL tags to match (AND logic).
-        For example, tags: ["needs-review", "priority-high"] will only match issues
-        that have both labels applied.
-
-    **Label matching behavior (GitHub only):**
-        When multiple labels are specified, issues must have ALL labels to match (AND logic).
-        For example, labels: ["bug", "needs-triage"] will only match issues
-        that have both labels applied. Matching is case-insensitive.
-
-    Attributes:
-        source: The source system for triggers ("jira" or "github").
-        project: Jira project key. Only used when source is "jira".
-            Ignored when source is "github".
-        jql_filter: JQL filter for Jira queries. Only used when source is "jira".
-            Ignored when source is "github".
-        tags: List of tags/labels to filter by. Used by Jira. DEPRECATED for GitHub
-            triggers - use project_filter instead.
-        repo: GitHub repository in "owner/repo-name" format. DEPRECATED: Use
-            project-based configuration instead. Will be removed in future version.
-        query_filter: GitHub search syntax filter. DEPRECATED: Use project_filter
-            instead. Will be removed in future version.
-        project_number: The GitHub project number. Required when source is "github".
-        project_scope: Whether the project belongs to an "org" or "user".
-            Only used when source is "github".
-        project_owner: The organization name or username that owns the project.
-            Required when source is "github".
-        project_filter: JQL-like query for filtering items by project field values.
-            Only used when source is "github". Example: "Status = 'In Progress'"
-        labels: List of GitHub labels to filter by. Only used when source is "github".
-            Issues must have ALL specified labels to match (AND logic).
-            Matching is case-insensitive.
+    Note: repo, query_filter, and tags are DEPRECATED for GitHub triggers.
     """
 
     source: Literal["jira", "github"] = "jira"
@@ -160,83 +88,23 @@ class GitHubContext:
         host: GitHub host (e.g., "github.com" or enterprise host).
         org: GitHub organization or user name.
         repo: Repository name.
-        branch: Branch pattern (e.g., "feature/{jira_issue_key}").
-            Supports template variables that are expanded at runtime by the executor.
-            See "Template Variables" section below for the complete list.
+        branch: Branch pattern supporting template variables (e.g., "feature/{jira_issue_key}").
         create_branch: Whether to auto-create the branch if it doesn't exist.
         base_branch: Base branch for new branch creation (default: "main").
 
     Template Variables:
-        Variables are specified using ``{variable_name}`` syntax (e.g., ``feature/{jira_issue_key}``).
+        Use ``{variable_name}`` syntax in branch patterns. Available variables:
 
-        **GitHub Repository Context** (always available from orchestration config):
-            - ``{github_host}``: GitHub host (e.g., "github.com")
-            - ``{github_org}``: GitHub organization or username
-            - ``{github_repo}``: Repository name
+        - Jira: ``{jira_issue_key}``, ``{jira_summary_slug}``, ``{jira_epic_key}``,
+          ``{jira_parent_key}``, ``{jira_summary}``, ``{jira_description}``, etc.
+        - GitHub: ``{github_issue_number}``, ``{github_issue_title_slug}``,
+          ``{github_host}``, ``{github_org}``, ``{github_repo}``, etc.
 
-        **Jira Context** (populated when triggered by Jira issues, empty for GitHub triggers):
-            - ``{jira_issue_key}``: Jira issue key (e.g., "DS-123")
-            - ``{jira_summary}``: Issue summary/title (raw text, may contain spaces)
-            - ``{jira_summary_slug}``: Issue summary slugified for branch names (e.g., "add-login-button")
-            - ``{jira_description}``: Full issue description
-            - ``{jira_status}``: Current issue status
-            - ``{jira_assignee}``: Assignee display name
-            - ``{jira_labels}``: Comma-separated list of labels
-            - ``{jira_comments}``: Recent comments (last 3, truncated to 500 chars each)
-            - ``{jira_links}``: Comma-separated list of linked issue keys
-            - ``{jira_epic_key}``: Epic key for the current issue (e.g., "DS-100")
-            - ``{jira_parent_key}``: Parent issue key for sub-tasks (e.g., "DS-200")
-
-        **GitHub Issue Context** (populated when triggered by GitHub issues/PRs, empty for Jira triggers):
-            - ``{github_issue_number}``: Issue or PR number (e.g., "123")
-            - ``{github_issue_title}``: Issue/PR title (raw text, may contain spaces)
-            - ``{github_issue_title_slug}``: Issue/PR title slugified for branch names
-            - ``{github_issue_body}``: Issue/PR body/description
-            - ``{github_issue_state}``: State (e.g., "open", "closed")
-            - ``{github_issue_author}``: Username of the author
-            - ``{github_issue_assignees}``: Comma-separated list of assignees
-            - ``{github_issue_labels}``: Comma-separated list of labels
-            - ``{github_issue_url}``: Full URL to the issue/PR
-            - ``{github_is_pr}``: "true" if this is a pull request, "false" otherwise
-            - ``{github_pr_head}``: Head branch reference (for PRs only)
-            - ``{github_pr_base}``: Base branch reference (for PRs only)
-            - ``{github_pr_draft}``: "true" if draft PR, "false" otherwise (for PRs only)
-            - ``{github_parent_issue_number}``: Parent issue number if set (e.g., "42")
-
-    Branch Pattern Examples:
-        Simple Jira-triggered patterns::
-
-            branch: "feature/{jira_issue_key}"
-            # Result: "feature/DS-123"
-
-            branch: "feature/{jira_issue_key}-{jira_summary_slug}"
-            # Result: "feature/DS-123-add-login-button"
-
-            branch: "feature/{jira_epic_key}"
-            # Result: "feature/DS-100" (allows multiple sub-issues to share a branch)
-
-        Simple GitHub-triggered patterns::
-
-            branch: "feature/issue-{github_issue_number}"
-            # Result: "feature/issue-123"
-
-            branch: "fix/{github_issue_number}-{github_issue_title_slug}"
-            # Result: "fix/123-fix-null-pointer-exception"
-
-    Important Notes:
-        - **Cross-source variables**: Using Jira variables with GitHub triggers (or vice versa)
-          results in empty strings, which may produce branch names like "feature/".
-          Design branch patterns with the expected trigger source in mind.
-        - **Slug vs raw variables**: Use slug variables (``{jira_summary_slug}``,
-          ``{github_issue_title_slug}``) for branch names as they are automatically
-          converted to branch-safe format (lowercase, hyphens, no special characters).
-          Raw variables may contain spaces and special characters invalid in branch names.
-        - **Unknown variables**: Variables not in the above list are preserved as-is
-          in the expanded string (e.g., ``{unknown}`` remains ``{unknown}``).
+        Use slug variables for branch-safe formatting. Cross-source variables
+        (e.g., Jira vars with GitHub triggers) result in empty strings.
 
     See Also:
-        - ``AgentExecutor._build_template_variables()`` in executor.py for implementation details.
-        - ``AgentExecutor._expand_branch_pattern()`` in executor.py for branch expansion logic.
+        ``AgentExecutor._build_template_variables()`` for the complete variable list.
     """
 
     host: str = "github.com"
@@ -483,45 +351,13 @@ def _validate_string_list(value: Any, field_name: str) -> None:
 def _validate_github_repo_format(repo: str) -> ValidationResult:
     """Validate that a GitHub repo string is in 'owner/repo-name' format.
 
-    Enforces GitHub-specific character restrictions:
+    Enforces GitHub naming rules:
+    - Owner: max 39 chars, alphanumeric/hyphens, no leading/trailing/consecutive hyphens
+    - Repo: max 100 chars, alphanumeric/hyphens/underscores/periods, no leading period,
+      cannot end with .git
 
-    **Username/Organization rules (owner):**
-        - Maximum 39 characters
-        - Alphanumeric characters and hyphens only
-        - Cannot start or end with a hyphen
-        - Cannot have consecutive hyphens
-        - Cannot be a reserved name ("." or "..")
-
-    **Repository name rules:**
-        - Maximum 100 characters
-        - Alphanumeric characters, hyphens, underscores, and periods
-        - Cannot start with a period
-        - Cannot end with .git (case-insensitive)
-        - Cannot be a reserved name ("." or "..")
-
-    Args:
-        repo: The repository string to validate.
-
-    Returns:
-        A ValidationResult with is_valid and error_message fields.
-        If valid, error_message is empty.
-
-    Valid formats:
-        - "owner/repo"
-        - "owner/repo-name"
-        - "org-name/repo_name"
-        - "user123/my.project"
-    Invalid formats:
-        - "repo" (missing owner)
-        - "owner/" (missing repo name)
-        - "/repo" (missing owner)
-        - "owner/repo/extra" (too many parts)
-        - "-owner/repo" (owner starts with hyphen)
-        - "owner-/repo" (owner ends with hyphen)
-        - "owner/repo.git" (repo ends with .git)
-        - "a" * 40 + "/repo" (owner too long)
-        - "./repo" (owner is reserved name)
-        - "owner/." (repo is reserved name)
+    Returns ValidationResult.success() for valid or empty strings,
+    ValidationResult.failure(message) otherwise.
     """
     if not repo:
         return ValidationResult.success()  # Empty is valid (optional field)
