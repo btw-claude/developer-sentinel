@@ -174,6 +174,30 @@ The following template variables can be used in branch patterns:
 
 **Note:** When using `{jira_summary}` or `{github_issue_title}` in branch names, be aware that these may contain characters that are invalid for Git branch names. Consider using `{jira_issue_key}` or `{github_issue_number}` for safer branch names.
 
+**Example of invalid branch name failure:**
+
+If your Jira issue summary is "Fix login/authentication bug" and you use this configuration:
+
+```yaml
+github:
+  branch: "feature/{jira_summary}"
+  create_branch: true
+```
+
+The branch creation will fail because the resulting branch name `feature/Fix login/authentication bug` contains invalid characters (spaces and slashes within the summary portion). Git will return an error like:
+
+```
+fatal: 'feature/Fix login/authentication bug' is not a valid branch name
+```
+
+**Recommended approach:** Use `{jira_issue_key}` instead, which always produces valid branch names:
+
+```yaml
+github:
+  branch: "feature/{jira_issue_key}"  # Results in: feature/DS-290
+  create_branch: true
+```
+
 #### Branch Behavior
 
 | Setting | Default | Description |
@@ -213,6 +237,16 @@ orchestrations:
 ```
 
 This allows agents to push changes to a fork branch, which can then be used to create a pull request to the upstream repository.
+
+**Creating a PR to upstream:** After the agent pushes changes to your fork branch, you can create a pull request to the upstream repository using the GitHub CLI or the GitHub web interface:
+
+```bash
+# Using GitHub CLI
+gh pr create --repo upstream-org/project-name --head my-username:feature/DS-290 --base main
+
+# Or navigate to GitHub UI:
+# https://github.com/upstream-org/project-name/compare/main...my-username:feature/DS-290
+```
 
 ### Agent Type Selection
 
