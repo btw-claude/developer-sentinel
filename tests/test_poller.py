@@ -363,13 +363,13 @@ class TestJiraPollerPoll:
 
 
 class TestJiraIssueEpicAndParentFields:
-    """Tests for JiraIssue epic_key and parent_key fields (DS-348, DS-358).
+    """Tests for JiraIssue epic_key and parent_key fields.
 
     These tests verify that the epic_key and parent_key fields are correctly
     populated from the Jira API response, supporting parent/epic template
     variables in branch patterns and prompts.
 
-    DS-358: Distinguishes between Epic parents (populates epic_key only) and
+    Distinguishes between Epic parents (populates epic_key only) and
     Story/Task parents (populates parent_key only) based on parent issue type.
     """
 
@@ -477,7 +477,7 @@ class TestJiraIssueEpicAndParentFields:
         assert issue.epic_key is None
 
     def test_epic_parent_type_populates_epic_key_only(self) -> None:
-        """Test Epic parent type only populates epic_key (DS-358)."""
+        """Test Epic parent type only populates epic_key."""
         data = {
             "key": "TEST-404",
             "fields": {
@@ -495,7 +495,7 @@ class TestJiraIssueEpicAndParentFields:
         assert issue.parent_key is None  # Epic parent should NOT populate parent_key
 
     def test_task_parent_type_populates_parent_key_only(self) -> None:
-        """Test Task parent type only populates parent_key (DS-358)."""
+        """Test Task parent type only populates parent_key."""
         data = {
             "key": "TEST-405",
             "fields": {
@@ -513,7 +513,7 @@ class TestJiraIssueEpicAndParentFields:
         assert issue.epic_key is None  # Task parent should NOT populate epic_key
 
     def test_parent_without_issuetype_does_not_populate_either(self) -> None:
-        """Test parent without issuetype info defaults to sub-task relationship (DS-358)."""
+        """Test parent without issuetype info defaults to sub-task relationship."""
         data = {
             "key": "TEST-406",
             "fields": {

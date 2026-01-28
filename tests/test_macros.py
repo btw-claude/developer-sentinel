@@ -1,8 +1,8 @@
 """Tests for Jinja2 template macros.
 
-DS-280: Unit tests for status_badge macro in macros.html.
-DS-284: Refactored to use BeautifulSoup for robust HTML parsing.
-DS-286: Added helper assertion functions for reduced test repetition.
+Unit tests for status_badge macro in macros.html.
+Refactored to use BeautifulSoup for robust HTML parsing.
+Added helper assertion functions for reduced test repetition.
 
 This module tests the Jinja2 macros used in dashboard templates to ensure
 proper badge rendering for different states.
@@ -17,8 +17,8 @@ from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
 
 
-# DS-286: Helper assertion functions for badge testing
-# DS-288: Refactored helpers to use assert_badge_exists internally
+# Helper assertion functions for badge testing
+# Refactored helpers to use assert_badge_exists internally
 def assert_badge_exists(soup: BeautifulSoup) -> Tag:
     """Assert that a badge element exists in the parsed HTML.
 
@@ -85,14 +85,14 @@ def assert_badge_text(soup: BeautifulSoup, expected_text: str) -> None:
 
 
 class TestStatusBadgeMacro:
-    """Tests for the status_badge Jinja2 macro (DS-280).
+    """Tests for the status_badge Jinja2 macro.
 
     The status_badge macro renders a badge with automatic state-based styling:
     - badge--inactive: When active_count is 0 (nothing active)
     - badge--success: When active_count equals total_count (all active)
     - (default): When partially active (some but not all)
 
-    DS-284: Tests use BeautifulSoup for semantic HTML assertions instead of
+    Tests use BeautifulSoup for semantic HTML assertions instead of
     fragile string matching.
     """
 
@@ -130,7 +130,7 @@ class TestStatusBadgeMacro:
         return parse
 
     def test_badge_inactive_when_active_count_is_zero(self, parse_badge) -> None:
-        """Test badge--inactive state when active_count is 0 (DS-280 requirement 1)."""
+        """Test badge--inactive state when active_count is 0."""
         soup = parse_badge(active_count=0, total_count=5)
 
         assert_badge_has_class(soup, "badge--inactive")
@@ -145,7 +145,7 @@ class TestStatusBadgeMacro:
         assert_badge_text(soup, f"0/{total_count}")
 
     def test_badge_success_when_active_equals_total(self, parse_badge) -> None:
-        """Test badge--success state when active_count equals total_count (DS-280 requirement 2)."""
+        """Test badge--success state when active_count equals total_count."""
         soup = parse_badge(active_count=5, total_count=5)
 
         assert_badge_has_class(soup, "badge--success")
@@ -160,7 +160,7 @@ class TestStatusBadgeMacro:
         assert_badge_text(soup, f"{count}/{count}")
 
     def test_badge_default_when_partially_active(self, parse_badge) -> None:
-        """Test default state (no modifier class) when partially active (DS-280 requirement 3)."""
+        """Test default state (no modifier class) when partially active."""
         soup = parse_badge(active_count=3, total_count=5)
 
         # Should have 'badge' class but NOT 'badge--inactive' or 'badge--success'
@@ -187,7 +187,7 @@ class TestStatusBadgeMacro:
         assert_badge_text(soup, f"{active_count}/{total_count}")
 
     def test_edge_case_both_counts_zero(self, parse_badge) -> None:
-        """Test edge case when total_count is 0 (DS-280 requirement 4).
+        """Test edge case when total_count is 0.
 
         When both active_count and total_count are 0, the macro applies
         badge--inactive because the `active_count == 0` check comes first
@@ -204,7 +204,7 @@ class TestStatusBadgeMacro:
     def test_badge_renders_span_element(self, parse_badge) -> None:
         """Test that the badge is rendered as a span element."""
         soup = parse_badge(active_count=2, total_count=5)
-        # DS-288: Use assert_badge_exists which returns the badge, eliminating redundant soup.find call
+        # Use assert_badge_exists which returns the badge, eliminating redundant soup.find call
         badge = assert_badge_exists(soup)
         assert badge.name == "span"
 

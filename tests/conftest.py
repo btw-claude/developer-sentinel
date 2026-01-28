@@ -3,10 +3,10 @@
 This module provides reusable test fixtures extracted from test_main.py to reduce
 code duplication, particularly in the hot-reload tests.
 
-DS-97: Refactored test setup code into shared fixtures.
+Refactored test setup code into shared fixtures.
 
-TrackingAgentClient Usage Guidelines (DS-196)
-=============================================
+TrackingAgentClient Usage Guidelines
+====================================
 
 The TrackingAgentClient can be instantiated in two ways:
 
@@ -57,7 +57,7 @@ from sentinel.orchestration import AgentConfig, Orchestration, TriggerConfig
 from sentinel.poller import JiraClient
 from sentinel.tag_manager import JiraTagClient
 
-# DS-362: Re-export build_github_trigger_key from deduplication module
+# Re-export build_github_trigger_key from deduplication module
 # This provides backwards compatibility for tests that imported from conftest
 __all__ = ["build_github_trigger_key"]
 
@@ -152,7 +152,7 @@ class MockTagClient(JiraTagClient):
 class TrackingAgentClient(AgentClient):
     """Agent client that tracks concurrent executions for testing.
 
-    DS-188: Extracted from duplicate inner classes in TestPerOrchestrationConcurrencyLimits
+    Extracted from duplicate inner classes in TestPerOrchestrationConcurrencyLimits
     to reduce code duplication and improve maintainability.
 
     This class provides flexible tracking of concurrent executions with support for:
@@ -261,7 +261,7 @@ class TrackingAgentClient(AgentClient):
 class MockAgentClientFactory(AgentClientFactory):
     """Mock agent client factory for testing.
 
-    DS-296: This factory allows tests to control which agent client is returned
+    This factory allows tests to control which agent client is returned
     for different orchestrations without needing to set up real agent backends.
 
     The factory always returns the same mock client instance, making it easy
@@ -318,7 +318,7 @@ def make_config(
     )
 
 
-# DS-362: build_github_trigger_key is now imported from sentinel.deduplication
+# build_github_trigger_key is now imported from sentinel.deduplication
 # and re-exported above for backwards compatibility with tests that import from conftest.
 # The previous inline implementation has been removed in favor of the shared utility.
 
@@ -328,7 +328,7 @@ def make_orchestration(
     project: str = "TEST",
     tags: list[str] | None = None,
     max_concurrent: int | None = None,
-    # DS-341: Added GitHub-specific fields for trigger deduplication tests
+    # Added GitHub-specific fields for trigger deduplication tests
     source: Literal["jira", "github"] = "jira",
     project_number: int | None = None,
     project_owner: str = "",
@@ -342,8 +342,8 @@ def make_orchestration(
         name: The orchestration name.
         project: The Jira project key (for Jira triggers).
         tags: List of tags to trigger on (for Jira triggers).
-        max_concurrent: Optional per-orchestration concurrency limit (DS-181).
-        source: Trigger source, either "jira" or "github" (DS-341).
+        max_concurrent: Optional per-orchestration concurrency limit.
+        source: Trigger source, either "jira" or "github".
         project_number: GitHub project number (for GitHub triggers).
         project_owner: GitHub project owner (org or user name).
         project_scope: GitHub project scope ("org" or "user").
@@ -353,7 +353,7 @@ def make_orchestration(
     Returns:
         An Orchestration instance configured for testing.
     """
-    # DS-341: Support both Jira and GitHub triggers
+    # Support both Jira and GitHub triggers
     if source == "github":
         trigger = TriggerConfig(
             source="github",
@@ -457,7 +457,7 @@ def hot_reload_sentinel(
 def tracking_agent_client_factory():
     """Factory fixture for creating TrackingAgentClient instances.
 
-    DS-188: Provides a factory function to create TrackingAgentClient instances
+    Provides a factory function to create TrackingAgentClient instances
     with different configurations, allowing tests to customize tracking behavior.
 
     Returns:

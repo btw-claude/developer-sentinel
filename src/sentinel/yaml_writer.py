@@ -3,10 +3,6 @@
 This module provides functionality to safely modify orchestration YAML files
 while preserving formatting, comments, and structure using ruamel.yaml's
 round-trip editing capabilities.
-
-DS-248: Create YAML writer module for safe orchestration file modification
-DS-257: Add timeout and cleanup improvements
-DS-267: Minor enhancements from code review
 """
 
 from __future__ import annotations
@@ -70,7 +66,7 @@ def _file_lock(
             Defaults to False for backward compatibility.
         retry_interval_seconds: Time to wait between lock acquisition attempts in
             seconds. If None, uses DEFAULT_LOCK_RETRY_INTERVAL (0.1s). Useful for
-            environments with different I/O characteristics. (DS-267)
+            environments with different I/O characteristics.
 
     Yields:
         None
@@ -110,7 +106,7 @@ def _file_lock(
                             f"Timed out waiting for lock on {file_path} "
                             f"after {max_wait_seconds:.1f} seconds"
                         ) from None
-                    # Wait before retrying (DS-267: configurable interval)
+                    # Wait before retrying
                     time.sleep(retry_interval_seconds)
         yield
     except (FileLockTimeoutError, OrchestrationYamlWriterError):
@@ -151,7 +147,7 @@ def cleanup_orphaned_lock_files(directory: Path, max_age_seconds: float = 3600) 
     removed_count = 0
     current_time = time.time()
 
-    # DS-267: Handle both .yaml.lock and .yml.lock files
+    # Handle both .yaml.lock and .yml.lock files
     lock_patterns = ["**/*.yaml.lock", "**/*.yml.lock"]
 
     try:
@@ -183,7 +179,7 @@ class OrchestrationYamlWriter:
             Set to 0 to block indefinitely.
         retry_interval_seconds: Time to wait between lock acquisition attempts.
             Defaults to DEFAULT_LOCK_RETRY_INTERVAL (0.1s). Useful for
-            environments with different I/O characteristics. (DS-267)
+            environments with different I/O characteristics.
         cleanup_lock_files: If True, removes lock files after releasing locks.
             Defaults to False.
         create_backups: If True, creates backup files before modifications.
@@ -220,7 +216,7 @@ class OrchestrationYamlWriter:
             backup_suffix="timestamp",
             cleanup_lock_files=True,
             lock_timeout_seconds=10.0,
-            retry_interval_seconds=0.2  # DS-267: custom retry interval
+            retry_interval_seconds=0.2
         )
     """
 
@@ -239,12 +235,12 @@ class OrchestrationYamlWriter:
         self._yaml.default_flow_style = False
         self._yaml.width = 4096  # Prevent line wrapping
 
-        # Lock configuration (DS-257, DS-267)
+        # Lock configuration
         self._lock_timeout_seconds = lock_timeout_seconds
-        self._retry_interval_seconds = retry_interval_seconds  # DS-267
+        self._retry_interval_seconds = retry_interval_seconds
         self._cleanup_lock_files = cleanup_lock_files
 
-        # Backup configuration (DS-257)
+        # Backup configuration
         self._create_backups = create_backups
         self._backup_suffix = backup_suffix
 
@@ -301,9 +297,9 @@ class OrchestrationYamlWriter:
 
         try:
             if self._backup_suffix == "timestamp":
-                # DS-267: Use UTC timezone for consistent timestamps across environments
+                # Use UTC timezone for consistent timestamps across environments
                 timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-                # DS-267: Handle both .yaml and .yml extensions consistently
+                # Handle both .yaml and .yml extensions consistently
                 base_name = file_path.stem
                 if file_path.suffix.lower() in (".yaml", ".yml"):
                     backup_path = file_path.parent / f"{base_name}.{timestamp}.bak"
@@ -334,7 +330,7 @@ class OrchestrationYamlWriter:
             OrchestrationYamlWriterError: If the file cannot be written or
                 backup creation fails.
         """
-        # Create backup before modification (DS-257)
+        # Create backup before modification
         self._create_backup(file_path)
 
         try:
@@ -500,7 +496,6 @@ class OrchestrationYamlWriter:
             FileLockTimeoutError: If any file lock cannot be acquired within
                 the configured timeout.
         """
-        # DS-259: Add debug log at start for traceability
         logger.debug(
             "toggle_by_project called: project='%s', enabled=%s, files=%d",
             project,
@@ -589,7 +584,6 @@ class OrchestrationYamlWriter:
             FileLockTimeoutError: If any file lock cannot be acquired within
                 the configured timeout.
         """
-        # DS-259: Add debug log at start for traceability (aligns with toggle_by_project)
         logger.debug(
             "toggle_by_repo called: repo='%s', enabled=%s, files=%d",
             repo,

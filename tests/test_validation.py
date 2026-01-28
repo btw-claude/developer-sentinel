@@ -1,9 +1,9 @@
-"""Tests for validation module (DS-282, DS-285).
+"""Tests for validation module.
 
 Tests for the validation helper functions that were consolidated from routes.py
 into a dedicated sentinel.validation module.
 
-DS-285: Added tests for deprecation warnings on backwards compatibility aliases.
+Added tests for deprecation warnings on backwards compatibility aliases.
 """
 
 import logging
@@ -25,7 +25,7 @@ from sentinel.validation import (
 
 
 class TestValidatePositiveFloat:
-    """Tests for validate_positive_float helper function (DS-282)."""
+    """Tests for validate_positive_float helper function."""
 
     def test_valid_positive_value(self) -> None:
         """Test parsing a valid positive float."""
@@ -77,7 +77,7 @@ class TestValidatePositiveFloat:
 
 
 class TestValidateStrictlyPositiveFloat:
-    """Tests for validate_strictly_positive_float helper function (DS-282)."""
+    """Tests for validate_strictly_positive_float helper function."""
 
     def test_valid_positive_value(self) -> None:
         """Test parsing a valid positive float."""
@@ -126,7 +126,7 @@ class TestValidateStrictlyPositiveFloat:
 
 
 class TestValidatePositiveInt:
-    """Tests for validate_positive_int helper function (DS-282)."""
+    """Tests for validate_positive_int helper function."""
 
     def test_valid_positive_value(self) -> None:
         """Test parsing a valid positive integer."""
@@ -188,7 +188,7 @@ class TestValidatePositiveInt:
 
 
 class TestBoundsConstants:
-    """Tests for bounds constants exported from validation module (DS-282)."""
+    """Tests for bounds constants exported from validation module."""
 
     def test_toggle_cooldown_bounds(self) -> None:
         """Test toggle cooldown bounds constants."""
@@ -207,7 +207,7 @@ class TestBoundsConstants:
 
 
 class TestBackwardsCompatibility:
-    """Tests to ensure backwards compatibility with routes.py imports (DS-282, DS-285)."""
+    """Tests to ensure backwards compatibility with routes.py imports."""
 
     def test_routes_module_imports_validation_functions(self) -> None:
         """Test that routes module can import validation functions."""
@@ -218,7 +218,7 @@ class TestBackwardsCompatibility:
         assert callable(_validate_positive_int)
 
     def test_routes_module_imports_bounds_constants(self) -> None:
-        """Test that routes module can import bounds constants with deprecation warning (DS-285)."""
+        """Test that routes module can import bounds constants with deprecation warning."""
         from sentinel.dashboard import routes
 
         # Verify they have correct values and emit deprecation warnings
@@ -236,7 +236,7 @@ class TestBackwardsCompatibility:
             assert len(deprecation_warnings) == 6
 
     def test_routes_validation_functions_work_same_as_module(self) -> None:
-        """Test that routes validation functions behave same as module functions (DS-285)."""
+        """Test that routes validation functions behave same as module functions."""
         from sentinel.dashboard.routes import _validate_positive_float as routes_float
         from sentinel.dashboard.routes import _validate_positive_int as routes_int
 
@@ -254,7 +254,7 @@ class TestBackwardsCompatibility:
 
 
 class TestDeprecationWarnings:
-    """Tests for deprecation warnings on backwards compatibility aliases (DS-285)."""
+    """Tests for deprecation warnings on backwards compatibility aliases."""
 
     def test_validate_positive_float_emits_deprecation_warning(self) -> None:
         """Test that _validate_positive_float emits deprecation warning."""
@@ -309,7 +309,7 @@ class TestDeprecationWarnings:
 
 
 class TestValidationModuleAll:
-    """Tests for __all__ definition in validation module (DS-285)."""
+    """Tests for __all__ definition in validation module."""
 
     def test_all_contains_expected_symbols(self) -> None:
         """Test that __all__ contains all expected public symbols."""

@@ -1,4 +1,4 @@
-"""Integration tests for GitHub Project polling feature (DS-205).
+"""Integration tests for GitHub Project polling feature.
 
 These tests verify the integration between GitHub project polling components:
 - Project-based trigger configuration
@@ -496,8 +496,8 @@ class TestEndToEndOrchestrationFlow:
     def test_orchestration_with_project_based_deduplication(self) -> None:
         """Test that project-based deduplication key is correctly formed.
 
-        DS-204 changed deduplication to use project_owner/project_number
-        instead of repo/tags to avoid polling the same project multiple times.
+        Deduplication uses project_owner/project_number instead of repo/tags
+        to avoid polling the same project multiple times.
         """
         # Two orchestrations pointing to the same project but different filters
         orch1 = Orchestration(

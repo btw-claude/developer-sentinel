@@ -36,12 +36,12 @@ class OrchestrationInfo:
 
 @dataclass(frozen=True)
 class ProjectOrchestrations:
-    """Orchestrations grouped by project or repository (DS-224, DS-226).
+    """Orchestrations grouped by project or repository.
 
     This groups orchestrations by their trigger project (for Jira) or
     repository (for GitHub) for a more organized dashboard display.
 
-    .. note:: API Stability (DS-231)
+    .. note:: API Stability
         This class is currently intended for internal dashboard use only.
         If this class is exposed as part of a public API in the future,
         consider the following deprecation and versioning practices:
@@ -103,7 +103,7 @@ class HotReloadMetrics:
 
 @dataclass(frozen=True)
 class RunningStepInfoView:
-    """Read-only running step information for the dashboard (DS-122).
+    """Read-only running step information for the dashboard.
 
     This provides an immutable view of a running execution step including
     calculated elapsed time for display purposes.
@@ -114,13 +114,13 @@ class RunningStepInfoView:
     attempt_number: int
     started_at: datetime
     elapsed_seconds: float
-    log_filename: str  # derived from started_at (DS-319)
-    issue_url: str  # URL to Jira or GitHub issue (DS-322)
+    log_filename: str  # derived from started_at
+    issue_url: str  # URL to Jira or GitHub issue
 
 
 @dataclass(frozen=True)
 class QueuedIssueInfoView:
-    """Read-only queued issue information for the dashboard (DS-123).
+    """Read-only queued issue information for the dashboard.
 
     This provides an immutable view of an issue waiting in queue for an
     execution slot, including calculated wait time for display purposes.
@@ -134,7 +134,7 @@ class QueuedIssueInfoView:
 
 @dataclass(frozen=True)
 class SystemStatusInfo:
-    """System status information for the dashboard (DS-124).
+    """System status information for the dashboard.
 
     This provides system-level metrics including thread pool usage,
     poll times, and process uptime.
@@ -175,11 +175,11 @@ class DashboardState:
     active_versions: list[OrchestrationVersionInfo] = field(default_factory=list)
     pending_removal_versions: list[OrchestrationVersionInfo] = field(default_factory=list)
 
-    # Grouped orchestrations (DS-224)
+    # Grouped orchestrations
     jira_projects: list[ProjectOrchestrations] = field(default_factory=list)
     github_repos: list[ProjectOrchestrations] = field(default_factory=list)
 
-    # Active orchestration counts (DS-255) - count of projects/repos with running orchestrations
+    # Active orchestration counts - count of projects/repos with running orchestrations
     active_jira_projects_count: int = 0
     active_github_repos_count: int = 0
 
@@ -187,10 +187,10 @@ class DashboardState:
     active_execution_count: int = 0
     available_slots: int = 0
 
-    # Running steps (DS-122) - active execution details for dashboard display
+    # Running steps - active execution details for dashboard display
     running_steps: list[RunningStepInfoView] = field(default_factory=list)
 
-    # Issue queue (DS-123) - issues waiting for execution slots
+    # Issue queue - issues waiting for execution slots
     issue_queue: list[QueuedIssueInfoView] = field(default_factory=list)
 
     # Hot-reload metrics
@@ -200,7 +200,7 @@ class DashboardState:
     shutdown_requested: bool = False
     active_incomplete_tasks: int = 0
 
-    # System status (DS-124) - thread pool, poll times, uptime
+    # System status - thread pool, poll times, uptime
     system_status: SystemStatusInfo | None = None
 
 
@@ -270,7 +270,7 @@ class SentinelStateAccessor:
             for orch in sentinel.orchestrations
         ]
 
-        # Group orchestrations by project/repo (DS-224)
+        # Group orchestrations by project/repo
         jira_projects, github_repos = self._group_orchestrations(orchestration_infos)
 
         # Extract version info (thread-safe access)
@@ -301,7 +301,7 @@ class SentinelStateAccessor:
         with sentinel._futures_lock:
             pending_count = sum(1 for f in sentinel._active_futures if not f.done())
 
-        # Get running step info (DS-122)
+        # Get running step info
         running_steps_raw = sentinel.get_running_steps()
         now = datetime.now()
         running_step_views = [
@@ -312,12 +312,12 @@ class SentinelStateAccessor:
                 started_at=step.started_at,
                 elapsed_seconds=(now - step.started_at).total_seconds(),
                 log_filename=generate_log_filename(step.started_at),
-                issue_url=step.issue_url,  # DS-322: Pass through issue URL
+                issue_url=step.issue_url,  # Pass through issue URL
             )
             for step in running_steps_raw
         ]
 
-        # Get issue queue info (DS-123)
+        # Get issue queue info
         issue_queue_raw = sentinel.get_issue_queue()
         issue_queue_views = [
             QueuedIssueInfoView(
@@ -329,7 +329,7 @@ class SentinelStateAccessor:
             for item in issue_queue_raw
         ]
 
-        # Get system status info (DS-124)
+        # Get system status info
         start_time = sentinel.get_start_time()
         system_status = SystemStatusInfo(
             used_slots=active_count,
@@ -341,7 +341,7 @@ class SentinelStateAccessor:
             uptime_seconds=(now - start_time).total_seconds(),
         )
 
-        # Count projects/repos with active orchestrations (DS-255)
+        # Count projects/repos with active orchestrations
         # Build a mapping from orchestration name to its project/repo
         active_orchestration_names = {step.orchestration_name for step in running_step_views}
         active_jira_projects: set[str] = set()
@@ -426,7 +426,7 @@ class SentinelStateAccessor:
     def _group_orchestrations(
         self, orchestrations: list[OrchestrationInfo]
     ) -> tuple[list[ProjectOrchestrations], list[ProjectOrchestrations]]:
-        """Group orchestrations by Jira project and GitHub repository (DS-224).
+        """Group orchestrations by Jira project and GitHub repository.
 
         Args:
             orchestrations: List of orchestration info objects to group.
@@ -457,7 +457,7 @@ class SentinelStateAccessor:
         return jira_projects, github_repos
 
     def get_log_files(self) -> list[dict]:
-        """Get available log files grouped by orchestration (DS-127).
+        """Get available log files grouped by orchestration.
 
         Discovers log files in the agent_logs_dir, grouped by orchestration
         name, with files sorted by modification time (newest first).
@@ -518,7 +518,7 @@ class SentinelStateAccessor:
         return result
 
     def _format_log_display_name(self, filename: str) -> str:
-        """Format a log filename for display (DS-127).
+        """Format a log filename for display.
 
         Converts YYYYMMDD_HHMMSS.log to a human-readable format.
 
@@ -534,7 +534,7 @@ class SentinelStateAccessor:
         return filename
 
     def get_log_file_path(self, orchestration: str, filename: str) -> Path | None:
-        """Get the full path to a log file (DS-127).
+        """Get the full path to a log file.
 
         Args:
             orchestration: The orchestration name.

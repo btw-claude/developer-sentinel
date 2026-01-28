@@ -930,7 +930,7 @@ class TestGitHubPollerProjectBased:
 
 
 class TestGitHubIssueRepoUrl:
-    """Tests for repo_url field in GitHubIssue (DS-204)."""
+    """Tests for repo_url field in GitHubIssue."""
 
     def test_from_project_item_extracts_url(self) -> None:
         """Test that from_project_item extracts repo_url from content."""
@@ -999,7 +999,7 @@ class TestGitHubIssueRepoUrl:
 
 
 class TestGitHubPollerClearProjectIdCache:
-    """Tests for GitHubPoller.clear_project_id_cache (DS-212)."""
+    """Tests for GitHubPoller.clear_project_id_cache."""
 
     def test_cache_is_cleared_after_calling_method(self) -> None:
         """Test that cache is cleared after calling clear_project_id_cache."""
@@ -1103,7 +1103,7 @@ class TestGitHubPollerBuildQueryDeprecation:
 
 
 class TestGitHubPollerLabelFiltering:
-    """Tests for label filtering in GitHubPoller.poll() (DS-333).
+    """Tests for label filtering in GitHubPoller.poll().
 
     These tests verify the labels field filtering functionality:
     - Test poll() with labels filter
@@ -1565,7 +1565,7 @@ class TestGitHubPollerLabelFiltering:
 
 
 class TestGitHubIssueParentIssueNumber:
-    """Tests for GitHubIssue parent_issue_number field (DS-349).
+    """Tests for GitHubIssue parent_issue_number field.
 
     These tests verify that the parent_issue_number field is correctly
     populated from the GitHub API response, supporting the
@@ -1612,7 +1612,7 @@ class TestGitHubIssueParentIssueNumber:
         assert issue.parent_issue_number is None
 
     def test_parent_issue_number_none_when_parent_missing_number(self) -> None:
-        """Test parent_issue_number is None when parent field present but number missing (DS-360).
+        """Test parent_issue_number is None when parent field present but number missing.
 
         This is a defensive test case for malformed GitHub API responses where
         the parent field is present (as a dict) but doesn't contain the expected
@@ -1627,7 +1627,7 @@ class TestGitHubIssueParentIssueNumber:
         assert issue.parent_issue_number is None
 
     def test_parent_issue_number_none_when_parent_number_is_none(self) -> None:
-        """Test parent_issue_number is None when parent.number is explicitly None (DS-360).
+        """Test parent_issue_number is None when parent.number is explicitly None.
 
         This is a defensive test case where the parent dict has a 'number' key
         but its value is None instead of an integer.
@@ -1641,7 +1641,7 @@ class TestGitHubIssueParentIssueNumber:
         assert issue.parent_issue_number is None
 
     def test_parent_issue_number_invalid_type_returns_none(self) -> None:
-        """Test that invalid type for parent.number returns None (DS-369).
+        """Test that invalid type for parent.number returns None.
 
         This test verifies that when the parent dict has a 'number' key but its
         value is an unexpected type (not int), the method returns None and logs

@@ -1,4 +1,4 @@
-{# DS-329: Security audit complete - no external links (target="_blank") in this template #}
+{# Security audit complete - no external links (target="_blank") in this template #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/static/css/utilities.css">
     <style>
         :root {
-            /* Base theme colors (alphabetized for maintainability - DS-241) */
+            /* Base theme colors (alphabetized for maintainability) */
             --accent: #0f3460;
             --accent-hover: rgba(15, 52, 96, 0.3);
             --bg-primary: #1a1a2e;
@@ -20,7 +20,7 @@
             --text-secondary: #aaa;
             --warning: #f9c74f;
 
-            /* Accordion component custom properties (alphabetized - DS-240, DS-241) */
+            /* Accordion component custom properties (alphabetized) */
             --accordion-border: var(--accent);
             --accordion-content-bg: var(--bg-primary);
             --accordion-header-bg: var(--bg-secondary);
@@ -224,10 +224,10 @@
     </style>
     <script>
         /**
-         * DS-270: Centralized CSS fallback color constants for cross-browser compatibility.
+         * Centralized CSS fallback color constants for cross-browser compatibility.
          * These fallback values are used when CSS custom properties are not supported.
          * Matches the CSS custom properties defined in :root for consistency.
-         * DS-276: Added Object.freeze() for defensive programming best practices.
+         * Added Object.freeze() for defensive programming best practices.
          * @constant {Object}
          */
         const CSS_FALLBACK_COLORS = Object.freeze({
@@ -241,7 +241,7 @@
          * Toggle a collapsible section's expanded state.
          * Handles both the visual toggle (icon rotation, content expansion)
          * and works with HTMX's lazy loading pattern.
-         * DS-239: Added defensive null checks for consistency with toggleNestedAccordion.
+         * Added defensive null checks for consistency with toggleNestedAccordion.
          * @param {HTMLElement} headerElement - The .collapsible-header element that was clicked
          */
         function toggleCollapsibleSection(headerElement) {
@@ -268,9 +268,9 @@
         }
 
         /**
-         * Toggle a nested accordion item's expanded state (DS-224, DS-236, DS-238).
+         * Toggle a nested accordion item's expanded state.
          * Used for project/repo groupings within orchestrations sections.
-         * DS-236, DS-238: Added defensive null check to prevent errors when element not found.
+         * Added defensive null check to prevent errors when element not found.
          * @param {HTMLElement} headerElement - The .nested-accordion-header element that was clicked
          */
         function toggleNestedAccordion(headerElement) {
@@ -283,7 +283,7 @@
         }
 
         /**
-         * Check if a collapsible section is expanded (DS-228).
+         * Check if a collapsible section is expanded.
          * Used in HTMX trigger expressions for conditional auto-refresh.
          * @param {string} contentId - The ID of the collapsible content element (e.g., 'system-status-content')
          * @returns {boolean} True if the section is expanded, false otherwise
@@ -298,11 +298,11 @@
         }
 
         /**
-         * Handle collapsible section click with propagation control (DS-361, DS-370).
+         * Handle collapsible section click with propagation control.
          * Encapsulates the collapse-with-propagation-stop logic for reusability.
          * Only toggles and stops propagation if the section is already expanded,
          * allowing HTMX to handle the initial expansion via lazy loading.
-         * DS-370: Refactored to use data-collapsible-target attribute instead of inline onclick.
+         * Refactored to use data-collapsible-target attribute instead of inline onclick.
          * @param {HTMLElement} element - The header element that was clicked
          * @param {string} contentId - The ID of the collapsible content element
          * @param {Event} event - The click event
@@ -315,10 +315,10 @@
         }
 
         /**
-         * Initialize collapsible section event listeners using event delegation (DS-370, DS-376).
+         * Initialize collapsible section event listeners using event delegation.
          * Uses a single event listener on the main container instead of attaching
          * individual listeners to each collapsible header.
-         * DS-376: Refactored to use event delegation pattern for improved performance
+         * Refactored to use event delegation pattern for improved performance
          * and automatic support for dynamically added collapsible sections.
          * Benefits:
          * - Reduced memory usage with fewer event listeners
@@ -344,20 +344,20 @@
             });
         }
 
-        // DS-370: Initialize collapsible sections when DOM is ready
+        // Initialize collapsible sections when DOM is ready
         document.addEventListener('DOMContentLoaded', initCollapsibleSections);
 
         /**
-         * Handle toggle API response with optimistic updates and error handling (DS-254, DS-261).
+         * Handle toggle API response with optimistic updates and error handling.
          * Reverts checkbox state on failure and updates status text on success.
-         * DS-261: Added try/catch for JSON.parse, null check for closest('td'),
-         *         success toast notification, and improved error handling.
+         * Added try/catch for JSON.parse, null check for closest('td'),
+         * success toast notification, and improved error handling.
          * @param {Event} event - The HTMX event containing the XHR response
          */
         function handleToggleResponse(event) {
             const response = event.detail.xhr.response;
 
-            // DS-261: Wrap JSON.parse in try/catch for graceful error handling of malformed JSON
+            // Wrap JSON.parse in try/catch for graceful error handling of malformed JSON
             let data;
             try {
                 data = JSON.parse(response);
@@ -375,7 +375,7 @@
                 // Show error toast/notification
                 showToast('error', data.message || 'Toggle operation failed');
             } else {
-                // DS-261: Add null check for event.target.closest('td') to prevent potential errors
+                // Add null check for event.target.closest('td') to prevent potential errors
                 const parentCell = event.target.closest('td');
                 if (parentCell) {
                     // Update status text if present
@@ -385,16 +385,16 @@
                         statusText.className = 'status-text ' + (data.enabled ? 'status-ok' : 'status-warn');
                     }
                 }
-                // DS-261: Add success toast notification for positive user feedback
+                // Add success toast notification for positive user feedback
                 const statusMessage = data.enabled ? 'Enabled' : 'Disabled';
                 showToast('success', 'Orchestration ' + statusMessage.toLowerCase() + ' successfully');
             }
         }
 
         /**
-         * Display a toast notification for user feedback (DS-254, DS-261).
+         * Display a toast notification for user feedback.
          * Creates a temporary notification that auto-dismisses after a duration.
-         * DS-261: Added CSS variable fallbacks for better cross-browser compatibility.
+         * Added CSS variable fallbacks for better cross-browser compatibility.
          * @param {string} type - The notification type: 'error', 'success', or 'warning'
          * @param {string} message - The message to display
          * @param {number} [duration=5000] - How long to show the toast in milliseconds
@@ -413,8 +413,8 @@
             const toast = document.createElement('div');
             toast.className = 'toast toast-' + type;
 
-            // DS-261, DS-270: Set colors based on type with CSS variable fallbacks for cross-browser compatibility
-            // DS-270: Refactored to use centralized CSS_FALLBACK_COLORS constants
+            // Set colors based on type with CSS variable fallbacks for cross-browser compatibility
+            // Refactored to use centralized CSS_FALLBACK_COLORS constants
             const colors = {
                 error: 'var(--danger, ' + CSS_FALLBACK_COLORS.danger + ')',
                 success: 'var(--success, ' + CSS_FALLBACK_COLORS.success + ')',
@@ -422,7 +422,7 @@
             };
             const bgColor = colors[type] || colors.error;
 
-            // DS-261, DS-270: Added fallback values for CSS variables using centralized constants
+            // Added fallback values for CSS variables using centralized constants
             toast.style.cssText = 'background-color: ' + bgColor + '; color: var(--text-primary, ' + CSS_FALLBACK_COLORS.textPrimary + '); padding: 0.75rem 1rem; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); max-width: 300px; animation: slideIn 0.3s ease-out;';
             toast.textContent = message;
 

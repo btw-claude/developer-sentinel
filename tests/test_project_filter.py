@@ -294,7 +294,7 @@ class TestProjectFilterParserEdgeCases:
 
 
 class TestProjectFilterParserInvalidSyntaxErrors:
-    """Tests for invalid filter syntax error handling (DS-211).
+    """Tests for invalid filter syntax error handling.
 
     Verifies that ProjectFilterParser raises appropriate errors with helpful
     messages for various malformed filter expressions.

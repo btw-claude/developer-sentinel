@@ -350,7 +350,7 @@ class TestGitHubIssueRouting:
 
 
 class TestGitHubLabelsFieldRouting:
-    """Tests for routing GitHub issues using the labels field (DS-333).
+    """Tests for routing GitHub issues using the labels field.
 
     These tests verify the labels field routing functionality:
     - Test GitHub issue matches with correct labels

@@ -274,7 +274,7 @@ class TestParseBool:
 
 
 class TestPortConstants:
-    """Tests for port validation constants (DS-148)."""
+    """Tests for port validation constants."""
 
     def test_min_port_value(self) -> None:
         """Test that MIN_PORT is 1."""
@@ -286,7 +286,7 @@ class TestPortConstants:
 
 
 class TestParsePort:
-    """Tests for _parse_port helper function (DS-135, DS-148)."""
+    """Tests for _parse_port helper function."""
 
     def test_valid_port_numbers(self) -> None:
         """Test parsing valid port numbers within range."""
@@ -346,7 +346,7 @@ class TestParsePort:
 
 
 class TestDashboardPortConfig:
-    """Tests for dashboard_port configuration with port range validation (DS-135, DS-148)."""
+    """Tests for dashboard_port configuration with port range validation."""
 
     def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that dashboard_port defaults to 8080."""
@@ -430,7 +430,7 @@ class TestDashboardPortConfig:
 
 
 class TestMaxEagerIterations:
-    """Tests for max_eager_iterations configuration (DS-98)."""
+    """Tests for max_eager_iterations configuration."""
 
     def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that max_eager_iterations defaults to 10."""
@@ -486,7 +486,7 @@ class TestMaxEagerIterations:
 
 
 class TestAttemptCountsTtlConfig:
-    """Tests for attempt_counts_ttl configuration (DS-152)."""
+    """Tests for attempt_counts_ttl configuration."""
 
     def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that attempt_counts_ttl defaults to 3600 seconds (1 hour)."""
@@ -542,7 +542,7 @@ class TestAttemptCountsTtlConfig:
 
 
 class TestMaxQueueSizeConfig:
-    """Tests for max_queue_size configuration (DS-153)."""
+    """Tests for max_queue_size configuration."""
 
     def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that max_queue_size defaults to 100."""
@@ -598,7 +598,7 @@ class TestMaxQueueSizeConfig:
 
 
 class TestDisableStreamingLogsConfig:
-    """Tests for disable_streaming_logs configuration (DS-170)."""
+    """Tests for disable_streaming_logs configuration."""
 
     def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that disable_streaming_logs defaults to False."""
@@ -658,7 +658,7 @@ class TestDisableStreamingLogsConfig:
 
 
 class TestValidateAgentType:
-    """Tests for _validate_agent_type helper function (DS-300)."""
+    """Tests for _validate_agent_type helper function."""
 
     def test_valid_agent_types(self) -> None:
         """Test that all valid agent types are accepted."""
@@ -672,7 +672,7 @@ class TestValidateAgentType:
         assert _validate_agent_type("CURSOR") == "cursor"
 
     def test_mixed_case_input(self) -> None:
-        """Test that mixed case input is correctly normalized (DS-307)."""
+        """Test that mixed case input is correctly normalized."""
         assert _validate_agent_type("CuRsOr") == "cursor"
         assert _validate_agent_type("ClAuDe") == "claude"
         assert _validate_agent_type("cLaUdE") == "claude"
@@ -687,7 +687,7 @@ class TestValidateAgentType:
 
 
 class TestValidateCursorMode:
-    """Tests for _validate_cursor_mode helper function (DS-293)."""
+    """Tests for _validate_cursor_mode helper function."""
 
     def test_valid_cursor_modes(self) -> None:
         """Test that all valid cursor modes are accepted."""
@@ -715,7 +715,7 @@ class TestValidateCursorMode:
 
 
 class TestCursorConfig:
-    """Tests for Cursor CLI configuration (DS-293)."""
+    """Tests for Cursor CLI configuration."""
 
     def test_default_agent_type_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that default_agent_type defaults to 'claude'."""
@@ -810,7 +810,7 @@ class TestCursorConfig:
         assert "Invalid SENTINEL_CURSOR_DEFAULT_MODE" in caplog.text
 
     def test_default_agent_type_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that default_agent_type parsing is case-insensitive (DS-300)."""
+        """Test that default_agent_type parsing is case-insensitive."""
         monkeypatch.setenv("SENTINEL_DEFAULT_AGENT_TYPE", "CURSOR")
 
         config = load_config()
@@ -820,7 +820,7 @@ class TestCursorConfig:
     def test_default_agent_type_invalid_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that invalid default_agent_type uses the default (DS-300)."""
+        """Test that invalid default_agent_type uses the default."""
         monkeypatch.setenv("SENTINEL_DEFAULT_AGENT_TYPE", "invalid")
 
         with caplog.at_level(logging.WARNING):

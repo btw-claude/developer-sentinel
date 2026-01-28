@@ -7,8 +7,6 @@
  *
  * Note: Integration tests with stylelint v16+ require ESM configuration.
  * These pattern tests provide direct validation of the regex patterns.
- *
- * Related: DS-279 (test implementation), DS-275 (original plugin), DS-269 (deprecation format)
  */
 
 describe("deprecation-comments plugin patterns", () => {
@@ -190,7 +188,7 @@ describe("deprecation-comments plugin patterns", () => {
     describe("real-world examples from utilities.css", () => {
         const blockDeprecationExample = `/* -----------------------------------------------------------------------------
    LEGACY TOGGLE SLIDER STYLES
-   @deprecated DS-260 - These styles are deprecated and will be removed in a future release.
+   @deprecated These styles are deprecated and will be removed in a future release.
    @since 2026-01-26 (deprecation added)
    @removal Planned removal: Q2 2026 (v2.0)
 

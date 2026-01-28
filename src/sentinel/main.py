@@ -44,17 +44,17 @@ from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
 
-# DS-210: Module-level constant for GitHub issue/PR URL parsing
+# Module-level constant for GitHub issue/PR URL parsing
 # This pattern extracts the owner/repo from GitHub URLs like:
 # - https://github.com/owner/repo/issues/123
 # - https://github.com/owner/repo/pull/456
-# DS-213: Pre-compiled for performance - avoids re-compilation on each call
+# Pre-compiled for performance - avoids re-compilation on each call
 GITHUB_ISSUE_PR_URL_PATTERN = re.compile(r"https?://[^/]+/([^/]+/[^/]+)/(?:issues|pull)/\d+")
 
 
 @dataclass
 class AttemptCountEntry:
-    """Entry in the attempt counts dictionary tracking count and last access time (DS-152).
+    """Entry in the attempt counts dictionary tracking count and last access time.
 
     This class tracks both the attempt count and the last time the entry was accessed,
     enabling TTL-based cleanup to prevent unbounded memory growth.
@@ -75,12 +75,12 @@ class RunningStepInfo:
     orchestration_name: str
     attempt_number: int
     started_at: datetime
-    issue_url: str  # URL to Jira or GitHub issue (DS-322)
+    issue_url: str  # URL to Jira or GitHub issue
 
 
 @dataclass
 class QueuedIssueInfo:
-    """Metadata about an issue waiting in queue for an execution slot (DS-123).
+    """Metadata about an issue waiting in queue for an execution slot.
 
     This class tracks information about issues that matched orchestration triggers
     but couldn't be executed immediately due to all execution slots being full.
@@ -313,7 +313,7 @@ class Sentinel:
         self.github_poller = GitHubPoller(github_client) if github_client else None
         self.router = Router(orchestrations)
 
-        # DS-296: Support both factory pattern and legacy single client for backward compatibility
+        # Support both factory pattern and legacy single client for backward compatibility
         self._agent_logger = agent_logger
 
         # Handle backward compatibility: agent_client keyword argument takes precedence
@@ -349,20 +349,20 @@ class Sentinel:
         self._active_futures: list[Future[ExecutionResult]] = []
         self._futures_lock = threading.Lock()
 
-        # Track running step metadata for dashboard display (DS-122)
+        # Track running step metadata for dashboard display
         # Maps future id() to RunningStepInfo for active executions
         self._running_steps: dict[int, RunningStepInfo] = {}
 
-        # Track attempt counts per (issue_key, orchestration_name) pair (DS-141)
+        # Track attempt counts per (issue_key, orchestration_name) pair
         # This tracks how many times an issue has been processed for an orchestration
         # across different polling cycles, providing accurate retry attempt numbers.
-        # DS-152: Changed from dict[tuple[str, str], int] to track last_access time
+        # Changed from dict[tuple[str, str], int] to track last_access time
         # for TTL-based cleanup to prevent unbounded memory growth.
         self._attempt_counts: dict[tuple[str, str], AttemptCountEntry] = {}
         self._attempt_counts_lock = threading.Lock()
 
-        # Track queued issues waiting for execution slots (DS-123)
-        # DS-153: Use deque with maxlen for automatic oldest-item eviction when full.
+        # Track queued issues waiting for execution slots
+        # Use deque with maxlen for automatic oldest-item eviction when full.
         # This provides FIFO behavior and prevents unbounded memory growth while
         # keeping the most recent queued issues visible in the dashboard.
         self._issue_queue: deque[QueuedIssueInfo] = deque(maxlen=config.max_queue_size)
@@ -380,33 +380,32 @@ class Sentinel:
         self._pending_removal_versions: list[OrchestrationVersion] = []
         self._versions_lock = threading.Lock()
 
-        # Observability counters for hot-reload metrics (DS-97)
+        # Observability counters for hot-reload metrics
         # These counters track orchestration lifecycle events for monitoring
         self._orchestrations_loaded_total: int = 0
         self._orchestrations_unloaded_total: int = 0
         self._orchestrations_reloaded_total: int = 0
 
-        # Note: DS-133/DS-134 removed _consecutive_eager_polls counter
         # Polling is now completion-driven: wait for task completion, then poll immediately
         # Only sleep poll_interval when no work is found and no tasks are pending
 
-        # DS-124: Track process start time and last poll times for system status display
+        # Track process start time and last poll times for system status display
         self._start_time: datetime = datetime.now()
         self._last_jira_poll: datetime | None = None
         self._last_github_poll: datetime | None = None
 
-        # DS-138: Shared deduplication manager for preventing duplicate agent spawns
+        # Shared deduplication manager for preventing duplicate agent spawns
         self._dedup_manager = DeduplicationManager()
 
-        # DS-178: Track per-orchestration active execution counts
+        # Track per-orchestration active execution counts
         # Maps orchestration_name to active execution count for that orchestration.
-        # This enables per-orchestration slot limits in future work (DS-179, DS-180).
-        # DS-187: Use defaultdict(int) to simplify get-or-default pattern in
+        # This enables per-orchestration slot limits in future work.
+        # Use defaultdict(int) to simplify get-or-default pattern in
         # _increment_per_orch_count and _decrement_per_orch_count methods.
         self._per_orch_active_counts: defaultdict[str, int] = defaultdict(int)
         self._per_orch_counts_lock = threading.Lock()
 
-        # DS-184: Per-orchestration logging manager for isolated log files
+        # Per-orchestration logging manager for isolated log files
         # Initialized only if config.orchestration_logs_dir is set
         self._orch_log_manager: OrchestrationLogManager | None = None
         if config.orchestration_logs_dir is not None:
@@ -424,7 +423,7 @@ class Sentinel:
     def _log_for_orchestration(
         self, orchestration_name: str, level: int, message: str, **kwargs: Any
     ) -> None:
-        """Log a message to the orchestration-specific log file if configured (DS-184).
+        """Log a message to the orchestration-specific log file if configured.
 
         This helper method writes logs to both the main logger and the per-orchestration
         log file (if enabled). This enables better log isolation and organization when
@@ -484,7 +483,7 @@ class Sentinel:
             return running
 
     def get_issue_queue(self) -> list[QueuedIssueInfo]:
-        """Get information about issues waiting in queue for execution slots (DS-123).
+        """Get information about issues waiting in queue for execution slots.
 
         Returns a list of QueuedIssueInfo objects for issues that matched
         orchestration triggers but couldn't be executed due to lack of slots.
@@ -497,7 +496,7 @@ class Sentinel:
             return list(self._issue_queue)
 
     def get_start_time(self) -> datetime:
-        """Get the process start time (DS-124).
+        """Get the process start time.
 
         Returns:
             The datetime when the Sentinel instance was created.
@@ -505,7 +504,7 @@ class Sentinel:
         return self._start_time
 
     def get_last_jira_poll(self) -> datetime | None:
-        """Get the last Jira poll time (DS-124).
+        """Get the last Jira poll time.
 
         Returns:
             The datetime of the last Jira poll, or None if never polled.
@@ -513,7 +512,7 @@ class Sentinel:
         return self._last_jira_poll
 
     def get_last_github_poll(self) -> datetime | None:
-        """Get the last GitHub poll time (DS-124).
+        """Get the last GitHub poll time.
 
         Returns:
             The datetime of the last GitHub poll, or None if never polled.
@@ -521,7 +520,7 @@ class Sentinel:
         return self._last_github_poll
 
     def _clear_issue_queue(self) -> None:
-        """Clear the issue queue at the start of a new polling cycle (DS-123).
+        """Clear the issue queue at the start of a new polling cycle.
 
         The queue is cleared each cycle because issues will be re-polled
         and re-added if they still match and slots are still unavailable.
@@ -530,15 +529,15 @@ class Sentinel:
             self._issue_queue.clear()
 
     def _add_to_issue_queue(self, issue_key: str, orchestration_name: str) -> None:
-        """Add an issue to the queue when no execution slot is available (DS-123).
+        """Add an issue to the queue when no execution slot is available.
 
-        DS-153: Queue uses collections.deque with maxlen for automatic oldest-item
+        Queue uses collections.deque with maxlen for automatic oldest-item
         eviction when full. This provides FIFO behavior - when the queue is at
         capacity, adding a new item automatically evicts the oldest item instead
         of dropping the new one. This ensures the dashboard shows the most recently
         queued issues rather than the oldest ones.
 
-        DS-158: Enhanced logging to include the evicted item's key for better
+        Enhanced logging to include the evicted item's key for better
         debugging and observability in production.
 
         Args:
@@ -547,7 +546,7 @@ class Sentinel:
         """
         with self._queue_lock:
             evicted_item: QueuedIssueInfo | None = None
-            # DS-158: Capture the item that will be evicted before appending
+            # Capture the item that will be evicted before appending
             # since deque.append() doesn't return the evicted item
             if len(self._issue_queue) == self._issue_queue.maxlen:
                 evicted_item = self._issue_queue[0]  # Oldest item (leftmost)
@@ -570,14 +569,14 @@ class Sentinel:
     def _get_and_increment_attempt_count(
         self, issue_key: str, orchestration_name: str
     ) -> int:
-        """Get and increment the attempt count for an issue/orchestration pair (DS-141).
+        """Get and increment the attempt count for an issue/orchestration pair.
 
         This method atomically increments the attempt count and returns the new value.
         It tracks how many times an issue has been processed for a given orchestration
         across different polling cycles, providing accurate retry attempt numbers
         in the Running Steps dashboard.
 
-        DS-152: Also updates the last_access time to support TTL-based cleanup.
+        Also updates the last_access time to support TTL-based cleanup.
 
         Args:
             issue_key: The key of the issue being processed.
@@ -600,7 +599,7 @@ class Sentinel:
             return new_count
 
     def _cleanup_stale_attempt_counts(self) -> int:
-        """Clean up stale attempt count entries based on TTL (DS-152).
+        """Clean up stale attempt count entries based on TTL.
 
         Removes entries from _attempt_counts that haven't been accessed within
         the configured TTL period. This prevents unbounded memory growth for
@@ -634,14 +633,14 @@ class Sentinel:
         return cleaned_count
 
     def _increment_per_orch_count(self, orchestration_name: str) -> int:
-        """Increment the active execution count for an orchestration (DS-178).
+        """Increment the active execution count for an orchestration.
 
         This method atomically increments the count of active executions for a
         given orchestration and returns the new count. Used to track how many
         concurrent executions are running for each orchestration, enabling
-        per-orchestration slot limits (DS-179, DS-180).
+        per-orchestration slot limits.
 
-        DS-187: Simplified using defaultdict(int) to eliminate the get-or-default pattern.
+        Simplified using defaultdict(int) to eliminate the get-or-default pattern.
 
         Args:
             orchestration_name: The name of the orchestration being executed.
@@ -658,7 +657,7 @@ class Sentinel:
             return new_count
 
     def _decrement_per_orch_count(self, orchestration_name: str) -> int:
-        """Decrement the active execution count for an orchestration (DS-178).
+        """Decrement the active execution count for an orchestration.
 
         This method atomically decrements the count of active executions for a
         given orchestration and returns the new count. Called when an execution
@@ -667,7 +666,7 @@ class Sentinel:
         If the count would go below zero (should not happen in normal operation),
         it is clamped to zero and a warning is logged.
 
-        DS-187: Simplified using defaultdict(int) and added cleanup of entries
+        Simplified using defaultdict(int) and added cleanup of entries
         when count reaches 0 to prevent unbounded memory growth.
 
         Args:
@@ -686,7 +685,7 @@ class Sentinel:
                 return 0
             new_count = current_count - 1
             if new_count == 0:
-                # DS-187: Clean up entry when count reaches 0 to prevent unbounded
+                # Clean up entry when count reaches 0 to prevent unbounded
                 # memory growth if many unique orchestration names are used over time
                 del self._per_orch_active_counts[orchestration_name]
             else:
@@ -697,7 +696,7 @@ class Sentinel:
             return new_count
 
     def get_per_orch_count(self, orchestration_name: str) -> int:
-        """Get the active execution count for a specific orchestration (DS-187).
+        """Get the active execution count for a specific orchestration.
 
         This method provides observability into the per-orchestration execution counts
         for debugging and monitoring purposes. It returns the current count of active
@@ -715,7 +714,7 @@ class Sentinel:
             return self._per_orch_active_counts.get(orchestration_name, 0)
 
     def get_all_per_orch_counts(self) -> dict[str, int]:
-        """Get all per-orchestration active execution counts (DS-187).
+        """Get all per-orchestration active execution counts.
 
         This method provides observability into all per-orchestration execution counts
         for debugging, monitoring, and dashboard display purposes. It returns a copy
@@ -733,7 +732,7 @@ class Sentinel:
         issue: JiraIssue | GitHubIssueProtocol,
         orchestration: Orchestration,
     ) -> str:
-        """Construct a URL to the issue based on the trigger source (DS-322).
+        """Construct a URL to the issue based on the trigger source.
 
         For Jira issues: https://{jira_host}/browse/{issue_key}
         For GitHub issues/PRs: Uses the repo_url from the issue directly.
@@ -771,7 +770,7 @@ class Sentinel:
         return ""
 
     def _get_available_slots_for_orchestration(self, orchestration: Orchestration) -> int:
-        """Get available slots for a specific orchestration considering both limits (DS-179).
+        """Get available slots for a specific orchestration considering both limits.
 
         This method calculates the number of available execution slots for a given
         orchestration by considering both:
@@ -895,7 +894,7 @@ class Sentinel:
 
         # Rebuild Router once after all new files are processed (optimization)
         # Modified files already rebuild the Router in _reload_modified_file()
-        # DS-99: Only rebuild if actual orchestrations were loaded, not just files found.
+        # Only rebuild if actual orchestrations were loaded, not just files found.
         # This avoids unnecessary rebuilds when files are empty, invalid, or contain
         # only disabled orchestrations. new_orchestrations_count tracks the actual
         # number of orchestrations loaded (sum of _load_orchestrations_from_file() returns),
@@ -942,7 +941,7 @@ class Sentinel:
                         version = OrchestrationVersion.create(orch, file_path, mtime)
                         self._active_versions.append(version)
 
-                # Update observability counter (DS-97)
+                # Update observability counter
                 self._orchestrations_loaded_total += len(new_orchestrations)
 
                 logger.info(
@@ -1017,7 +1016,7 @@ class Sentinel:
         # Update the router with the updated orchestrations
         self.router = Router(self.orchestrations)
 
-        # Update observability counter (DS-97)
+        # Update observability counter
         self._orchestrations_reloaded_total += len(new_orchestrations)
 
         logger.info(
@@ -1160,7 +1159,7 @@ class Sentinel:
         if unloaded_count > 0:
             self.router = Router(self.orchestrations)
 
-            # Update observability counter (DS-97)
+            # Update observability counter
             self._orchestrations_unloaded_total += unloaded_count
 
         return unloaded_count
@@ -1200,7 +1199,7 @@ class Sentinel:
         with self._futures_lock:
             completed = [f for f in self._active_futures if f.done()]
             for future in completed:
-                # Clean up running step metadata (DS-122)
+                # Clean up running step metadata
                 future_id = id(future)
                 self._running_steps.pop(future_id, None)
                 try:
@@ -1224,7 +1223,7 @@ class Sentinel:
         on the OrchestrationVersion to support hot-reload without affecting
         running executions.
 
-        DS-296: Uses the agent factory to create per-orchestration clients,
+        Uses the agent factory to create per-orchestration clients,
         allowing different orchestrations to use different agent types (claude, cursor).
 
         Args:
@@ -1238,7 +1237,7 @@ class Sentinel:
         issue_key = issue.key
         try:
             if self._shutdown_requested:
-                # DS-184: Log to orchestration-specific log file
+                # Log to orchestration-specific log file
                 self._log_for_orchestration(
                     orchestration.name,
                     logging.INFO,
@@ -1247,17 +1246,17 @@ class Sentinel:
                 self.tag_manager.apply_failure_tags(issue_key, orchestration)
                 return None
 
-            # DS-184: Log execution start to orchestration-specific log file
+            # Log execution start to orchestration-specific log file
             self._log_for_orchestration(
                 orchestration.name,
                 logging.INFO,
                 f"Starting execution of '{orchestration.name}' for {issue_key}",
             )
 
-            # DS-296: Get per-orchestration agent client based on orchestration's agent_type
+            # Get per-orchestration agent client based on orchestration's agent_type
             # If a legacy agent client was provided, use the default executor
             # Otherwise, use the factory's cached client lookup
-            # DS-303: Use get_or_create_for_orchestration to cache clients by type,
+            # Use get_or_create_for_orchestration to cache clients by type,
             # avoiding creation of new clients for each orchestration execution
             if self._legacy_agent_client is not None or self._agent_factory is None:
                 executor = self.executor
@@ -1271,7 +1270,7 @@ class Sentinel:
             result = executor.execute(issue, orchestration)
             self.tag_manager.update_tags(result, orchestration)
 
-            # DS-184: Log execution result to orchestration-specific log file
+            # Log execution result to orchestration-specific log file
             status = "succeeded" if result.succeeded else "failed"
             self._log_for_orchestration(
                 orchestration.name,
@@ -1282,7 +1281,7 @@ class Sentinel:
             return result
 
         except ClaudeProcessInterruptedError:
-            # DS-184: Log to orchestration-specific log file
+            # Log to orchestration-specific log file
             self._log_for_orchestration(
                 orchestration.name,
                 logging.INFO,
@@ -1294,7 +1293,7 @@ class Sentinel:
                 logger.error(f"Failed to apply failure tags: {tag_error}")
             return None
         except Exception as e:
-            # DS-184: Log to orchestration-specific log file
+            # Log to orchestration-specific log file
             self._log_for_orchestration(
                 orchestration.name,
                 logging.ERROR,
@@ -1309,7 +1308,7 @@ class Sentinel:
             # Decrement the version's active execution count when done
             if version is not None:
                 version.decrement_executions()
-            # DS-180: Decrement per-orchestration active count on completion
+            # Decrement per-orchestration active count on completion
             self._decrement_per_orch_count(orchestration.name)
 
     def run_once(self) -> tuple[list[ExecutionResult], int]:
@@ -1320,7 +1319,7 @@ class Sentinel:
             The submitted_count is used for eager polling - when > 0, the caller
             should skip the sleep interval and poll immediately for more work.
         """
-        # Clear the issue queue at the start of each cycle (DS-123)
+        # Clear the issue queue at the start of each cycle
         # Issues will be re-added if they still match and slots are unavailable
         self._clear_issue_queue()
 
@@ -1333,7 +1332,7 @@ class Sentinel:
         # Clean up old orchestration versions that no longer have active executions
         self._cleanup_pending_removal_versions()
 
-        # DS-152: Clean up stale attempt count entries to prevent unbounded memory growth
+        # Clean up stale attempt count entries to prevent unbounded memory growth
         self._cleanup_stale_attempt_counts()
 
         # Collect any completed results from previous cycle
@@ -1361,9 +1360,8 @@ class Sentinel:
         # Track how many tasks we've submitted this cycle
         submitted_count = 0
 
-        # DS-138: Use shared DeduplicationManager for tracking submitted pairs.
-        # This replaces the inline set creation from DS-130/DS-131, providing
-        # consistent deduplication behavior across all trigger types.
+        # Use shared DeduplicationManager for tracking submitted pairs.
+        # This provides consistent deduplication behavior across all trigger types.
         submitted_pairs = self._dedup_manager.create_cycle_set()
 
         # Poll Jira triggers
@@ -1426,17 +1424,17 @@ class Sentinel:
                 logger.info("Shutdown requested, stopping polling")
                 return submitted_count
 
-            # DS-184: Log polling to orchestration-specific log file
+            # Log polling to orchestration-specific log file
             self._log_for_orchestration(
                 orch.name,
                 logging.INFO,
                 f"Polling Jira for orchestration '{orch.name}'",
             )
-            # DS-124: Update last Jira poll time for system status display
+            # Update last Jira poll time for system status display
             self._last_jira_poll = datetime.now()
             try:
                 issues = self.jira_poller.poll(trigger, self.config.max_issues_per_poll)
-                # DS-184: Log issue count to orchestration-specific log file
+                # Log issue count to orchestration-specific log file
                 self._log_for_orchestration(
                     orch.name,
                     logging.INFO,
@@ -1489,7 +1487,7 @@ class Sentinel:
             return 0
 
         # Collect unique trigger configs to avoid duplicate polling
-        # DS-362: Use shared build_github_trigger_key() for consistent key format
+        # Use shared build_github_trigger_key() for consistent key format
         seen_triggers: set[str] = set()
         triggers_to_poll: list[tuple[Orchestration, Any]] = []
 
@@ -1508,17 +1506,17 @@ class Sentinel:
                 logger.info("Shutdown requested, stopping polling")
                 return submitted_count
 
-            # DS-184: Log polling to orchestration-specific log file
+            # Log polling to orchestration-specific log file
             self._log_for_orchestration(
                 orch.name,
                 logging.INFO,
                 f"Polling GitHub for orchestration '{orch.name}'",
             )
-            # DS-124: Update last GitHub poll time for system status display
+            # Update last GitHub poll time for system status display
             self._last_github_poll = datetime.now()
             try:
                 issues = self.github_poller.poll(trigger, self.config.max_issues_per_poll)
-                # DS-184: Log issue count to orchestration-specific log file
+                # Log issue count to orchestration-specific log file
                 self._log_for_orchestration(
                     orch.name,
                     logging.INFO,
@@ -1528,7 +1526,7 @@ class Sentinel:
                 logger.error(f"Failed to poll GitHub for '{orch.name}': {e}")
                 continue
 
-            # DS-204: Convert GitHub issues to include repo context for tag operations
+            # Convert GitHub issues to include repo context for tag operations
             # Extract repo from each issue's repo_url field instead of trigger.repo
             issues_with_context = self._add_repo_context_from_urls(issues)
 
@@ -1549,7 +1547,7 @@ class Sentinel:
     ) -> list[GitHubIssueProtocol]:
         """Add repository context to GitHub issues by extracting repo from URLs.
 
-        DS-204: Extract repo from each issue's repo_url field instead of using
+        Extract repo from each issue's repo_url field instead of using
         a single repo from the trigger config. This is necessary for project-based
         polling where a single project can contain issues from multiple repositories.
 
@@ -1592,7 +1590,7 @@ class Sentinel:
             submitted_pairs: Optional set of (issue_key, orchestration_name) pairs
                 already submitted in this polling cycle. If provided, duplicates
                 are skipped to prevent spawning multiple agents for the same
-                issue/orchestration combination (DS-130, DS-131).
+                issue/orchestration combination.
 
         Returns:
             Number of tasks submitted to the thread pool.
@@ -1607,18 +1605,17 @@ class Sentinel:
 
                 issue_key = routing_result.issue.key
 
-                # DS-138: Use DeduplicationManager for consistent deduplication logic.
-                # This replaces the inline set operations from DS-130/DS-131.
+                # Use DeduplicationManager for consistent deduplication logic.
                 if submitted_pairs is not None:
                     if not self._dedup_manager.check_and_mark(
                         submitted_pairs, issue_key, matched_orch.name
                     ):
                         continue
 
-                # DS-180: Check if we have available slots using per-orchestration limits
+                # Check if we have available slots using per-orchestration limits
                 if self._get_available_slots_for_orchestration(matched_orch) <= 0:
-                    # DS-123: Add to queue instead of silently skipping
-                    # DS-184: Log to orchestration-specific log file
+                    # Add to queue instead of silently skipping
+                    # Log to orchestration-specific log file
                     self._log_for_orchestration(
                         matched_orch.name,
                         logging.DEBUG,
@@ -1627,7 +1624,7 @@ class Sentinel:
                     self._add_to_issue_queue(issue_key, matched_orch.name)
                     continue
 
-                # DS-184: Log submission to orchestration-specific log file
+                # Log submission to orchestration-specific log file
                 self._log_for_orchestration(
                     matched_orch.name,
                     logging.INFO,
@@ -1639,7 +1636,7 @@ class Sentinel:
                 if version is not None:
                     version.increment_executions()
 
-                # DS-180: Increment per-orchestration active count on submission
+                # Increment per-orchestration active count on submission
                 self._increment_per_orch_count(matched_orch.name)
 
                 try:
@@ -1656,12 +1653,12 @@ class Sentinel:
                         )
                         with self._futures_lock:
                             self._active_futures.append(future)
-                            # Track running step metadata for dashboard (DS-122)
-                            # DS-141: Track actual retry attempt numbers
+                            # Track running step metadata for dashboard
+                            # Track actual retry attempt numbers
                             attempt_number = self._get_and_increment_attempt_count(
                                 issue_key, matched_orch.name
                             )
-                            # DS-322: Construct issue URL for dashboard link
+                            # Construct issue URL for dashboard link
                             issue_url = self._construct_issue_url(
                                 routing_result.issue, matched_orch
                             )
@@ -1687,7 +1684,7 @@ class Sentinel:
                     # Decrement version count on submission failure
                     if version is not None:
                         version.decrement_executions()
-                    # DS-180: Decrement per-orchestration count on submission failure
+                    # Decrement per-orchestration count on submission failure
                     self._decrement_per_orch_count(matched_orch.name)
                     logger.error(
                         f"Failed to submit '{matched_orch.name}' for {issue_key}: {e}"
@@ -1759,7 +1756,7 @@ class Sentinel:
                 self._thread_pool.shutdown(wait=True, cancel_futures=False)
                 self._thread_pool = None
 
-            # DS-184: Close per-orchestration log manager to ensure all logs are flushed
+            # Close per-orchestration log manager to ensure all logs are flushed
             if self._orch_log_manager is not None:
                 self._orch_log_manager.close_all()
 
@@ -1803,7 +1800,7 @@ class Sentinel:
                     logger.error(f"Error in polling cycle: {e}")
                     submitted_count = 0  # On error, use normal poll interval
 
-                # DS-133: Completion-driven polling - wait for task completion, not submission
+                # Completion-driven polling - wait for task completion, not submission
                 # Only sleep poll_interval when no work is found; otherwise wait for completion
                 if not self._shutdown_requested:
                     with self._futures_lock:
@@ -1864,7 +1861,7 @@ class Sentinel:
                 self._thread_pool.shutdown(wait=True, cancel_futures=False)
                 self._thread_pool = None
 
-            # DS-184: Close per-orchestration log manager to ensure all logs are flushed
+            # Close per-orchestration log manager to ensure all logs are flushed
             if self._orch_log_manager is not None:
                 logger.info("Closing per-orchestration log files...")
                 self._orch_log_manager.close_all()
@@ -2015,7 +2012,7 @@ def main(args: list[str] | None = None) -> int:
                 "but GitHub is not configured. Set GITHUB_TOKEN to enable GitHub polling."
             )
 
-    # DS-296: Use factory pattern for agent client creation
+    # Use factory pattern for agent client creation
     # This enables per-orchestration agent type selection (claude, cursor, etc.)
     agent_factory = create_default_factory(config)
     agent_logger = AgentLogger(base_dir=config.agent_logs_dir)
@@ -2023,7 +2020,7 @@ def main(args: list[str] | None = None) -> int:
     logger.info(f"Initialized agent factory with types: {agent_factory.registered_types}")
 
     # Create and run Sentinel
-    # DS-303: tag_client is now a required positional parameter for clearer API contract
+    # tag_client is now a required positional parameter for clearer API contract
     sentinel = Sentinel(
         config=config,
         orchestrations=orchestrations,

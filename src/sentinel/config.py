@@ -34,7 +34,7 @@ class Config:
     # Polling configuration
     poll_interval: int = 60  # seconds
     max_issues_per_poll: int = 50
-    max_eager_iterations: int = 10  # Deprecated (DS-133): No longer used, kept for backward compatibility
+    max_eager_iterations: int = 10  # Deprecated: No longer used, kept for backward compatibility
 
     # Concurrent execution
     max_concurrent_executions: int = 1  # Number of orchestrations to run in parallel
@@ -67,21 +67,21 @@ class Config:
     dashboard_port: int = 8080  # Port for the dashboard server
     dashboard_host: str = "127.0.0.1"  # Host to bind the dashboard server
 
-    # Attempt counts cleanup configuration (DS-152)
+    # Attempt counts cleanup configuration
     # Time in seconds after which inactive attempt count entries are cleaned up
     attempt_counts_ttl: int = 3600  # 1 hour default
 
-    # Issue queue configuration (DS-153)
+    # Issue queue configuration
     # Maximum number of issues that can be held in the queue
     # When the queue is full, oldest items are evicted to make room for new ones
     max_queue_size: int = 100
 
-    # Streaming logs configuration (DS-170)
+    # Streaming logs configuration
     # When True, disables streaming log writes during agent execution
     # Uses _run_simple() path and writes full response after completion
     disable_streaming_logs: bool = False
 
-    # Cursor CLI configuration (DS-293)
+    # Cursor CLI configuration
     default_agent_type: str = "claude"  # Default agent type: claude or cursor
     cursor_path: str = ""  # Path to Cursor CLI executable
     cursor_default_model: str = ""  # Default model for Cursor agent
@@ -318,28 +318,28 @@ def load_config(env_file: Path | None = None) -> Config:
     )
     dashboard_host = os.getenv("SENTINEL_DASHBOARD_HOST", "127.0.0.1")
 
-    # Parse attempt counts TTL (DS-152)
+    # Parse attempt counts TTL
     attempt_counts_ttl = _parse_positive_int(
         os.getenv("SENTINEL_ATTEMPT_COUNTS_TTL", "3600"),
         "SENTINEL_ATTEMPT_COUNTS_TTL",
         3600,
     )
 
-    # Parse max queue size (DS-153)
+    # Parse max queue size
     max_queue_size = _parse_positive_int(
         os.getenv("SENTINEL_MAX_QUEUE_SIZE", "100"),
         "SENTINEL_MAX_QUEUE_SIZE",
         100,
     )
 
-    # Parse disable streaming logs option (DS-170)
+    # Parse disable streaming logs option
     disable_streaming_logs = _parse_bool(os.getenv("SENTINEL_DISABLE_STREAMING_LOGS", ""))
 
-    # Parse orchestration logs dir (DS-182)
+    # Parse orchestration logs dir
     orchestration_logs_dir_str = os.getenv("SENTINEL_ORCHESTRATION_LOGS_DIR", "")
     orchestration_logs_dir = Path(orchestration_logs_dir_str) if orchestration_logs_dir_str else None
 
-    # Parse Cursor CLI configuration (DS-293, DS-300)
+    # Parse Cursor CLI configuration
     default_agent_type = _validate_agent_type(
         os.getenv("SENTINEL_DEFAULT_AGENT_TYPE", "claude"),
     )

@@ -1,6 +1,6 @@
 """Unit tests for AgentClientFactory.
 
-DS-292: Tests for the factory pattern for agent client instantiation.
+Tests for the factory pattern for agent client instantiation.
 """
 
 from __future__ import annotations
@@ -332,7 +332,7 @@ class TestFactoryCacheKeyBehavior:
 
 
 class TestOrchestrationKwargsCache:
-    """Tests for kwargs impact on cache key in create_for_orchestration (DS-299)."""
+    """Tests for kwargs impact on cache key in create_for_orchestration."""
 
     def test_get_or_create_for_orchestration_caches_with_kwargs(self) -> None:
         """Test that get_or_create_for_orchestration caches based on kwargs."""
@@ -493,17 +493,17 @@ class TestOrchestrationKwargsCache:
 
 
 class TestGetOrCreateForOrchestrationCachingBehavior:
-    """Tests for caching behavior of get_or_create_for_orchestration (DS-309).
+    """Tests for caching behavior of get_or_create_for_orchestration.
 
-    These tests verify that the caching optimization introduced in DS-303
-    continues to work as expected - calling get_or_create_for_orchestration
-    with the same agent type returns the same client instance.
+    These tests verify that the caching optimization continues to work as
+    expected - calling get_or_create_for_orchestration with the same agent
+    type returns the same client instance.
     """
 
     def test_same_agent_type_returns_same_instance(self) -> None:
         """Verify same agent type with same config returns identical instance.
 
-        DS-309: This test ensures the caching optimization works correctly -
+        This test ensures the caching optimization works correctly -
         calling get_or_create_for_orchestration with the same agent type
         should return the exact same client instance (identity check).
         """
@@ -525,7 +525,7 @@ class TestGetOrCreateForOrchestrationCachingBehavior:
     def test_caching_prevents_redundant_client_creation(self) -> None:
         """Verify caching prevents redundant client instantiation.
 
-        DS-309: This test documents that the caching behavior prevents
+        This test documents that the caching behavior prevents
         unnecessary overhead from creating multiple client instances.
         """
         factory = AgentClientFactory()
@@ -552,7 +552,7 @@ class TestGetOrCreateForOrchestrationCachingBehavior:
     def test_different_agent_types_return_different_instances(self) -> None:
         """Verify different agent types return separate cached instances.
 
-        DS-309: Confirms that caching is agent-type-specific - different
+        Confirms that caching is agent-type-specific - different
         agent types should have their own cached instances.
         """
         factory = AgentClientFactory()
@@ -577,7 +577,7 @@ class TestGetOrCreateForOrchestrationCachingBehavior:
 class TestKwargsBasedCacheKeyDifferentiation:
     """Tests for kwargs-based cache key differentiation in get_or_create_for_orchestration.
 
-    DS-313: These tests verify that get_or_create_for_orchestration properly
+    These tests verify that get_or_create_for_orchestration properly
     differentiates cached clients based on the **kwargs parameter, ensuring that:
     - Same agent type with different kwargs returns different client instances
     - Same agent type with same kwargs returns the same cached instance
@@ -586,7 +586,7 @@ class TestKwargsBasedCacheKeyDifferentiation:
     def test_kwargs_cache_key_differentiation(self) -> None:
         """Verify kwargs properly differentiate cache keys for same agent type.
 
-        DS-313: This comprehensive test validates that the kwargs parameter
+        This comprehensive test validates that the kwargs parameter
         correctly influences cache key generation, ensuring:
         1. Same agent type + same kwargs = same cached instance
         2. Same agent type + different kwargs = different instances
@@ -659,7 +659,7 @@ class TestKwargsBasedCacheKeyDifferentiation:
     def test_kwargs_cache_key_with_multiple_kwargs_combinations(self) -> None:
         """Verify cache correctly handles multiple distinct kwargs combinations.
 
-        DS-313: This test validates that the cache maintains separate entries
+        This test validates that the cache maintains separate entries
         for each unique kwargs combination, and correctly returns cached
         instances when the same combination is requested again.
         """
@@ -703,7 +703,7 @@ class TestKwargsBasedCacheKeyDifferentiation:
 class TestEmptyKwargsEdgeCases:
     """Tests for empty kwargs vs no kwargs edge cases in get_or_create_for_orchestration.
 
-    DS-316: These tests verify that get_or_create_for_orchestration handles
+    These tests verify that get_or_create_for_orchestration handles
     the edge case of empty kwargs {} vs no kwargs consistently, ensuring that
     both calling patterns produce the same cache key and return the same
     cached client instance.
@@ -712,7 +712,7 @@ class TestEmptyKwargsEdgeCases:
     def test_no_kwargs_vs_empty_kwargs_dict_returns_same_instance(self) -> None:
         """Verify that no kwargs and explicit empty kwargs {} return the same cached instance.
 
-        DS-316: This test ensures that calling get_or_create_for_orchestration
+        This test ensures that calling get_or_create_for_orchestration
         without any kwargs and calling it with an explicit empty dict (**{})
         produce identical cache keys and return the same cached instance.
 
@@ -751,7 +751,7 @@ class TestEmptyKwargsEdgeCases:
     def test_empty_kwargs_cache_key_generation_consistency(self) -> None:
         """Verify that _make_kwargs_hashable handles empty dict consistently.
 
-        DS-316: This test validates that the cache key generation produces
+        This test validates that the cache key generation produces
         consistent results for empty kwargs scenarios, ensuring the tuple
         representation is identical whether kwargs is implicitly or explicitly
         empty.
@@ -768,7 +768,7 @@ class TestEmptyKwargsEdgeCases:
     def test_multiple_calls_with_various_empty_kwargs_patterns(self) -> None:
         """Verify consistent caching across multiple empty kwargs call patterns.
 
-        DS-316: This comprehensive test verifies that all variations of
+        This comprehensive test verifies that all variations of
         "empty kwargs" calls return the same cached instance:
         1. No kwargs at all
         2. Unpacked empty dict
@@ -810,7 +810,7 @@ class TestEmptyKwargsEdgeCases:
     def test_empty_kwargs_distinct_from_kwargs_with_none_value(self) -> None:
         """Verify empty kwargs is distinct from kwargs containing None values.
 
-        DS-316: This test confirms that empty kwargs {} is correctly
+        This test confirms that empty kwargs {} is correctly
         differentiated from kwargs that contain explicit None values,
         as these represent semantically different configurations.
         """

@@ -1,7 +1,7 @@
 """Unit tests for CursorAgentClient.
 
-DS-294: Tests for the Cursor CLI agent client implementation.
-DS-301: Test fixture improvements and additional validation tests.
+Tests for the Cursor CLI agent client implementation.
+Test fixture improvements and additional validation tests.
 """
 
 from __future__ import annotations
