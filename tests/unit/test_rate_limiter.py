@@ -14,6 +14,7 @@ from sentinel.rate_limiter import (
     RateLimiterMetrics,
     RateLimitStrategy,
     TokenBucket,
+    _PausedMetrics,
 )
 
 
@@ -257,6 +258,122 @@ class TestClaudeRateLimiter:
         limiter.reset_metrics()
         metrics = limiter.get_metrics()
         assert metrics["total_requests"] == 0
+
+    def test_pause_metrics_context_manager_basic(self) -> None:
+        """pause_metrics context manager pauses metrics recording."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=10, requests_per_hour=100, enabled=True
+        )
+        # Record some initial requests
+        limiter.acquire(timeout=0)
+        limiter.acquire(timeout=0)
+        initial_metrics = limiter.get_metrics()
+        assert initial_metrics["total_requests"] == 2
+
+        # Requests inside pause_metrics should not be recorded
+        with limiter.pause_metrics():
+            limiter.acquire(timeout=0)
+            limiter.acquire(timeout=0)
+            limiter.acquire(timeout=0)
+
+        # Metrics should still show only the original 2 requests
+        metrics = limiter.get_metrics()
+        assert metrics["total_requests"] == 2
+
+    def test_pause_metrics_with_reset(self) -> None:
+        """pause_metrics allows safe reset of metrics."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=10, requests_per_hour=100, enabled=True
+        )
+        # Record some requests
+        limiter.acquire(timeout=0)
+        limiter.acquire(timeout=0)
+
+        # Reset metrics within the pause context
+        with limiter.pause_metrics():
+            limiter.reset_metrics()
+
+        # Metrics should be reset
+        metrics = limiter.get_metrics()
+        assert metrics["total_requests"] == 0
+
+        # New requests after reset should be recorded
+        limiter.acquire(timeout=0)
+        metrics = limiter.get_metrics()
+        assert metrics["total_requests"] == 1
+
+    def test_pause_metrics_restores_on_exit_without_reset(self) -> None:
+        """pause_metrics restores original metrics if reset is not called."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=10, requests_per_hour=100, enabled=True
+        )
+        # Record some requests
+        limiter.acquire(timeout=0)
+        limiter.acquire(timeout=0)
+
+        # Enter pause context but don't reset
+        with limiter.pause_metrics():
+            pass  # Don't call reset_metrics()
+
+        # Original metrics should be preserved
+        metrics = limiter.get_metrics()
+        assert metrics["total_requests"] == 2
+
+    def test_pause_metrics_exception_safety(self) -> None:
+        """pause_metrics restores metrics on exception."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=10, requests_per_hour=100, enabled=True
+        )
+        # Record some requests
+        limiter.acquire(timeout=0)
+        limiter.acquire(timeout=0)
+
+        # Enter pause context and raise exception
+        try:
+            with limiter.pause_metrics():
+                raise ValueError("Test exception")
+        except ValueError:
+            pass
+
+        # Original metrics should be preserved
+        metrics = limiter.get_metrics()
+        assert metrics["total_requests"] == 2
+
+    def test_pause_metrics_nested_not_recommended_but_safe(self) -> None:
+        """Nested pause_metrics calls work safely (though not recommended)."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=10, requests_per_hour=100, enabled=True
+        )
+        limiter.acquire(timeout=0)
+
+        with limiter.pause_metrics():
+            with limiter.pause_metrics():
+                limiter.reset_metrics()
+            # Inner context exits, but outer context still paused
+
+        # Metrics were reset, should be 0
+        metrics = limiter.get_metrics()
+        assert metrics["total_requests"] == 0
+
+
+class TestPausedMetrics:
+    """Tests for _PausedMetrics class."""
+
+    def test_paused_metrics_discards_requests(self) -> None:
+        """_PausedMetrics discards all request recordings."""
+        metrics = _PausedMetrics()
+        metrics.record_request(success=True, wait_time=1.0, was_queued=True)
+        metrics.record_request(success=False)
+        assert metrics.total_requests == 0
+        assert metrics.successful_requests == 0
+        assert metrics.rejected_requests == 0
+
+    def test_paused_metrics_discards_warnings(self) -> None:
+        """_PausedMetrics discards all warning recordings."""
+        metrics = _PausedMetrics()
+        metrics.record_warning()
+        metrics.record_warning()
+        assert metrics.warnings_issued == 0
 
 
 class TestClaudeRateLimiterAsync:

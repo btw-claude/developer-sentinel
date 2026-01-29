@@ -31,9 +31,10 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generator
 
 from sentinel.logging import get_logger
 
@@ -498,5 +499,74 @@ class ClaudeRateLimiter:
             in flight to avoid potential race conditions with metrics recording.
             Calling this while requests are being processed may result in
             inconsistent metrics state.
+
+            For safer resets, consider using the `pause_metrics()` context manager:
+
+            ```python
+            with limiter.pause_metrics():
+                limiter.reset_metrics()
+            ```
         """
         self._metrics = RateLimiterMetrics()
+
+    @contextmanager
+    def pause_metrics(self) -> Generator[None, None, None]:
+        """Context manager that pauses metrics recording during the reset operation.
+
+        This provides a safer API for resetting metrics by ensuring no new metrics
+        are recorded during the reset operation. While inside this context manager,
+        any acquire() or acquire_async() calls will still function normally but
+        will not record metrics.
+
+        Example:
+            ```python
+            with limiter.pause_metrics():
+                # Metrics recording is paused
+                limiter.reset_metrics()
+            # Metrics recording resumes
+            ```
+
+        Yields:
+            None
+
+        Note:
+            This context manager uses a lock to ensure thread-safety. Any requests
+            that start while metrics are paused will not have their metrics recorded.
+            Requests that were already in progress when pause_metrics() was entered
+            may still record metrics for their completion.
+        """
+        # Store the current metrics object reference
+        old_metrics = self._metrics
+
+        # Create a "paused" metrics object that doesn't actually record anything
+        paused_metrics = _PausedMetrics()
+
+        # Swap in the paused metrics
+        self._metrics = paused_metrics
+
+        try:
+            yield
+        finally:
+            # If reset_metrics() was called, self._metrics will be a new RateLimiterMetrics
+            # If not called, self._metrics will still be paused_metrics
+            # In either case, if it's still the paused one, restore the old metrics
+            if self._metrics is paused_metrics:
+                self._metrics = old_metrics
+
+
+class _PausedMetrics(RateLimiterMetrics):
+    """A metrics object that discards all recordings.
+
+    Used by pause_metrics() context manager to prevent metrics recording
+    during the pause period.
+    """
+
+    def record_request(
+        self, success: bool, wait_time: float = 0.0, was_queued: bool = False
+    ) -> None:
+        """Discard the request recording (no-op)."""
+        pass
+
+    def record_warning(self) -> None:
+        """Discard the warning recording (no-op)."""
+        pass
