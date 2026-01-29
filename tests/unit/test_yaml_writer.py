@@ -850,7 +850,7 @@ class TestFileLockTimeout:
         lock_acquired = threading.Event()
         main_thread_waiting = threading.Event()
 
-        def hold_lock_briefly():
+        def hold_lock_briefly() -> None:
             lock_path = file_path.with_suffix(".yaml.lock")
             with open(lock_path, "w") as lock_file:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)

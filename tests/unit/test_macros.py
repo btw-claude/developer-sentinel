@@ -10,11 +10,13 @@ proper badge rendering for different states.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 import pytest
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from jinja2 import Environment, FileSystemLoader
-from pathlib import Path
 
 
 # Helper assertion functions for badge testing
@@ -104,7 +106,7 @@ class TestStatusBadgeMacro:
         return env
 
     @pytest.fixture
-    def render_status_badge(self, jinja_env: Environment):
+    def render_status_badge(self, jinja_env: Environment) -> Callable[[int, int], str]:
         """Create a helper function to render the status_badge macro."""
         # Load the macros template
         macros_template = jinja_env.get_template("macros.html")
@@ -121,7 +123,7 @@ class TestStatusBadgeMacro:
         return render
 
     @pytest.fixture
-    def parse_badge(self, render_status_badge):
+    def parse_badge(self, render_status_badge: Callable[[int, int], str]) -> Callable[[int, int], BeautifulSoup]:
         """Create a helper function to render and parse a status badge."""
         def parse(active_count: int, total_count: int) -> BeautifulSoup:
             result = render_status_badge(active_count=active_count, total_count=total_count)
