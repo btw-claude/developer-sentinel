@@ -16,7 +16,6 @@ import asyncio
 import json
 import logging
 import time
-import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator, Literal
@@ -38,45 +37,6 @@ if TYPE_CHECKING:
     from sentinel.github_rest_client import GitHubRestClient
     from sentinel.health import HealthChecker
     from sentinel.rest_clients import JiraRestClient
-
-
-# =============================================================================
-# DEPRECATED MODULE-LEVEL CONSTANTS
-# =============================================================================
-# These module-level constants are deprecated and kept only for backward
-# compatibility. Use Config class values instead:
-# - Config.toggle_cooldown_seconds instead of _DEFAULT_TOGGLE_COOLDOWN
-# - Config.rate_limit_cache_ttl instead of _DEFAULT_RATE_LIMIT_CACHE_TTL
-# - Config.rate_limit_cache_maxsize instead of _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE
-#
-# Accessing these constants will emit a DeprecationWarning.
-# =============================================================================
-
-
-def __getattr__(name: str) -> float | int:
-    """Module-level __getattr__ to emit deprecation warnings for legacy constants."""
-    if name == "_DEFAULT_TOGGLE_COOLDOWN":
-        warnings.warn(
-            "_DEFAULT_TOGGLE_COOLDOWN is deprecated. Use Config.toggle_cooldown_seconds instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return 2.0
-    elif name == "_DEFAULT_RATE_LIMIT_CACHE_TTL":
-        warnings.warn(
-            "_DEFAULT_RATE_LIMIT_CACHE_TTL is deprecated. Use Config.rate_limit_cache_ttl instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return 3600
-    elif name == "_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE":
-        warnings.warn(
-            "_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE is deprecated. Use Config.rate_limit_cache_maxsize instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return 10000
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class RateLimiter:

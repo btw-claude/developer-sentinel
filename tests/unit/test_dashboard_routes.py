@@ -1207,34 +1207,6 @@ class TestToggleRateLimitConfiguration:
         assert rate_limiter._last_write_times.ttl == 3600
         assert rate_limiter._last_write_times.maxsize == 10000
 
-    def test_deprecated_constants_emit_warnings(self) -> None:
-        """Test that deprecated module-level constants emit DeprecationWarning."""
-        import warnings
-
-        from sentinel.dashboard import routes
-
-        # Accessing deprecated constants should emit warnings
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            _ = routes._DEFAULT_TOGGLE_COOLDOWN
-            assert len(w) >= 1
-            assert issubclass(w[-1].category, DeprecationWarning)
-            assert "Config.toggle_cooldown_seconds" in str(w[-1].message)
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            _ = routes._DEFAULT_RATE_LIMIT_CACHE_TTL
-            assert len(w) >= 1
-            assert issubclass(w[-1].category, DeprecationWarning)
-            assert "Config.rate_limit_cache_ttl" in str(w[-1].message)
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            _ = routes._DEFAULT_RATE_LIMIT_CACHE_MAXSIZE
-            assert len(w) >= 1
-            assert issubclass(w[-1].category, DeprecationWarning)
-            assert "Config.rate_limit_cache_maxsize" in str(w[-1].message)
-
     def test_create_routes_uses_config_when_provided(self) -> None:
         """Test that create_routes uses provided Config for rate limiting."""
         from sentinel.dashboard.state import SentinelStateAccessor
