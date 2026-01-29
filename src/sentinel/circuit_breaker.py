@@ -93,6 +93,10 @@ class CircuitBreakerConfig:
 
     def __post_init__(self) -> None:
         """Validate configuration values after initialization."""
+        if not isinstance(self.failure_threshold, int):
+            raise CircuitBreakerConfigError(
+                f"failure_threshold must be an integer, got {type(self.failure_threshold).__name__}"
+            )
         if self.failure_threshold <= 0:
             raise CircuitBreakerConfigError(
                 f"failure_threshold must be positive, got {self.failure_threshold}"
@@ -100,6 +104,10 @@ class CircuitBreakerConfig:
         if self.recovery_timeout <= 0:
             raise CircuitBreakerConfigError(
                 f"recovery_timeout must be positive, got {self.recovery_timeout}"
+            )
+        if not isinstance(self.half_open_max_calls, int):
+            raise CircuitBreakerConfigError(
+                f"half_open_max_calls must be an integer, got {type(self.half_open_max_calls).__name__}"
             )
         if self.half_open_max_calls <= 0:
             raise CircuitBreakerConfigError(
