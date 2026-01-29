@@ -138,7 +138,7 @@ class GitHubContext:
 
         Slug Transformation:
             Variables with ``_slug`` suffix are transformed to be branch-safe. The
-            transformation algorithm:
+            transformation algorithm (implemented in ``executor.py:slugify()``):
 
             1. Normalize unicode characters (e.g., "café" -> "cafe")
             2. Convert to lowercase
@@ -147,12 +147,19 @@ class GitHubContext:
             5. Collapse consecutive hyphens/dots into single characters
             6. Strip leading/trailing hyphens and dots
 
+            Note: The slug transformation does not truncate long titles. Very long
+            issue titles will produce correspondingly long branch names. If you need
+            shorter branch names, consider using a pattern like
+            ``feature/{jira_issue_key}`` instead of including the full title slug.
+
             Examples:
                 - "Add User Authentication" -> "add-user-authentication"
                 - "Fix bug #123" -> "fix-bug-123"
                 - "Update README.md" -> "update-readme.md"
                 - "Résumé Upload Feature" -> "resume-upload-feature"
                 - "API v2.0 Migration" -> "api-v2.0-migration"
+                - "A Very Long Issue Title That Exceeds Normal Length" ->
+                  "a-very-long-issue-title-that-exceeds-normal-length" (no truncation)
 
         List Formatting:
             Variables marked as "formatted" contain list data rendered as comma-separated
