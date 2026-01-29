@@ -300,7 +300,14 @@ class ShutdownController:
             return self._shutdown_event is not None and self._shutdown_event.is_set()
 
     def __repr__(self) -> str:
-        return f"ShutdownController(is_shutdown_requested={self.is_shutdown_requested()})"
+        with self._lock:
+            if self._shutdown_event is None:
+                state = 'uninitialized'
+            elif self._shutdown_event.is_set():
+                state = 'shutdown_requested'
+            else:
+                state = 'ready'
+        return f'ShutdownController(state={state})'
 
 
 # Default shared shutdown controller for backward compatibility.
