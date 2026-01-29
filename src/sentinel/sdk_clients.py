@@ -98,8 +98,10 @@ Do not include any explanation, just the JSON array."""
             raise JiraClientError(f"Jira search timed out: {e}") from e
         except json.JSONDecodeError as e:
             raise JiraClientError(f"Failed to parse Jira response as JSON: {e}") from e
-        except Exception as e:
-            raise JiraClientError(f"Jira search failed: {e}") from e
+        except (KeyError, TypeError, ValueError) as e:
+            raise JiraClientError(f"Jira search failed due to data error: {e}") from e
+        except OSError as e:
+            raise JiraClientError(f"Jira search failed due to I/O error: {e}") from e
 
 
 class JiraSdkTagClient(JiraTagClient):
@@ -128,8 +130,10 @@ If there's an error, respond with: ERROR: <description>"""
             raise
         except asyncio.TimeoutError as e:
             raise JiraTagClientError(f"{action.capitalize()} label timed out: {e}") from e
-        except Exception as e:
-            raise JiraTagClientError(f"{action.capitalize()} label failed: {e}") from e
+        except (KeyError, TypeError, ValueError) as e:
+            raise JiraTagClientError(f"{action.capitalize()} label failed due to data error: {e}") from e
+        except OSError as e:
+            raise JiraTagClientError(f"{action.capitalize()} label failed due to I/O error: {e}") from e
 
     def add_label(self, issue_key: str, label: str) -> None:
         """Add a label to a Jira issue."""

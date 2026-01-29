@@ -276,7 +276,8 @@ class JiraRestClient(JiraClient):
                 error_data = e.response.json()
                 if "errorMessages" in error_data:
                     error_msg += f": {', '.join(error_data['errorMessages'])}"
-            except Exception:
+            except (ValueError, KeyError, TypeError):
+                # JSON parsing or data extraction failed - continue with base error message
                 pass
             raise JiraClientError(error_msg) from e
         except httpx.RequestError as e:
@@ -408,7 +409,8 @@ class JiraRestTagClient(JiraTagClient):
                 error_data = e.response.json()
                 if "errorMessages" in error_data:
                     error_msg += f": {', '.join(error_data['errorMessages'])}"
-            except Exception:
+            except (ValueError, KeyError, TypeError):
+                # JSON parsing or data extraction failed - continue with base error message
                 pass
             raise JiraTagClientError(error_msg) from e
         except httpx.RequestError as e:

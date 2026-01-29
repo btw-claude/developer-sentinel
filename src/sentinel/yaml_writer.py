@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ruamel.yaml import YAML
+from ruamel.yaml import YAML, YAMLError
 from ruamel.yaml.comments import CommentedMap
 
 from sentinel.logging import get_logger
@@ -272,9 +272,13 @@ class OrchestrationYamlWriter:
             raise OrchestrationYamlWriterError(
                 f"Permission denied reading {file_path}: {e}"
             ) from e
-        except Exception as e:
+        except YAMLError as e:
             raise OrchestrationYamlWriterError(
                 f"Failed to parse YAML in {file_path}: {e}"
+            ) from e
+        except UnicodeDecodeError as e:
+            raise OrchestrationYamlWriterError(
+                f"Failed to decode {file_path} as UTF-8: {e}"
             ) from e
 
     def _create_backup(self, file_path: Path) -> Path | None:
