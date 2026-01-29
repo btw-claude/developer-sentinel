@@ -533,7 +533,7 @@ class ClaudeRateLimiter:
             This implementation is compatible with CPython and PyPy (which also has
             a GIL). However, it may not be thread-safe on interpreters that lack a
             GIL, such as Jython, IronPython, or experimental free-threaded Python
-            3.13+ builds (python --disable-gil). If cross-interpreter compatibility
+            3.13+ builds (python -X gil=0). If cross-interpreter compatibility
             is required, an explicit lock should be added.
 
         See Also:
