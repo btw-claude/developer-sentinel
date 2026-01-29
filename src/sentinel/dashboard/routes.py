@@ -15,8 +15,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncGenerator, Literal
@@ -30,117 +30,114 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from sentinel.validation import (
-    MAX_CACHE_MAXSIZE,
-    MAX_CACHE_TTL,
-    MAX_TOGGLE_COOLDOWN,
-    MIN_CACHE_MAXSIZE,
-    MIN_CACHE_TTL,
-    MIN_TOGGLE_COOLDOWN,
-    validate_positive_float,
-    validate_positive_int,
-)
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
-# Rate limiting configuration for toggle endpoints
-# Cooldown period in seconds between writes to the same file
-# Configurable via SENTINEL_TOGGLE_COOLDOWN environment variable
-# Default values and reasonable bounds are now centralized in Config class
-# These module-level defaults are kept for backward compatibility
-_DEFAULT_TOGGLE_COOLDOWN: float = 2.0  # Use Config.toggle_cooldown_seconds instead
-_DEFAULT_RATE_LIMIT_CACHE_TTL: int = 3600  # Use Config.rate_limit_cache_ttl instead
-_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE: int = 10000  # Use Config.rate_limit_cache_maxsize instead
-
-# Parse and validate environment variables with input validation
-_toggle_cooldown_env = os.environ.get("SENTINEL_TOGGLE_COOLDOWN")
-if _toggle_cooldown_env is not None:
-    TOGGLE_COOLDOWN_SECONDS: float = validate_positive_float(
-        "SENTINEL_TOGGLE_COOLDOWN",
-        _toggle_cooldown_env,
-        _DEFAULT_TOGGLE_COOLDOWN,
-        MIN_TOGGLE_COOLDOWN,
-        MAX_TOGGLE_COOLDOWN,
-    )
-else:
-    TOGGLE_COOLDOWN_SECONDS = _DEFAULT_TOGGLE_COOLDOWN
-
-# Track last write time per file path for rate limiting
-# Using TTLCache to automatically clean up stale entries
-# Cache TTL and maxsize are configurable via environment variables
-# Allows operators to tune cache behavior for different memory constraints and usage patterns
-_cache_ttl_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_TTL")
-if _cache_ttl_env is not None:
-    _RATE_LIMIT_CACHE_TTL: int = validate_positive_int(
-        "SENTINEL_RATE_LIMIT_CACHE_TTL",
-        _cache_ttl_env,
-        _DEFAULT_RATE_LIMIT_CACHE_TTL,
-        MIN_CACHE_TTL,
-        MAX_CACHE_TTL,
-    )
-else:
-    _RATE_LIMIT_CACHE_TTL = _DEFAULT_RATE_LIMIT_CACHE_TTL
-
-_cache_maxsize_env = os.environ.get("SENTINEL_RATE_LIMIT_CACHE_MAXSIZE")
-if _cache_maxsize_env is not None:
-    _RATE_LIMIT_CACHE_MAXSIZE: int = validate_positive_int(
-        "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE",
-        _cache_maxsize_env,
-        _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE,
-        MIN_CACHE_MAXSIZE,
-        MAX_CACHE_MAXSIZE,
-    )
-else:
-    _RATE_LIMIT_CACHE_MAXSIZE = _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE
-
-_last_write_times: TTLCache[str, float] = TTLCache(
-    maxsize=_RATE_LIMIT_CACHE_MAXSIZE, ttl=_RATE_LIMIT_CACHE_TTL
-)
-
-
-def _check_rate_limit(file_path: str) -> None:
-    """Check if a file write is allowed based on rate limiting.
-
-    Raises HTTPException with 429 status if the cooldown period has not elapsed
-    since the last write to the same file.
-
-    Args:
-        file_path: The path to the file being written.
-
-    Raises:
-        HTTPException: 429 if the cooldown period has not elapsed.
-    """
-    current_time = time.monotonic()
-    last_write = _last_write_times.get(file_path)
-
-    if last_write is not None:
-        elapsed = current_time - last_write
-        if elapsed < TOGGLE_COOLDOWN_SECONDS:
-            remaining = TOGGLE_COOLDOWN_SECONDS - elapsed
-            logger.warning(
-                "Rate limit exceeded for file %s, %.1fs remaining in cooldown",
-                file_path,
-                remaining,
-            )
-            raise HTTPException(
-                status_code=429,
-                detail=f"Rate limit exceeded. Please wait {remaining:.1f} seconds before toggling again.",
-            )
-
-
-def _record_write(file_path: str) -> None:
-    """Record the write time for a file for rate limiting purposes.
-
-    Args:
-        file_path: The path to the file that was written.
-    """
-    _last_write_times[file_path] = time.monotonic()
-
-
 if TYPE_CHECKING:
+    from sentinel.config import Config
     from sentinel.dashboard.state import SentinelStateAccessor
     from sentinel.github_rest_client import GitHubRestClient
     from sentinel.health import HealthChecker
     from sentinel.rest_clients import JiraRestClient
+
+
+# =============================================================================
+# DEPRECATED MODULE-LEVEL CONSTANTS
+# =============================================================================
+# These module-level constants are deprecated and kept only for backward
+# compatibility. Use Config class values instead:
+# - Config.toggle_cooldown_seconds instead of _DEFAULT_TOGGLE_COOLDOWN
+# - Config.rate_limit_cache_ttl instead of _DEFAULT_RATE_LIMIT_CACHE_TTL
+# - Config.rate_limit_cache_maxsize instead of _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE
+#
+# Accessing these constants will emit a DeprecationWarning.
+# =============================================================================
+
+
+def __getattr__(name: str) -> float | int:
+    """Module-level __getattr__ to emit deprecation warnings for legacy constants."""
+    if name == "_DEFAULT_TOGGLE_COOLDOWN":
+        warnings.warn(
+            "_DEFAULT_TOGGLE_COOLDOWN is deprecated. Use Config.toggle_cooldown_seconds instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return 2.0
+    elif name == "_DEFAULT_RATE_LIMIT_CACHE_TTL":
+        warnings.warn(
+            "_DEFAULT_RATE_LIMIT_CACHE_TTL is deprecated. Use Config.rate_limit_cache_ttl instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return 3600
+    elif name == "_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE":
+        warnings.warn(
+            "_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE is deprecated. Use Config.rate_limit_cache_maxsize instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return 10000
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+class RateLimiter:
+    """Rate limiter for file write operations.
+
+    This class provides rate limiting for toggle endpoints to prevent rapid
+    file writes. It uses Config values for configuration instead of module-level
+    constants.
+
+    The rate limiter tracks the last write time per file path using a TTLCache
+    to automatically clean up stale entries.
+    """
+
+    def __init__(self, config: Config) -> None:
+        """Initialize the rate limiter with configuration.
+
+        Args:
+            config: Application configuration containing rate limiting settings.
+        """
+        self._toggle_cooldown_seconds = config.toggle_cooldown_seconds
+        self._last_write_times: TTLCache[str, float] = TTLCache(
+            maxsize=config.rate_limit_cache_maxsize,
+            ttl=config.rate_limit_cache_ttl,
+        )
+
+    def check_rate_limit(self, file_path: str) -> None:
+        """Check if a file write is allowed based on rate limiting.
+
+        Raises HTTPException with 429 status if the cooldown period has not elapsed
+        since the last write to the same file.
+
+        Args:
+            file_path: The path to the file being written.
+
+        Raises:
+            HTTPException: 429 if the cooldown period has not elapsed.
+        """
+        current_time = time.monotonic()
+        last_write = self._last_write_times.get(file_path)
+
+        if last_write is not None:
+            elapsed = current_time - last_write
+            if elapsed < self._toggle_cooldown_seconds:
+                remaining = self._toggle_cooldown_seconds - elapsed
+                logger.warning(
+                    "Rate limit exceeded for file %s, %.1fs remaining in cooldown",
+                    file_path,
+                    remaining,
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Rate limit exceeded. Please wait {remaining:.1f} seconds before toggling again.",
+                )
+
+    def record_write(self, file_path: str) -> None:
+        """Record the write time for a file for rate limiting purposes.
+
+        Args:
+            file_path: The path to the file that was written.
+        """
+        self._last_write_times[file_path] = time.monotonic()
 
 
 # Request/Response models for orchestration toggle endpoints
@@ -176,6 +173,7 @@ class BulkToggleResponse(BaseModel):
 def create_routes(
     state_accessor: SentinelStateAccessor,
     health_checker: HealthChecker | None = None,
+    config: Config | None = None,
 ) -> APIRouter:
     """Create dashboard routes with the given state accessor.
 
@@ -186,10 +184,21 @@ def create_routes(
         state_accessor: The state accessor for retrieving Sentinel state.
         health_checker: Optional health checker for dependency checks.
             If not provided, readiness checks will return basic status.
+        config: Optional application configuration for rate limiting settings.
+            If not provided, default Config values will be used.
 
     Returns:
         An APIRouter with all dashboard routes configured.
     """
+    # Import Config here to avoid circular imports at module level
+    from sentinel.config import Config as ConfigClass
+
+    # Use provided config or create a default one
+    effective_config = config if config is not None else ConfigClass()
+
+    # Create rate limiter with config values
+    rate_limiter = RateLimiter(effective_config)
+
     dashboard_router = APIRouter()
 
     @dashboard_router.get("/", response_class=HTMLResponse)
@@ -644,7 +653,7 @@ def create_routes(
             )
 
         # Check rate limit before writing
-        _check_rate_limit(str(source_file))
+        rate_limiter.check_rate_limit(str(source_file))
 
         try:
             writer = OrchestrationYamlWriter()
@@ -657,7 +666,7 @@ def create_routes(
                 )
 
             # Record successful write for rate limiting
-            _record_write(str(source_file))
+            rate_limiter.record_write(str(source_file))
 
             return ToggleResponse(
                 success=True,
@@ -732,7 +741,7 @@ def create_routes(
         # Check rate limit for all unique files before writing
         unique_files = set(str(f) for f in orch_files.values())
         for file_path in unique_files:
-            _check_rate_limit(file_path)
+            rate_limiter.check_rate_limit(file_path)
 
         try:
             writer = OrchestrationYamlWriter()
@@ -748,7 +757,7 @@ def create_routes(
 
             # Record successful writes for rate limiting
             for file_path in unique_files:
-                _record_write(file_path)
+                rate_limiter.record_write(file_path)
 
             return BulkToggleResponse(
                 success=True,
