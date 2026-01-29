@@ -25,7 +25,7 @@ from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -405,15 +405,22 @@ def create_routes(
         )
 
     @dashboard_router.get("/health")
-    async def health() -> dict:
+    async def health(response: Response) -> dict:
         """Legacy health check endpoint.
 
         Deprecated: Use /health/live for liveness checks or
         /health/ready for readiness checks with dependency verification.
 
+        This endpoint includes a Deprecation header per RFC 8594 to signal
+        to API consumers that this endpoint is deprecated.
+
         Returns:
             JSON with health status.
         """
+        # Add Deprecation header per RFC 8594 to signal this endpoint is deprecated
+        # The "@deprecated" value indicates the resource is deprecated without a specific date
+        response.headers["Deprecation"] = "@deprecated"
+        response.headers["Link"] = '</health/live>; rel="successor-version", </health/ready>; rel="successor-version"'
         return {"status": "healthy"}
 
     @dashboard_router.get("/health/live")

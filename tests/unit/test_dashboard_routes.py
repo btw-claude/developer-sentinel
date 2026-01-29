@@ -86,6 +86,85 @@ class MockSentinel:
         return self._shutdown_requested
 
 
+class TestHealthEndpoints:
+    """Tests for health check endpoints."""
+
+    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
+        """Create a test FastAPI app with dashboard routes."""
+        app = FastAPI()
+        router = create_routes(accessor)
+        app.include_router(router)
+        return app
+
+    def test_legacy_health_endpoint_returns_deprecation_header(self) -> None:
+        """Test that legacy /health endpoint returns Deprecation header per RFC 8594."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinel(config)
+            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.get("/health")
+
+                assert response.status_code == 200
+                assert response.json() == {"status": "healthy"}
+                # Check for Deprecation header per RFC 8594
+                assert "Deprecation" in response.headers
+                assert response.headers["Deprecation"] == "@deprecated"
+
+    def test_legacy_health_endpoint_returns_link_header(self) -> None:
+        """Test that legacy /health endpoint returns Link header pointing to successors."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinel(config)
+            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.get("/health")
+
+                assert response.status_code == 200
+                # Check for Link header pointing to successor endpoints
+                assert "Link" in response.headers
+                link_header = response.headers["Link"]
+                assert "/health/live" in link_header
+                assert "/health/ready" in link_header
+                assert 'rel="successor-version"' in link_header
+
+    def test_health_live_endpoint_does_not_have_deprecation_header(self) -> None:
+        """Test that /health/live endpoint does not have Deprecation header."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinel(config)
+            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.get("/health/live")
+
+                assert response.status_code == 200
+                assert "Deprecation" not in response.headers
+
+    def test_health_ready_endpoint_does_not_have_deprecation_header(self) -> None:
+        """Test that /health/ready endpoint does not have Deprecation header."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinel(config)
+            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+            app = self._create_test_app(accessor)
+
+            with TestClient(app) as client:
+                response = client.get("/health/ready")
+
+                assert response.status_code == 200
+                assert "Deprecation" not in response.headers
+
+
 class TestApiLogsFilesEndpoint:
     """Tests for GET /api/logs/files endpoint."""
 

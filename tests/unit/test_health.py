@@ -26,6 +26,26 @@ class TestHealthCheckConfig:
         assert config.timeout == 5.0
         assert config.enabled is True
 
+    def test_from_config_with_app_config(self) -> None:
+        """Test creating HealthCheckConfig from application Config."""
+        from sentinel.config import Config
+
+        app_config = Config(health_check_timeout=10.0, health_check_enabled=False)
+        health_config = HealthCheckConfig.from_config(app_config)
+
+        assert health_config.timeout == 10.0
+        assert health_config.enabled is False
+
+    def test_from_config_with_default_app_config(self) -> None:
+        """Test creating HealthCheckConfig from default application Config."""
+        from sentinel.config import Config
+
+        app_config = Config()
+        health_config = HealthCheckConfig.from_config(app_config)
+
+        assert health_config.timeout == 5.0
+        assert health_config.enabled is True
+
     def test_from_env_defaults(self) -> None:
         """Test loading from environment with no variables set."""
         with patch.dict("os.environ", {}, clear=True):
@@ -136,6 +156,65 @@ class TestHealthCheckResult:
 
 class TestHealthChecker:
     """Tests for HealthChecker."""
+
+    def test_timeout_buffer_constant_is_defined(self) -> None:
+        """Test that TIMEOUT_BUFFER_SECONDS constant is defined on HealthChecker."""
+        assert hasattr(HealthChecker, "TIMEOUT_BUFFER_SECONDS")
+        assert HealthChecker.TIMEOUT_BUFFER_SECONDS == 1.0
+
+    def test_timeout_buffer_constant_is_documented(self) -> None:
+        """Test that TIMEOUT_BUFFER_SECONDS usage is evident in class docstring or comments.
+
+        The constant should be used in check_readiness to add buffer to individual
+        check timeouts when using asyncio.wait_for().
+        """
+        import inspect
+
+        source = inspect.getsource(HealthChecker)
+        # Verify the constant is used in the source
+        assert "TIMEOUT_BUFFER_SECONDS" in source
+        # Verify it's used in the wait_for call
+        assert "self.TIMEOUT_BUFFER_SECONDS" in source
+
+    def test_from_config_factory_method(self) -> None:
+        """Test creating HealthChecker from application Config."""
+        from sentinel.config import Config
+
+        app_config = Config(health_check_timeout=10.0, health_check_enabled=False)
+        checker = HealthChecker.from_config(app_config)
+
+        assert checker.config.timeout == 10.0
+        assert checker.config.enabled is False
+
+    def test_from_config_with_clients(self) -> None:
+        """Test creating HealthChecker from Config with optional clients."""
+        from sentinel.config import Config
+
+        mock_jira_client = MagicMock()
+        mock_github_client = MagicMock()
+
+        app_config = Config()
+        checker = HealthChecker.from_config(
+            app_config,
+            jira_client=mock_jira_client,
+            github_client=mock_github_client,
+            claude_api_key="test-key",
+        )
+
+        assert checker.jira_client is mock_jira_client
+        assert checker.github_client is mock_github_client
+        assert checker.claude_api_key == "test-key"
+
+    def test_from_config_uses_config_values(self) -> None:
+        """Test that from_config creates checker using Config health check settings."""
+        from sentinel.config import Config
+
+        app_config = Config(health_check_timeout=15.0, health_check_enabled=True)
+        checker = HealthChecker.from_config(app_config)
+
+        # The checker should have a config with values from the app config
+        assert checker.config.timeout == 15.0
+        assert checker.config.enabled is True
 
     def test_check_liveness(self) -> None:
         """Test liveness check returns healthy status."""

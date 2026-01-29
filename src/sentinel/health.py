@@ -176,6 +176,12 @@ class HealthChecker:
     # Claude API health check endpoint (models list is lightweight)
     CLAUDE_API_URL = "https://api.anthropic.com/v1/models"
 
+    # Buffer added to individual check timeouts when using asyncio.wait_for().
+    # This ensures that the outer timeout in check_readiness() doesn't trigger
+    # before individual check timeouts, allowing proper timeout handling and
+    # error reporting from each health check method.
+    TIMEOUT_BUFFER_SECONDS = 1.0
+
     def __init__(
         self,
         config: HealthCheckConfig | None = None,
@@ -195,6 +201,37 @@ class HealthChecker:
         self.jira_client = jira_client
         self.github_client = github_client
         self.claude_api_key = claude_api_key or os.getenv("ANTHROPIC_API_KEY", "")
+
+    @classmethod
+    def from_config(
+        cls,
+        config: Config,
+        jira_client: JiraRestClient | None = None,
+        github_client: GitHubRestClient | None = None,
+        claude_api_key: str | None = None,
+    ) -> HealthChecker:
+        """Create a HealthChecker from application Config.
+
+        This factory method provides a consistent initialization pattern that
+        aligns with other components in the application that use Config-based
+        initialization, making it easier to inject test configurations.
+
+        Args:
+            config: Application configuration containing health check settings.
+            jira_client: Optional Jira REST client for connectivity checks.
+            github_client: Optional GitHub REST client for connectivity checks.
+            claude_api_key: Optional Claude API key for connectivity checks.
+
+        Returns:
+            HealthChecker configured with settings from the application Config.
+        """
+        health_config = HealthCheckConfig.from_config(config)
+        return cls(
+            config=health_config,
+            jira_client=jira_client,
+            github_client=github_client,
+            claude_api_key=claude_api_key,
+        )
 
     def check_liveness(self) -> HealthCheckResult:
         """Perform a basic liveness check.
@@ -239,7 +276,7 @@ class HealthChecker:
         for name, task in tasks:
             try:
                 checks[name] = await asyncio.wait_for(
-                    task, timeout=self.config.timeout + 1.0
+                    task, timeout=self.config.timeout + self.TIMEOUT_BUFFER_SECONDS
                 )
             except asyncio.TimeoutError:
                 checks[name] = ServiceHealth(
