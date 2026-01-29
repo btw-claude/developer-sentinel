@@ -126,6 +126,12 @@ class Config:
     # Maximum calls to allow in half-open state for recovery testing (default: 3)
     circuit_breaker_half_open_max_calls: int = 3
 
+    # Health check configuration
+    # Enable/disable health checks for external service dependencies
+    health_check_enabled: bool = True
+    # Timeout in seconds for individual health checks (default: 5.0)
+    health_check_timeout: float = 5.0
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -552,6 +558,16 @@ def load_config(env_file: Path | None = None) -> Config:
         3,
     )
 
+    # Parse health check configuration
+    health_check_enabled = _parse_bool(
+        os.getenv("SENTINEL_HEALTH_CHECK_ENABLED", "true")
+    )
+    health_check_timeout = _parse_non_negative_float(
+        os.getenv("SENTINEL_HEALTH_CHECK_TIMEOUT", "5.0"),
+        "SENTINEL_HEALTH_CHECK_TIMEOUT",
+        5.0,
+    )
+
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
@@ -592,4 +608,6 @@ def load_config(env_file: Path | None = None) -> Config:
         circuit_breaker_failure_threshold=circuit_breaker_failure_threshold,
         circuit_breaker_recovery_timeout=circuit_breaker_recovery_timeout,
         circuit_breaker_half_open_max_calls=circuit_breaker_half_open_max_calls,
+        health_check_enabled=health_check_enabled,
+        health_check_timeout=health_check_timeout,
     )
