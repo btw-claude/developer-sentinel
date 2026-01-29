@@ -9,6 +9,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from sentinel.branch_validation import validate_branch_name_core
+
 # Valid log levels
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
@@ -394,11 +396,15 @@ def _parse_warning_threshold(value: str, name: str, default: float) -> float:
 
 
 def _validate_branch_name(value: str, default: str = "main") -> str:
-    """Validate and normalize a git branch name string.
+    """Validate and normalize a git branch name string for config.
+
+    This function wraps the shared validate_branch_name_core() function,
+    providing config-specific behavior: logging warnings and returning
+    a default value when validation fails.
 
     Git branch naming rules enforced:
     - Cannot start with a hyphen (-) or period (.)
-    - Cannot end with a period (.) or forward slash (/)
+    - Cannot end with a period (.), forward slash (/), or .lock
     - Cannot contain: space, ~, ^, :, ?, *, [, ], \\, @{
     - Cannot contain consecutive periods (..) or forward slashes (//)
     - Cannot be empty
@@ -412,69 +418,19 @@ def _validate_branch_name(value: str, default: str = "main") -> str:
 
     Logs a warning if the value is invalid.
     """
-    if not value or not value.strip():
-        logging.warning(
-            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: empty branch name, using default '%s'",
-            default,
-        )
-        return default
+    result = validate_branch_name_core(value, allow_empty=False, allow_template_variables=False)
 
-    value = value.strip()
+    if result.is_valid:
+        return value.strip() if value else default
 
-    # Check for invalid starting characters
-    if value.startswith("-") or value.startswith("."):
-        logging.warning(
-            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' cannot start with '-' or '.', "
-            "using default '%s'",
-            value,
-            default,
-        )
-        return default
-
-    # Check for invalid ending characters
-    if value.endswith(".") or value.endswith("/"):
-        logging.warning(
-            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' cannot end with '.' or '/', "
-            "using default '%s'",
-            value,
-            default,
-        )
-        return default
-
-    # Check for invalid characters
-    invalid_chars = set(" ~^:?*[]\\")
-    found_invalid = [c for c in value if c in invalid_chars]
-    if found_invalid:
-        logging.warning(
-            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' contains invalid characters %s, "
-            "using default '%s'",
-            value,
-            found_invalid,
-            default,
-        )
-        return default
-
-    # Check for @{ sequence (reflog syntax)
-    if "@{" in value:
-        logging.warning(
-            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' cannot contain '@{', "
-            "using default '%s'",
-            value,
-            default,
-        )
-        return default
-
-    # Check for consecutive periods or slashes
-    if ".." in value or "//" in value:
-        logging.warning(
-            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' cannot contain '..' or '//', "
-            "using default '%s'",
-            value,
-            default,
-        )
-        return default
-
-    return value
+    # Log a warning with the specific error message
+    logging.warning(
+        "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' - %s, using default '%s'",
+        value,
+        result.error_message,
+        default,
+    )
+    return default
 
 
 def load_config(env_file: Path | None = None) -> Config:

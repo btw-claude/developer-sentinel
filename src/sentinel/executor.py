@@ -14,6 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from sentinel.branch_validation import validate_runtime_branch_name
 from sentinel.github_poller import GitHubIssue
 from sentinel.logging import get_logger, log_agent_summary
 from sentinel.orchestration import GitHubContext, Orchestration, Outcome, RetryConfig
@@ -534,6 +535,10 @@ class AgentExecutor:
         Returns None if no branch pattern is configured. Uses variables from
         _build_template_variables(). See GitHubContext docstring for available
         template variables and usage notes.
+
+        After template substitution, the fully-resolved branch name is validated
+        against git branch naming rules. If validation fails, a warning is logged
+        and None is returned to prevent using an invalid branch name.
         """
         github = orchestration.agent.github
         if not github or not github.branch:
@@ -548,7 +553,21 @@ class AgentExecutor:
                 return variables[var_name]
             return match.group(0)
 
-        return re.sub(r"\{(\w+)\}", replace_var, github.branch)
+        expanded_branch = re.sub(r"\{(\w+)\}", replace_var, github.branch)
+
+        # Validate the fully-resolved branch name at runtime
+        validation_result = validate_runtime_branch_name(expanded_branch)
+        if not validation_result.is_valid:
+            logger.warning(
+                "Invalid expanded branch name '%s' (from pattern '%s'): %s. "
+                "Branch will not be used.",
+                expanded_branch,
+                github.branch,
+                validation_result.error_message,
+            )
+            return None
+
+        return expanded_branch
 
     def build_prompt(self, issue: AnyIssue, orchestration: Orchestration) -> str:
         """Build the agent prompt by substituting template variables.

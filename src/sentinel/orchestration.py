@@ -11,6 +11,7 @@ from typing import Any, Literal, NamedTuple
 
 import yaml
 
+from sentinel.branch_validation import validate_branch_name_core
 from sentinel.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,8 +36,7 @@ _GITHUB_OWNER_PATTERN = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9]|-(?!-))*[a-zA-Z0-9
 # Repo name pattern: alphanumeric, hyphens, underscores, periods
 _GITHUB_REPO_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$|^[a-zA-Z0-9]$")
 
-# Branch name invalid characters: space, ~, ^, :, ?, *, [, ], \, @{
-_BRANCH_INVALID_CHARS = re.compile(r"[ ~^:?*\[\]\\]|@\{")
+# Note: Branch validation is now handled by the shared branch_validation module
 
 
 class ValidationResult(NamedTuple):
@@ -463,9 +463,13 @@ def _validate_github_repo_format(repo: str) -> ValidationResult:
 def _validate_branch_name(branch: str) -> ValidationResult:
     """Validate that a branch name follows git branch naming rules.
 
+    This function wraps the shared validate_branch_name_core() function,
+    adapting the BranchValidationResult to the local ValidationResult type
+    used throughout this module.
+
     Git branch naming rules enforced:
     - Cannot start with a hyphen (-) or period (.)
-    - Cannot end with a period (.) or forward slash (/)
+    - Cannot end with a period (.), forward slash (/), or .lock
     - Cannot contain: space, ~, ^, :, ?, *, [, ], \\, @{
     - Cannot contain consecutive periods (..) or forward slashes (//)
     - Cannot be empty (but empty strings are allowed as "not configured")
@@ -476,39 +480,13 @@ def _validate_branch_name(branch: str) -> ValidationResult:
     Returns ValidationResult.success() for valid or empty strings,
     ValidationResult.failure(message) otherwise.
     """
-    if not branch:
-        return ValidationResult.success()  # Empty is valid (optional field)
+    result = validate_branch_name_core(
+        branch, allow_empty=True, allow_template_variables=True
+    )
 
-    # For branch patterns with template variables, validate the static parts
-    # by checking each segment between template variables
-    # e.g., "feature/{jira_issue_key}/test" -> check "feature/", "/test"
-    static_parts = re.split(r"\{[^}]+\}", branch)
-
-    # Check the overall structure
-    if branch.startswith("-") or branch.startswith("."):
-        return ValidationResult.failure(
-            "branch name cannot start with '-' or '.'"
-        )
-
-    if branch.endswith(".") or branch.endswith("/"):
-        return ValidationResult.failure(
-            "branch name cannot end with '.' or '/'"
-        )
-
-    # Check for invalid characters in static parts
-    for part in static_parts:
-        if _BRANCH_INVALID_CHARS.search(part):
-            return ValidationResult.failure(
-                "branch name contains invalid characters (space, ~, ^, :, ?, *, [, ], \\, or @{)"
-            )
-
-    # Check for consecutive periods or slashes
-    if ".." in branch or "//" in branch:
-        return ValidationResult.failure(
-            "branch name cannot contain consecutive periods (..) or slashes (//)"
-        )
-
-    return ValidationResult.success()
+    if result.is_valid:
+        return ValidationResult.success()
+    return ValidationResult.failure(result.error_message)
 
 
 def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
