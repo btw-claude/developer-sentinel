@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from sentinel.agent_clients.base import AgentType
@@ -85,26 +86,44 @@ class MockAgentClient(AgentClient):
     Implements the async AgentClient interface for use in tests. Returns
     pre-configured responses without executing actual agent operations.
 
+    Supports error and timeout simulation for testing error handling paths.
+
     Args:
         responses: List of response strings to return. Cycles through if needed.
+        workdir: Optional workdir path to return in results.
         agent_type_value: The agent type this mock represents.
 
     Attributes:
         responses: The responses to return from run_agent.
+        workdir: The workdir to return in AgentRunResult.
         call_count: Number of times run_agent was called.
         calls: List of call arguments for verification.
+        should_error: If True, raises AgentClientError (up to max_errors times).
+        error_count: Number of errors raised so far.
+        max_errors: Maximum number of errors to raise before succeeding.
+        should_timeout: If True, raises AgentTimeoutError (up to max_timeouts times).
+        timeout_count: Number of timeouts raised so far.
+        max_timeouts: Maximum number of timeouts to raise before succeeding.
     """
 
     def __init__(
         self,
         responses: list[str] | None = None,
+        workdir: "Path | None" = None,
         agent_type_value: AgentType = "claude",
     ) -> None:
-        self.responses = responses or ["SUCCESS: Done"]
+        self.responses = responses or ["SUCCESS: Task completed"]
+        self.workdir = workdir
         self.call_count = 0
         self.calls: list[
-            tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None, str | None]
+            tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None]
         ] = []
+        self.should_error = False
+        self.error_count = 0
+        self.max_errors = 0
+        self.should_timeout = False
+        self.timeout_count = 0
+        self.max_timeouts = 0
         self._agent_type = agent_type_value
 
     @property
@@ -126,10 +145,21 @@ class MockAgentClient(AgentClient):
         base_branch: str = "main",
     ) -> AgentRunResult:
         """Async mock implementation of run_agent."""
-        self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model, orchestration_name))
+        from sentinel.executor import AgentClientError, AgentTimeoutError
+
+        self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model))
+
+        if self.should_timeout and self.timeout_count < self.max_timeouts:
+            self.timeout_count += 1
+            raise AgentTimeoutError(f"Agent timed out after {timeout_seconds}s")
+
+        if self.should_error and self.error_count < self.max_errors:
+            self.error_count += 1
+            raise AgentClientError("Mock agent error")
+
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
-        return AgentRunResult(response=response, workdir=None)
+        return AgentRunResult(response=response, workdir=self.workdir)
 
 
 class MockTagClient(JiraTagClient):

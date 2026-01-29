@@ -45,6 +45,7 @@ from tests.mocks import (
 # Re-export helpers for backwards compatibility with existing test imports
 from tests.helpers import (
     make_config,
+    make_issue,
     make_orchestration,
     set_mtime_in_future,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "MockAgentClientFactory",
     # Helpers
     "make_config",
+    "make_issue",
     "make_orchestration",
     "set_mtime_in_future",
     "build_github_trigger_key",
