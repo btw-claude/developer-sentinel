@@ -1316,6 +1316,24 @@ class TestDeprecatedModuleLevelConstants:
         assert "has no attribute '_NONEXISTENT_CONSTANT'" in str(exc_info.value)
 
 
+def assert_call_args_length(call_args: tuple[Any, ...], min_length: int) -> None:
+    """Assert that call_args tuple has at least min_length positional arguments.
+
+    This helper provides clearer error messages when checking mock call arguments
+    by including the expected and actual lengths in the assertion message.
+
+    Args:
+        call_args: The call_args from a mock, typically mock.call_args.
+        min_length: The minimum number of positional arguments expected.
+
+    Raises:
+        AssertionError: If call_args[0] has fewer than min_length elements.
+    """
+    assert (
+        len(call_args[0]) >= min_length
+    ), f"Expected at least {min_length} positional args, got {len(call_args[0])}"
+
+
 class TestCreateRoutesLogging:
     """Tests for debug logging in create_routes function.
 
@@ -1341,10 +1359,7 @@ class TestCreateRoutesLogging:
             # Verify debug was called with correct arguments
             mock_logger.debug.assert_called_once()
             call_args = mock_logger.debug.call_args
-            # Verify call_args tuple has expected number of elements for clearer error messages
-            assert (
-                len(call_args[0]) >= 5
-            ), f"Expected at least 5 positional args, got {len(call_args[0])}"
+            assert_call_args_length(call_args, 5)
             # Check format string contains expected placeholders
             assert "create_routes using %s Config" in call_args[0][0]
             # Check positional arguments: config_source, toggle_cooldown, cache_ttl, cache_maxsize
@@ -1365,10 +1380,7 @@ class TestCreateRoutesLogging:
             # Verify debug was called with correct arguments
             mock_logger.debug.assert_called_once()
             call_args = mock_logger.debug.call_args
-            # Verify call_args tuple has expected number of elements for clearer error messages
-            assert (
-                len(call_args[0]) >= 5
-            ), f"Expected at least 5 positional args, got {len(call_args[0])}"
+            assert_call_args_length(call_args, 5)
             # Check format string contains expected placeholders
             assert "create_routes using %s Config" in call_args[0][0]
             # Check positional arguments: config_source, toggle_cooldown, cache_ttl, cache_maxsize
@@ -1388,10 +1400,7 @@ class TestCreateRoutesLogging:
 
             # Verify the toggle_cooldown value is passed correctly
             call_args = mock_logger.debug.call_args
-            # Verify call_args tuple has expected number of elements for clearer error messages
-            assert (
-                len(call_args[0]) >= 3
-            ), f"Expected at least 3 positional args, got {len(call_args[0])}"
+            assert_call_args_length(call_args, 3)
             assert call_args[0][2] == 3.5
 
     def test_create_routes_logs_cache_ttl_value(self, temp_logs_dir: Path) -> None:
@@ -1405,10 +1414,7 @@ class TestCreateRoutesLogging:
 
             # Verify the cache_ttl value is passed correctly
             call_args = mock_logger.debug.call_args
-            # Verify call_args tuple has expected number of elements for clearer error messages
-            assert (
-                len(call_args[0]) >= 4
-            ), f"Expected at least 4 positional args, got {len(call_args[0])}"
+            assert_call_args_length(call_args, 4)
             assert call_args[0][3] == 1800
 
     def test_create_routes_logs_cache_maxsize_value(self, temp_logs_dir: Path) -> None:
@@ -1422,8 +1428,5 @@ class TestCreateRoutesLogging:
 
             # Verify the cache_maxsize value is passed correctly
             call_args = mock_logger.debug.call_args
-            # Verify call_args tuple has expected number of elements for clearer error messages
-            assert (
-                len(call_args[0]) >= 5
-            ), f"Expected at least 5 positional args, got {len(call_args[0])}"
+            assert_call_args_length(call_args, 5)
             assert call_args[0][4] == 20000
