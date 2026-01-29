@@ -12,6 +12,7 @@ import pytest
 from sentinel.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
+    CircuitBreakerConfigError,
     CircuitBreakerError,
     CircuitBreakerRegistry,
     CircuitState,
@@ -81,6 +82,42 @@ class TestCircuitBreakerConfig:
             assert config.recovery_timeout == 45.0
             # Half open max calls should use global default
             assert config.half_open_max_calls == 3
+
+    def test_validation_failure_threshold_zero(self) -> None:
+        """Test that failure_threshold of 0 raises an error."""
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(failure_threshold=0)
+        assert "failure_threshold must be positive" in str(exc_info.value)
+
+    def test_validation_failure_threshold_negative(self) -> None:
+        """Test that negative failure_threshold raises an error."""
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(failure_threshold=-1)
+        assert "failure_threshold must be positive" in str(exc_info.value)
+
+    def test_validation_recovery_timeout_zero(self) -> None:
+        """Test that recovery_timeout of 0 raises an error."""
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(recovery_timeout=0)
+        assert "recovery_timeout must be positive" in str(exc_info.value)
+
+    def test_validation_recovery_timeout_negative(self) -> None:
+        """Test that negative recovery_timeout raises an error."""
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(recovery_timeout=-5.0)
+        assert "recovery_timeout must be positive" in str(exc_info.value)
+
+    def test_validation_half_open_max_calls_zero(self) -> None:
+        """Test that half_open_max_calls of 0 raises an error."""
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(half_open_max_calls=0)
+        assert "half_open_max_calls must be positive" in str(exc_info.value)
+
+    def test_validation_half_open_max_calls_negative(self) -> None:
+        """Test that negative half_open_max_calls raises an error."""
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(half_open_max_calls=-2)
+        assert "half_open_max_calls must be positive" in str(exc_info.value)
 
 
 class TestCircuitBreakerStates:
@@ -466,3 +503,177 @@ class TestGlobalHelperFunctions:
         # Should return same instance
         cb2 = get_circuit_breaker("test_service")
         assert cb is cb2
+
+
+class TestExcludedExceptions:
+    """Tests for excluded exceptions feature."""
+
+    class CustomBusinessException(Exception):
+        """Custom business exception for testing."""
+
+        pass
+
+    class ValidationError(Exception):
+        """Validation error for testing."""
+
+        pass
+
+    def test_excluded_exception_not_counted_as_failure(self) -> None:
+        """Test that excluded exceptions are not counted as failures."""
+        config = CircuitBreakerConfig(failure_threshold=2)
+        cb = CircuitBreaker(
+            "test",
+            config,
+            excluded_exceptions=(self.CustomBusinessException,),
+        )
+
+        # Record excluded exception - should not count
+        cb.record_failure(self.CustomBusinessException("Business error"))
+        assert cb.metrics.failed_calls == 0
+        assert cb.state == CircuitState.CLOSED
+
+        # Record regular exception - should count
+        cb.record_failure(ValueError("Real error"))
+        assert cb.metrics.failed_calls == 1
+        cb.record_failure(ValueError("Real error 2"))
+        assert cb.metrics.failed_calls == 2
+        assert cb.state == CircuitState.OPEN
+
+    def test_multiple_excluded_exceptions(self) -> None:
+        """Test that multiple exception types can be excluded."""
+        config = CircuitBreakerConfig(failure_threshold=1)
+        cb = CircuitBreaker(
+            "test",
+            config,
+            excluded_exceptions=(
+                self.CustomBusinessException,
+                self.ValidationError,
+                KeyboardInterrupt,
+            ),
+        )
+
+        # All excluded exceptions should not count
+        cb.record_failure(self.CustomBusinessException("error"))
+        cb.record_failure(self.ValidationError("error"))
+        cb.record_failure(KeyboardInterrupt())
+
+        assert cb.metrics.failed_calls == 0
+        assert cb.state == CircuitState.CLOSED
+
+    def test_excluded_exception_with_decorator(self) -> None:
+        """Test excluded exceptions work with decorator pattern."""
+        config = CircuitBreakerConfig(failure_threshold=1)
+        cb = CircuitBreaker(
+            "test",
+            config,
+            excluded_exceptions=(self.CustomBusinessException,),
+        )
+
+        @cb
+        def business_function(should_fail_with_business_error: bool) -> str:
+            if should_fail_with_business_error:
+                raise self.CustomBusinessException("Business error")
+            raise ValueError("Real error")
+
+        # Business error should not open circuit
+        with pytest.raises(self.CustomBusinessException):
+            business_function(should_fail_with_business_error=True)
+        assert cb.state == CircuitState.CLOSED
+        assert cb.metrics.failed_calls == 0
+
+        # Real error should open circuit
+        with pytest.raises(ValueError):
+            business_function(should_fail_with_business_error=False)
+        assert cb.state == CircuitState.OPEN
+        assert cb.metrics.failed_calls == 1
+
+    def test_excluded_exception_with_context_manager(self) -> None:
+        """Test excluded exceptions work with context manager pattern."""
+        config = CircuitBreakerConfig(failure_threshold=1)
+        cb = CircuitBreaker(
+            "test",
+            config,
+            excluded_exceptions=(self.CustomBusinessException,),
+        )
+
+        # Business error should not open circuit
+        with pytest.raises(self.CustomBusinessException):
+            with cb:
+                raise self.CustomBusinessException("Business error")
+        assert cb.state == CircuitState.CLOSED
+        assert cb.metrics.failed_calls == 0
+
+        # Real error should open circuit
+        with pytest.raises(ValueError):
+            with cb:
+                raise ValueError("Real error")
+        assert cb.state == CircuitState.OPEN
+        assert cb.metrics.failed_calls == 1
+
+    def test_excluded_exception_in_half_open_state(self) -> None:
+        """Test excluded exceptions don't trigger reopening in half-open state."""
+        config = CircuitBreakerConfig(
+            failure_threshold=1,
+            recovery_timeout=0.1,
+        )
+        cb = CircuitBreaker(
+            "test",
+            config,
+            excluded_exceptions=(self.CustomBusinessException,),
+        )
+
+        # Open the circuit
+        cb.record_failure(ValueError("Real error"))
+        assert cb.state == CircuitState.OPEN
+
+        # Wait for half-open
+        time.sleep(0.15)
+        assert cb.state == CircuitState.HALF_OPEN
+
+        # Excluded exception should not reopen the circuit
+        cb.allow_request()
+        cb.record_failure(self.CustomBusinessException("Business error"))
+        assert cb.state == CircuitState.HALF_OPEN  # Should still be half-open
+
+    def test_subclass_of_excluded_exception(self) -> None:
+        """Test that subclasses of excluded exceptions are also excluded."""
+
+        class SpecificBusinessException(self.CustomBusinessException):
+            pass
+
+        config = CircuitBreakerConfig(failure_threshold=1)
+        cb = CircuitBreaker(
+            "test",
+            config,
+            excluded_exceptions=(self.CustomBusinessException,),
+        )
+
+        # Subclass should also be excluded
+        cb.record_failure(SpecificBusinessException("Specific error"))
+        assert cb.metrics.failed_calls == 0
+        assert cb.state == CircuitState.CLOSED
+
+    def test_no_excluded_exceptions_by_default(self) -> None:
+        """Test that by default no exceptions are excluded."""
+        cb = CircuitBreaker("test", CircuitBreakerConfig(failure_threshold=1))
+
+        # Verify excluded_exceptions is empty
+        assert cb.excluded_exceptions == ()
+
+        # All exceptions should count as failures
+        cb.record_failure(ValueError("error"))
+        assert cb.metrics.failed_calls == 1
+
+    def test_registry_with_excluded_exceptions(self) -> None:
+        """Test that registry supports excluded_exceptions parameter."""
+        registry = CircuitBreakerRegistry()
+        cb = registry.get(
+            "test_service_exc",
+            excluded_exceptions=(self.CustomBusinessException,),
+        )
+
+        assert cb.excluded_exceptions == (self.CustomBusinessException,)
+
+        # Test functionality
+        cb.record_failure(self.CustomBusinessException("error"))
+        assert cb.metrics.failed_calls == 0
