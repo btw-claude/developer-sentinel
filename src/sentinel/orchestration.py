@@ -103,15 +103,16 @@ class GitHubContext:
         Jira Variables (populated when source is Jira, empty for GitHub triggers):
             - ``{jira_issue_key}``: The Jira issue key (e.g., "PROJ-123").
             - ``{jira_summary}``: Issue title/summary text.
-            - ``{jira_summary_slug}``: Branch-safe version of summary (computed).
+            - ``{jira_summary_slug}``: Branch-safe version of summary (computed, see Slug
+              Transformation below).
             - ``{jira_description}``: Full issue description.
             - ``{jira_status}``: Current status name.
             - ``{jira_assignee}``: Assignee display name.
             - ``{jira_epic_key}``: Parent epic key if linked.
             - ``{jira_parent_key}``: Parent issue key if subtask.
-            - ``{jira_labels}``: Comma-separated list of labels (formatted).
-            - ``{jira_comments}``: Formatted comment thread (formatted).
-            - ``{jira_links}``: Comma-separated issue links (formatted).
+            - ``{jira_labels}``: Comma-separated list of labels (see List Formatting below).
+            - ``{jira_comments}``: Formatted comment thread (see List Formatting below).
+            - ``{jira_links}``: Comma-separated issue links (see List Formatting below).
 
         GitHub Variables (populated when source is GitHub, empty for Jira triggers):
             - ``{github_host}``: GitHub host (e.g., "github.com").
@@ -119,7 +120,8 @@ class GitHubContext:
             - ``{github_repo}``: Repository name.
             - ``{github_issue_number}``: Issue or PR number.
             - ``{github_issue_title}``: Issue or PR title.
-            - ``{github_issue_title_slug}``: Branch-safe version of title (computed).
+            - ``{github_issue_title_slug}``: Branch-safe version of title (computed, see Slug
+              Transformation below).
             - ``{github_issue_body}``: Issue or PR body/description.
             - ``{github_issue_state}``: State (open, closed).
             - ``{github_issue_author}``: Author username.
@@ -129,14 +131,41 @@ class GitHubContext:
             - ``{github_pr_base}``: PR base branch (empty if not a PR).
             - ``{github_pr_draft}``: "true" if draft PR, "false" otherwise.
             - ``{github_parent_issue_number}``: Parent issue number if linked.
-            - ``{github_issue_assignees}``: Comma-separated assignee usernames (formatted).
-            - ``{github_issue_labels}``: Comma-separated label names (formatted).
+            - ``{github_issue_assignees}``: Comma-separated assignee usernames (see List
+              Formatting below).
+            - ``{github_issue_labels}``: Comma-separated label names (see List Formatting
+              below).
+
+        Slug Transformation:
+            Variables with ``_slug`` suffix are transformed to be branch-safe. The
+            transformation algorithm:
+
+            1. Normalize unicode characters (e.g., "café" -> "cafe")
+            2. Convert to lowercase
+            3. Replace spaces and underscores with hyphens
+            4. Remove git-invalid characters (~, ^, :, ?, *, [, ], \\, @, {, }, etc.)
+            5. Collapse consecutive hyphens/dots into single characters
+            6. Strip leading/trailing hyphens and dots
+
+            Examples:
+                - "Add User Authentication" -> "add-user-authentication"
+                - "Fix bug #123" -> "fix-bug-123"
+                - "Update README.md" -> "update-readme.md"
+                - "Résumé Upload Feature" -> "resume-upload-feature"
+                - "API v2.0 Migration" -> "api-v2.0-migration"
+
+        List Formatting:
+            Variables marked as "formatted" contain list data rendered as comma-separated
+            strings. For example, if an issue has labels ["bug", "priority-high"], the
+            ``{jira_labels}`` or ``{github_issue_labels}`` variable will contain:
+            "bug, priority-high".
+
+            Comments are formatted as numbered entries with truncation for length.
 
         Notes:
             - Use slug variables (``_slug`` suffix) for branch-safe formatting.
             - Cross-source variables result in empty strings (e.g., Jira vars with
               GitHub triggers).
-            - Formatted list variables use comma separation with proper escaping.
     """
 
     host: str = "github.com"
