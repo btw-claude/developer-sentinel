@@ -133,6 +133,50 @@ class TestCircuitBreakerConfig:
         assert "half_open_max_calls must be an integer" in str(exc_info.value)
         assert "float" in str(exc_info.value)
 
+    def test_validation_failure_threshold_boolean_true(self) -> None:
+        """Test that boolean True for failure_threshold raises an error.
+
+        In Python, bool is a subclass of int, so True would pass isinstance(x, int).
+        This test ensures we explicitly reject boolean values.
+        """
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(failure_threshold=True)
+        assert "failure_threshold must be an integer" in str(exc_info.value)
+        assert "bool" in str(exc_info.value)
+
+    def test_validation_failure_threshold_boolean_false(self) -> None:
+        """Test that boolean False for failure_threshold raises an error.
+
+        In Python, bool is a subclass of int, so False would pass isinstance(x, int).
+        This test ensures we explicitly reject boolean values.
+        """
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(failure_threshold=False)
+        assert "failure_threshold must be an integer" in str(exc_info.value)
+        assert "bool" in str(exc_info.value)
+
+    def test_validation_half_open_max_calls_boolean_true(self) -> None:
+        """Test that boolean True for half_open_max_calls raises an error.
+
+        In Python, bool is a subclass of int, so True would pass isinstance(x, int).
+        This test ensures we explicitly reject boolean values.
+        """
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(half_open_max_calls=True)
+        assert "half_open_max_calls must be an integer" in str(exc_info.value)
+        assert "bool" in str(exc_info.value)
+
+    def test_validation_half_open_max_calls_boolean_false(self) -> None:
+        """Test that boolean False for half_open_max_calls raises an error.
+
+        In Python, bool is a subclass of int, so False would pass isinstance(x, int).
+        This test ensures we explicitly reject boolean values.
+        """
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(half_open_max_calls=False)
+        assert "half_open_max_calls must be an integer" in str(exc_info.value)
+        assert "bool" in str(exc_info.value)
+
 
 class TestCircuitBreakerStates:
     """Tests for circuit breaker state transitions."""
