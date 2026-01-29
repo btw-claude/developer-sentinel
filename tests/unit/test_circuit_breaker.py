@@ -119,6 +119,20 @@ class TestCircuitBreakerConfig:
             CircuitBreakerConfig(half_open_max_calls=-2)
         assert "half_open_max_calls must be positive" in str(exc_info.value)
 
+    def test_validation_failure_threshold_float(self) -> None:
+        """Test that float failure_threshold raises an error."""
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(failure_threshold=2.5)
+        assert "failure_threshold must be an integer" in str(exc_info.value)
+        assert "float" in str(exc_info.value)
+
+    def test_validation_half_open_max_calls_float(self) -> None:
+        """Test that float half_open_max_calls raises an error."""
+        with pytest.raises(CircuitBreakerConfigError) as exc_info:
+            CircuitBreakerConfig(half_open_max_calls=3.5)
+        assert "half_open_max_calls must be an integer" in str(exc_info.value)
+        assert "float" in str(exc_info.value)
+
 
 class TestCircuitBreakerStates:
     """Tests for circuit breaker state transitions."""
