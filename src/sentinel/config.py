@@ -18,6 +18,9 @@ VALID_CURSOR_MODES = frozenset({"agent", "plan", "ask"})
 # Valid agent types
 VALID_AGENT_TYPES = frozenset({"claude", "cursor"})
 
+# Valid rate limit strategies
+VALID_RATE_LIMIT_STRATEGIES = frozenset({"queue", "reject"})
+
 # Port validation bounds
 MIN_PORT = 1
 MAX_PORT = 65535
@@ -99,6 +102,19 @@ class Config:
     rate_limit_cache_ttl: int = 3600  # 1 hour
     # Maximum number of entries in the rate limit cache
     rate_limit_cache_maxsize: int = 10000  # 10k entries
+
+    # Claude API rate limiting configuration
+    # Enable/disable rate limiting for Claude API calls
+    claude_rate_limit_enabled: bool = True
+    # Maximum requests per minute (default: 60)
+    claude_rate_limit_per_minute: int = 60
+    # Maximum requests per hour (default: 1000)
+    claude_rate_limit_per_hour: int = 1000
+    # Strategy when rate limit is reached: "queue" (wait) or "reject" (fail immediately)
+    claude_rate_limit_strategy: str = "queue"
+    # Warning threshold as fraction of remaining capacity (0.0-1.0)
+    # When tokens fall below this fraction, warnings are logged
+    claude_rate_limit_warning_threshold: float = 0.2
 
     @property
     def jira_configured(self) -> bool:
@@ -299,6 +315,64 @@ def _validate_agent_type(value: str) -> str:
     return normalized
 
 
+def _validate_rate_limit_strategy(value: str, default: str = "queue") -> str:
+    """Validate and normalize a rate limit strategy string.
+
+    Args:
+        value: The rate limit strategy string to validate.
+        default: The default value to use if invalid.
+
+    Returns:
+        The validated strategy (lowercase), or the default if invalid.
+
+    Logs a warning if the value is invalid.
+    """
+    normalized = value.lower()
+    if normalized not in VALID_RATE_LIMIT_STRATEGIES:
+        logging.warning(
+            "Invalid SENTINEL_CLAUDE_RATE_LIMIT_STRATEGY: '%s' is not valid, using default '%s'. Valid values: %s",
+            value,
+            default,
+            ", ".join(sorted(VALID_RATE_LIMIT_STRATEGIES)),
+        )
+        return default
+    return normalized
+
+
+def _parse_warning_threshold(value: str, name: str, default: float) -> float:
+    """Parse a string as a warning threshold float (0.0-1.0) with validation.
+
+    Args:
+        value: The string value to parse.
+        name: The name of the setting (for error messages).
+        default: The default value to use if parsing fails.
+
+    Returns:
+        The parsed threshold value (0.0-1.0), or the default if invalid.
+
+    Logs a warning if the value is invalid or out of range.
+    """
+    try:
+        parsed = float(value)
+        if parsed < 0.0 or parsed > 1.0:
+            logging.warning(
+                "Invalid %s: %f is not in range 0.0-1.0, using default %f",
+                name,
+                parsed,
+                default,
+            )
+            return default
+        return parsed
+    except ValueError:
+        logging.warning(
+            "Invalid %s: '%s' is not a valid number, using default %f",
+            name,
+            value,
+            default,
+        )
+        return default
+
+
 def load_config(env_file: Path | None = None) -> Config:
     """Load configuration from environment variables.
 
@@ -425,6 +499,29 @@ def load_config(env_file: Path | None = None) -> Config:
         value = os.getenv(env_var, "")
         return [arg.strip() for arg in value.split(",") if arg.strip()] if value else []
 
+    # Parse Claude API rate limiting configuration
+    claude_rate_limit_enabled = _parse_bool(
+        os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_ENABLED", "true")
+    )
+    claude_rate_limit_per_minute = _parse_positive_int(
+        os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_PER_MINUTE", "60"),
+        "SENTINEL_CLAUDE_RATE_LIMIT_PER_MINUTE",
+        60,
+    )
+    claude_rate_limit_per_hour = _parse_positive_int(
+        os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_PER_HOUR", "1000"),
+        "SENTINEL_CLAUDE_RATE_LIMIT_PER_HOUR",
+        1000,
+    )
+    claude_rate_limit_strategy = _validate_rate_limit_strategy(
+        os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_STRATEGY", "queue"),
+    )
+    claude_rate_limit_warning_threshold = _parse_warning_threshold(
+        os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_WARNING_THRESHOLD", "0.2"),
+        "SENTINEL_CLAUDE_RATE_LIMIT_WARNING_THRESHOLD",
+        0.2,
+    )
+
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
@@ -456,4 +553,9 @@ def load_config(env_file: Path | None = None) -> Config:
         toggle_cooldown_seconds=toggle_cooldown_seconds,
         rate_limit_cache_ttl=rate_limit_cache_ttl,
         rate_limit_cache_maxsize=rate_limit_cache_maxsize,
+        claude_rate_limit_enabled=claude_rate_limit_enabled,
+        claude_rate_limit_per_minute=claude_rate_limit_per_minute,
+        claude_rate_limit_per_hour=claude_rate_limit_per_hour,
+        claude_rate_limit_strategy=claude_rate_limit_strategy,
+        claude_rate_limit_warning_threshold=claude_rate_limit_warning_threshold,
     )
