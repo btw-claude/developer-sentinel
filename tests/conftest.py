@@ -149,6 +149,29 @@ def test_app_factory() -> TestAppFactory:
         With optional config parameter for rate limiting settings::
 
             app = test_app_factory(accessor, config=make_config())
+
+    Config Options:
+        The ``make_config()`` helper accepts the following parameters:
+
+        - ``poll_interval`` (int): Seconds between polling cycles. Default: 60.
+        - ``max_issues`` (int): Maximum issues to fetch per poll. Default: 50.
+        - ``max_concurrent_executions`` (int): Global concurrency limit for
+          agent executions. Default: 1.
+        - ``orchestrations_dir`` (Path | None): Directory containing orchestration
+          YAML files. Default: Path("orchestrations").
+        - ``attempt_counts_ttl`` (int): TTL in seconds for the attempt counts
+          cache, used to track retry attempts. Default: 3600.
+        - ``max_queue_size`` (int): Maximum size of the execution queue before
+          new items are rejected. Default: 100.
+
+        Example with custom config::
+
+            config = make_config(
+                poll_interval=30,
+                max_concurrent_executions=5,
+                max_queue_size=200,
+            )
+            app = test_app_factory(accessor, config=config)
     """
     return create_test_app
 
