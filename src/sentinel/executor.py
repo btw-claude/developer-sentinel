@@ -329,8 +329,9 @@ def cleanup_workdir(
         except OSError as e:
             logger.warning(f"OS error while cleaning up workdir {workdir}: {e}")
             return False
-        except Exception as e:
-            logger.warning(f"Unexpected error while cleaning up workdir {workdir}: {e}")
+        except (TypeError, ValueError) as e:
+            # Handle unexpected argument errors that shouldn't occur in normal operation
+            logger.error(f"Unexpected argument error while cleaning up workdir {workdir}: {e}")
             return False
 
     # Force mode: retry on recoverable errors, use ignore_errors on final attempt
@@ -370,9 +371,9 @@ def cleanup_workdir(
                     f"attempts: {e}"
                 )
                 return False
-        except Exception as e:
-            # Non-recoverable error, don't retry
-            logger.warning(f"Unexpected error while cleaning up workdir {workdir}: {e}")
+        except (TypeError, ValueError) as e:
+            # Non-recoverable argument error, don't retry
+            logger.error(f"Unexpected argument error while cleaning up workdir {workdir}: {e}")
             return False
 
     return False
@@ -643,9 +644,12 @@ class AgentExecutor:
                 start_time=start_time,
                 end_time=datetime.now(),
             )
-        except Exception as e:
-            # Log but don't fail the execution due to logging errors
-            logger.warning(f"Failed to write agent execution log: {e}")
+        except (OSError, IOError) as e:
+            # Log but don't fail the execution due to file I/O errors
+            logger.error(f"Failed to write agent execution log due to I/O error: {e}")
+        except (TypeError, ValueError) as e:
+            # Log but don't fail the execution due to serialization errors
+            logger.error(f"Failed to write agent execution log due to data error: {e}")
 
     def _determine_outcome(self, response: str, outcomes: list[Outcome]) -> Outcome | None:
         """Determine which outcome matches the response.

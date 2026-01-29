@@ -247,7 +247,13 @@ class HealthChecker:
                     latency_ms=self.config.timeout * 1000,
                     error="Health check timed out",
                 )
+            except asyncio.CancelledError:
+                # Task was cancelled, propagate to allow clean shutdown
+                raise
             except Exception as e:
+                # Broad catch intentional for health checks - they should never crash
+                # Log at error level since this is unexpected
+                logger.error(f"Unexpected error in {name} health check: {e}")
                 checks[name] = ServiceHealth(
                     status=HealthStatus.DOWN,
                     latency_ms=0.0,
@@ -314,9 +320,18 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=error_msg,
             )
-        except Exception as e:
+        except httpx.RequestError as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"Jira health check failed: {e}")
+            logger.warning(f"Jira health check failed due to request error: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=str(e),
+            )
+        except Exception as e:
+            # Broad catch intentional for health checks - document justification
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Jira health check failed with unexpected error: {e}")
             return ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
@@ -374,9 +389,18 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=error_msg,
             )
-        except Exception as e:
+        except httpx.RequestError as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"GitHub health check failed: {e}")
+            logger.warning(f"GitHub health check failed due to request error: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=str(e),
+            )
+        except Exception as e:
+            # Broad catch intentional for health checks - document justification
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"GitHub health check failed with unexpected error: {e}")
             return ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
@@ -433,9 +457,18 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=error_msg,
             )
-        except Exception as e:
+        except httpx.RequestError as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"Claude health check failed: {e}")
+            logger.warning(f"Claude health check failed due to request error: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=str(e),
+            )
+        except Exception as e:
+            # Broad catch intentional for health checks - document justification
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Claude health check failed with unexpected error: {e}")
             return ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,

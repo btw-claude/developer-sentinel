@@ -630,7 +630,8 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
                 error_data = e.response.json()
                 if "message" in error_data:
                     error_msg += f": {error_data['message']}"
-            except Exception:
+            except (ValueError, KeyError, TypeError):
+                # JSON parsing or data extraction failed - continue with base error message
                 pass
             raise GitHubClientError(error_msg) from e
         except httpx.RequestError as e:
@@ -692,7 +693,8 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
                 error_data = e.response.json()
                 if "message" in error_data:
                     error_msg += f": {error_data['message']}"
-            except Exception:
+            except (ValueError, KeyError, TypeError):
+                # JSON parsing or data extraction failed - continue with base error message
                 pass
             raise GitHubClientError(error_msg) from e
         except httpx.RequestError as e:
@@ -1039,7 +1041,8 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
                 error_data = e.response.json()
                 if "message" in error_data:
                     error_msg += f": {error_data['message']}"
-            except Exception:
+            except (ValueError, KeyError, TypeError):
+                # JSON parsing or data extraction failed - continue with base error message
                 pass
             raise GitHubTagClientError(error_msg) from e
         except httpx.RequestError as e:
@@ -1098,7 +1101,8 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
                 error_data = e.response.json()
                 if "message" in error_data:
                     error_msg += f": {error_data['message']}"
-            except Exception:
+            except (ValueError, KeyError, TypeError):
+                # JSON parsing or data extraction failed - continue with base error message
                 pass
             raise GitHubTagClientError(error_msg) from e
         except httpx.RequestError as e:
