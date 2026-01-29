@@ -1,5 +1,6 @@
 """Tests for Sentinel retry attempt tracking functionality."""
 
+import asyncio
 import logging
 import threading
 import time
@@ -190,13 +191,36 @@ class TestAttemptCountTracking:
             ],
             tag_client=tag_client,
         )
-        blocking_event = threading.Event()
+        # Use threading.Event for cross-thread signaling (test coordination)
+        # Use asyncio.Event for async consistency within run_agent method
         task_started_event = threading.Event()
+        should_unblock = threading.Event()
 
         class BlockingAgentClient(MockAgentClient):
             async def run_agent(self, *args: Any, **kwargs: Any) -> AgentRunResult:
+                # Signal that the task has started (cross-thread coordination)
                 task_started_event.set()
-                blocking_event.wait(timeout=5)
+                # Use asyncio.Event for async-consistent blocking within the async method
+                blocking_event = asyncio.Event()
+
+                async def wait_for_unblock() -> None:
+                    # Poll the threading.Event in an async-friendly way
+                    while not should_unblock.is_set():
+                        await asyncio.sleep(0.01)
+                    blocking_event.set()
+
+                # Start the polling task and wait for the blocking event
+                unblock_task = asyncio.create_task(wait_for_unblock())
+                try:
+                    await asyncio.wait_for(blocking_event.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    pass
+                finally:
+                    unblock_task.cancel()
+                    try:
+                        await unblock_task
+                    except asyncio.CancelledError:
+                        pass
                 return await super().run_agent(*args, **kwargs)
 
         agent_client = BlockingAgentClient(responses=["SUCCESS"])
@@ -227,7 +251,7 @@ class TestAttemptCountTracking:
             assert step.issue_key == "TEST-1"
             assert step.orchestration_name == "test-orch"
         finally:
-            blocking_event.set()
+            should_unblock.set()
             run_thread.join(timeout=5)
             sentinel._thread_pool.shutdown(wait=True)
             sentinel._thread_pool = None
