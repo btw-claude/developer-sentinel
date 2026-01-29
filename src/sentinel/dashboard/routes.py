@@ -3,6 +3,11 @@
 This module defines the HTTP route handlers for the dashboard web interface.
 All handlers receive state through the SentinelStateAccessor to ensure
 read-only access to the orchestrator's state.
+
+Health check endpoints provide:
+- /health: Legacy health endpoint (deprecated, use /health/live)
+- /health/live: Liveness probe (basic health check)
+- /health/ready: Readiness probe (checks external service dependencies)
 """
 
 from __future__ import annotations
@@ -198,6 +203,9 @@ def _record_write(file_path: str) -> None:
 
 if TYPE_CHECKING:
     from sentinel.dashboard.state import SentinelStateAccessor
+    from sentinel.github_rest_client import GitHubRestClient
+    from sentinel.health import HealthChecker
+    from sentinel.rest_clients import JiraRestClient
 
 
 # Request/Response models for orchestration toggle endpoints
@@ -230,7 +238,10 @@ class BulkToggleResponse(BaseModel):
     toggled_count: int
 
 
-def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
+def create_routes(
+    state_accessor: SentinelStateAccessor,
+    health_checker: HealthChecker | None = None,
+) -> APIRouter:
     """Create dashboard routes with the given state accessor.
 
     This factory function creates an APIRouter with all dashboard routes
@@ -238,6 +249,8 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
 
     Args:
         state_accessor: The state accessor for retrieving Sentinel state.
+        health_checker: Optional health checker for dependency checks.
+            If not provided, readiness checks will return basic status.
 
     Returns:
         An APIRouter with all dashboard routes configured.
@@ -449,12 +462,58 @@ def create_routes(state_accessor: SentinelStateAccessor) -> APIRouter:
 
     @dashboard_router.get("/health")
     async def health() -> dict:
-        """Health check endpoint.
+        """Legacy health check endpoint.
+
+        Deprecated: Use /health/live for liveness checks or
+        /health/ready for readiness checks with dependency verification.
 
         Returns:
             JSON with health status.
         """
         return {"status": "healthy"}
+
+    @dashboard_router.get("/health/live")
+    async def health_live() -> dict:
+        """Liveness probe endpoint.
+
+        Basic health check to verify the service is running.
+        Does not check external dependencies.
+
+        Returns:
+            JSON with liveness status.
+        """
+        if health_checker is not None:
+            result = health_checker.check_liveness()
+            return result.to_dict()
+        return {"status": "healthy", "timestamp": time.time(), "checks": {}}
+
+    @dashboard_router.get("/health/ready")
+    async def health_ready() -> dict:
+        """Readiness probe endpoint.
+
+        Checks connectivity to configured external services:
+        - Jira (if configured)
+        - GitHub (if configured)
+        - Claude API (if API key is configured)
+
+        Returns:
+            JSON with readiness status and individual service checks.
+
+        Example response:
+            {
+                "status": "healthy",
+                "timestamp": 1706472123.456,
+                "checks": {
+                    "jira": {"status": "up", "latency_ms": 45},
+                    "github": {"status": "up", "latency_ms": 32},
+                    "claude": {"status": "up", "latency_ms": 120}
+                }
+            }
+        """
+        if health_checker is not None:
+            result = await health_checker.check_readiness()
+            return result.to_dict()
+        return {"status": "healthy", "timestamp": time.time(), "checks": {}}
 
     @dashboard_router.get("/logs", response_class=HTMLResponse)
     async def logs(request: Request) -> HTMLResponse:
