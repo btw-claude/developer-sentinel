@@ -660,7 +660,8 @@ class ClaudeSdkAgentClient(AgentClient):
 
         except subprocess.CalledProcessError as e:
             raise AgentClientError(
-                f"Git operation failed: {e.cmd} returned {e.returncode}. " f"stderr: {e.stderr}"
+                f"Git operation failed: {e.cmd} returned {e.returncode}. "
+                f"stderr: {e.stderr}"
             ) from e
 
     async def run_agent(
