@@ -1307,3 +1307,184 @@ class TestToggleOpenApiDocs:
             assert bulk_toggle_path is not None
             assert "description" in bulk_toggle_path["post"]
             assert "rate limited" in bulk_toggle_path["post"]["description"].lower()
+
+
+class TestDeprecatedModuleLevelConstants:
+    """Tests for deprecated module-level constants.
+
+    These tests verify that accessing the legacy module-level constants
+    (_DEFAULT_TOGGLE_COOLDOWN, _DEFAULT_RATE_LIMIT_CACHE_TTL,
+    _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE) emits DeprecationWarning while
+    still returning the correct values for backward compatibility.
+    """
+
+    def test_default_toggle_cooldown_emits_deprecation_warning(self) -> None:
+        """Test that accessing _DEFAULT_TOGGLE_COOLDOWN emits DeprecationWarning."""
+        import warnings
+
+        from sentinel.dashboard import routes
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            value = routes._DEFAULT_TOGGLE_COOLDOWN
+
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "_DEFAULT_TOGGLE_COOLDOWN" in str(w[0].message)
+            assert "Config.toggle_cooldown_seconds" in str(w[0].message)
+            assert value == 2.0
+
+    def test_default_rate_limit_cache_ttl_emits_deprecation_warning(self) -> None:
+        """Test that accessing _DEFAULT_RATE_LIMIT_CACHE_TTL emits DeprecationWarning."""
+        import warnings
+
+        from sentinel.dashboard import routes
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            value = routes._DEFAULT_RATE_LIMIT_CACHE_TTL
+
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "_DEFAULT_RATE_LIMIT_CACHE_TTL" in str(w[0].message)
+            assert "Config.rate_limit_cache_ttl" in str(w[0].message)
+            assert value == 3600
+
+    def test_default_rate_limit_cache_maxsize_emits_deprecation_warning(self) -> None:
+        """Test that accessing _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE emits DeprecationWarning."""
+        import warnings
+
+        from sentinel.dashboard import routes
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            value = routes._DEFAULT_RATE_LIMIT_CACHE_MAXSIZE
+
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE" in str(w[0].message)
+            assert "Config.rate_limit_cache_maxsize" in str(w[0].message)
+            assert value == 10000
+
+    def test_deprecation_warning_mentions_future_removal(self) -> None:
+        """Test that deprecation warning mentions future removal."""
+        import warnings
+
+        from sentinel.dashboard import routes
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _ = routes._DEFAULT_TOGGLE_COOLDOWN
+
+            assert len(w) == 1
+            assert "will be removed in a future release" in str(w[0].message)
+
+    def test_accessing_non_deprecated_attribute_raises_attribute_error(self) -> None:
+        """Test that accessing non-existent attribute raises AttributeError."""
+        from sentinel.dashboard import routes
+
+        with pytest.raises(AttributeError) as exc_info:
+            _ = routes._NONEXISTENT_CONSTANT
+
+        assert "has no attribute '_NONEXISTENT_CONSTANT'" in str(exc_info.value)
+
+
+class TestCreateRoutesLogging:
+    """Tests for debug logging in create_routes function.
+
+    These tests verify that create_routes logs appropriate debug messages
+    when using provided Config vs. default Config values.
+    """
+
+    def test_create_routes_logs_debug_with_provided_config(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that create_routes logs debug message when Config is provided."""
+        import logging
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(
+                agent_logs_dir=logs_dir,
+                toggle_cooldown_seconds=5.0,
+                rate_limit_cache_ttl=7200,
+                rate_limit_cache_maxsize=5000,
+            )
+            sentinel = MockSentinel(config)
+            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+
+            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+                _ = create_routes(accessor, config=config)
+
+            # Check that debug log mentions "provided Config"
+            assert any("provided Config" in record.message for record in caplog.records)
+            # Check that the config values are logged
+            assert any("5.0" in record.message for record in caplog.records)
+            assert any("7200" in record.message for record in caplog.records)
+            assert any("5000" in record.message for record in caplog.records)
+
+    def test_create_routes_logs_debug_with_default_config(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that create_routes logs debug message when using default Config."""
+        import logging
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir)
+            sentinel = MockSentinel(config)
+            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+
+            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+                _ = create_routes(accessor)  # No config provided
+
+            # Check that debug log mentions "default Config"
+            assert any("default Config" in record.message for record in caplog.records)
+            # Check that default values are logged (2.0s cooldown, 3600s TTL, 10000 maxsize)
+            assert any("2.0" in record.message for record in caplog.records)
+            assert any("3600" in record.message for record in caplog.records)
+            assert any("10000" in record.message for record in caplog.records)
+
+    def test_create_routes_logs_toggle_cooldown_value(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that create_routes logs toggle_cooldown_seconds value."""
+        import logging
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir, toggle_cooldown_seconds=3.5)
+            sentinel = MockSentinel(config)
+            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+
+            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+                _ = create_routes(accessor, config=config)
+
+            # Check that the specific cooldown value is logged
+            assert any("toggle_cooldown=3.5" in record.message for record in caplog.records)
+
+    def test_create_routes_logs_cache_ttl_value(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that create_routes logs rate_limit_cache_ttl value."""
+        import logging
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir, rate_limit_cache_ttl=1800)
+            sentinel = MockSentinel(config)
+            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+
+            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+                _ = create_routes(accessor, config=config)
+
+            # Check that the specific TTL value is logged
+            assert any("cache_ttl=1800" in record.message for record in caplog.records)
+
+    def test_create_routes_logs_cache_maxsize_value(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that create_routes logs rate_limit_cache_maxsize value."""
+        import logging
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_dir = Path(tmpdir)
+            config = Config(agent_logs_dir=logs_dir, rate_limit_cache_maxsize=20000)
+            sentinel = MockSentinel(config)
+            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+
+            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+                _ = create_routes(accessor, config=config)
+
+            # Check that the specific maxsize value is logged
+            assert any("cache_maxsize=20000" in record.message for record in caplog.records)

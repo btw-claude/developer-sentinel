@@ -8,6 +8,13 @@ Health check endpoints provide:
 - /health: Legacy health endpoint (deprecated, use /health/live)
 - /health/live: Liveness probe (basic health check)
 - /health/ready: Readiness probe (checks external service dependencies)
+
+Deprecated module-level constants:
+    The following constants have been deprecated and moved to Config class.
+    Accessing them will emit a DeprecationWarning:
+    - _DEFAULT_TOGGLE_COOLDOWN: Use Config.toggle_cooldown_seconds instead
+    - _DEFAULT_RATE_LIMIT_CACHE_TTL: Use Config.rate_limit_cache_ttl instead
+    - _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE: Use Config.rate_limit_cache_maxsize instead
 """
 
 from __future__ import annotations
@@ -16,13 +23,52 @@ import asyncio
 import json
 import logging
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncGenerator, Literal
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Literal
 
 from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
+
+
+# Legacy module-level constants (deprecated)
+# These are kept for backward compatibility but will emit deprecation warnings
+# when accessed. New code should use Config class values instead.
+_DEPRECATED_CONSTANTS = {
+    "_DEFAULT_TOGGLE_COOLDOWN": (2.0, "Config.toggle_cooldown_seconds"),
+    "_DEFAULT_RATE_LIMIT_CACHE_TTL": (3600, "Config.rate_limit_cache_ttl"),
+    "_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE": (10000, "Config.rate_limit_cache_maxsize"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Emit deprecation warning when accessing legacy module-level constants.
+
+    This function intercepts attribute access on the module and emits a
+    DeprecationWarning when accessing the deprecated constants while still
+    returning their values for backward compatibility.
+
+    Args:
+        name: The attribute name being accessed.
+
+    Returns:
+        The deprecated constant value if it exists.
+
+    Raises:
+        AttributeError: If the attribute is not a deprecated constant.
+    """
+    if name in _DEPRECATED_CONSTANTS:
+        value, replacement = _DEPRECATED_CONSTANTS[name]
+        warnings.warn(
+            f"{name} is deprecated and will be removed in a future release. "
+            f"Use {replacement} instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
@@ -154,7 +200,24 @@ def create_routes(
     from sentinel.config import Config as ConfigClass
 
     # Use provided config or create a default one
-    effective_config = config if config is not None else ConfigClass()
+    if config is not None:
+        effective_config = config
+        logger.debug(
+            "create_routes using provided Config: toggle_cooldown=%.1fs, "
+            "cache_ttl=%ds, cache_maxsize=%d",
+            effective_config.toggle_cooldown_seconds,
+            effective_config.rate_limit_cache_ttl,
+            effective_config.rate_limit_cache_maxsize,
+        )
+    else:
+        effective_config = ConfigClass()
+        logger.debug(
+            "create_routes using default Config: toggle_cooldown=%.1fs, "
+            "cache_ttl=%ds, cache_maxsize=%d",
+            effective_config.toggle_cooldown_seconds,
+            effective_config.rate_limit_cache_ttl,
+            effective_config.rate_limit_cache_maxsize,
+        )
 
     # Create rate limiter with config values
     rate_limiter = RateLimiter(effective_config)
