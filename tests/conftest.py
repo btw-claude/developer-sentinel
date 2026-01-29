@@ -76,6 +76,7 @@ SignalHandler = Callable[[int, FrameType | None], None]
 __all__ = [
     # Type aliases (alphabetized)
     "SignalHandler",
+    "TestAppFactory",
     # Mocks (alphabetized)
     "MockAgentClient",
     "MockAgentClientFactory",
@@ -90,6 +91,9 @@ __all__ = [
     "make_orchestration",
     "set_mtime_in_future",
 ]
+
+# Type alias for the test app factory fixture
+TestAppFactory = Callable[["SentinelStateAccessor", "Config | None"], FastAPI]
 
 
 # Pytest fixtures
@@ -121,6 +125,27 @@ def temp_orchestrations_dir() -> Generator[Path, None, None]:
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
+
+
+@pytest.fixture
+def test_app_factory() -> TestAppFactory:
+    """Provide a factory for creating test FastAPI apps with dashboard routes.
+
+    This fixture wraps the create_test_app() helper function, allowing tests
+    to request the factory as a parameter instead of importing the helper directly.
+
+    Returns:
+        A factory function that creates FastAPI test apps.
+
+    Example:
+        def test_example(test_app_factory):
+            accessor = SentinelStateAccessor(mock_sentinel)
+            app = test_app_factory(accessor)
+            with TestClient(app) as client:
+                response = client.get("/health/live")
+                assert response.status_code == 200
+    """
+    return create_test_app
 
 
 # Dashboard test helpers
