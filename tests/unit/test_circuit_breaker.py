@@ -141,8 +141,7 @@ class TestCircuitBreakerConfig:
         """
         with pytest.raises(CircuitBreakerConfigError) as exc_info:
             CircuitBreakerConfig(failure_threshold=True)
-        assert "failure_threshold must be an integer" in str(exc_info.value)
-        assert "bool" in str(exc_info.value)
+        assert "failure_threshold must be a positive integer, not a boolean" in str(exc_info.value)
 
     def test_validation_failure_threshold_boolean_false(self) -> None:
         """Test that boolean False for failure_threshold raises an error.
@@ -152,8 +151,7 @@ class TestCircuitBreakerConfig:
         """
         with pytest.raises(CircuitBreakerConfigError) as exc_info:
             CircuitBreakerConfig(failure_threshold=False)
-        assert "failure_threshold must be an integer" in str(exc_info.value)
-        assert "bool" in str(exc_info.value)
+        assert "failure_threshold must be a positive integer, not a boolean" in str(exc_info.value)
 
     def test_validation_half_open_max_calls_boolean_true(self) -> None:
         """Test that boolean True for half_open_max_calls raises an error.
@@ -163,8 +161,7 @@ class TestCircuitBreakerConfig:
         """
         with pytest.raises(CircuitBreakerConfigError) as exc_info:
             CircuitBreakerConfig(half_open_max_calls=True)
-        assert "half_open_max_calls must be an integer" in str(exc_info.value)
-        assert "bool" in str(exc_info.value)
+        assert "half_open_max_calls must be a positive integer, not a boolean" in str(exc_info.value)
 
     def test_validation_half_open_max_calls_boolean_false(self) -> None:
         """Test that boolean False for half_open_max_calls raises an error.
@@ -174,8 +171,7 @@ class TestCircuitBreakerConfig:
         """
         with pytest.raises(CircuitBreakerConfigError) as exc_info:
             CircuitBreakerConfig(half_open_max_calls=False)
-        assert "half_open_max_calls must be an integer" in str(exc_info.value)
-        assert "bool" in str(exc_info.value)
+        assert "half_open_max_calls must be a positive integer, not a boolean" in str(exc_info.value)
 
 
 class TestCircuitBreakerStates:

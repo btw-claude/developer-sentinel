@@ -96,7 +96,7 @@ class CircuitBreakerConfig:
         # Check for boolean first since bool is a subclass of int in Python
         if isinstance(self.failure_threshold, bool):
             raise CircuitBreakerConfigError(
-                f"failure_threshold must be an integer, got {type(self.failure_threshold).__name__}"
+                "failure_threshold must be a positive integer, not a boolean"
             )
         if not isinstance(self.failure_threshold, int):
             raise CircuitBreakerConfigError(
@@ -113,7 +113,7 @@ class CircuitBreakerConfig:
         # Check for boolean first since bool is a subclass of int in Python
         if isinstance(self.half_open_max_calls, bool):
             raise CircuitBreakerConfigError(
-                f"half_open_max_calls must be an integer, got {type(self.half_open_max_calls).__name__}"
+                "half_open_max_calls must be a positive integer, not a boolean"
             )
         if not isinstance(self.half_open_max_calls, int):
             raise CircuitBreakerConfigError(
