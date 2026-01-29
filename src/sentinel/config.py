@@ -116,6 +116,16 @@ class Config:
     # When tokens fall below this fraction, warnings are logged
     claude_rate_limit_warning_threshold: float = 0.2
 
+    # Circuit breaker configuration
+    # Enable/disable circuit breakers for external service calls (Jira, GitHub, Claude)
+    circuit_breaker_enabled: bool = True
+    # Number of consecutive failures before opening the circuit (default: 5)
+    circuit_breaker_failure_threshold: int = 5
+    # Seconds to wait before attempting recovery after circuit opens (default: 30)
+    circuit_breaker_recovery_timeout: float = 30.0
+    # Maximum calls to allow in half-open state for recovery testing (default: 3)
+    circuit_breaker_half_open_max_calls: int = 3
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -522,6 +532,26 @@ def load_config(env_file: Path | None = None) -> Config:
         0.2,
     )
 
+    # Parse circuit breaker configuration
+    circuit_breaker_enabled = _parse_bool(
+        os.getenv("SENTINEL_CIRCUIT_BREAKER_ENABLED", "true")
+    )
+    circuit_breaker_failure_threshold = _parse_positive_int(
+        os.getenv("SENTINEL_CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5"),
+        "SENTINEL_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
+        5,
+    )
+    circuit_breaker_recovery_timeout = _parse_non_negative_float(
+        os.getenv("SENTINEL_CIRCUIT_BREAKER_RECOVERY_TIMEOUT", "30.0"),
+        "SENTINEL_CIRCUIT_BREAKER_RECOVERY_TIMEOUT",
+        30.0,
+    )
+    circuit_breaker_half_open_max_calls = _parse_positive_int(
+        os.getenv("SENTINEL_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS", "3"),
+        "SENTINEL_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS",
+        3,
+    )
+
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
@@ -558,4 +588,8 @@ def load_config(env_file: Path | None = None) -> Config:
         claude_rate_limit_per_hour=claude_rate_limit_per_hour,
         claude_rate_limit_strategy=claude_rate_limit_strategy,
         claude_rate_limit_warning_threshold=claude_rate_limit_warning_threshold,
+        circuit_breaker_enabled=circuit_breaker_enabled,
+        circuit_breaker_failure_threshold=circuit_breaker_failure_threshold,
+        circuit_breaker_recovery_timeout=circuit_breaker_recovery_timeout,
+        circuit_breaker_half_open_max_calls=circuit_breaker_half_open_max_calls,
     )

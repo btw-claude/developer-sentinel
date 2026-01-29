@@ -5,6 +5,9 @@ cost-effective polling and label operations without Claude invocations.
 
 Implements exponential backoff with jitter for rate limiting per:
 https://developer.atlassian.com/cloud/jira/platform/rate-limiting/
+
+Circuit breaker pattern is implemented to prevent cascading failures
+when the Jira API is experiencing issues.
 """
 
 from __future__ import annotations
@@ -17,6 +20,10 @@ from typing import Any, TypeVar
 
 import httpx
 
+from sentinel.circuit_breaker import (
+    CircuitBreaker,
+    get_circuit_breaker,
+)
 from sentinel.logging import get_logger
 from sentinel.poller import JiraClient, JiraClientError
 from sentinel.tag_manager import JiraTagClient, JiraTagClientError
@@ -176,7 +183,11 @@ def _execute_with_retry(
 
 
 class JiraRestClient(JiraClient):
-    """Jira client that uses direct REST API calls for searching issues."""
+    """Jira client that uses direct REST API calls for searching issues.
+
+    Implements circuit breaker pattern to prevent cascading failures when
+    Jira API is unavailable or experiencing issues.
+    """
 
     def __init__(
         self,
@@ -185,6 +196,7 @@ class JiraRestClient(JiraClient):
         api_token: str,
         timeout: httpx.Timeout | None = None,
         retry_config: RetryConfig | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         """Initialize the Jira REST client.
 
@@ -194,11 +206,19 @@ class JiraRestClient(JiraClient):
             api_token: API token for authentication.
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
+            circuit_breaker: Optional circuit breaker instance. If not provided,
+                uses the global "jira" circuit breaker from the registry.
         """
         self.base_url = base_url.rstrip("/")
         self.auth = (email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
+        self._circuit_breaker = circuit_breaker or get_circuit_breaker("jira")
+
+    @property
+    def circuit_breaker(self) -> CircuitBreaker:
+        """Get the circuit breaker for this client."""
+        return self._circuit_breaker
 
     def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
         """Search for issues using JQL via REST API.
@@ -211,8 +231,16 @@ class JiraRestClient(JiraClient):
             List of raw issue data from Jira API.
 
         Raises:
-            JiraClientError: If the search fails or rate limit is exhausted.
+            JiraClientError: If the search fails, rate limit is exhausted,
+                or circuit breaker is open.
         """
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise JiraClientError(
+                f"Jira circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         # Use the new /search/jql endpoint (the old /search was deprecated Aug 2025)
         # See: https://developer.atlassian.com/changelog/#CHANGE-2046
         url = f"{self.base_url}/rest/api/3/search/jql"
@@ -235,10 +263,14 @@ class JiraRestClient(JiraClient):
                 return issues
 
         try:
-            return _execute_with_retry(do_search, self.retry_config, JiraClientError)
+            result = _execute_with_retry(do_search, self.retry_config, JiraClientError)
+            self._circuit_breaker.record_success()
+            return result
         except httpx.TimeoutException as e:
+            self._circuit_breaker.record_failure(e)
             raise JiraClientError(f"Jira search timed out: {e}") from e
         except httpx.HTTPStatusError as e:
+            self._circuit_breaker.record_failure(e)
             error_msg = f"Jira search failed with status {e.response.status_code}"
             try:
                 error_data = e.response.json()
@@ -248,11 +280,16 @@ class JiraRestClient(JiraClient):
                 pass
             raise JiraClientError(error_msg) from e
         except httpx.RequestError as e:
+            self._circuit_breaker.record_failure(e)
             raise JiraClientError(f"Jira search request failed: {e}") from e
 
 
 class JiraRestTagClient(JiraTagClient):
-    """Jira tag client that uses direct REST API calls for label operations."""
+    """Jira tag client that uses direct REST API calls for label operations.
+
+    Implements circuit breaker pattern to prevent cascading failures when
+    Jira API is unavailable or experiencing issues.
+    """
 
     def __init__(
         self,
@@ -261,6 +298,7 @@ class JiraRestTagClient(JiraTagClient):
         api_token: str,
         timeout: httpx.Timeout | None = None,
         retry_config: RetryConfig | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         """Initialize the Jira REST tag client.
 
@@ -270,11 +308,19 @@ class JiraRestTagClient(JiraTagClient):
             api_token: API token for authentication.
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
+            circuit_breaker: Optional circuit breaker instance. If not provided,
+                uses the global "jira" circuit breaker from the registry.
         """
         self.base_url = base_url.rstrip("/")
         self.auth = (email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
+        self._circuit_breaker = circuit_breaker or get_circuit_breaker("jira")
+
+    @property
+    def circuit_breaker(self) -> CircuitBreaker:
+        """Get the circuit breaker for this client."""
+        return self._circuit_breaker
 
     def _get_current_labels(self, issue_key: str) -> list[str]:
         """Get current labels for an issue.
@@ -286,8 +332,15 @@ class JiraRestTagClient(JiraTagClient):
             List of current labels.
 
         Raises:
-            JiraTagClientError: If the operation fails.
+            JiraTagClientError: If the operation fails or circuit breaker is open.
         """
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise JiraTagClientError(
+                f"Jira circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         url = f"{self.base_url}/rest/api/3/issue/{issue_key}"
         params = {"fields": "labels"}
 
@@ -301,14 +354,19 @@ class JiraRestTagClient(JiraTagClient):
                 return labels
 
         try:
-            return _execute_with_retry(do_get, self.retry_config, JiraTagClientError)
+            result = _execute_with_retry(do_get, self.retry_config, JiraTagClientError)
+            self._circuit_breaker.record_success()
+            return result
         except httpx.TimeoutException as e:
+            self._circuit_breaker.record_failure(e)
             raise JiraTagClientError(f"Get labels timed out: {e}") from e
         except httpx.HTTPStatusError as e:
+            self._circuit_breaker.record_failure(e)
             raise JiraTagClientError(
                 f"Get labels failed with status {e.response.status_code}"
             ) from e
         except httpx.RequestError as e:
+            self._circuit_breaker.record_failure(e)
             raise JiraTagClientError(f"Get labels request failed: {e}") from e
 
     def _update_labels(self, issue_key: str, labels: list[str]) -> None:
@@ -319,8 +377,15 @@ class JiraRestTagClient(JiraTagClient):
             labels: New list of labels.
 
         Raises:
-            JiraTagClientError: If the operation fails.
+            JiraTagClientError: If the operation fails or circuit breaker is open.
         """
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise JiraTagClientError(
+                f"Jira circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         url = f"{self.base_url}/rest/api/3/issue/{issue_key}"
         payload = {"fields": {"labels": labels}}
 
@@ -332,9 +397,12 @@ class JiraRestTagClient(JiraTagClient):
 
         try:
             _execute_with_retry(do_update, self.retry_config, JiraTagClientError)
+            self._circuit_breaker.record_success()
         except httpx.TimeoutException as e:
+            self._circuit_breaker.record_failure(e)
             raise JiraTagClientError(f"Update labels timed out: {e}") from e
         except httpx.HTTPStatusError as e:
+            self._circuit_breaker.record_failure(e)
             error_msg = f"Update labels failed with status {e.response.status_code}"
             try:
                 error_data = e.response.json()
@@ -344,6 +412,7 @@ class JiraRestTagClient(JiraTagClient):
                 pass
             raise JiraTagClientError(error_msg) from e
         except httpx.RequestError as e:
+            self._circuit_breaker.record_failure(e)
             raise JiraTagClientError(f"Update labels request failed: {e}") from e
 
     def add_label(self, issue_key: str, label: str) -> None:
