@@ -200,7 +200,52 @@ def test_something():
     # After context, original provider is restored
 ```
 
-### Pattern 5: Integration Test with Real Clients
+### Pattern 5: setUp/tearDown for Test Overrides
+
+For developers who prefer the traditional setUp/tearDown pattern over context managers, use `reset_override()` in your tearDown method to ensure test isolation:
+
+```python
+import unittest
+from unittest.mock import Mock
+from dependency_injector import providers
+from sentinel.container import create_test_container
+
+class TestWithSetUpTearDown(unittest.TestCase):
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.container = create_test_container()
+
+        # Create mocks
+        self.mock_jira = Mock()
+        self.mock_jira_tag = Mock()
+
+        # Override providers with mocks
+        self.container.clients.jira_client.override(
+            providers.Object(self.mock_jira)
+        )
+        self.container.clients.jira_tag_client.override(
+            providers.Object(self.mock_jira_tag)
+        )
+
+    def tearDown(self) -> None:
+        """Clean up test fixtures.
+
+        IMPORTANT: Always call reset_override() to restore providers to their
+        original state. This prevents test pollution where mocks from one test
+        affect subsequent tests.
+        """
+        self.container.reset_override()
+
+    def test_example(self) -> None:
+        """Example test using mocked dependencies."""
+        self.mock_jira.search_issues.return_value = []
+        sentinel = self.container.sentinel()
+        # ... test logic
+```
+
+> **Note**: When using setUp/tearDown, always call `container.reset_override()` in tearDown. This is critical for test isolation - without it, overridden providers may persist across tests, causing intermittent test failures that are difficult to debug.
+
+### Pattern 6: Integration Test with Real Clients
 
 ```python
 from sentinel.container import create_container
@@ -330,7 +375,7 @@ tag_client = create_jira_rest_tag_client(config)
 
 4. **Use `providers.Object()` for mocks**: It wraps your mock as a provider.
 
-5. **Reset overrides in tests**: Use `container.reset_override()` or context managers.
+5. **Always reset overrides in test teardown**: Call `container.reset_override()` in your tearDown method or use context managers (see Pattern 4 and Pattern 5). This prevents test pollution where overridden providers leak between tests.
 
 6. **Keep factory functions pure**: They should only create instances, not have side effects.
 

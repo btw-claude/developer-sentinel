@@ -120,7 +120,24 @@ class SentinelContainer(containers.DeclarativeContainer):
         sentinel = container.sentinel()
     """
 
-    # Wiring configuration - modules that use @inject decorator
+    # Wiring configuration - modules that can use the @inject decorator.
+    # This enables automatic dependency injection via function parameter annotations.
+    #
+    # Currently, the @inject decorator is not actively used in the codebase.
+    # This configuration is included to support future adoption of the decorator
+    # pattern for scenarios where explicit provider access is cumbersome.
+    #
+    # Example future usage:
+    #     from dependency_injector.wiring import inject, Provide
+    #
+    #     @inject
+    #     def process_issues(
+    #         jira_client: JiraClient = Provide[SentinelContainer.clients.jira_client]
+    #     ):
+    #         issues = jira_client.search_issues(...)
+    #
+    # To enable wiring, call container.wire() after creating the container.
+    # See: https://python-dependency-injector.ets-labs.org/wiring.html
     wiring_config = containers.WiringConfiguration(
         modules=[
             "sentinel.main",
