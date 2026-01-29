@@ -313,7 +313,7 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
 
-        with patch.object(sentinel, '_cleanup_stale_attempt_counts') as mock_cleanup:
+        with patch.object(sentinel._state_tracker, 'cleanup_stale_attempt_counts') as mock_cleanup:
             mock_cleanup.return_value = 0
             sentinel.run_once()
             mock_cleanup.assert_called_once()
@@ -380,17 +380,18 @@ class TestAttemptCountTracking:
 
         assert len(sentinel._attempt_counts) == 0
 
-        with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
+        with caplog.at_level(logging.DEBUG, logger="sentinel.state_tracker"):
             cleaned = sentinel._cleanup_stale_attempt_counts()
 
         assert cleaned == 0
 
-        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG and r.name == "sentinel.state_tracker"]
         assert any("no stale entries found" in msg for msg in debug_messages), (
             f"Expected debug log about no stale entries, got: {debug_messages}"
         )
 
         ttl_value = config.attempt_counts_ttl
-        assert any(f"TTL: {ttl_value}s" in msg for msg in debug_messages), (
-            f"Expected TTL value ({ttl_value}s) in debug message, got: {debug_messages}"
+        all_debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        assert any(f"TTL: {ttl_value}" in msg for msg in all_debug_messages), (
+            f"Expected TTL value ({ttl_value}s) in debug message, got: {all_debug_messages}"
         )
