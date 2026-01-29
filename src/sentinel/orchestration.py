@@ -34,6 +34,9 @@ _GITHUB_OWNER_PATTERN = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9]|-(?!-))*[a-zA-Z0-9
 # Repo name pattern: alphanumeric, hyphens, underscores, periods
 _GITHUB_REPO_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$|^[a-zA-Z0-9]$")
 
+# Branch name invalid characters: space, ~, ^, :, ?, *, [, ], \, @{
+_BRANCH_INVALID_CHARS = re.compile(r"[ ~^:?*\[\]\\]|@\{")
+
 
 class ValidationResult(NamedTuple):
     """Result of a validation operation with is_valid flag and error_message."""
@@ -425,6 +428,57 @@ def _validate_github_repo_format(repo: str) -> ValidationResult:
     return ValidationResult.success()
 
 
+def _validate_branch_name(branch: str) -> ValidationResult:
+    """Validate that a branch name follows git branch naming rules.
+
+    Git branch naming rules enforced:
+    - Cannot start with a hyphen (-) or period (.)
+    - Cannot end with a period (.) or forward slash (/)
+    - Cannot contain: space, ~, ^, :, ?, *, [, ], \\, @{
+    - Cannot contain consecutive periods (..) or forward slashes (//)
+    - Cannot be empty (but empty strings are allowed as "not configured")
+
+    Note: Branch names with template variables like {jira_issue_key} are validated
+    for the static parts only. The dynamic parts are validated at runtime.
+
+    Returns ValidationResult.success() for valid or empty strings,
+    ValidationResult.failure(message) otherwise.
+    """
+    if not branch:
+        return ValidationResult.success()  # Empty is valid (optional field)
+
+    # For branch patterns with template variables, validate the static parts
+    # by checking each segment between template variables
+    # e.g., "feature/{jira_issue_key}/test" -> check "feature/", "/test"
+    static_parts = re.split(r"\{[^}]+\}", branch)
+
+    # Check the overall structure
+    if branch.startswith("-") or branch.startswith("."):
+        return ValidationResult.failure(
+            "branch name cannot start with '-' or '.'"
+        )
+
+    if branch.endswith(".") or branch.endswith("/"):
+        return ValidationResult.failure(
+            "branch name cannot end with '.' or '/'"
+        )
+
+    # Check for invalid characters in static parts
+    for part in static_parts:
+        if _BRANCH_INVALID_CHARS.search(part):
+            return ValidationResult.failure(
+                "branch name contains invalid characters (space, ~, ^, :, ?, *, [, ], \\, or @{)"
+            )
+
+    # Check for consecutive periods or slashes
+    if ".." in branch or "//" in branch:
+        return ValidationResult.failure(
+            "branch name cannot contain consecutive periods (..) or slashes (//)"
+        )
+
+    return ValidationResult.success()
+
+
 def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     """Parse trigger configuration from dict.
 
@@ -518,16 +572,35 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
 
 
 def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
-    """Parse GitHub context from dict."""
+    """Parse GitHub context from dict.
+
+    Raises:
+        OrchestrationError: If branch or base_branch names are invalid.
+    """
     if not data:
         return None
+
+    # Validate branch pattern if provided
+    branch = data.get("branch", "")
+    if branch:
+        result = _validate_branch_name(branch)
+        if not result.is_valid:
+            raise OrchestrationError(f"Invalid branch pattern '{branch}': {result.error_message}")
+
+    # Validate base_branch if provided
+    base_branch = data.get("base_branch", "main")
+    if base_branch:
+        result = _validate_branch_name(base_branch)
+        if not result.is_valid:
+            raise OrchestrationError(f"Invalid base_branch '{base_branch}': {result.error_message}")
+
     return GitHubContext(
         host=data.get("host", "github.com"),
         org=data.get("org", ""),
         repo=data.get("repo", ""),
-        branch=data.get("branch", ""),
+        branch=branch,
         create_branch=data.get("create_branch", False),
-        base_branch=data.get("base_branch", "main"),
+        base_branch=base_branch,
     )
 
 

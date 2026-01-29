@@ -22,6 +22,7 @@ from sentinel.orchestration import (
     Outcome,
     RetryConfig,
     TriggerConfig,
+    _validate_branch_name,
     load_orchestration_file,
     load_orchestrations,
 )
@@ -396,3 +397,216 @@ class TestOrchestrationVersion:
         version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
 
         assert version.has_active_executions is False
+
+
+class TestBranchNameValidation:
+    """Tests for branch name validation in orchestration."""
+
+    def test_valid_branch_names(self) -> None:
+        """Test that valid branch names pass validation."""
+        valid_names = [
+            "main",
+            "master",
+            "develop",
+            "feature/test",
+            "release-1.0",
+            "hotfix_123",
+            "feature/DS-123-test",
+            "feature/{jira_issue_key}",
+            "issue-{github_issue_number}",
+        ]
+        for name in valid_names:
+            result = _validate_branch_name(name)
+            assert result.is_valid, f"Expected '{name}' to be valid"
+
+    def test_empty_branch_is_valid(self) -> None:
+        """Test that empty branch name is valid (optional field)."""
+        result = _validate_branch_name("")
+        assert result.is_valid
+
+    def test_invalid_start_with_hyphen(self) -> None:
+        """Test that branch starting with hyphen is invalid."""
+        result = _validate_branch_name("-feature")
+        assert not result.is_valid
+        assert "cannot start with '-' or '.'" in result.error_message
+
+    def test_invalid_start_with_period(self) -> None:
+        """Test that branch starting with period is invalid."""
+        result = _validate_branch_name(".hidden")
+        assert not result.is_valid
+        assert "cannot start with '-' or '.'" in result.error_message
+
+    def test_invalid_end_with_period(self) -> None:
+        """Test that branch ending with period is invalid."""
+        result = _validate_branch_name("feature.")
+        assert not result.is_valid
+        assert "cannot end with '.' or '/'" in result.error_message
+
+    def test_invalid_end_with_slash(self) -> None:
+        """Test that branch ending with slash is invalid."""
+        result = _validate_branch_name("feature/")
+        assert not result.is_valid
+        assert "cannot end with '.' or '/'" in result.error_message
+
+    def test_invalid_contains_space(self) -> None:
+        """Test that branch containing space is invalid."""
+        result = _validate_branch_name("feature test")
+        assert not result.is_valid
+        assert "invalid characters" in result.error_message
+
+    def test_invalid_contains_tilde(self) -> None:
+        """Test that branch containing tilde is invalid."""
+        result = _validate_branch_name("feature~test")
+        assert not result.is_valid
+        assert "invalid characters" in result.error_message
+
+    def test_invalid_contains_caret(self) -> None:
+        """Test that branch containing caret is invalid."""
+        result = _validate_branch_name("feature^test")
+        assert not result.is_valid
+        assert "invalid characters" in result.error_message
+
+    def test_invalid_contains_colon(self) -> None:
+        """Test that branch containing colon is invalid."""
+        result = _validate_branch_name("feature:test")
+        assert not result.is_valid
+        assert "invalid characters" in result.error_message
+
+    def test_invalid_contains_question_mark(self) -> None:
+        """Test that branch containing question mark is invalid."""
+        result = _validate_branch_name("feature?test")
+        assert not result.is_valid
+        assert "invalid characters" in result.error_message
+
+    def test_invalid_contains_asterisk(self) -> None:
+        """Test that branch containing asterisk is invalid."""
+        result = _validate_branch_name("feature*test")
+        assert not result.is_valid
+        assert "invalid characters" in result.error_message
+
+    def test_invalid_consecutive_periods(self) -> None:
+        """Test that consecutive periods are invalid."""
+        result = _validate_branch_name("feature..test")
+        assert not result.is_valid
+        assert "consecutive periods" in result.error_message
+
+    def test_invalid_consecutive_slashes(self) -> None:
+        """Test that consecutive slashes are invalid."""
+        result = _validate_branch_name("feature//test")
+        assert not result.is_valid
+        assert "consecutive" in result.error_message
+
+    def test_valid_template_variable_branch(self) -> None:
+        """Test that branch patterns with template variables are valid."""
+        result = _validate_branch_name("feature/{jira_issue_key}/{jira_summary_slug}")
+        assert result.is_valid
+
+    def test_at_symbol_without_brace_is_valid(self) -> None:
+        """Test that @ without following { is valid."""
+        result = _validate_branch_name("feature@test")
+        assert result.is_valid
+
+
+class TestGitHubContextBranchValidation:
+    """Tests for branch validation in GitHub context parsing."""
+
+    def test_valid_branch_and_base_branch(self) -> None:
+        """Test that valid branch names are accepted in GitHubContext."""
+        github = GitHubContext(
+            host="github.com",
+            org="myorg",
+            repo="myrepo",
+            branch="feature/{jira_issue_key}",
+            create_branch=True,
+            base_branch="develop",
+        )
+        assert github.branch == "feature/{jira_issue_key}"
+        assert github.base_branch == "develop"
+
+    def test_orchestration_file_with_invalid_branch_raises_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that loading orchestration with invalid branch raises error."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        branch: "feature..invalid"
+        create_branch: true
+        base_branch: main
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid branch pattern" in str(exc_info.value)
+        assert "consecutive periods" in str(exc_info.value)
+
+    def test_orchestration_file_with_invalid_base_branch_raises_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that loading orchestration with invalid base_branch raises error."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        branch: "feature/test"
+        create_branch: true
+        base_branch: "-invalid"
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid base_branch" in str(exc_info.value)
+        assert "cannot start with '-' or '.'" in str(exc_info.value)
+
+    def test_orchestration_file_with_valid_branch_pattern_succeeds(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that loading orchestration with valid branch pattern succeeds."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: develop
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.branch == "feature/{jira_issue_key}"
+        assert orchestrations[0].agent.github.base_branch == "develop"
