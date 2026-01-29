@@ -9,7 +9,13 @@ Usage
 
 Import and use helpers directly in tests::
 
-    from tests.helpers import make_config, make_orchestration, make_issue, set_mtime_in_future
+    from tests.helpers import (
+        assert_call_args_length,
+        make_config,
+        make_orchestration,
+        make_issue,
+        set_mtime_in_future,
+    )
 
     def test_example():
         config = make_config(max_concurrent_executions=5)
@@ -22,7 +28,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from unittest.mock import _Call
 
 from sentinel.config import Config
 from sentinel.orchestration import (
@@ -202,3 +211,28 @@ def set_mtime_in_future(file_path: Path, seconds_offset: float = 1.0) -> None:
     current_stat = file_path.stat()
     new_mtime = current_stat.st_mtime + seconds_offset
     os.utime(file_path, (current_stat.st_atime, new_mtime))
+
+
+def assert_call_args_length(call_args: "_Call", min_length: int) -> None:
+    """Assert that call_args tuple has at least min_length positional arguments.
+
+    This helper provides clearer error messages when checking mock call arguments
+    by including the expected and actual lengths in the assertion message.
+
+    Args:
+        call_args: The call_args from a mock, typically mock.call_args.
+        min_length: The minimum number of positional arguments expected.
+
+    Raises:
+        AssertionError: If call_args[0] has fewer than min_length elements.
+
+    Example::
+
+        mock_logger.debug.assert_called_once()
+        call_args = mock_logger.debug.call_args
+        assert_call_args_length(call_args, 5)
+        assert "message format" in call_args[0][0]
+    """
+    assert (
+        len(call_args[0]) >= min_length
+    ), f"Expected at least {min_length} positional args, got {len(call_args[0])}"

@@ -27,6 +27,7 @@ from sentinel.dashboard.state import (
     SentinelStateAccessor,
 )
 from tests.conftest import create_test_app
+from tests.helpers import assert_call_args_length
 
 
 @pytest.fixture
@@ -1314,24 +1315,6 @@ class TestDeprecatedModuleLevelConstants:
             _ = routes._NONEXISTENT_CONSTANT
 
         assert "has no attribute '_NONEXISTENT_CONSTANT'" in str(exc_info.value)
-
-
-def assert_call_args_length(call_args: tuple[Any, ...], min_length: int) -> None:
-    """Assert that call_args tuple has at least min_length positional arguments.
-
-    This helper provides clearer error messages when checking mock call arguments
-    by including the expected and actual lengths in the assertion message.
-
-    Args:
-        call_args: The call_args from a mock, typically mock.call_args.
-        min_length: The minimum number of positional arguments expected.
-
-    Raises:
-        AssertionError: If call_args[0] has fewer than min_length elements.
-    """
-    assert (
-        len(call_args[0]) >= min_length
-    ), f"Expected at least {min_length} positional args, got {len(call_args[0])}"
 
 
 class TestCreateRoutesLogging:
