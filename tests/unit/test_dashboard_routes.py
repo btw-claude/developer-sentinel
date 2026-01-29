@@ -15,39 +15,17 @@ from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sentinel.config import Config
-from sentinel.dashboard.routes import create_routes
+from sentinel.dashboard.routes import HEALTH_ENDPOINT_SUNSET_DATE
 from sentinel.dashboard.state import (
     ExecutionStateSnapshot,
     OrchestrationInfo,
     OrchestrationVersionSnapshot,
     SentinelStateAccessor,
 )
-
-
-def create_test_app(
-    accessor: SentinelStateAccessor,
-    config: Config | None = None,
-) -> FastAPI:
-    """Create a test FastAPI app with dashboard routes.
-
-    This is a shared helper function for creating test apps with dashboard routes.
-    It reduces code duplication across test classes.
-
-    Args:
-        accessor: The state accessor for the test.
-        config: Optional config for rate limiting settings.
-
-    Returns:
-        A FastAPI app with dashboard routes configured.
-    """
-    app = FastAPI()
-    router = create_routes(accessor, config=config)
-    app.include_router(router)
-    return app
+from tests.conftest import create_test_app
 
 
 @pytest.fixture
@@ -139,7 +117,7 @@ class TestHealthEndpoints:
             assert response.json() == {"status": "healthy"}
             # Check for Deprecation header per RFC 8594 with HTTP-date format
             assert "Deprecation" in response.headers
-            assert response.headers["Deprecation"] == "Sat, 01 Jun 2026 00:00:00 GMT"
+            assert response.headers["Deprecation"] == HEALTH_ENDPOINT_SUNSET_DATE
 
     def test_legacy_health_endpoint_returns_sunset_header(self, temp_logs_dir: Path) -> None:
         """Test that legacy /health endpoint returns Sunset header with removal date."""
@@ -154,7 +132,7 @@ class TestHealthEndpoints:
             assert response.status_code == 200
             # Check for Sunset header with planned removal date
             assert "Sunset" in response.headers
-            assert response.headers["Sunset"] == "Sat, 01 Jun 2026 00:00:00 GMT"
+            assert response.headers["Sunset"] == HEALTH_ENDPOINT_SUNSET_DATE
 
     def test_legacy_health_endpoint_returns_link_header(self, temp_logs_dir: Path) -> None:
         """Test that legacy /health endpoint returns Link header pointing to successors."""

@@ -24,6 +24,11 @@ Module Organization
 - ``tests/mocks.py`` - Mock implementations of core interfaces
 - ``tests/helpers.py`` - Test helper functions (make_config, make_orchestration, etc.)
 - ``tests/conftest.py`` - Pytest fixtures, type aliases, and re-exports for backwards compatibility
+
+Dashboard Test Helpers
+======================
+
+- ``create_test_app()`` - Create a test FastAPI app with dashboard routes
 """
 
 from __future__ import annotations
@@ -32,9 +37,16 @@ import tempfile
 from collections.abc import Generator
 from pathlib import Path
 from types import FrameType
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import pytest
+from fastapi import FastAPI
+
+from sentinel.dashboard.routes import create_routes
+
+if TYPE_CHECKING:
+    from sentinel.config import Config
+    from sentinel.dashboard.state import SentinelStateAccessor
 
 # Re-export mocks for backwards compatibility with existing test imports
 from tests.mocks import (
@@ -72,6 +84,7 @@ __all__ = [
     "TrackingAgentClient",
     # Helpers (alphabetized)
     "build_github_trigger_key",
+    "create_test_app",
     "make_config",
     "make_issue",
     "make_orchestration",
@@ -108,3 +121,28 @@ def temp_orchestrations_dir() -> Generator[Path, None, None]:
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
+
+
+# Dashboard test helpers
+
+
+def create_test_app(
+    accessor: SentinelStateAccessor,
+    config: Config | None = None,
+) -> FastAPI:
+    """Create a test FastAPI app with dashboard routes.
+
+    This is a shared helper function for creating test apps with dashboard routes.
+    It reduces code duplication across test classes.
+
+    Args:
+        accessor: The state accessor for the test.
+        config: Optional config for rate limiting settings.
+
+    Returns:
+        A FastAPI app with dashboard routes configured.
+    """
+    app = FastAPI()
+    router = create_routes(accessor, config=config)
+    app.include_router(router)
+    return app

@@ -33,6 +33,11 @@ from cachetools import TTLCache
 logger = logging.getLogger(__name__)
 
 
+# Sunset date for the deprecated /health endpoint (RFC 8594 HTTP-date format)
+# Used in both Deprecation and Sunset headers
+HEALTH_ENDPOINT_SUNSET_DATE = "Sat, 01 Jun 2026 00:00:00 GMT"
+
+
 # Legacy module-level constants (deprecated)
 # These are kept for backward compatibility but will emit deprecation warnings
 # when accessed. New code should use Config class values instead.
@@ -435,8 +440,8 @@ def create_routes(
         """
         # Add Deprecation header per RFC 8594 to signal this endpoint is deprecated
         # Using HTTP-date format for the sunset date per RFC 8594
-        response.headers["Deprecation"] = "Sat, 01 Jun 2026 00:00:00 GMT"
-        response.headers["Sunset"] = "Sat, 01 Jun 2026 00:00:00 GMT"
+        response.headers["Deprecation"] = HEALTH_ENDPOINT_SUNSET_DATE
+        response.headers["Sunset"] = HEALTH_ENDPOINT_SUNSET_DATE
         response.headers["Link"] = '</health/live>; rel="successor-version", </health/ready>; rel="successor-version"'
         return {"status": "healthy"}
 
