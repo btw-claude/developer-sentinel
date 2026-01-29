@@ -6,13 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from sentinel.orchestration import TriggerConfig
-from sentinel.poller import (
-    JiraClient,
-    JiraClientError,
-    JiraIssue,
-    JiraPoller,
-    _extract_adf_text,
-)
+from sentinel.poller import JiraClient, JiraClientError, JiraIssue, JiraPoller, _extract_adf_text
 
 
 class MockJiraClient(JiraClient):

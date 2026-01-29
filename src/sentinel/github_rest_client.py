@@ -21,10 +21,7 @@ from typing import Any, Self, TypeVar
 
 import httpx
 
-from sentinel.circuit_breaker import (
-    CircuitBreaker,
-    get_circuit_breaker,
-)
+from sentinel.circuit_breaker import CircuitBreaker, get_circuit_breaker
 from sentinel.github_poller import GitHubClient, GitHubClientError
 from sentinel.logging import get_logger
 
@@ -572,9 +569,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
         """Get the circuit breaker for this client."""
         return self._circuit_breaker
 
-    def search_issues(
-        self, query: str, max_results: int = 50
-    ) -> list[dict[str, Any]]:
+    def search_issues(self, query: str, max_results: int = 50) -> list[dict[str, Any]]:
         """Search for issues and pull requests using GitHub search syntax.
 
         Args:
@@ -611,9 +606,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             data: dict[str, Any] = response.json()
             items: list[dict[str, Any]] = data.get("items", [])
             total_count = data.get("total_count", 0)
-            logger.info(
-                f"GitHub search returned {len(items)} items (total: {total_count})"
-            )
+            logger.info(f"GitHub search returned {len(items)} items (total: {total_count})")
             return items
 
         try:
@@ -744,9 +737,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
 
         project = owner_data.get("projectV2")
         if not project:
-            raise GitHubClientError(
-                f"Project #{project_number} not found for {scope} '{owner}'"
-            )
+            raise GitHubClientError(f"Project #{project_number} not found for {scope} '{owner}'")
 
         # Normalize the response
         fields = []
@@ -862,9 +853,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
 
                 # Extract labels
                 labels_data = content.get("labels", {}).get("nodes", [])
-                normalized_content["labels"] = [
-                    label.get("name") for label in labels_data if label
-                ]
+                normalized_content["labels"] = [label.get("name") for label in labels_data if label]
 
                 # Extract assignees
                 assignees_data = content.get("assignees", {}).get("nodes", [])
@@ -1082,9 +1071,7 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
             _check_rate_limit_warning(response)
             # 404 is acceptable - label might already be removed
             if response.status_code == 404:
-                logger.debug(
-                    f"Label '{label}' not found on {owner}/{repo}#{issue_number}"
-                )
+                logger.debug(f"Label '{label}' not found on {owner}/{repo}#{issue_number}")
                 return
             response.raise_for_status()
 

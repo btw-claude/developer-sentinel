@@ -7,11 +7,7 @@ This module contains core executor tests including:
 - matches_pattern tests
 """
 
-from sentinel.executor import (
-    AgentExecutor,
-    ExecutionResult,
-    ExecutionStatus,
-)
+from sentinel.executor import AgentExecutor, ExecutionResult, ExecutionStatus
 from sentinel.orchestration import GitHubContext
 from tests.helpers import make_issue, make_orchestration
 from tests.mocks import MockAgentClient
@@ -323,6 +319,7 @@ class TestAgentExecutorExpandBranchPattern:
         Runtime validation now correctly rejects these patterns.
         """
         import logging
+
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="DS-123", summary="Add login button")
@@ -350,6 +347,7 @@ class TestAgentExecutorExpandBranchPattern:
         Runtime validation now correctly rejects these patterns.
         """
         import logging
+
         from sentinel.github_poller import GitHubIssue
 
         client = MockAgentClient()
@@ -431,6 +429,7 @@ class TestAgentExecutorExpandBranchPattern:
         Runtime validation now correctly rejects this pattern.
         """
         import logging
+
         from sentinel.github_poller import GitHubIssue
 
         client = MockAgentClient()
@@ -462,6 +461,7 @@ class TestAgentExecutorExpandBranchPattern:
         Runtime validation now correctly rejects this pattern.
         """
         import logging
+
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="DS-123")

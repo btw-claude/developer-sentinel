@@ -12,19 +12,9 @@ a live GitHub project, set GITHUB_TOKEN and run with pytest --integration.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
-from unittest.mock import MagicMock, patch
 
-import pytest
-
-from sentinel.github_poller import (
-    GitHubClient,
-    GitHubClientError,
-    GitHubIssue,
-    GitHubIssueProtocol,
-    GitHubPoller,
-)
+from sentinel.github_poller import GitHubClient, GitHubPoller
 from sentinel.orchestration import (
     AgentConfig,
     GitHubContext,
@@ -57,9 +47,7 @@ class MockGitHubClient(GitHubClient):
         self.get_project_calls: list[tuple[str, int, str]] = []
         self.list_project_items_calls: list[tuple[str, int]] = []
 
-    def search_issues(
-        self, query: str, max_results: int = 50
-    ) -> list[dict[str, Any]]:
+    def search_issues(self, query: str, max_results: int = 50) -> list[dict[str, Any]]:
         return []
 
     def get_project(
@@ -68,9 +56,7 @@ class MockGitHubClient(GitHubClient):
         self.get_project_calls.append((owner, project_number, scope))
         return self.project_data
 
-    def list_project_items(
-        self, project_id: str, max_results: int = 100
-    ) -> list[dict[str, Any]]:
+    def list_project_items(self, project_id: str, max_results: int = 100) -> list[dict[str, Any]]:
         self.list_project_items_calls.append((project_id, max_results))
         return self.project_items
 

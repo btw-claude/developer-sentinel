@@ -13,16 +13,12 @@ composable components (DS-384).
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from sentinel.logging import get_logger
-from sentinel.orchestration import (
-    Orchestration,
-    OrchestrationVersion,
-    load_orchestration_file,
-)
+from sentinel.orchestration import Orchestration, OrchestrationVersion, load_orchestration_file
 
 if TYPE_CHECKING:
     from sentinel.router import Router
@@ -47,7 +43,7 @@ class OrchestrationRegistry:
     def __init__(
         self,
         orchestrations_dir: Path,
-        router_factory: Callable[[list[Orchestration]], "Router"],
+        router_factory: Callable[[list[Orchestration]], Router],
     ) -> None:
         """Initialize the orchestration registry.
 
@@ -62,7 +58,7 @@ class OrchestrationRegistry:
         self._orchestrations: list[Orchestration] = []
 
         # The router for routing issues to orchestrations
-        self._router: "Router | None" = None
+        self._router: Router | None = None
 
         # Track known orchestration files for hot-reload detection
         # Maps file path to its last known mtime
@@ -84,7 +80,7 @@ class OrchestrationRegistry:
         return self._orchestrations
 
     @property
-    def router(self) -> "Router | None":
+    def router(self) -> Router | None:
         """Get the current router."""
         return self._router
 
@@ -359,10 +355,10 @@ class OrchestrationRegistry:
             # Remove old orchestrations from the main list
             old_orch_names = {v.name for v in old_versions}
             self._orchestrations = [
-                o for o in self._orchestrations
-                if o.name not in old_orch_names or not any(
-                    v.orchestration is o for v in old_versions
-                )
+                o
+                for o in self._orchestrations
+                if o.name not in old_orch_names
+                or not any(v.orchestration is o for v in old_versions)
             ]
 
         # Add new orchestrations
@@ -373,9 +369,7 @@ class OrchestrationRegistry:
                 for orch in new_orchestrations:
                     version = OrchestrationVersion.create(orch, file_path, new_mtime)
                     self._active_versions.append(version)
-                    logger.info(
-                        f"Created new version {version.version_id[:8]} for '{orch.name}'"
-                    )
+                    logger.info(f"Created new version {version.version_id[:8]} for '{orch.name}'")
 
         # Update the router with the updated orchestrations
         self._router = self._router_factory(self._orchestrations)
@@ -383,9 +377,7 @@ class OrchestrationRegistry:
         # Update observability counter
         self._orchestrations_reloaded_total += len(new_orchestrations)
 
-        logger.info(
-            f"Reloaded {len(new_orchestrations)} orchestration(s) from {file_path.name}"
-        )
+        logger.info(f"Reloaded {len(new_orchestrations)} orchestration(s) from {file_path.name}")
         return len(new_orchestrations)
 
     def _unload_orchestrations_from_file(self, file_path: Path) -> int:
@@ -401,9 +393,7 @@ class OrchestrationRegistry:
 
         with self._versions_lock:
             # Find versions from this file
-            versions_to_remove = [
-                v for v in self._active_versions if v.source_file == file_path
-            ]
+            versions_to_remove = [v for v in self._active_versions if v.source_file == file_path]
 
             for version in versions_to_remove:
                 self._active_versions.remove(version)
@@ -426,7 +416,8 @@ class OrchestrationRegistry:
             # Remove orchestrations from the main list using identity comparison
             orchestrations_to_remove = [v.orchestration for v in versions_to_remove]
             self._orchestrations = [
-                o for o in self._orchestrations
+                o
+                for o in self._orchestrations
                 if not any(o is orch for orch in orchestrations_to_remove)
             ]
 

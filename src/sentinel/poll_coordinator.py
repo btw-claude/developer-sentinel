@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from sentinel.deduplication import DeduplicationManager, build_github_trigger_key
 from sentinel.github_poller import GitHubIssue, GitHubIssueProtocol
@@ -119,9 +119,9 @@ class PollCoordinator:
 
     def __init__(
         self,
-        config: "Config",
-        jira_poller: "JiraPoller | None" = None,
-        github_poller: "GitHubPoller | None" = None,
+        config: Config,
+        jira_poller: JiraPoller | None = None,
+        github_poller: GitHubPoller | None = None,
     ) -> None:
         """Initialize the poll coordinator.
 
@@ -159,17 +159,15 @@ class PollCoordinator:
         Returns:
             True if this pair should be submitted, False if duplicate.
         """
-        return self._dedup_manager.check_and_mark(
-            submitted_pairs, issue_key, orchestration_name
-        )
+        return self._dedup_manager.check_and_mark(submitted_pairs, issue_key, orchestration_name)
 
     def poll_jira_triggers(
         self,
         orchestrations: list[Orchestration],
-        router: "Router",
+        router: Router,
         shutdown_requested: bool = False,
         log_callback: Any | None = None,
-    ) -> tuple[list["RoutingResult"], int]:
+    ) -> tuple[list[RoutingResult], int]:
         """Poll Jira for issues matching orchestration triggers.
 
         Args:
@@ -184,9 +182,6 @@ class PollCoordinator:
         if self._jira_poller is None:
             return [], 0
 
-        from sentinel.router import RoutingResult
-        from datetime import datetime
-
         # Collect unique trigger configs to avoid duplicate polling
         seen_triggers: set[str] = set()
         triggers_to_poll: list[tuple[Orchestration, TriggerConfig]] = []
@@ -197,7 +192,7 @@ class PollCoordinator:
                 seen_triggers.add(trigger_key)
                 triggers_to_poll.append((orch, orch.trigger))
 
-        all_routing_results: list["RoutingResult"] = []
+        all_routing_results: list[RoutingResult] = []
         total_issues_found = 0
 
         # Poll for each unique trigger
@@ -237,10 +232,10 @@ class PollCoordinator:
     def poll_github_triggers(
         self,
         orchestrations: list[Orchestration],
-        router: "Router",
+        router: Router,
         shutdown_requested: bool = False,
         log_callback: Any | None = None,
-    ) -> tuple[list["RoutingResult"], int]:
+    ) -> tuple[list[RoutingResult], int]:
         """Poll GitHub for issues/PRs matching orchestration triggers.
 
         Args:
@@ -255,9 +250,6 @@ class PollCoordinator:
         if self._github_poller is None:
             return [], 0
 
-        from sentinel.router import RoutingResult
-        from datetime import datetime
-
         # Collect unique trigger configs to avoid duplicate polling
         seen_triggers: set[str] = set()
         triggers_to_poll: list[tuple[Orchestration, TriggerConfig]] = []
@@ -268,7 +260,7 @@ class PollCoordinator:
                 seen_triggers.add(trigger_key)
                 triggers_to_poll.append((orch, orch.trigger))
 
-        all_routing_results: list["RoutingResult"] = []
+        all_routing_results: list[RoutingResult] = []
         total_issues_found = 0
 
         # Poll for each unique trigger

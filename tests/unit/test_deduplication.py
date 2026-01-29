@@ -5,9 +5,7 @@ Tests for the DeduplicationManager and CycleTracker classes.
 
 from __future__ import annotations
 
-import pytest
-
-from sentinel.deduplication import CycleTracker, DeduplicationManager
+from sentinel.deduplication import DeduplicationManager
 
 
 class TestDeduplicationManager:

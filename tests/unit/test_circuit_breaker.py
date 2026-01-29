@@ -161,7 +161,9 @@ class TestCircuitBreakerConfig:
         """
         with pytest.raises(CircuitBreakerConfigError) as exc_info:
             CircuitBreakerConfig(half_open_max_calls=True)
-        assert "half_open_max_calls must be a positive integer, not a boolean" in str(exc_info.value)
+        assert "half_open_max_calls must be a positive integer, not a boolean" in str(
+            exc_info.value
+        )
 
     def test_validation_half_open_max_calls_boolean_false(self) -> None:
         """Test that boolean False for half_open_max_calls raises an error.
@@ -171,7 +173,9 @@ class TestCircuitBreakerConfig:
         """
         with pytest.raises(CircuitBreakerConfigError) as exc_info:
             CircuitBreakerConfig(half_open_max_calls=False)
-        assert "half_open_max_calls must be a positive integer, not a boolean" in str(exc_info.value)
+        assert "half_open_max_calls must be a positive integer, not a boolean" in str(
+            exc_info.value
+        )
 
 
 class TestCircuitBreakerStates:

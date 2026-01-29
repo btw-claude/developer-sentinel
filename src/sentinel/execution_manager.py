@@ -13,8 +13,9 @@ composable components (DS-384).
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING, Any, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from sentinel.logging import get_logger
 
@@ -146,13 +147,12 @@ class ExecutionManager:
             self._active_futures.append(future)
         return future
 
-    def collect_completed_results(self) -> list["ExecutionResult"]:
+    def collect_completed_results(self) -> list[ExecutionResult]:
         """Collect results from completed futures.
 
         Returns:
             List of execution results from completed futures.
         """
-        from sentinel.executor import ExecutionResult
 
         results: list[ExecutionResult] = []
         with self._futures_lock:
@@ -194,7 +194,9 @@ class ExecutionManager:
         if not pending:
             return set(), set()
 
-        from concurrent.futures import FIRST_COMPLETED as FC, ALL_COMPLETED as AC, FIRST_EXCEPTION as FE
+        from concurrent.futures import ALL_COMPLETED as AC
+        from concurrent.futures import FIRST_COMPLETED as FC
+        from concurrent.futures import FIRST_EXCEPTION as FE
 
         when_map = {
             "FIRST_COMPLETED": FC,
@@ -204,7 +206,7 @@ class ExecutionManager:
 
         return wait(pending, timeout=timeout, return_when=when_map.get(return_when, FC))
 
-    def wait_for_all_completion(self, poll_interval: float = 0.1) -> list["ExecutionResult"]:
+    def wait_for_all_completion(self, poll_interval: float = 0.1) -> list[ExecutionResult]:
         """Wait for all pending futures to complete and collect results.
 
         This is useful for --once mode where we want to wait for all work to finish.
@@ -217,7 +219,7 @@ class ExecutionManager:
         """
         import time
 
-        all_results: list["ExecutionResult"] = []
+        all_results: list[ExecutionResult] = []
 
         while True:
             with self._futures_lock:

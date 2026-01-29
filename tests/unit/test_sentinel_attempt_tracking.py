@@ -10,13 +10,13 @@ from unittest.mock import patch
 
 import pytest
 
-from sentinel.executor import AgentClient, AgentRunResult
+from sentinel.executor import AgentRunResult
 from sentinel.main import Sentinel
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    MockJiraClient,
     MockAgentClient,
+    MockJiraClient,
     MockTagClient,
     make_config,
     make_orchestration,
@@ -181,8 +181,6 @@ class TestAttemptCountTracking:
 
     def test_running_step_info_contains_attempt_number(self) -> None:
         """Test that RunningStepInfo is created with correct attempt_number."""
-        from sentinel.main import RunningStepInfo
-        from datetime import datetime
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
@@ -213,7 +211,7 @@ class TestAttemptCountTracking:
                 unblock_task = asyncio.create_task(wait_for_unblock())
                 try:
                     await asyncio.wait_for(blocking_event.wait(), timeout=5)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
                 finally:
                     unblock_task.cancel()
@@ -259,7 +257,7 @@ class TestAttemptCountTracking:
     def test_cleanup_stale_attempt_counts(self) -> None:
         """Test that stale attempt count entries are cleaned up based on TTL."""
         import time
-        from unittest.mock import patch
+
         from sentinel.main import AttemptCountEntry
 
         tag_client = MockTagClient()
@@ -297,7 +295,6 @@ class TestAttemptCountTracking:
 
     def test_cleanup_attempt_counts_called_in_run_once(self) -> None:
         """Test that _cleanup_stale_attempt_counts is called during run_once."""
-        from unittest.mock import patch, MagicMock
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(issues=[], tag_client=tag_client)
@@ -313,15 +310,13 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
 
-        with patch.object(sentinel._state_tracker, 'cleanup_stale_attempt_counts') as mock_cleanup:
+        with patch.object(sentinel._state_tracker, "cleanup_stale_attempt_counts") as mock_cleanup:
             mock_cleanup.return_value = 0
             sentinel.run_once()
             mock_cleanup.assert_called_once()
 
     def test_attempt_count_entry_updates_last_access(self) -> None:
         """Test that accessing an attempt count updates its last_access time."""
-        import time
-        from sentinel.main import AttemptCountEntry
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(issues=[], tag_client=tag_client)
@@ -360,9 +355,10 @@ class TestAttemptCountTracking:
         assert entry.count == 2
         assert entry.last_access >= time_before_second
 
-    def test_cleanup_logs_debug_when_no_stale_entries(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_cleanup_logs_debug_when_no_stale_entries(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test that cleanup logs at debug level when no stale entries are found."""
-        import logging
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(issues=[], tag_client=tag_client)
@@ -385,13 +381,17 @@ class TestAttemptCountTracking:
 
         assert cleaned == 0
 
-        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG and r.name == "sentinel.state_tracker"]
-        assert any("no stale entries found" in msg for msg in debug_messages), (
-            f"Expected debug log about no stale entries, got: {debug_messages}"
-        )
+        debug_messages = [
+            r.message
+            for r in caplog.records
+            if r.levelno == logging.DEBUG and r.name == "sentinel.state_tracker"
+        ]
+        assert any(
+            "no stale entries found" in msg for msg in debug_messages
+        ), f"Expected debug log about no stale entries, got: {debug_messages}"
 
         ttl_value = config.attempt_counts_ttl
         all_debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
-        assert any(f"TTL: {ttl_value}" in msg for msg in all_debug_messages), (
-            f"Expected TTL value ({ttl_value}s) in debug message, got: {all_debug_messages}"
-        )
+        assert any(
+            f"TTL: {ttl_value}" in msg for msg in all_debug_messages
+        ), f"Expected TTL value ({ttl_value}s) in debug message, got: {all_debug_messages}"

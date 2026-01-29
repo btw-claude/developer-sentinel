@@ -65,9 +65,7 @@ class TestCalculateBackoffDelay:
         assert _calculate_backoff_delay(3, config) == 8.0  # 1 * 2^3
 
     def test_respects_max_delay(self) -> None:
-        config = GitHubRetryConfig(
-            initial_delay=1.0, max_delay=5.0, jitter_min=1.0, jitter_max=1.0
-        )
+        config = GitHubRetryConfig(initial_delay=1.0, max_delay=5.0, jitter_min=1.0, jitter_max=1.0)
         # 2^10 = 1024, but should be capped at max_delay
         assert _calculate_backoff_delay(10, config) == 5.0
 
@@ -413,15 +411,11 @@ class TestGitHubRestClient:
         assert client.retry_config == DEFAULT_RETRY_CONFIG
 
     def test_init_with_custom_base_url(self) -> None:
-        client = GitHubRestClient(
-            token="test-token", base_url="https://github.example.com/api/v3"
-        )
+        client = GitHubRestClient(token="test-token", base_url="https://github.example.com/api/v3")
         assert client.base_url == "https://github.example.com/api/v3"
 
     def test_init_strips_trailing_slash(self) -> None:
-        client = GitHubRestClient(
-            token="test-token", base_url="https://api.github.com/"
-        )
+        client = GitHubRestClient(token="test-token", base_url="https://api.github.com/")
         assert client.base_url == "https://api.github.com"
 
     def test_headers_set_correctly(self) -> None:
@@ -594,9 +588,7 @@ class TestGitHubRestClientGraphQL:
 
     def test_graphql_url_enterprise(self) -> None:
         """Test GraphQL URL for GitHub Enterprise."""
-        client = GitHubRestClient(
-            token="test-token", base_url="https://github.example.com/api/v3"
-        )
+        client = GitHubRestClient(token="test-token", base_url="https://github.example.com/api/v3")
         assert client._graphql_url == "https://github.example.com/api/graphql"
 
     @patch("sentinel.github_rest_client.httpx.Client")
@@ -608,9 +600,7 @@ class TestGitHubRestClientGraphQL:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {"X-RateLimit-Remaining": "100"}
-        mock_response.json.return_value = {
-            "data": {"viewer": {"login": "testuser"}}
-        }
+        mock_response.json.return_value = {"data": {"viewer": {"login": "testuser"}}}
         mock_response.raise_for_status = MagicMock()
         mock_http_client.post.return_value = mock_response
 
@@ -651,9 +641,7 @@ class TestGitHubRestClientGraphQL:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {}
-        mock_response.json.return_value = {
-            "errors": [{"message": "Field 'foo' doesn't exist"}]
-        }
+        mock_response.json.return_value = {"errors": [{"message": "Field 'foo' doesn't exist"}]}
         mock_response.raise_for_status = MagicMock()
         mock_http_client.post.return_value = mock_response
 
@@ -759,9 +747,7 @@ class TestGitHubRestClientGraphQL:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {}
-        mock_response.json.return_value = {
-            "data": {"organization": {"projectV2": None}}
-        }
+        mock_response.json.return_value = {"data": {"organization": {"projectV2": None}}}
         mock_response.raise_for_status = MagicMock()
         mock_http_client.post.return_value = mock_response
 
@@ -921,9 +907,7 @@ class TestGitHubRestClientGraphQL:
         assert second_call_json["variables"]["cursor"] == "cursor123"
 
     @patch("sentinel.github_rest_client.httpx.Client")
-    def test_list_project_items_respects_max_results(
-        self, mock_client_class: MagicMock
-    ) -> None:
+    def test_list_project_items_respects_max_results(self, mock_client_class: MagicMock) -> None:
         """Test that list_project_items respects max_results limit."""
         mock_http_client = MagicMock()
         mock_client_class.return_value = mock_http_client
@@ -1031,9 +1015,7 @@ class TestGitHubRestClientGraphQL:
         assert result[0]["content"] is None
 
     @patch("sentinel.github_rest_client.httpx.Client")
-    def test_list_project_items_project_not_found(
-        self, mock_client_class: MagicMock
-    ) -> None:
+    def test_list_project_items_project_not_found(self, mock_client_class: MagicMock) -> None:
         """Test list_project_items when project doesn't exist."""
         mock_http_client = MagicMock()
         mock_client_class.return_value = mock_http_client
@@ -1052,9 +1034,7 @@ class TestGitHubRestClientGraphQL:
             client.list_project_items("PVT_invalid")
 
     @patch("sentinel.github_rest_client.httpx.Client")
-    def test_normalize_project_item_all_field_types(
-        self, mock_client_class: MagicMock
-    ) -> None:
+    def test_normalize_project_item_all_field_types(self, mock_client_class: MagicMock) -> None:
         """Test normalization handles all field value types."""
         mock_http_client = MagicMock()
         mock_client_class.return_value = mock_http_client

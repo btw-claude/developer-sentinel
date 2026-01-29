@@ -10,13 +10,13 @@ from sentinel.main import Sentinel
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    make_config,
-    make_orchestration,
     MockAgentClient,
     MockJiraClient,
     MockTagClient,
     SignalHandler,
     TrackingAgentClient,
+    make_config,
+    make_orchestration,
 )
 
 

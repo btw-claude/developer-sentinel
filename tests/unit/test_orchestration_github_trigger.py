@@ -10,14 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from sentinel.orchestration import (
-    AgentConfig,
-    OrchestrationError,
-    TriggerConfig,
-    ValidationResult,
-    _validate_github_repo_format,
-    load_orchestration_file,
-)
+from sentinel.orchestration import OrchestrationError, load_orchestration_file
 
 
 class TestGitHubProjectTrigger:

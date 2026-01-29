@@ -5,12 +5,15 @@
 
 repos:
   # Import sorting with isort
+  # Configuration is read from pyproject.toml [tool.isort] section
+  # Note: ruff.lint.select includes "I" (isort rules) for IDE integration,
+  # while this dedicated isort hook handles pre-commit enforcement.
+  # Both use the same pyproject.toml configuration for consistency.
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
       - id: isort
         name: isort (python)
-        args: ["--profile", "black", "--line-length", "100"]
 
   # Linting and formatting with ruff
   - repo: https://github.com/astral-sh/ruff-pre-commit

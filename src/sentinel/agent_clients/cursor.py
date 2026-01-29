@@ -37,7 +37,7 @@ class CursorMode(str, Enum):
     ASK = "ask"
 
     @classmethod
-    def from_string(cls, value: str) -> "CursorMode":
+    def from_string(cls, value: str) -> CursorMode:
         """Convert string to CursorMode, with validation.
 
         Args:
@@ -53,9 +53,7 @@ class CursorMode(str, Enum):
             return cls(value.lower())
         except ValueError:
             valid_modes = [m.value for m in cls]
-            raise ValueError(
-                f"Invalid Cursor mode: '{value}'. Valid modes: {valid_modes}"
-            )
+            raise ValueError(f"Invalid Cursor mode: '{value}'. Valid modes: {valid_modes}")
 
 
 class CursorAgentClient(AgentClient):
@@ -220,9 +218,7 @@ class CursorAgentClient(AgentClient):
         # Build full prompt with context section
         full_prompt = prompt
         if context:
-            full_prompt += "\n\nContext:\n" + "".join(
-                f"- {k}: {v}\n" for k, v in context.items()
-            )
+            full_prompt += "\n\nContext:\n" + "".join(f"- {k}: {v}\n" for k, v in context.items())
 
         # Convert string mode to CursorMode if provided
         effective_mode: CursorMode | None = None
@@ -264,14 +260,10 @@ class CursorAgentClient(AgentClient):
 
         except subprocess.TimeoutExpired:
             logger.error(f"Cursor CLI timed out after {timeout_seconds}s")
-            raise AgentTimeoutError(
-                f"Cursor agent execution timed out after {timeout_seconds}s"
-            )
+            raise AgentTimeoutError(f"Cursor agent execution timed out after {timeout_seconds}s")
         except FileNotFoundError:
             logger.error(f"Cursor CLI not found at path: {self._cursor_path}")
-            raise AgentClientError(
-                f"Cursor CLI executable not found: {self._cursor_path}"
-            )
+            raise AgentClientError(f"Cursor CLI executable not found: {self._cursor_path}")
         except OSError as e:
             logger.error(f"Failed to execute Cursor CLI: {e}")
             raise AgentClientError(f"Failed to execute Cursor CLI: {e}") from e

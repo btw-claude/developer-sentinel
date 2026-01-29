@@ -1,6 +1,5 @@
 """Tests for Sentinel per-orchestration concurrency limits."""
 
-import threading
 import time
 from typing import Any
 
@@ -10,8 +9,8 @@ from sentinel.orchestration import Orchestration
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    MockJiraClient,
     MockAgentClient,
+    MockJiraClient,
     MockTagClient,
     TrackingAgentClient,
     make_config,
@@ -78,7 +77,9 @@ class TestPerOrchestrationConcurrencyLimits:
         )
         # Global limit of 5, but orchestration limit of 1
         config = make_config(max_concurrent_executions=5)
-        orchestrations = [make_orchestration(name="limited-orch", tags=["review"], max_concurrent=1)]
+        orchestrations = [
+            make_orchestration(name="limited-orch", tags=["review"], max_concurrent=1)
+        ]
 
         sentinel = Sentinel(
             config=config,
@@ -110,7 +111,9 @@ class TestPerOrchestrationConcurrencyLimits:
         )
         # Global limit of 1, per-orch limit of 10
         config = make_config(max_concurrent_executions=1)
-        orchestrations = [make_orchestration(name="high-limit-orch", tags=["review"], max_concurrent=10)]
+        orchestrations = [
+            make_orchestration(name="high-limit-orch", tags=["review"], max_concurrent=10)
+        ]
 
         sentinel = Sentinel(
             config=config,

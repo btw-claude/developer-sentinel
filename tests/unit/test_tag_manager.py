@@ -1,6 +1,7 @@
 """Tests for post-processing tag manager module."""
 
 from sentinel.executor import ExecutionResult, ExecutionStatus
+from sentinel.github_rest_client import GitHubTagClient, GitHubTagClientError
 from sentinel.orchestration import (
     AgentConfig,
     OnCompleteConfig,
@@ -10,13 +11,7 @@ from sentinel.orchestration import (
     Outcome,
     TriggerConfig,
 )
-from sentinel.github_rest_client import GitHubTagClient, GitHubTagClientError
-from sentinel.tag_manager import (
-    JiraTagClient,
-    JiraTagClientError,
-    TagManager,
-    TagUpdateResult,
-)
+from sentinel.tag_manager import JiraTagClient, JiraTagClientError, TagManager, TagUpdateResult
 
 
 class MockJiraTagClient(JiraTagClient):

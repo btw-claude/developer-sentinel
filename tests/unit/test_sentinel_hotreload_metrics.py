@@ -2,18 +2,15 @@
 
 from pathlib import Path
 
-import pytest
-
 from sentinel.main import Sentinel
 from sentinel.orchestration import Orchestration
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    MockJiraClient,
     MockAgentClient,
+    MockJiraClient,
     MockTagClient,
     make_config,
-    make_orchestration,
     set_mtime_in_future,
 )
 

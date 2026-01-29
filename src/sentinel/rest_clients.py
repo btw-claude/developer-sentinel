@@ -20,10 +20,7 @@ from typing import Any, TypeVar
 
 import httpx
 
-from sentinel.circuit_breaker import (
-    CircuitBreaker,
-    get_circuit_breaker,
-)
+from sentinel.circuit_breaker import CircuitBreaker, get_circuit_breaker
 from sentinel.logging import get_logger
 from sentinel.poller import JiraClient, JiraClientError
 from sentinel.tag_manager import JiraTagClient, JiraTagClientError

@@ -46,12 +46,12 @@ class ValidationResult(NamedTuple):
     error_message: str
 
     @classmethod
-    def success(cls) -> "ValidationResult":
+    def success(cls) -> ValidationResult:
         """Create a successful validation result."""
         return cls(is_valid=True, error_message="")
 
     @classmethod
-    def failure(cls, message: str) -> "ValidationResult":
+    def failure(cls, message: str) -> ValidationResult:
         """Create a failed validation result with the given error message."""
         return cls(is_valid=False, error_message=message)
 
@@ -351,7 +351,7 @@ class OrchestrationVersion:
         orchestration: Orchestration,
         source_file: Path,
         mtime: float,
-    ) -> "OrchestrationVersion":
+    ) -> OrchestrationVersion:
         """Create a new OrchestrationVersion with a unique version ID.
 
         Args:
@@ -516,9 +516,7 @@ def _validate_branch_name(branch: str) -> ValidationResult:
     Returns ValidationResult.success() for valid or empty strings,
     ValidationResult.failure(message) otherwise.
     """
-    result = validate_branch_name_core(
-        branch, allow_empty=True, allow_template_variables=True
-    )
+    result = validate_branch_name_core(branch, allow_empty=True, allow_template_variables=True)
 
     if result.is_valid:
         return ValidationResult.success()
@@ -662,9 +660,7 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
 
     agent_type = data.get("agent_type")
     if agent_type is not None and agent_type not in ("claude", "cursor"):
-        raise OrchestrationError(
-            f"Invalid agent_type '{agent_type}': must be 'claude' or 'cursor'"
-        )
+        raise OrchestrationError(f"Invalid agent_type '{agent_type}': must be 'claude' or 'cursor'")
 
     cursor_mode = data.get("cursor_mode")
     if cursor_mode is not None:
@@ -851,9 +847,7 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
     # Check file-level enabled flag (defaults to True for backwards compatibility)
     file_enabled = data.get("enabled", True)
     if not isinstance(file_enabled, bool):
-        raise OrchestrationError(
-            f"File-level 'enabled' must be a boolean in {file_path}"
-        )
+        raise OrchestrationError(f"File-level 'enabled' must be a boolean in {file_path}")
 
     orchestrations_data = data.get("orchestrations", [])
     if not isinstance(orchestrations_data, list):

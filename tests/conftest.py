@@ -34,10 +34,10 @@ Dashboard Test Helpers
 from __future__ import annotations
 
 import tempfile
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from types import FrameType
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import pytest
 from fastapi import FastAPI
@@ -49,25 +49,19 @@ if TYPE_CHECKING:
     from sentinel.dashboard.state import SentinelStateAccessor
 
 # Re-export mocks for backwards compatibility with existing test imports
-from tests.mocks import (
-    MockJiraClient,
-    MockAgentClient,
-    MockTagClient,
-    TrackingAgentClient,
-    MockAgentClientFactory,
-)
-
-# Re-export helpers for backwards compatibility with existing test imports
-from tests.helpers import (
-    make_config,
-    make_issue,
-    make_orchestration,
-    set_mtime_in_future,
-)
-
 # Re-export build_github_trigger_key from deduplication module
 # This provides backwards compatibility for tests that imported from conftest
 from sentinel.deduplication import build_github_trigger_key
+
+# Re-export helpers for backwards compatibility with existing test imports
+from tests.helpers import make_config, make_issue, make_orchestration, set_mtime_in_future
+from tests.mocks import (
+    MockAgentClient,
+    MockAgentClientFactory,
+    MockJiraClient,
+    MockTagClient,
+    TrackingAgentClient,
+)
 
 # Type alias for signal handlers to avoid Any type annotations
 # Used by tests that mock signal handling behavior

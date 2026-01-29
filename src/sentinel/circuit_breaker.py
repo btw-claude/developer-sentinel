@@ -149,11 +149,17 @@ class CircuitBreakerConfig:
         if service_name:
             prefix = f"SENTINEL_{service_name.upper()}_CIRCUIT_BREAKER"
             if os.getenv(f"{prefix}_FAILURE_THRESHOLD"):
-                failure_threshold = int(os.getenv(f"{prefix}_FAILURE_THRESHOLD", str(failure_threshold)))
+                failure_threshold = int(
+                    os.getenv(f"{prefix}_FAILURE_THRESHOLD", str(failure_threshold))
+                )
             if os.getenv(f"{prefix}_RECOVERY_TIMEOUT"):
-                recovery_timeout = float(os.getenv(f"{prefix}_RECOVERY_TIMEOUT", str(recovery_timeout)))
+                recovery_timeout = float(
+                    os.getenv(f"{prefix}_RECOVERY_TIMEOUT", str(recovery_timeout))
+                )
             if os.getenv(f"{prefix}_HALF_OPEN_MAX_CALLS"):
-                half_open_max_calls = int(os.getenv(f"{prefix}_HALF_OPEN_MAX_CALLS", str(half_open_max_calls)))
+                half_open_max_calls = int(
+                    os.getenv(f"{prefix}_HALF_OPEN_MAX_CALLS", str(half_open_max_calls))
+                )
 
         return cls(
             failure_threshold=failure_threshold,
@@ -389,9 +395,7 @@ class CircuitBreaker:
             self._last_failure_time = time.time()
 
             error_info = f": {type(exception).__name__}: {exception}" if exception else ""
-            logger.warning(
-                f"[CIRCUIT_BREAKER] {self.service_name}: Failure recorded{error_info}"
-            )
+            logger.warning(f"[CIRCUIT_BREAKER] {self.service_name}: Failure recorded{error_info}")
 
             if self._state == CircuitState.HALF_OPEN:
                 # Any failure in half-open immediately opens the circuit

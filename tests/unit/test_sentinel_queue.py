@@ -8,13 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
-from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.main import Sentinel
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    MockJiraClient,
     MockAgentClient,
+    MockJiraClient,
     MockTagClient,
     make_config,
     make_orchestration,
@@ -107,7 +106,8 @@ class TestQueueEvictionBehavior:
             sentinel._add_to_issue_queue("NEW-ITEM", "orch-new")
 
         eviction_records = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno == logging.DEBUG
             and r.name == "sentinel.state_tracker"
             and "capacity" in r.message
@@ -120,15 +120,15 @@ class TestQueueEvictionBehavior:
         )
 
         eviction_record = eviction_records[0]
-        assert "EVICT-ME" in eviction_record.message, (
-            f"Expected evicted key 'EVICT-ME' in log message: {eviction_record.message}"
-        )
-        assert "orch-old" in eviction_record.message, (
-            f"Expected evicted orchestration 'orch-old' in log message: {eviction_record.message}"
-        )
-        assert "NEW-ITEM" in eviction_record.message, (
-            f"Expected new key 'NEW-ITEM' in log message: {eviction_record.message}"
-        )
+        assert (
+            "EVICT-ME" in eviction_record.message
+        ), f"Expected evicted key 'EVICT-ME' in log message: {eviction_record.message}"
+        assert (
+            "orch-old" in eviction_record.message
+        ), f"Expected evicted orchestration 'orch-old' in log message: {eviction_record.message}"
+        assert (
+            "NEW-ITEM" in eviction_record.message
+        ), f"Expected new key 'NEW-ITEM' in log message: {eviction_record.message}"
 
     def test_dashboard_shows_most_recent_queued_issues(self) -> None:
         """Test that get_issue_queue returns most recent items after eviction."""
@@ -157,9 +157,7 @@ class TestQueueEvictionBehavior:
         assert "TEST-1" not in queue_keys
         assert "TEST-2" not in queue_keys
 
-    def test_no_eviction_log_when_queue_not_full(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_no_eviction_log_when_queue_not_full(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that no eviction log is produced when queue is not full."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -181,15 +179,16 @@ class TestQueueEvictionBehavior:
             sentinel._add_to_issue_queue("TEST-3", "orch-3")
 
         eviction_records = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno == logging.DEBUG
             and r.name == "sentinel.main"
             and "capacity" in r.message
             and "evicted" in r.message
         ]
-        assert len(eviction_records) == 0, (
-            f"Expected no eviction logs, got: {[r.message for r in eviction_records]}"
-        )
+        assert (
+            len(eviction_records) == 0
+        ), f"Expected no eviction logs, got: {[r.message for r in eviction_records]}"
 
     def test_multiple_evictions_log_each_evicted_item(
         self, caplog: pytest.LogCaptureFixture
@@ -217,7 +216,8 @@ class TestQueueEvictionBehavior:
             sentinel._add_to_issue_queue("ITEM-D", "orch-d")
 
         eviction_records = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno == logging.DEBUG
             and r.name == "sentinel.state_tracker"
             and "capacity" in r.message
@@ -229,12 +229,12 @@ class TestQueueEvictionBehavior:
             f"{[r.message for r in eviction_records]}"
         )
 
-        assert "ITEM-A" in eviction_records[0].message, (
-            f"Expected 'ITEM-A' in first eviction log: {eviction_records[0].message}"
-        )
-        assert "ITEM-B" in eviction_records[1].message, (
-            f"Expected 'ITEM-B' in second eviction log: {eviction_records[1].message}"
-        )
+        assert (
+            "ITEM-A" in eviction_records[0].message
+        ), f"Expected 'ITEM-A' in first eviction log: {eviction_records[0].message}"
+        assert (
+            "ITEM-B" in eviction_records[1].message
+        ), f"Expected 'ITEM-B' in second eviction log: {eviction_records[1].message}"
 
     def test_queue_clear_resets_for_new_cycle(self) -> None:
         """Test that _clear_issue_queue properly resets the queue."""
@@ -310,9 +310,7 @@ class TestQueueEvictionBehavior:
 class TestSentinelOrchestrationLogging:
     """Tests for Sentinel integration with per-orchestration logging."""
 
-    def test_sentinel_initializes_orch_log_manager_when_configured(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sentinel_initializes_orch_log_manager_when_configured(self, tmp_path: Path) -> None:
         """Test Sentinel initializes OrchestrationLogManager when configured."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -353,18 +351,14 @@ class TestSentinelOrchestrationLogging:
 
         assert sentinel._orch_log_manager is None
 
-    def test_sentinel_creates_log_files_via_log_for_orchestration(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sentinel_creates_log_files_via_log_for_orchestration(self, tmp_path: Path) -> None:
         """Test that _log_for_orchestration creates log files for orchestrations."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
         config = replace(make_config(), orchestration_logs_dir=logs_dir)
-        orchestrations = [
-            make_orchestration(name="test-orchestration", tags=["review"])
-        ]
+        orchestrations = [make_orchestration(name="test-orchestration", tags=["review"])]
 
         sentinel = Sentinel(
             config=config,
@@ -374,18 +368,14 @@ class TestSentinelOrchestrationLogging:
             tag_client=tag_client,
         )
 
-        sentinel._log_for_orchestration(
-            "test-orchestration", logging.INFO, "Test log entry"
-        )
+        sentinel._log_for_orchestration("test-orchestration", logging.INFO, "Test log entry")
 
         sentinel._orch_log_manager.close_all()
 
         log_file = logs_dir / "test-orchestration.log"
         assert log_file.exists()
 
-    def test_sentinel_logs_contain_orchestration_activity(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sentinel_logs_contain_orchestration_activity(self, tmp_path: Path) -> None:
         """Test orchestration logs contain relevant execution activity."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -419,9 +409,7 @@ class TestSentinelOrchestrationLogging:
         assert "Polling Jira" in content
         assert "TEST-1" in content or "log-test-orch" in content
 
-    def test_sentinel_separate_orchestrations_have_separate_logs(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sentinel_separate_orchestrations_have_separate_logs(self, tmp_path: Path) -> None:
         """Test different orchestrations write to separate log files."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -441,12 +429,8 @@ class TestSentinelOrchestrationLogging:
             tag_client=tag_client,
         )
 
-        sentinel._log_for_orchestration(
-            "orch-alpha", logging.INFO, "Message for orch-alpha"
-        )
-        sentinel._log_for_orchestration(
-            "orch-beta", logging.INFO, "Message for orch-beta"
-        )
+        sentinel._log_for_orchestration("orch-alpha", logging.INFO, "Message for orch-alpha")
+        sentinel._log_for_orchestration("orch-beta", logging.INFO, "Message for orch-beta")
 
         sentinel._orch_log_manager.close_all()
 
@@ -463,9 +447,7 @@ class TestSentinelOrchestrationLogging:
         assert "Message for orch-beta" not in content_alpha
         assert "Message for orch-alpha" not in content_beta
 
-    def test_sentinel_closes_log_manager_on_run_once_and_wait(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sentinel_closes_log_manager_on_run_once_and_wait(self, tmp_path: Path) -> None:
         """Test that run_once_and_wait properly closes the log manager."""
         jira_client = MockJiraClient(issues=[])
         agent_client = MockAgentClient()
@@ -509,9 +491,7 @@ class TestSentinelOrchestrationLogging:
         )
 
         with caplog.at_level(logging.INFO):
-            sentinel._log_for_orchestration(
-                "test-orch", logging.INFO, "Test log message"
-            )
+            sentinel._log_for_orchestration("test-orch", logging.INFO, "Test log message")
 
         assert "Test log message" in caplog.text
 
@@ -535,9 +515,7 @@ class TestSentinelOrchestrationLogging:
         )
 
         with caplog.at_level(logging.INFO):
-            sentinel._log_for_orchestration(
-                "dual-log-test", logging.INFO, "Dual log message"
-            )
+            sentinel._log_for_orchestration("dual-log-test", logging.INFO, "Dual log message")
 
         assert "Dual log message" in caplog.text
 

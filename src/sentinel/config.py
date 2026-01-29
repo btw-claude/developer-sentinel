@@ -512,7 +512,9 @@ def load_config(env_file: Path | None = None) -> Config:
 
     # Parse orchestration logs dir
     orchestration_logs_dir_str = os.getenv("SENTINEL_ORCHESTRATION_LOGS_DIR", "")
-    orchestration_logs_dir = Path(orchestration_logs_dir_str) if orchestration_logs_dir_str else None
+    orchestration_logs_dir = (
+        Path(orchestration_logs_dir_str) if orchestration_logs_dir_str else None
+    )
 
     # Parse Cursor CLI configuration
     default_agent_type = _validate_agent_type(
@@ -554,9 +556,7 @@ def load_config(env_file: Path | None = None) -> Config:
         return [arg.strip() for arg in value.split(",") if arg.strip()] if value else []
 
     # Parse Claude API rate limiting configuration
-    claude_rate_limit_enabled = _parse_bool(
-        os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_ENABLED", "true")
-    )
+    claude_rate_limit_enabled = _parse_bool(os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_ENABLED", "true"))
     claude_rate_limit_per_minute = _parse_positive_int(
         os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_PER_MINUTE", "60"),
         "SENTINEL_CLAUDE_RATE_LIMIT_PER_MINUTE",
@@ -577,9 +577,7 @@ def load_config(env_file: Path | None = None) -> Config:
     )
 
     # Parse circuit breaker configuration
-    circuit_breaker_enabled = _parse_bool(
-        os.getenv("SENTINEL_CIRCUIT_BREAKER_ENABLED", "true")
-    )
+    circuit_breaker_enabled = _parse_bool(os.getenv("SENTINEL_CIRCUIT_BREAKER_ENABLED", "true"))
     circuit_breaker_failure_threshold = _parse_positive_int(
         os.getenv("SENTINEL_CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5"),
         "SENTINEL_CIRCUIT_BREAKER_FAILURE_THRESHOLD",
@@ -597,9 +595,7 @@ def load_config(env_file: Path | None = None) -> Config:
     )
 
     # Parse health check configuration
-    health_check_enabled = _parse_bool(
-        os.getenv("SENTINEL_HEALTH_CHECK_ENABLED", "true")
-    )
+    health_check_enabled = _parse_bool(os.getenv("SENTINEL_HEALTH_CHECK_ENABLED", "true"))
     health_check_timeout = _parse_non_negative_float(
         os.getenv("SENTINEL_HEALTH_CHECK_TIMEOUT", "5.0"),
         "SENTINEL_HEALTH_CHECK_TIMEOUT",

@@ -300,9 +300,7 @@ class TestAgentExecutorExecuteGitHubIssue:
         """Execute should retry on failure for GitHub issues."""
         from sentinel.github_poller import GitHubIssue
 
-        client = MockAgentClient(
-            responses=["FAILURE: First attempt", "SUCCESS: Done"]
-        )
+        client = MockAgentClient(responses=["FAILURE: First attempt", "SUCCESS: Done"])
         executor = AgentExecutor(client)
         issue = GitHubIssue(number=42, title="Test")
         orch = make_orchestration(max_attempts=3)
@@ -475,9 +473,7 @@ class TestGitHubTemplateVariables:
 
         prompt = executor.build_prompt(issue, orch)
 
-        expected = (
-            "key:[] summary:[] desc:[] status:[] assignee:[] labels:[] comments:[] links:[]"
-        )
+        expected = "key:[] summary:[] desc:[] status:[] assignee:[] labels:[] comments:[] links:[]"
         assert prompt == expected
 
     def test_all_github_issue_variables_empty_for_jira(self) -> None:
@@ -614,7 +610,6 @@ class TestGitHubTemplateVariables:
         prompt = executor.build_prompt(issue, orch)
 
         expected = (
-            "PR #123 'Add feature X' by developer "
-            "in company/project from feature-x to develop"
+            "PR #123 'Add feature X' by developer " "in company/project from feature-x to develop"
         )
         assert prompt == expected

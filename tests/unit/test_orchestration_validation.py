@@ -14,11 +14,9 @@ from sentinel.orchestration import (
     AgentConfig,
     OrchestrationError,
     TriggerConfig,
-    ValidationResult,
     _validate_github_repo_format,
     load_orchestration_file,
 )
-
 
 """Tests for orchestration configuration validation.
 
@@ -27,19 +25,6 @@ GitHub repository format validation, GitHub project trigger configuration,
 orchestration enabled/disabled functionality, max_concurrent field validation,
 labels and tags validation, and agent type configuration.
 """
-
-from pathlib import Path
-
-import pytest
-
-from sentinel.orchestration import (
-    AgentConfig,
-    OrchestrationError,
-    TriggerConfig,
-    ValidationResult,
-    _validate_github_repo_format,
-    load_orchestration_file,
-)
 
 
 class TestValidateGitHubRepoFormat:
@@ -84,9 +69,7 @@ class TestValidateGitHubRepoFormat:
             ("a/b/c", "owner/repo-name"),
         ],
     )
-    def test_invalid_format_structure(
-        self, repo_format: str, expected_error: str
-    ) -> None:
+    def test_invalid_format_structure(self, repo_format: str, expected_error: str) -> None:
         """Invalid format structures should return False with appropriate error."""
         result = _validate_github_repo_format(repo_format)
         assert result.is_valid is False
@@ -151,9 +134,7 @@ class TestValidateGitHubRepoFormat:
             ("owner/REPO.GIT", "cannot end with '.git'"),  # Case insensitive
         ],
     )
-    def test_invalid_repo_prefix_suffix(
-        self, repo_format: str, expected_error: str
-    ) -> None:
+    def test_invalid_repo_prefix_suffix(self, repo_format: str, expected_error: str) -> None:
         """Repo with invalid prefix or suffix should be invalid."""
         result = _validate_github_repo_format(repo_format)
         assert result.is_valid is False
@@ -817,5 +798,3 @@ orchestrations:
         assert orch.on_start.add_tag == "processing"
         assert orch.on_complete.remove_tag == "review"
         assert orch.on_failure.add_tag == "review-failed"
-
-

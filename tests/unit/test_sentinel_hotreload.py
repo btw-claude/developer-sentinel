@@ -3,15 +3,13 @@
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from sentinel.main import Sentinel
 from sentinel.orchestration import Orchestration
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    MockJiraClient,
     MockAgentClient,
+    MockJiraClient,
     MockTagClient,
     make_config,
     make_orchestration,
@@ -424,9 +422,14 @@ class TestSentinelOrchestrationHotReload:
             sentinel.run_once()
 
             assert len(sentinel._pending_removal_versions) == 1
-            assert sentinel._pending_removal_versions[0].orchestration.agent.prompt == "New Version 1"
+            assert (
+                sentinel._pending_removal_versions[0].orchestration.agent.prompt == "New Version 1"
+            )
             assert len(sentinel._active_versions) == 1
-            assert sentinel._active_versions[0].orchestration.agent.prompt == "New Version 2 - Modified"
+            assert (
+                sentinel._active_versions[0].orchestration.agent.prompt
+                == "New Version 2 - Modified"
+            )
 
     def test_pending_removal_version_cleaned_up_after_execution_completes(self) -> None:
         """Test that pending removal versions are cleaned up after executions complete."""

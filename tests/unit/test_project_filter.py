@@ -41,9 +41,7 @@ class TestCondition:
         assert condition.value == "Ready"
 
     def test_condition_with_multiple_values(self) -> None:
-        condition = Condition(
-            field="Status", operator=Operator.IN, values=("Ready", "In Progress")
-        )
+        condition = Condition(field="Status", operator=Operator.IN, values=("Ready", "In Progress"))
         assert condition.values == ("Ready", "In Progress")
         assert condition.value == "Ready"  # First value
 
@@ -642,9 +640,7 @@ class TestProjectFilterParserIntegration:
         parser = ProjectFilterParser()
 
         # Filter for items ready for work
-        expr = parser.parse(
-            'Status IN ("Ready", "In Progress") AND Priority IN ("High", "Urgent")'
-        )
+        expr = parser.parse('Status IN ("Ready", "In Progress") AND Priority IN ("High", "Urgent")')
 
         # Sample project items
         items = [

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import json
 import tempfile
+from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Generator
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -152,7 +153,9 @@ class TestHealthEndpoints:
             assert "/health/ready" in link_header
             assert 'rel="successor-version"' in link_header
 
-    def test_health_live_endpoint_does_not_have_deprecation_header(self, temp_logs_dir: Path) -> None:
+    def test_health_live_endpoint_does_not_have_deprecation_header(
+        self, temp_logs_dir: Path
+    ) -> None:
         """Test that /health/live endpoint does not have Deprecation header."""
         config = Config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
@@ -165,7 +168,9 @@ class TestHealthEndpoints:
             assert response.status_code == 200
             assert "Deprecation" not in response.headers
 
-    def test_health_ready_endpoint_does_not_have_deprecation_header(self, temp_logs_dir: Path) -> None:
+    def test_health_ready_endpoint_does_not_have_deprecation_header(
+        self, temp_logs_dir: Path
+    ) -> None:
         """Test that /health/ready endpoint does not have Deprecation header."""
         config = Config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
@@ -537,8 +542,9 @@ class TestSseLogStreamingEndpoint:
     def test_stream_endpoint_uses_sse_starlette(self) -> None:
         """Test that the streaming endpoint imports and uses sse-starlette."""
         # Verify that sse_starlette.sse.EventSourceResponse is used
-        from sentinel.dashboard.routes import EventSourceResponse
         from sse_starlette.sse import EventSourceResponse as SSEResponse
+
+        from sentinel.dashboard.routes import EventSourceResponse
 
         assert EventSourceResponse is SSEResponse
 
@@ -1318,9 +1324,7 @@ class TestCreateRoutesLogging:
     logger to check call arguments directly for more robust assertions.
     """
 
-    def test_create_routes_logs_debug_with_provided_config(
-        self, temp_logs_dir: Path
-    ) -> None:
+    def test_create_routes_logs_debug_with_provided_config(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs debug message when Config is provided."""
         config = Config(
             agent_logs_dir=temp_logs_dir,
@@ -1338,7 +1342,9 @@ class TestCreateRoutesLogging:
             mock_logger.debug.assert_called_once()
             call_args = mock_logger.debug.call_args
             # Verify call_args tuple has expected number of elements for clearer error messages
-            assert len(call_args[0]) >= 5, f"Expected at least 5 positional args, got {len(call_args[0])}"
+            assert (
+                len(call_args[0]) >= 5
+            ), f"Expected at least 5 positional args, got {len(call_args[0])}"
             # Check format string contains expected placeholders
             assert "create_routes using %s Config" in call_args[0][0]
             # Check positional arguments: config_source, toggle_cooldown, cache_ttl, cache_maxsize
@@ -1347,9 +1353,7 @@ class TestCreateRoutesLogging:
             assert call_args[0][3] == 7200
             assert call_args[0][4] == 5000
 
-    def test_create_routes_logs_debug_with_default_config(
-        self, temp_logs_dir: Path
-    ) -> None:
+    def test_create_routes_logs_debug_with_default_config(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs debug message when using default Config."""
         config = Config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
@@ -1362,7 +1366,9 @@ class TestCreateRoutesLogging:
             mock_logger.debug.assert_called_once()
             call_args = mock_logger.debug.call_args
             # Verify call_args tuple has expected number of elements for clearer error messages
-            assert len(call_args[0]) >= 5, f"Expected at least 5 positional args, got {len(call_args[0])}"
+            assert (
+                len(call_args[0]) >= 5
+            ), f"Expected at least 5 positional args, got {len(call_args[0])}"
             # Check format string contains expected placeholders
             assert "create_routes using %s Config" in call_args[0][0]
             # Check positional arguments: config_source, toggle_cooldown, cache_ttl, cache_maxsize
@@ -1371,9 +1377,7 @@ class TestCreateRoutesLogging:
             assert call_args[0][3] == 3600  # default cache_ttl
             assert call_args[0][4] == 10000  # default cache_maxsize
 
-    def test_create_routes_logs_toggle_cooldown_value(
-        self, temp_logs_dir: Path
-    ) -> None:
+    def test_create_routes_logs_toggle_cooldown_value(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs toggle_cooldown_seconds value."""
         config = Config(agent_logs_dir=temp_logs_dir, toggle_cooldown_seconds=3.5)
         sentinel = MockSentinel(config)
@@ -1385,12 +1389,12 @@ class TestCreateRoutesLogging:
             # Verify the toggle_cooldown value is passed correctly
             call_args = mock_logger.debug.call_args
             # Verify call_args tuple has expected number of elements for clearer error messages
-            assert len(call_args[0]) >= 3, f"Expected at least 3 positional args, got {len(call_args[0])}"
+            assert (
+                len(call_args[0]) >= 3
+            ), f"Expected at least 3 positional args, got {len(call_args[0])}"
             assert call_args[0][2] == 3.5
 
-    def test_create_routes_logs_cache_ttl_value(
-        self, temp_logs_dir: Path
-    ) -> None:
+    def test_create_routes_logs_cache_ttl_value(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs rate_limit_cache_ttl value."""
         config = Config(agent_logs_dir=temp_logs_dir, rate_limit_cache_ttl=1800)
         sentinel = MockSentinel(config)
@@ -1402,12 +1406,12 @@ class TestCreateRoutesLogging:
             # Verify the cache_ttl value is passed correctly
             call_args = mock_logger.debug.call_args
             # Verify call_args tuple has expected number of elements for clearer error messages
-            assert len(call_args[0]) >= 4, f"Expected at least 4 positional args, got {len(call_args[0])}"
+            assert (
+                len(call_args[0]) >= 4
+            ), f"Expected at least 4 positional args, got {len(call_args[0])}"
             assert call_args[0][3] == 1800
 
-    def test_create_routes_logs_cache_maxsize_value(
-        self, temp_logs_dir: Path
-    ) -> None:
+    def test_create_routes_logs_cache_maxsize_value(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs rate_limit_cache_maxsize value."""
         config = Config(agent_logs_dir=temp_logs_dir, rate_limit_cache_maxsize=20000)
         sentinel = MockSentinel(config)
@@ -1419,5 +1423,7 @@ class TestCreateRoutesLogging:
             # Verify the cache_maxsize value is passed correctly
             call_args = mock_logger.debug.call_args
             # Verify call_args tuple has expected number of elements for clearer error messages
-            assert len(call_args[0]) >= 5, f"Expected at least 5 positional args, got {len(call_args[0])}"
+            assert (
+                len(call_args[0]) >= 5
+            ), f"Expected at least 5 positional args, got {len(call_args[0])}"
             assert call_args[0][4] == 20000

@@ -56,7 +56,7 @@ class MockJiraClient(JiraClient):
     def __init__(
         self,
         issues: list[dict[str, Any]] | None = None,
-        tag_client: "MockTagClient | None" = None,
+        tag_client: MockTagClient | None = None,
     ) -> None:
         self.issues = issues or []
         self.search_calls: list[tuple[str, int]] = []
@@ -109,7 +109,7 @@ class MockAgentClient(AgentClient):
     def __init__(
         self,
         responses: list[str] | None = None,
-        workdir: "Path | None" = None,
+        workdir: Path | None = None,
         agent_type_value: AgentType = "claude",
     ) -> None:
         self.responses = responses or ["SUCCESS: Task completed"]
@@ -313,9 +313,7 @@ class MockAgentClientFactory(AgentClientFactory):
         """Return the mock client regardless of agent type."""
         return self._mock_client
 
-    def get_or_create(
-        self, agent_type: AgentType | None, config: Config
-    ) -> AgentClient:
+    def get_or_create(self, agent_type: AgentType | None, config: Config) -> AgentClient:
         """Return the mock client regardless of agent type."""
         return self._mock_client
 

@@ -395,9 +395,7 @@ class TestOrchestrationKwargsCache:
         factory.register("claude", builder)
 
         client1 = factory.get_or_create_for_orchestration("claude", config)
-        client2 = factory.get_or_create_for_orchestration(
-            "claude", config, some_option="value"
-        )
+        client2 = factory.get_or_create_for_orchestration("claude", config, some_option="value")
 
         assert client1 is not client2
         assert creation_count == 2
@@ -416,12 +414,8 @@ class TestOrchestrationKwargsCache:
         factory.register("claude", builder)
 
         # Pass kwargs in different orders
-        client1 = factory.get_or_create_for_orchestration(
-            "claude", config, a="1", b="2"
-        )
-        client2 = factory.get_or_create_for_orchestration(
-            "claude", config, b="2", a="1"
-        )
+        client1 = factory.get_or_create_for_orchestration("claude", config, a="1", b="2")
+        client2 = factory.get_or_create_for_orchestration("claude", config, b="2", a="1")
 
         assert client1 is client2
         assert creation_count == 1
@@ -434,9 +428,7 @@ class TestOrchestrationKwargsCache:
         factory.register("claude", lambda cfg: MockAgentClient("claude"))
 
         with pytest.raises(TypeError) as exc_info:
-            factory.get_or_create_for_orchestration(
-                "claude", config, unhashable_list=[1, 2, 3]
-            )
+            factory.get_or_create_for_orchestration("claude", config, unhashable_list=[1, 2, 3])
 
         assert "hashable" in str(exc_info.value).lower()
 
@@ -463,16 +455,12 @@ class TestOrchestrationKwargsCache:
 
         factory.register("claude", builder)
 
-        factory.get_or_create_for_orchestration(
-            "claude", config, working_dir="/tmp/test"
-        )
+        factory.get_or_create_for_orchestration("claude", config, working_dir="/tmp/test")
         assert creation_count == 1
 
         factory.clear_cache()
 
-        factory.get_or_create_for_orchestration(
-            "claude", config, working_dir="/tmp/test"
-        )
+        factory.get_or_create_for_orchestration("claude", config, working_dir="/tmp/test")
         assert creation_count == 2
 
     def test_make_kwargs_hashable_creates_sorted_tuple(self) -> None:
@@ -613,48 +601,43 @@ class TestKwargsBasedCacheKeyDifferentiation:
             "claude", config, working_dir="/project/a", timeout=30
         )
 
-        assert client_a1 is client_a2, (
-            "Same agent type with identical kwargs should return the same cached instance"
-        )
-        assert creation_count == 1, (
-            "Builder should only be called once for identical kwargs"
-        )
+        assert (
+            client_a1 is client_a2
+        ), "Same agent type with identical kwargs should return the same cached instance"
+        assert creation_count == 1, "Builder should only be called once for identical kwargs"
 
         # --- Test 2: Same agent type with DIFFERENT kwargs returns DIFFERENT instance ---
         client_b = factory.get_or_create_for_orchestration(
             "claude", config, working_dir="/project/b", timeout=30
         )
 
-        assert client_b is not client_a1, (
-            "Same agent type with different kwargs should return a different instance"
-        )
-        assert creation_count == 2, (
-            "Builder should be called again for different kwargs"
-        )
+        assert (
+            client_b is not client_a1
+        ), "Same agent type with different kwargs should return a different instance"
+        assert creation_count == 2, "Builder should be called again for different kwargs"
 
         # --- Test 3: Verify original cached instance is still returned ---
         client_a3 = factory.get_or_create_for_orchestration(
             "claude", config, working_dir="/project/a", timeout=30
         )
 
-        assert client_a3 is client_a1, (
-            "Original kwargs should still return the original cached instance"
-        )
-        assert creation_count == 2, (
-            "No additional builder calls for previously cached kwargs"
-        )
+        assert (
+            client_a3 is client_a1
+        ), "Original kwargs should still return the original cached instance"
+        assert creation_count == 2, "No additional builder calls for previously cached kwargs"
 
         # --- Test 4: Different kwargs value for same key creates new instance ---
         client_c = factory.get_or_create_for_orchestration(
-            "claude", config, working_dir="/project/a", timeout=60  # different timeout
+            "claude",
+            config,
+            working_dir="/project/a",
+            timeout=60,  # different timeout
         )
 
-        assert client_c is not client_a1, (
-            "Same kwargs keys but different values should create a different instance"
-        )
-        assert creation_count == 3, (
-            "Builder should be called for kwargs with different values"
-        )
+        assert (
+            client_c is not client_a1
+        ), "Same kwargs keys but different values should create a different instance"
+        assert creation_count == 3, "Builder should be called for kwargs with different values"
 
     def test_kwargs_cache_key_with_multiple_kwargs_combinations(self) -> None:
         """Verify cache correctly handles multiple distinct kwargs combinations.
@@ -740,9 +723,9 @@ class TestEmptyKwargsEdgeCases:
             "claude", config, **empty_dict
         )
 
-        assert client_no_kwargs is client_empty_kwargs, (
-            "No kwargs and empty kwargs {} should return the same cached instance"
-        )
+        assert (
+            client_no_kwargs is client_empty_kwargs
+        ), "No kwargs and empty kwargs {} should return the same cached instance"
         assert creation_count == 1, (
             "Empty kwargs should use the same cache key as no kwargs - "
             "builder should not be called again"
@@ -833,9 +816,9 @@ class TestEmptyKwargsEdgeCases:
             "claude", config, some_option=None
         )
 
-        assert client_empty is not client_with_none, (
-            "Empty kwargs should be distinct from kwargs containing None values"
-        )
-        assert creation_count == 2, (
-            "Empty kwargs and kwargs-with-None should create separate instances"
-        )
+        assert (
+            client_empty is not client_with_none
+        ), "Empty kwargs should be distinct from kwargs containing None values"
+        assert (
+            creation_count == 2
+        ), "Empty kwargs and kwargs-with-None should create separate instances"

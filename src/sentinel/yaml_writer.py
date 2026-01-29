@@ -115,9 +115,7 @@ def _file_lock(
         if lock_file is not None:
             lock_file.close()
             lock_file = None
-        raise OrchestrationYamlWriterError(
-            f"Failed to acquire lock for {file_path}: {e}"
-        ) from e
+        raise OrchestrationYamlWriterError(f"Failed to acquire lock for {file_path}: {e}") from e
     finally:
         if lock_file is not None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
@@ -269,17 +267,11 @@ class OrchestrationYamlWriter:
                 f"Orchestration file not found: {file_path}"
             ) from None
         except PermissionError as e:
-            raise OrchestrationYamlWriterError(
-                f"Permission denied reading {file_path}: {e}"
-            ) from e
+            raise OrchestrationYamlWriterError(f"Permission denied reading {file_path}: {e}") from e
         except YAMLError as e:
-            raise OrchestrationYamlWriterError(
-                f"Failed to parse YAML in {file_path}: {e}"
-            ) from e
+            raise OrchestrationYamlWriterError(f"Failed to parse YAML in {file_path}: {e}") from e
         except UnicodeDecodeError as e:
-            raise OrchestrationYamlWriterError(
-                f"Failed to decode {file_path} as UTF-8: {e}"
-            ) from e
+            raise OrchestrationYamlWriterError(f"Failed to decode {file_path} as UTF-8: {e}") from e
 
     def _create_backup(self, file_path: Path) -> Path | None:
         """Create a backup of the file before modification.
@@ -345,13 +337,9 @@ class OrchestrationYamlWriter:
                 f"Permission denied writing to {file_path}: {e}"
             ) from e
         except OSError as e:
-            raise OrchestrationYamlWriterError(
-                f"Failed to write to {file_path}: {e}"
-            ) from e
+            raise OrchestrationYamlWriterError(f"Failed to write to {file_path}: {e}") from e
 
-    def _find_orchestration_index(
-        self, orchestrations: CommentedSeq, orch_name: str
-    ) -> int | None:
+    def _find_orchestration_index(self, orchestrations: CommentedSeq, orch_name: str) -> int | None:
         """Find the index of an orchestration by name.
 
         Args:
@@ -366,9 +354,7 @@ class OrchestrationYamlWriter:
                 return i
         return None
 
-    def toggle_orchestration(
-        self, file_path: Path, orch_name: str, enabled: bool
-    ) -> bool:
+    def toggle_orchestration(self, file_path: Path, orch_name: str, enabled: bool) -> bool:
         """Toggle the enabled status of a specific orchestration.
 
         Modifies the orchestration's `enabled` field in place, preserving
@@ -476,9 +462,7 @@ class OrchestrationYamlWriter:
 
             return count
 
-    def toggle_by_project(
-        self, orch_files: dict[str, Path], project: str, enabled: bool
-    ) -> int:
+    def toggle_by_project(self, orch_files: dict[str, Path], project: str, enabled: bool) -> int:
         """Toggle orchestrations that match a specific project.
 
         Searches through the provided orchestration files and toggles the
@@ -563,9 +547,7 @@ class OrchestrationYamlWriter:
 
         return total_count
 
-    def toggle_by_repo(
-        self, orch_files: dict[str, Path], repo: str, enabled: bool
-    ) -> int:
+    def toggle_by_repo(self, orch_files: dict[str, Path], repo: str, enabled: bool) -> int:
         """Toggle orchestrations that match a specific GitHub repository.
 
         Searches through the provided orchestration files and toggles the

@@ -24,9 +24,9 @@ import json
 import logging
 import time
 import warnings
-from datetime import datetime
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from cachetools import TTLCache
 
@@ -75,6 +75,7 @@ def __getattr__(name: str) -> Any:
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -85,9 +86,7 @@ from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWrite
 if TYPE_CHECKING:
     from sentinel.config import Config
     from sentinel.dashboard.state import SentinelStateAccessor
-    from sentinel.github_rest_client import GitHubRestClient
     from sentinel.health import HealthChecker
-    from sentinel.rest_clients import JiraRestClient
 
 
 class RateLimiter:
@@ -208,8 +207,7 @@ def create_routes(
     effective_config = config if config is not None else ConfigClass()
     config_source = "provided" if config is not None else "default"
     logger.debug(
-        "create_routes using %s Config: toggle_cooldown=%.1fs, "
-        "cache_ttl=%ds, cache_maxsize=%d",
+        "create_routes using %s Config: toggle_cooldown=%.1fs, " "cache_ttl=%ds, cache_maxsize=%d",
         config_source,
         effective_config.toggle_cooldown_seconds,
         effective_config.rate_limit_cache_ttl,
@@ -442,7 +440,9 @@ def create_routes(
         # Using HTTP-date format for the sunset date per RFC 8594
         response.headers["Deprecation"] = HEALTH_ENDPOINT_SUNSET_DATE
         response.headers["Sunset"] = HEALTH_ENDPOINT_SUNSET_DATE
-        response.headers["Link"] = '</health/live>; rel="successor-version", </health/ready>; rel="successor-version"'
+        response.headers["Link"] = (
+            '</health/live>; rel="successor-version", </health/ready>; rel="successor-version"'
+        )
         return {"status": "healthy"}
 
     @dashboard_router.get("/health/live")
@@ -592,7 +592,7 @@ def create_routes(
 
                     if current_mtime > last_mtime or current_size > last_size:
                         # File has been modified, read new content
-                        with open(log_path, "r") as f:
+                        with open(log_path) as f:
                             if current_size > last_size:
                                 # Append mode - seek to last position
                                 f.seek(last_size)
@@ -609,9 +609,7 @@ def create_routes(
                                 content = f.read()
                                 yield {
                                     "event": "initial",
-                                    "data": json.dumps(
-                                        {"type": "initial", "content": content}
-                                    ),
+                                    "data": json.dumps({"type": "initial", "content": content}),
                                 }
 
                         last_size = current_size
@@ -652,7 +650,9 @@ def create_routes(
         Raises:
             HTTPException: 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
-        logger.debug("toggle_orchestration called for '%s' with enabled=%s", name, request_body.enabled)
+        logger.debug(
+            "toggle_orchestration called for '%s' with enabled=%s", name, request_body.enabled
+        )
         state = state_accessor.get_state()
 
         # Find the orchestration to get its source file
@@ -755,7 +755,10 @@ def create_routes(
 
             # Filter by source type and identifier
             if request_body.source == "jira":
-                if orch.trigger_source == "jira" and orch.trigger_project == request_body.identifier:
+                if (
+                    orch.trigger_source == "jira"
+                    and orch.trigger_project == request_body.identifier
+                ):
                     orch_files[orch.name] = source_file
             elif request_body.source == "github":
                 if orch.trigger_source == "github" and orch.trigger_repo == request_body.identifier:

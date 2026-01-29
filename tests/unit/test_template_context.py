@@ -4,14 +4,7 @@ This module tests the data-driven template variable generation using
 dataclass introspection, as implemented in DS-396.
 """
 
-import pytest
-
-from sentinel.executor import (
-    TemplateContext,
-    _compute_slug,
-    _format_comments,
-    _format_list,
-)
+from sentinel.executor import TemplateContext, _compute_slug, _format_comments, _format_list
 from sentinel.github_poller import GitHubIssue
 from sentinel.orchestration import GitHubContext
 from sentinel.poller import JiraIssue

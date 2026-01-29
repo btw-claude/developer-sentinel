@@ -8,13 +8,15 @@ from sentinel.main import Sentinel
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    MockJiraClient,
     MockAgentClient,
+    MockJiraClient,
     MockTagClient,
     build_github_trigger_key,
     make_config,
     make_orchestration,
 )
+
+
 class TestExtractRepoFromUrl:
     """Tests for extract_repo_from_url function."""
 
@@ -176,9 +178,7 @@ class TestAddRepoContextFromUrls:
         assert result[0].key == "org1/repo1#1"
         assert result[1].key == "org2/repo2#2"
 
-    def test_skips_issues_with_invalid_urls(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_skips_issues_with_invalid_urls(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that issues with invalid URLs are skipped with warning."""
         from sentinel.github_poller import GitHubIssue
 
@@ -282,7 +282,6 @@ class TestGitHubTriggerDeduplication:
 
     def test_same_project_different_project_filter_polled_separately(self) -> None:
         """Test that same project with different project_filter values are polled separately."""
-        from sentinel.orchestration import TriggerConfig
 
         # Create orchestrations with same project but different project_filter
         orch1 = make_orchestration(
