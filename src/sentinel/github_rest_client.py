@@ -5,6 +5,9 @@ cost-effective polling and label operations without Claude invocations.
 
 Implements exponential backoff with jitter for rate limiting per:
 https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
+
+Circuit breaker pattern is implemented to prevent cascading failures
+when the GitHub API is experiencing issues.
 """
 
 from __future__ import annotations
@@ -18,6 +21,10 @@ from typing import Any, Self, TypeVar
 
 import httpx
 
+from sentinel.circuit_breaker import (
+    CircuitBreaker,
+    get_circuit_breaker,
+)
 from sentinel.github_poller import GitHubClient, GitHubClientError
 from sentinel.logging import get_logger
 
@@ -505,6 +512,9 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
     in high-volume scenarios.
 
     Also supports GitHub Projects (v2) via GraphQL API for project-based polling.
+
+    Implements circuit breaker pattern to prevent cascading failures when
+    GitHub API is unavailable or experiencing issues.
     """
 
     # GitHub GraphQL API endpoint
@@ -519,6 +529,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
         base_url: str | None = None,
         timeout: httpx.Timeout | None = None,
         retry_config: GitHubRetryConfig | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         """Initialize the GitHub REST client.
 
@@ -529,12 +540,15 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
                      For GitHub Enterprise: "https://your-ghe-host/api/v3"
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
+            circuit_breaker: Optional circuit breaker instance. If not provided,
+                uses the global "github" circuit breaker from the registry.
         """
         super().__init__()
         self.base_url = (base_url or DEFAULT_GITHUB_API_URL).rstrip("/")
         self.token = token
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
+        self._circuit_breaker = circuit_breaker or get_circuit_breaker("github")
         self._headers = {
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
@@ -553,6 +567,11 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
         else:
             self._graphql_url = self.GRAPHQL_URL
 
+    @property
+    def circuit_breaker(self) -> CircuitBreaker:
+        """Get the circuit breaker for this client."""
+        return self._circuit_breaker
+
     def search_issues(
         self, query: str, max_results: int = 50
     ) -> list[dict[str, Any]]:
@@ -566,8 +585,16 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             List of raw issue/PR data from GitHub API.
 
         Raises:
-            GitHubClientError: If the search fails or rate limit is exhausted.
+            GitHubClientError: If the search fails, rate limit is exhausted,
+                or circuit breaker is open.
         """
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise GitHubClientError(
+                f"GitHub circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         url = f"{self.base_url}/search/issues"
         params: dict[str, str | int] = {
             "q": query,
@@ -590,10 +617,14 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             return items
 
         try:
-            return _execute_with_retry(do_search, self.retry_config, GitHubClientError)
+            result = _execute_with_retry(do_search, self.retry_config, GitHubClientError)
+            self._circuit_breaker.record_success()
+            return result
         except httpx.TimeoutException as e:
+            self._circuit_breaker.record_failure(e)
             raise GitHubClientError(f"GitHub search timed out: {e}") from e
         except httpx.HTTPStatusError as e:
+            self._circuit_breaker.record_failure(e)
             error_msg = f"GitHub search failed with status {e.response.status_code}"
             try:
                 error_data = e.response.json()
@@ -603,6 +634,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
                 pass
             raise GitHubClientError(error_msg) from e
         except httpx.RequestError as e:
+            self._circuit_breaker.record_failure(e)
             raise GitHubClientError(f"GitHub search request failed: {e}") from e
 
     def _execute_graphql(
@@ -618,8 +650,15 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             The 'data' portion of the GraphQL response.
 
         Raises:
-            GitHubClientError: If the query fails or returns errors.
+            GitHubClientError: If the query fails, returns errors, or circuit breaker is open.
         """
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise GitHubClientError(
+                f"GitHub circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         payload: dict[str, Any] = {"query": query}
         if variables:
             payload["variables"] = variables
@@ -640,10 +679,14 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             return result.get("data", {})
 
         try:
-            return _execute_with_retry(do_graphql, self.retry_config, GitHubClientError)
+            result = _execute_with_retry(do_graphql, self.retry_config, GitHubClientError)
+            self._circuit_breaker.record_success()
+            return result
         except httpx.TimeoutException as e:
+            self._circuit_breaker.record_failure(e)
             raise GitHubClientError(f"GraphQL request timed out: {e}") from e
         except httpx.HTTPStatusError as e:
+            self._circuit_breaker.record_failure(e)
             error_msg = f"GraphQL request failed with status {e.response.status_code}"
             try:
                 error_data = e.response.json()
@@ -653,6 +696,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
                 pass
             raise GitHubClientError(error_msg) from e
         except httpx.RequestError as e:
+            self._circuit_breaker.record_failure(e)
             raise GitHubClientError(f"GraphQL request failed: {e}") from e
 
     def get_project(
@@ -911,6 +955,9 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
 
     Uses connection pooling via a reusable httpx.Client for better performance
     in high-volume scenarios.
+
+    Implements circuit breaker pattern to prevent cascading failures when
+    GitHub API is unavailable or experiencing issues.
     """
 
     def __init__(
@@ -919,6 +966,7 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
         base_url: str | None = None,
         timeout: httpx.Timeout | None = None,
         retry_config: GitHubRetryConfig | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         """Initialize the GitHub REST tag client.
 
@@ -929,17 +977,25 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
                      For GitHub Enterprise: "https://your-ghe-host/api/v3"
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
+            circuit_breaker: Optional circuit breaker instance. If not provided,
+                uses the global "github" circuit breaker from the registry.
         """
         super().__init__()
         self.base_url = (base_url or DEFAULT_GITHUB_API_URL).rstrip("/")
         self.token = token
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
+        self._circuit_breaker = circuit_breaker or get_circuit_breaker("github")
         self._headers = {
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+
+    @property
+    def circuit_breaker(self) -> CircuitBreaker:
+        """Get the circuit breaker for this client."""
+        return self._circuit_breaker
 
     def add_label(self, owner: str, repo: str, issue_number: int, label: str) -> None:
         """Add a label to a GitHub issue or pull request.
@@ -951,8 +1007,15 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
             label: The label to add.
 
         Raises:
-            GitHubTagClientError: If the operation fails.
+            GitHubTagClientError: If the operation fails or circuit breaker is open.
         """
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise GitHubTagClientError(
+                f"GitHub circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         url = f"{self.base_url}/repos/{owner}/{repo}/issues/{issue_number}/labels"
         payload = {"labels": [label]}
 
@@ -964,10 +1027,13 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
 
         try:
             _execute_with_retry(do_add, self.retry_config, GitHubTagClientError)
+            self._circuit_breaker.record_success()
             logger.info(f"Added label '{label}' to {owner}/{repo}#{issue_number}")
         except httpx.TimeoutException as e:
+            self._circuit_breaker.record_failure(e)
             raise GitHubTagClientError(f"Add label timed out: {e}") from e
         except httpx.HTTPStatusError as e:
+            self._circuit_breaker.record_failure(e)
             error_msg = f"Add label failed with status {e.response.status_code}"
             try:
                 error_data = e.response.json()
@@ -977,6 +1043,7 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
                 pass
             raise GitHubTagClientError(error_msg) from e
         except httpx.RequestError as e:
+            self._circuit_breaker.record_failure(e)
             raise GitHubTagClientError(f"Add label request failed: {e}") from e
 
     def remove_label(self, owner: str, repo: str, issue_number: int, label: str) -> None:
@@ -989,8 +1056,15 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
             label: The label to remove.
 
         Raises:
-            GitHubTagClientError: If the operation fails.
+            GitHubTagClientError: If the operation fails or circuit breaker is open.
         """
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise GitHubTagClientError(
+                f"GitHub circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         # URL-encode the label name for path safety. Using httpx.URL(path=label).path
         # leverages httpx's built-in URL encoding to safely handle labels containing
         # special characters (e.g., spaces, slashes, unicode) that would otherwise
@@ -1012,10 +1086,13 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
 
         try:
             _execute_with_retry(do_remove, self.retry_config, GitHubTagClientError)
+            self._circuit_breaker.record_success()
             logger.info(f"Removed label '{label}' from {owner}/{repo}#{issue_number}")
         except httpx.TimeoutException as e:
+            self._circuit_breaker.record_failure(e)
             raise GitHubTagClientError(f"Remove label timed out: {e}") from e
         except httpx.HTTPStatusError as e:
+            self._circuit_breaker.record_failure(e)
             error_msg = f"Remove label failed with status {e.response.status_code}"
             try:
                 error_data = e.response.json()
@@ -1025,4 +1102,5 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
                 pass
             raise GitHubTagClientError(error_msg) from e
         except httpx.RequestError as e:
+            self._circuit_breaker.record_failure(e)
             raise GitHubTagClientError(f"Remove label request failed: {e}") from e

@@ -6,6 +6,9 @@ along with supporting code for timing metrics and shutdown handling.
 Shutdown handling uses dependency injection to avoid global mutable state.
 The ShutdownController class encapsulates shutdown event management,
 making the code more testable and avoiding hidden dependencies.
+
+Circuit breaker pattern is implemented to prevent cascading failures
+when the Claude API is experiencing issues.
 """
 
 from __future__ import annotations
@@ -28,6 +31,10 @@ from sentinel.agent_clients.base import (
     AgentRunResult,
     AgentTimeoutError,
     AgentType,
+)
+from sentinel.circuit_breaker import (
+    CircuitBreaker,
+    get_circuit_breaker,
 )
 from sentinel.config import Config
 from sentinel.logging import generate_log_filename, get_logger
@@ -428,7 +435,11 @@ async def _run_query(
 
 
 class ClaudeSdkAgentClient(AgentClient):
-    """Agent client that uses Claude Agent SDK."""
+    """Agent client that uses Claude Agent SDK.
+
+    Implements circuit breaker pattern to prevent cascading failures when
+    Claude API is unavailable or experiencing issues.
+    """
 
     def __init__(
         self,
@@ -438,6 +449,7 @@ class ClaudeSdkAgentClient(AgentClient):
         disable_streaming_logs: bool | None = None,
         shutdown_controller: ShutdownController | None = None,
         rate_limiter: ClaudeRateLimiter | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         """Initialize the Claude SDK agent client.
 
@@ -453,6 +465,8 @@ class ClaudeSdkAgentClient(AgentClient):
             rate_limiter: Optional rate limiter for Claude API calls.
                 If not provided, creates one from config. Inject a custom rate
                 limiter for testing or to share a limiter across clients.
+            circuit_breaker: Optional circuit breaker instance. If not provided,
+                uses the global "claude" circuit breaker from the registry.
         """
         self.config = config
         self.base_workdir = base_workdir
@@ -475,6 +489,8 @@ class ClaudeSdkAgentClient(AgentClient):
             if rate_limiter is not None
             else ClaudeRateLimiter.from_config(config)
         )
+        # Use provided circuit breaker or get from global registry
+        self._circuit_breaker = circuit_breaker or get_circuit_breaker("claude")
 
     @property
     def agent_type(self) -> AgentType:
@@ -486,6 +502,11 @@ class ClaudeSdkAgentClient(AgentClient):
         """Get the rate limiter for this client."""
         return self._rate_limiter
 
+    @property
+    def circuit_breaker(self) -> CircuitBreaker:
+        """Get the circuit breaker for this client."""
+        return self._circuit_breaker
+
     def get_rate_limit_metrics(self) -> dict[str, Any]:
         """Get current rate limiter metrics.
 
@@ -494,6 +515,14 @@ class ClaudeSdkAgentClient(AgentClient):
             timing information, and bucket status.
         """
         return self._rate_limiter.get_metrics()
+
+    def get_circuit_breaker_status(self) -> dict[str, Any]:
+        """Get current circuit breaker status.
+
+        Returns:
+            Dictionary with circuit breaker state, config, and metrics.
+        """
+        return self._circuit_breaker.get_status()
 
     def _create_workdir(self, issue_key: str) -> Path:
         if self.base_workdir is None:
@@ -685,6 +714,13 @@ class ClaudeSdkAgentClient(AgentClient):
     async def _run_simple(
         self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None
     ) -> str:
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise AgentClientError(
+                f"Claude circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         try:
             # Acquire rate limit permit before making API call
             if not await self._rate_limiter.acquire_async(timeout=timeout):
@@ -699,15 +735,20 @@ class ClaudeSdkAgentClient(AgentClient):
                 shutdown_controller=self._shutdown_controller,
             )
             response = await asyncio.wait_for(coro, timeout=timeout) if timeout else await coro
+            self._circuit_breaker.record_success()
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
         except RateLimitExceededError as e:
+            self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Claude API rate limit exceeded: {e}") from e
         except ClaudeProcessInterruptedError:
+            # Don't count interrupts as failures - they're intentional
             raise
-        except asyncio.TimeoutError:
+        except TimeoutError as e:
+            self._circuit_breaker.record_failure(e)
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s")
         except Exception as e:
+            self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Agent execution failed: {e}") from e
 
     def _write_simple_log(
@@ -774,6 +815,13 @@ class ClaudeSdkAgentClient(AgentClient):
     ) -> str:
         assert self.log_base_dir is not None
 
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise AgentClientError(
+                f"Claude circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         # Acquire rate limit permit before making API call
         try:
             if not await self._rate_limiter.acquire_async(timeout=timeout):
@@ -781,6 +829,7 @@ class ClaudeSdkAgentClient(AgentClient):
                     "Claude API rate limit timeout - could not acquire permit"
                 )
         except RateLimitExceededError as e:
+            self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Claude API rate limit exceeded: {e}") from e
 
         start_time = datetime.now()
@@ -841,21 +890,25 @@ class ClaudeSdkAgentClient(AgentClient):
 
             response = await asyncio.wait_for(run_streaming(), timeout=timeout) if timeout else await run_streaming()
             status = "COMPLETED"
+            self._circuit_breaker.record_success()
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key})")
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
         except ClaudeProcessInterruptedError:
             status = "INTERRUPTED"
+            # Don't count interrupts as failures - they're intentional
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key}) - INTERRUPTED")
             raise
-        except asyncio.TimeoutError:
+        except TimeoutError as e:
             status = "TIMEOUT"
+            self._circuit_breaker.record_failure(e)
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key}) - TIMEOUT")
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s")
         except Exception as e:
+            self._circuit_breaker.record_failure(e)
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key}) - ERROR")
             io_start = time.perf_counter()
@@ -888,6 +941,7 @@ class ClaudeSdkAgentClient(AgentClient):
                 all_metrics = {
                     "timing": metrics.to_dict(),
                     "rate_limit": self._rate_limiter.get_metrics(),
+                    "circuit_breaker": self._circuit_breaker.get_status(),
                 }
                 f.write(json.dumps(all_metrics, indent=2))
                 f.write("\n")
