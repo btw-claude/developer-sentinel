@@ -12,10 +12,8 @@ composable components (DS-384).
 
 from __future__ import annotations
 
-import logging
 import threading
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from datetime import datetime
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
 from sentinel.logging import get_logger
@@ -73,16 +71,16 @@ class ExecutionManager:
         )
         logger.info(f"Started thread pool with max {self._max_concurrent_executions} workers")
 
-    def shutdown(self, wait: bool = True, cancel_futures: bool = False) -> None:
+    def shutdown(self, block: bool = True, cancel_futures: bool = False) -> None:
         """Shutdown the thread pool.
 
         Args:
-            wait: If True, wait for all pending futures to complete.
+            block: If True, wait for all pending futures to complete.
             cancel_futures: If True, cancel pending futures.
         """
         if self._thread_pool is not None:
             logger.info("Shutting down thread pool...")
-            self._thread_pool.shutdown(wait=wait, cancel_futures=cancel_futures)
+            self._thread_pool.shutdown(wait=block, cancel_futures=cancel_futures)
             self._thread_pool = None
             logger.info("Thread pool shutdown complete")
 
