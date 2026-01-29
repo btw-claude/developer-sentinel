@@ -123,7 +123,9 @@ class TestStatusBadgeMacro:
         return render
 
     @pytest.fixture
-    def parse_badge(self, render_status_badge: Callable[[int, int], str]) -> Callable[[int, int], BeautifulSoup]:
+    def parse_badge(
+        self, render_status_badge: Callable[[int, int], str]
+    ) -> Callable[[int, int], BeautifulSoup]:
         """Create a helper function to render and parse a status badge."""
         def parse(active_count: int, total_count: int) -> BeautifulSoup:
             result = render_status_badge(active_count=active_count, total_count=total_count)
