@@ -170,14 +170,16 @@ class AgentClientFactory:
 
         if cache_key in self._cache:
             logger.debug(
-                f"Returning cached {resolved_type} orchestration client " f"(kwargs: {kwargs_key})"
+                f"Returning cached {resolved_type} orchestration client "
+                f"(kwargs: {kwargs_key})"
             )
             return self._cache[cache_key]
 
         client = self.create_for_orchestration(orch_agent_type, config, **kwargs)
         self._cache[cache_key] = client
         logger.debug(
-            f"Created and cached {resolved_type} orchestration client " f"(kwargs: {kwargs_key})"
+            f"Created and cached {resolved_type} orchestration client "
+            f"(kwargs: {kwargs_key})"
         )
         return client
 
