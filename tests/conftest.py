@@ -29,6 +29,7 @@ Module Organization
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
 from types import FrameType
 from typing import Callable
@@ -100,7 +101,7 @@ def mock_tag_client() -> MockTagClient:
 
 
 @pytest.fixture
-def temp_orchestrations_dir():
+def temp_orchestrations_dir() -> Generator[Path, None, None]:
     """Provide a temporary directory for orchestration files.
 
     Yields the Path to the temporary directory and cleans it up after the test.
