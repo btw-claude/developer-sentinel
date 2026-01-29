@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from sentinel.branch_validation import validate_runtime_branch_name
 from sentinel.github_poller import GitHubIssue
@@ -110,6 +110,10 @@ class TemplateContext:
     pattern expansion. Using dataclass introspection, we can automatically
     generate the variables dict without manual mapping.
 
+    Field metadata:
+    - source: "jira", "github", or "common" - indicates which source type the field belongs to.
+              Used by factory methods for auto-initialization of non-applicable fields.
+
     Computed fields (marked with metadata) are derived from other fields:
     - jira_summary_slug: Derived from jira_summary
     - github_issue_title_slug: Derived from github_issue_title
@@ -121,40 +125,40 @@ class TemplateContext:
     """
 
     # GitHub repository context (always available)
-    github_host: str = ""
-    github_org: str = ""
-    github_repo: str = ""
+    github_host: str = field(default="", metadata={"source": "common"})
+    github_org: str = field(default="", metadata={"source": "common"})
+    github_repo: str = field(default="", metadata={"source": "common"})
 
     # Jira context
-    jira_issue_key: str = ""
-    jira_summary: str = ""
-    jira_description: str = ""
-    jira_status: str = ""
-    jira_assignee: str = ""
-    jira_epic_key: str = ""
-    jira_parent_key: str = ""
+    jira_issue_key: str = field(default="", metadata={"source": "jira"})
+    jira_summary: str = field(default="", metadata={"source": "jira"})
+    jira_description: str = field(default="", metadata={"source": "jira"})
+    jira_status: str = field(default="", metadata={"source": "jira"})
+    jira_assignee: str = field(default="", metadata={"source": "jira"})
+    jira_epic_key: str = field(default="", metadata={"source": "jira"})
+    jira_parent_key: str = field(default="", metadata={"source": "jira"})
 
     # Jira computed/formatted fields (source lists stored privately)
-    _jira_labels_list: list[str] = field(default_factory=list, repr=False)
-    _jira_comments_list: list[str] = field(default_factory=list, repr=False)
-    _jira_links_list: list[str] = field(default_factory=list, repr=False)
+    _jira_labels_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "jira"})
+    _jira_comments_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "jira"})
+    _jira_links_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "jira"})
 
     # GitHub Issue context
-    github_issue_number: str = ""
-    github_issue_title: str = ""
-    github_issue_body: str = ""
-    github_issue_state: str = ""
-    github_issue_author: str = ""
-    github_issue_url: str = ""
-    github_is_pr: str = ""
-    github_pr_head: str = ""
-    github_pr_base: str = ""
-    github_pr_draft: str = ""
-    github_parent_issue_number: str = ""
+    github_issue_number: str = field(default="", metadata={"source": "github"})
+    github_issue_title: str = field(default="", metadata={"source": "github"})
+    github_issue_body: str = field(default="", metadata={"source": "github"})
+    github_issue_state: str = field(default="", metadata={"source": "github"})
+    github_issue_author: str = field(default="", metadata={"source": "github"})
+    github_issue_url: str = field(default="", metadata={"source": "github"})
+    github_is_pr: str = field(default="", metadata={"source": "github"})
+    github_pr_head: str = field(default="", metadata={"source": "github"})
+    github_pr_base: str = field(default="", metadata={"source": "github"})
+    github_pr_draft: str = field(default="", metadata={"source": "github"})
+    github_parent_issue_number: str = field(default="", metadata={"source": "github"})
 
     # GitHub computed/formatted fields (source lists stored privately)
-    _github_issue_assignees_list: list[str] = field(default_factory=list, repr=False)
-    _github_issue_labels_list: list[str] = field(default_factory=list, repr=False)
+    _github_issue_assignees_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "github"})
+    _github_issue_labels_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "github"})
 
     def to_dict(self) -> dict[str, str]:
         """Convert to template variables dict using dataclass introspection.
@@ -196,6 +200,9 @@ class TemplateContext:
     ) -> "TemplateContext":
         """Create a TemplateContext from a Jira issue.
 
+        Uses field metadata to auto-initialize GitHub-specific fields to their
+        default values (empty strings/lists), reducing boilerplate.
+
         Args:
             issue: The Jira issue to extract data from.
             github: Optional GitHub context from orchestration.
@@ -203,8 +210,9 @@ class TemplateContext:
         Returns:
             TemplateContext populated with Jira issue data.
         """
+        # Only specify Jira-specific and common fields - GitHub fields use defaults via metadata
         return cls(
-            # GitHub repository context
+            # GitHub repository context (common fields)
             github_host=github.host if github else "",
             github_org=github.org if github else "",
             github_repo=github.repo if github else "",
@@ -219,20 +227,7 @@ class TemplateContext:
             _jira_labels_list=issue.labels or [],
             _jira_comments_list=issue.comments or [],
             _jira_links_list=issue.links or [],
-            # GitHub Issue context (empty for Jira issues)
-            github_issue_number="",
-            github_issue_title="",
-            github_issue_body="",
-            github_issue_state="",
-            github_issue_author="",
-            github_issue_url="",
-            github_is_pr="",
-            github_pr_head="",
-            github_pr_base="",
-            github_pr_draft="",
-            github_parent_issue_number="",
-            _github_issue_assignees_list=[],
-            _github_issue_labels_list=[],
+            # GitHub Issue fields auto-initialized to defaults via field metadata
         )
 
     @classmethod
@@ -240,6 +235,9 @@ class TemplateContext:
         cls, issue: GitHubIssue, github: GitHubContext | None = None
     ) -> "TemplateContext":
         """Create a TemplateContext from a GitHub issue.
+
+        Uses field metadata to auto-initialize Jira-specific fields to their
+        default values (empty strings/lists), reducing boilerplate.
 
         Args:
             issue: The GitHub issue to extract data from.
@@ -256,22 +254,12 @@ class TemplateContext:
                 f"{'pull' if issue.is_pull_request else 'issues'}/{issue.number}"
             )
 
+        # Only specify GitHub-specific and common fields - Jira fields use defaults via metadata
         return cls(
-            # GitHub repository context
+            # GitHub repository context (common fields)
             github_host=github.host if github else "",
             github_org=github.org if github else "",
             github_repo=github.repo if github else "",
-            # Jira context (empty for GitHub issues)
-            jira_issue_key="",
-            jira_summary="",
-            jira_description="",
-            jira_status="",
-            jira_assignee="",
-            jira_epic_key="",
-            jira_parent_key="",
-            _jira_labels_list=[],
-            _jira_comments_list=[],
-            _jira_links_list=[],
             # GitHub Issue context
             github_issue_number=str(issue.number),
             github_issue_title=issue.title,
@@ -286,6 +274,7 @@ class TemplateContext:
             github_parent_issue_number=str(issue.parent_issue_number) if issue.parent_issue_number else "",
             _github_issue_assignees_list=issue.assignees or [],
             _github_issue_labels_list=issue.labels or [],
+            # Jira fields auto-initialized to defaults via field metadata
         )
 
 
