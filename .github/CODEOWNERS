@@ -1,0 +1,12 @@
+# CODEOWNERS file for automatic reviewer assignment
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+# These users will be requested for review when someone opens a pull request
+* @btw-ca
+
+# GitHub Actions and workflows
+/.github/ @btw-ca
+
+# Dependabot configuration
+/.github/dependabot.yml @btw-ca
