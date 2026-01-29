@@ -4,7 +4,8 @@ import signal
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from types import FrameType
+from typing import Callable
 
 from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.main import Sentinel
@@ -18,6 +19,9 @@ from tests.conftest import (
     make_config,
     make_orchestration,
 )
+
+# Type alias for signal handlers to avoid Any
+SignalHandler = Callable[[int, FrameType | None], None]
 
 
 class TestSentinelSignalHandling:
@@ -40,11 +44,10 @@ class TestSentinelSignalHandling:
             tag_client=tag_client,
         )
 
-        registered_handlers: dict[int, Any] = {}
+        registered_handlers: dict[int, SignalHandler] = {}
 
-        def mock_signal(signum: int, handler: Any) -> Any:
+        def mock_signal(signum: int, handler: SignalHandler) -> None:
             registered_handlers[signum] = handler
-            return None
 
         with patch("signal.signal", side_effect=mock_signal):
             # Request shutdown immediately so run() exits quickly
@@ -72,13 +75,12 @@ class TestSentinelSignalHandling:
             tag_client=tag_client,
         )
 
-        captured_handler: Any = None
+        captured_handler: SignalHandler | None = None
 
-        def capture_sigint_handler(signum: int, handler: Any) -> Any:
+        def capture_sigint_handler(signum: int, handler: SignalHandler) -> None:
             nonlocal captured_handler
             if signum == signal.SIGINT:
                 captured_handler = handler
-            return None
 
         with patch("signal.signal", side_effect=capture_sigint_handler):
             # Start run in a thread that will be stopped by the signal
@@ -116,13 +118,12 @@ class TestSentinelSignalHandling:
             tag_client=tag_client,
         )
 
-        captured_handler: Any = None
+        captured_handler: SignalHandler | None = None
 
-        def capture_sigterm_handler(signum: int, handler: Any) -> Any:
+        def capture_sigterm_handler(signum: int, handler: SignalHandler) -> None:
             nonlocal captured_handler
             if signum == signal.SIGTERM:
                 captured_handler = handler
-            return None
 
         with patch("signal.signal", side_effect=capture_sigterm_handler):
             # Start run in a thread that will be stopped by the signal

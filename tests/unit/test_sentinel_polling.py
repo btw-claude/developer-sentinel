@@ -4,8 +4,10 @@ import logging
 import signal
 import threading
 import time
+from concurrent.futures import Future
 from pathlib import Path
-from typing import Any
+from types import FrameType
+from typing import Callable
 from unittest.mock import patch
 
 import pytest
@@ -20,6 +22,9 @@ from tests.conftest import (
     make_config,
     make_orchestration,
 )
+
+# Type alias for signal handlers to avoid Any
+SignalHandler = Callable[[int, FrameType | None], None]
 
 
 class TestParseArgs:
@@ -350,14 +355,18 @@ class TestSentinelEagerPolling:
         def mock_sleep(seconds: float) -> None:
             real_sleep(0.001)
 
-        def mock_signal(signum: int, handler: Any) -> Any:
+        def mock_signal(signum: int, handler: SignalHandler) -> None:
             """Mock signal.signal to avoid threading issues."""
-            return None
+            pass
 
         # Patch the wait function to track calls
         original_wait = __import__("concurrent.futures").futures.wait
 
-        def mock_wait(futures: Any, timeout: float | None = None, return_when: str = "ALL_COMPLETED") -> Any:
+        def mock_wait(
+            futures: set[Future[object]],
+            timeout: float | None = None,
+            return_when: str = "ALL_COMPLETED",
+        ) -> tuple[set[Future[object]], set[Future[object]]]:
             wait_calls.append(len(futures) if futures else 0)
             return original_wait(futures, timeout=timeout, return_when=return_when)
 
@@ -436,8 +445,8 @@ class TestSentinelEagerPolling:
             sleep_intervals.append(seconds)
             real_sleep(0.001)
 
-        def mock_signal(signum: int, handler: Any) -> Any:
-            return None
+        def mock_signal(signum: int, handler: SignalHandler) -> None:
+            pass
 
         sentinel_exception: Exception | None = None
 

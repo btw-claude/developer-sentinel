@@ -895,7 +895,8 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             if not field_name:
                 continue
 
-            value: Any = None
+            # Field values can be text, numbers, dates, or single select names
+            value: str | int | float | None = None
             if "text" in fv:
                 value = fv["text"]
             elif "number" in fv:
