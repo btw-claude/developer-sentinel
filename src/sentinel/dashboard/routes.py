@@ -200,24 +200,16 @@ def create_routes(
     from sentinel.config import Config as ConfigClass
 
     # Use provided config or create a default one
-    if config is not None:
-        effective_config = config
-        logger.debug(
-            "create_routes using provided Config: toggle_cooldown=%.1fs, "
-            "cache_ttl=%ds, cache_maxsize=%d",
-            effective_config.toggle_cooldown_seconds,
-            effective_config.rate_limit_cache_ttl,
-            effective_config.rate_limit_cache_maxsize,
-        )
-    else:
-        effective_config = ConfigClass()
-        logger.debug(
-            "create_routes using default Config: toggle_cooldown=%.1fs, "
-            "cache_ttl=%ds, cache_maxsize=%d",
-            effective_config.toggle_cooldown_seconds,
-            effective_config.rate_limit_cache_ttl,
-            effective_config.rate_limit_cache_maxsize,
-        )
+    effective_config = config if config is not None else ConfigClass()
+    config_source = "provided" if config is not None else "default"
+    logger.debug(
+        "create_routes using %s Config: toggle_cooldown=%.1fs, "
+        "cache_ttl=%ds, cache_maxsize=%d",
+        config_source,
+        effective_config.toggle_cooldown_seconds,
+        effective_config.rate_limit_cache_ttl,
+        effective_config.rate_limit_cache_maxsize,
+    )
 
     # Create rate limiter with config values
     rate_limiter = RateLimiter(effective_config)

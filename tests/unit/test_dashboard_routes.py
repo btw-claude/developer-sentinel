@@ -1336,15 +1336,14 @@ class TestCreateRoutesLogging:
     """Tests for debug logging in create_routes function.
 
     These tests verify that create_routes logs appropriate debug messages
-    when using provided Config vs. default Config values.
+    when using provided Config vs. default Config values. Tests use mock
+    logger to check call arguments directly for more robust assertions.
     """
 
     def test_create_routes_logs_debug_with_provided_config(
-        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+        self, temp_logs_dir: Path
     ) -> None:
         """Test that create_routes logs debug message when Config is provided."""
-        import logging
-
         config = Config(
             agent_logs_dir=temp_logs_dir,
             toggle_cooldown_seconds=5.0,
@@ -1354,80 +1353,83 @@ class TestCreateRoutesLogging:
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+        with patch("sentinel.dashboard.routes.logger") as mock_logger:
             _ = create_routes(accessor, config=config)
 
-        # Check that debug log mentions "provided Config"
-        assert any("provided Config" in record.message for record in caplog.records)
-        # Check that the config values are logged
-        assert any("5.0" in record.message for record in caplog.records)
-        assert any("7200" in record.message for record in caplog.records)
-        assert any("5000" in record.message for record in caplog.records)
+            # Verify debug was called with correct arguments
+            mock_logger.debug.assert_called_once()
+            call_args = mock_logger.debug.call_args
+            # Check format string contains expected placeholders
+            assert "create_routes using %s Config" in call_args[0][0]
+            # Check positional arguments: config_source, toggle_cooldown, cache_ttl, cache_maxsize
+            assert call_args[0][1] == "provided"
+            assert call_args[0][2] == 5.0
+            assert call_args[0][3] == 7200
+            assert call_args[0][4] == 5000
 
     def test_create_routes_logs_debug_with_default_config(
-        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+        self, temp_logs_dir: Path
     ) -> None:
         """Test that create_routes logs debug message when using default Config."""
-        import logging
-
         config = Config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+        with patch("sentinel.dashboard.routes.logger") as mock_logger:
             _ = create_routes(accessor)  # No config provided
 
-        # Check that debug log mentions "default Config"
-        assert any("default Config" in record.message for record in caplog.records)
-        # Check that default values are logged (2.0s cooldown, 3600s TTL, 10000 maxsize)
-        assert any("2.0" in record.message for record in caplog.records)
-        assert any("3600" in record.message for record in caplog.records)
-        assert any("10000" in record.message for record in caplog.records)
+            # Verify debug was called with correct arguments
+            mock_logger.debug.assert_called_once()
+            call_args = mock_logger.debug.call_args
+            # Check format string contains expected placeholders
+            assert "create_routes using %s Config" in call_args[0][0]
+            # Check positional arguments: config_source, toggle_cooldown, cache_ttl, cache_maxsize
+            assert call_args[0][1] == "default"
+            assert call_args[0][2] == 2.0  # default toggle_cooldown
+            assert call_args[0][3] == 3600  # default cache_ttl
+            assert call_args[0][4] == 10000  # default cache_maxsize
 
     def test_create_routes_logs_toggle_cooldown_value(
-        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+        self, temp_logs_dir: Path
     ) -> None:
         """Test that create_routes logs toggle_cooldown_seconds value."""
-        import logging
-
         config = Config(agent_logs_dir=temp_logs_dir, toggle_cooldown_seconds=3.5)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+        with patch("sentinel.dashboard.routes.logger") as mock_logger:
             _ = create_routes(accessor, config=config)
 
-        # Check that the specific cooldown value is logged
-        assert any("toggle_cooldown=3.5" in record.message for record in caplog.records)
+            # Verify the toggle_cooldown value is passed correctly
+            call_args = mock_logger.debug.call_args
+            assert call_args[0][2] == 3.5
 
     def test_create_routes_logs_cache_ttl_value(
-        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+        self, temp_logs_dir: Path
     ) -> None:
         """Test that create_routes logs rate_limit_cache_ttl value."""
-        import logging
-
         config = Config(agent_logs_dir=temp_logs_dir, rate_limit_cache_ttl=1800)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+        with patch("sentinel.dashboard.routes.logger") as mock_logger:
             _ = create_routes(accessor, config=config)
 
-        # Check that the specific TTL value is logged
-        assert any("cache_ttl=1800" in record.message for record in caplog.records)
+            # Verify the cache_ttl value is passed correctly
+            call_args = mock_logger.debug.call_args
+            assert call_args[0][3] == 1800
 
     def test_create_routes_logs_cache_maxsize_value(
-        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+        self, temp_logs_dir: Path
     ) -> None:
         """Test that create_routes logs rate_limit_cache_maxsize value."""
-        import logging
-
         config = Config(agent_logs_dir=temp_logs_dir, rate_limit_cache_maxsize=20000)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+        with patch("sentinel.dashboard.routes.logger") as mock_logger:
             _ = create_routes(accessor, config=config)
 
-        # Check that the specific maxsize value is logged
-        assert any("cache_maxsize=20000" in record.message for record in caplog.records)
+            # Verify the cache_maxsize value is passed correctly
+            call_args = mock_logger.debug.call_args
+            assert call_args[0][4] == 20000
