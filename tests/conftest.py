@@ -55,18 +55,18 @@ from tests.helpers import (
 from sentinel.deduplication import build_github_trigger_key
 
 __all__ = [
-    # Mocks
-    "MockJiraClient",
+    # Mocks (alphabetized)
     "MockAgentClient",
+    "MockAgentClientFactory",
+    "MockJiraClient",
     "MockTagClient",
     "TrackingAgentClient",
-    "MockAgentClientFactory",
-    # Helpers
+    # Helpers (alphabetized)
+    "build_github_trigger_key",
     "make_config",
     "make_issue",
     "make_orchestration",
     "set_mtime_in_future",
-    "build_github_trigger_key",
 ]
 
 

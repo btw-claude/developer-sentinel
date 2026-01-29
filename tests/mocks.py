@@ -157,6 +157,8 @@ class MockAgentClient(AgentClient):
             self.error_count += 1
             raise AgentClientError("Mock agent error")
 
+        # Response cycling: returns responses in order until exhausted, then repeats the last one.
+        # The min() ensures we don't index past the end of the responses list.
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
         return AgentRunResult(response=response, workdir=self.workdir)
