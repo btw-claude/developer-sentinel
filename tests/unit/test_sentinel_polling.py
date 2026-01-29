@@ -283,28 +283,6 @@ class TestSentinelEagerPolling:
         sentinel._thread_pool.shutdown(wait=True)
         sentinel._thread_pool = None
 
-    def test_max_eager_iterations_config_respected(self) -> None:
-        """Test that max_eager_iterations config is stored correctly.
-
-        Note: max_eager_iterations is deprecated, but we keep this test
-        for backward compatibility since the config parameter still exists.
-        """
-        jira_client = MockJiraClient(issues=[])
-        agent_client = MockAgentClient()
-        tag_client = MockTagClient()
-        config = make_config(max_eager_iterations=5)
-        orchestrations = [make_orchestration()]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
-            tag_client=tag_client,
-        )
-
-        assert sentinel.config.max_eager_iterations == 5
-
     def test_completion_driven_polling_waits_for_task_completion(self) -> None:
         """Integration test: verify polling waits for task completion.
 

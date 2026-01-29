@@ -32,7 +32,6 @@ class TestConfig:
         config = Config()
         assert config.poll_interval == 60
         assert config.max_issues_per_poll == 50
-        assert config.max_eager_iterations == 10
         assert config.max_concurrent_executions == 1
         assert config.log_level == "INFO"
         assert config.log_json is False
@@ -464,62 +463,6 @@ class TestDashboardPortConfig:
         config = load_config()
 
         assert config.dashboard_port == MAX_PORT
-
-
-class TestMaxEagerIterations:
-    """Tests for max_eager_iterations configuration."""
-
-    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that max_eager_iterations defaults to 10."""
-        monkeypatch.delenv("SENTINEL_MAX_EAGER_ITERATIONS", raising=False)
-
-        config = load_config()
-
-        assert config.max_eager_iterations == 10
-
-    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that max_eager_iterations loads from environment variable."""
-        monkeypatch.setenv("SENTINEL_MAX_EAGER_ITERATIONS", "5")
-
-        config = load_config()
-
-        assert config.max_eager_iterations == 5
-
-    def test_invalid_value_uses_default(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Test that invalid values use the default."""
-        monkeypatch.setenv("SENTINEL_MAX_EAGER_ITERATIONS", "not-a-number")
-
-        with caplog.at_level(logging.WARNING):
-            config = load_config()
-
-        assert config.max_eager_iterations == 10
-        assert "Invalid SENTINEL_MAX_EAGER_ITERATIONS" in caplog.text
-
-    def test_zero_uses_default(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Test that zero uses the default (must be positive)."""
-        monkeypatch.setenv("SENTINEL_MAX_EAGER_ITERATIONS", "0")
-
-        with caplog.at_level(logging.WARNING):
-            config = load_config()
-
-        assert config.max_eager_iterations == 10
-        assert "not positive" in caplog.text
-
-    def test_negative_uses_default(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Test that negative values use the default."""
-        monkeypatch.setenv("SENTINEL_MAX_EAGER_ITERATIONS", "-5")
-
-        with caplog.at_level(logging.WARNING):
-            config = load_config()
-
-        assert config.max_eager_iterations == 10
-        assert "not positive" in caplog.text
 
 
 class TestAttemptCountsTtlConfig:
