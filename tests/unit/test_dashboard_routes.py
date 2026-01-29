@@ -11,7 +11,7 @@ import json
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,6 +26,42 @@ from sentinel.dashboard.state import (
     OrchestrationVersionSnapshot,
     SentinelStateAccessor,
 )
+
+
+def create_test_app(
+    accessor: SentinelStateAccessor,
+    config: Config | None = None,
+) -> FastAPI:
+    """Create a test FastAPI app with dashboard routes.
+
+    This is a shared helper function for creating test apps with dashboard routes.
+    It reduces code duplication across test classes.
+
+    Args:
+        accessor: The state accessor for the test.
+        config: Optional config for rate limiting settings.
+
+    Returns:
+        A FastAPI app with dashboard routes configured.
+    """
+    app = FastAPI()
+    router = create_routes(accessor, config=config)
+    app.include_router(router)
+    return app
+
+
+@pytest.fixture
+def temp_logs_dir() -> Generator[Path, None, None]:
+    """Fixture that provides a temporary directory for logs.
+
+    This fixture creates a temporary directory that is automatically
+    cleaned up after the test completes.
+
+    Yields:
+        Path to the temporary logs directory.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)
 
 
 class MockSentinel:
@@ -89,80 +125,80 @@ class MockSentinel:
 class TestHealthEndpoints:
     """Tests for health check endpoints."""
 
-    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
-        """Create a test FastAPI app with dashboard routes."""
-        app = FastAPI()
-        router = create_routes(accessor)
-        app.include_router(router)
-        return app
-
-    def test_legacy_health_endpoint_returns_deprecation_header(self) -> None:
+    def test_legacy_health_endpoint_returns_deprecation_header(self, temp_logs_dir: Path) -> None:
         """Test that legacy /health endpoint returns Deprecation header per RFC 8594."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.get("/health")
+        with TestClient(app) as client:
+            response = client.get("/health")
 
-                assert response.status_code == 200
-                assert response.json() == {"status": "healthy"}
-                # Check for Deprecation header per RFC 8594
-                assert "Deprecation" in response.headers
-                assert response.headers["Deprecation"] == "@deprecated"
+            assert response.status_code == 200
+            assert response.json() == {"status": "healthy"}
+            # Check for Deprecation header per RFC 8594 with HTTP-date format
+            assert "Deprecation" in response.headers
+            assert response.headers["Deprecation"] == "Sat, 01 Jun 2026 00:00:00 GMT"
 
-    def test_legacy_health_endpoint_returns_link_header(self) -> None:
+    def test_legacy_health_endpoint_returns_sunset_header(self, temp_logs_dir: Path) -> None:
+        """Test that legacy /health endpoint returns Sunset header with removal date."""
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/health")
+
+            assert response.status_code == 200
+            # Check for Sunset header with planned removal date
+            assert "Sunset" in response.headers
+            assert response.headers["Sunset"] == "Sat, 01 Jun 2026 00:00:00 GMT"
+
+    def test_legacy_health_endpoint_returns_link_header(self, temp_logs_dir: Path) -> None:
         """Test that legacy /health endpoint returns Link header pointing to successors."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.get("/health")
+        with TestClient(app) as client:
+            response = client.get("/health")
 
-                assert response.status_code == 200
-                # Check for Link header pointing to successor endpoints
-                assert "Link" in response.headers
-                link_header = response.headers["Link"]
-                assert "/health/live" in link_header
-                assert "/health/ready" in link_header
-                assert 'rel="successor-version"' in link_header
+            assert response.status_code == 200
+            # Check for Link header pointing to successor endpoints
+            assert "Link" in response.headers
+            link_header = response.headers["Link"]
+            assert "/health/live" in link_header
+            assert "/health/ready" in link_header
+            assert 'rel="successor-version"' in link_header
 
-    def test_health_live_endpoint_does_not_have_deprecation_header(self) -> None:
+    def test_health_live_endpoint_does_not_have_deprecation_header(self, temp_logs_dir: Path) -> None:
         """Test that /health/live endpoint does not have Deprecation header."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.get("/health/live")
+        with TestClient(app) as client:
+            response = client.get("/health/live")
 
-                assert response.status_code == 200
-                assert "Deprecation" not in response.headers
+            assert response.status_code == 200
+            assert "Deprecation" not in response.headers
 
-    def test_health_ready_endpoint_does_not_have_deprecation_header(self) -> None:
+    def test_health_ready_endpoint_does_not_have_deprecation_header(self, temp_logs_dir: Path) -> None:
         """Test that /health/ready endpoint does not have Deprecation header."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.get("/health/ready")
+        with TestClient(app) as client:
+            response = client.get("/health/ready")
 
-                assert response.status_code == 200
-                assert "Deprecation" not in response.headers
+            assert response.status_code == 200
+            assert "Deprecation" not in response.headers
 
 
 class TestApiLogsFilesEndpoint:
@@ -398,89 +434,74 @@ class TestSseLogStreamingEndpoint:
     Tests for error cases (which exit immediately) use TestClient normally.
     """
 
-    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
-        """Create a test FastAPI app with dashboard routes."""
-        app = FastAPI()
-        router = create_routes(accessor)
-        app.include_router(router)
-        return app
-
-    def test_stream_returns_error_when_log_file_not_found(self) -> None:
+    def test_stream_returns_error_when_log_file_not_found(self, temp_logs_dir: Path) -> None:
         """Test that streaming returns error event when log file doesn't exist."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.get(
-                    "/api/logs/stream/nonexistent-orch/20260114_100000.log",
-                    headers={"Accept": "text/event-stream"},
-                )
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/logs/stream/nonexistent-orch/20260114_100000.log",
+                headers={"Accept": "text/event-stream"},
+            )
 
-                assert response.status_code == 200
-                content = response.text
+            assert response.status_code == 200
+            content = response.text
 
-                # Should contain an error event
-                assert "event: error" in content
-                assert "Log file not found" in content
+            # Should contain an error event
+            assert "event: error" in content
+            assert "Log file not found" in content
 
-    def test_stream_error_event_contains_json_data(self) -> None:
+    def test_stream_error_event_contains_json_data(self, temp_logs_dir: Path) -> None:
         """Test that error event data is valid JSON with error field."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.get(
-                    "/api/logs/stream/missing/file.log",
-                    headers={"Accept": "text/event-stream"},
-                )
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/logs/stream/missing/file.log",
+                headers={"Accept": "text/event-stream"},
+            )
 
-                content = response.text
+            content = response.text
 
-                # Parse SSE data line for error
-                for line in content.split("\n"):
-                    if line.startswith("data:"):
-                        data_str = line[5:].strip()
-                        data = json.loads(data_str)
-                        assert "error" in data
-                        break
+            # Parse SSE data line for error
+            for line in content.split("\n"):
+                if line.startswith("data:"):
+                    data_str = line[5:].strip()
+                    data = json.loads(data_str)
+                    assert "error" in data
+                    break
 
-    def test_stream_handles_path_traversal_attack(self) -> None:
+    def test_stream_handles_path_traversal_attack(self, temp_logs_dir: Path) -> None:
         """Test that path traversal attempts are blocked."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            logs_dir.mkdir(exist_ok=True)
+        # Create a file outside the logs directory
+        secret_file = temp_logs_dir.parent / "secret.txt"
+        secret_file.write_text("secret content")
 
-            # Create a file outside the logs directory
-            secret_file = Path(tmpdir) / "secret.txt"
-            secret_file.write_text("secret content")
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
 
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
-            app = self._create_test_app(accessor)
+        with TestClient(app) as client:
+            # Attempt path traversal - FastAPI may return 404 for invalid paths
+            # or 200 with error event, both are valid security responses
+            response = client.get(
+                "/api/logs/stream/..%2F/secret.txt",
+                headers={"Accept": "text/event-stream"},
+            )
 
-            with TestClient(app) as client:
-                # Attempt path traversal - FastAPI may return 404 for invalid paths
-                # or 200 with error event, both are valid security responses
-                response = client.get(
-                    "/api/logs/stream/..%2F/secret.txt",
-                    headers={"Accept": "text/event-stream"},
-                )
+            # Should NOT contain the secret content regardless of status
+            assert "secret content" not in response.text
 
-                # Should NOT contain the secret content regardless of status
-                assert "secret content" not in response.text
-
-                # Either 404 or 200 with error is acceptable
-                if response.status_code == 200:
-                    assert "error" in response.text.lower() or "not found" in response.text.lower()
+            # Either 404 or 200 with error is acceptable
+            if response.status_code == 200:
+                assert "error" in response.text.lower() or "not found" in response.text.lower()
 
     def test_get_log_file_path_returns_valid_path(self) -> None:
         """Test that get_log_file_path returns correct path for valid file."""
@@ -543,18 +564,16 @@ class TestSseLogStreamingEndpoint:
 
         assert EventSourceResponse is SSEResponse
 
-    def test_stream_endpoint_exists_with_correct_path(self) -> None:
+    def test_stream_endpoint_exists_with_correct_path(self, temp_logs_dir: Path) -> None:
         """Test that the stream endpoint exists at /api/logs/stream/{orchestration}/{filename}."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
 
-            # Verify the route exists
-            route_paths = [route.path for route in app.routes]
-            assert "/api/logs/stream/{orchestration}/{filename}" in route_paths
+        # Verify the route exists
+        route_paths = [route.path for route in app.routes]
+        assert "/api/logs/stream/{orchestration}/{filename}" in route_paths
 
 
 class MockSentinelWithOrchestrations(MockSentinel):
@@ -593,21 +612,11 @@ class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
 class TestToggleOrchestrationEndpoint:
     """Tests for POST /api/orchestrations/{name}/toggle endpoint."""
 
-    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
-        """Create a test FastAPI app with dashboard routes."""
-        app = FastAPI()
-        router = create_routes(accessor)
-        app.include_router(router)
-        return app
-
-    def test_toggle_orchestration_success(self) -> None:
+    def test_toggle_orchestration_success(self, temp_logs_dir: Path) -> None:
         """Test successful toggle of a single orchestration."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-
-            # Create an orchestration YAML file
-            orch_file = logs_dir / "test-orch.yaml"
-            orch_file.write_text("""
+        # Create an orchestration YAML file
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
 orchestrations:
   - name: "test-orch"
     enabled: true
@@ -618,47 +627,44 @@ orchestrations:
       prompt: "Test prompt"
 """)
 
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-            # Create orchestration info pointing to the real file
-            orch_info = OrchestrationInfo(
-                name="test-orch",
-                enabled=True,
-                trigger_source="jira",
-                trigger_project="TEST",
-                trigger_repo=None,
-                trigger_tags=[],
-                agent_prompt_preview="Test prompt",
-                source_file=str(orch_file),
+        # Create orchestration info pointing to the real file
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_repo=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations/test-orch/toggle",
+                json={"enabled": False},
             )
 
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-            app = self._create_test_app(accessor)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["enabled"] is False
+            assert data["name"] == "test-orch"
 
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/orchestrations/test-orch/toggle",
-                    json={"enabled": False},
-                )
+            # Verify file was updated
+            updated_content = orch_file.read_text()
+            assert "enabled: false" in updated_content
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["success"] is True
-                assert data["enabled"] is False
-                assert data["name"] == "test-orch"
-
-                # Verify file was updated
-                updated_content = orch_file.read_text()
-                assert "enabled: false" in updated_content
-
-    def test_toggle_orchestration_enable(self) -> None:
+    def test_toggle_orchestration_enable(self, temp_logs_dir: Path) -> None:
         """Test enabling a disabled orchestration."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-
-            orch_file = logs_dir / "test-orch.yaml"
-            orch_file.write_text("""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
 orchestrations:
   - name: "test-orch"
     enabled: false
@@ -668,120 +674,104 @@ orchestrations:
       prompt: "Test"
 """)
 
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-            orch_info = OrchestrationInfo(
-                name="test-orch",
-                enabled=False,
-                trigger_source="jira",
-                trigger_project="TEST",
-                trigger_repo=None,
-                trigger_tags=[],
-                agent_prompt_preview="Test",
-                source_file=str(orch_file),
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=False,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_repo=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations/test-orch/toggle",
+                json={"enabled": True},
             )
 
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-            app = self._create_test_app(accessor)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["enabled"] is True
 
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/orchestrations/test-orch/toggle",
-                    json={"enabled": True},
-                )
+            # Verify file was updated
+            updated_content = orch_file.read_text()
+            assert "enabled: true" in updated_content
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["success"] is True
-                assert data["enabled"] is True
-
-                # Verify file was updated
-                updated_content = orch_file.read_text()
-                assert "enabled: true" in updated_content
-
-    def test_toggle_orchestration_not_found(self) -> None:
+    def test_toggle_orchestration_not_found(self, temp_logs_dir: Path) -> None:
         """Test 404 when orchestration doesn't exist."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-            # No orchestrations configured
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-            app = self._create_test_app(accessor)
+        # No orchestrations configured
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/orchestrations/nonexistent/toggle",
-                    json={"enabled": False},
-                )
-
-                assert response.status_code == 404
-                assert "not found" in response.json()["detail"].lower()
-
-    def test_toggle_orchestration_file_not_found(self) -> None:
-        """Test 404 when orchestration file doesn't exist."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
-
-            # Orchestration info pointing to non-existent file
-            orch_info = OrchestrationInfo(
-                name="test-orch",
-                enabled=True,
-                trigger_source="jira",
-                trigger_project="TEST",
-                trigger_repo=None,
-                trigger_tags=[],
-                agent_prompt_preview="Test",
-                source_file="/nonexistent/path.yaml",
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations/nonexistent/toggle",
+                json={"enabled": False},
             )
 
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-            app = self._create_test_app(accessor)
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
 
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/orchestrations/test-orch/toggle",
-                    json={"enabled": False},
-                )
+    def test_toggle_orchestration_file_not_found(self, temp_logs_dir: Path) -> None:
+        """Test 404 when orchestration file doesn't exist."""
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-                assert response.status_code == 404
-                assert "not found" in response.json()["detail"].lower()
+        # Orchestration info pointing to non-existent file
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_repo=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test",
+            source_file="/nonexistent/path.yaml",
+        )
 
-    def test_toggle_endpoint_exists(self) -> None:
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations/test-orch/toggle",
+                json={"enabled": False},
+            )
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    def test_toggle_endpoint_exists(self, temp_logs_dir: Path) -> None:
         """Test that the toggle endpoint exists at the correct path."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
 
-            route_paths = [route.path for route in app.routes]
-            assert "/api/orchestrations/{name}/toggle" in route_paths
+        route_paths = [route.path for route in app.routes]
+        assert "/api/orchestrations/{name}/toggle" in route_paths
 
 
 class TestBulkToggleOrchestrationEndpoint:
     """Tests for POST /api/orchestrations/bulk-toggle endpoint."""
 
-    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
-        """Create a test FastAPI app with dashboard routes."""
-        app = FastAPI()
-        router = create_routes(accessor)
-        app.include_router(router)
-        return app
-
-    def test_bulk_toggle_jira_orchestrations_success(self) -> None:
+    def test_bulk_toggle_jira_orchestrations_success(self, temp_logs_dir: Path) -> None:
         """Test bulk toggling Jira orchestrations by project."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-
-            # Create an orchestration YAML file with multiple orchestrations
-            orch_file = logs_dir / "jira-orchestrations.yaml"
-            orch_file.write_text("""
+        # Create an orchestration YAML file with multiple orchestrations
+        orch_file = temp_logs_dir / "jira-orchestrations.yaml"
+        orch_file.write_text("""
 orchestrations:
   - name: "jira-orch-1"
     enabled: true
@@ -806,71 +796,68 @@ orchestrations:
       prompt: "Other project"
 """)
 
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-            orchestrations = [
-                OrchestrationInfo(
-                    name="jira-orch-1",
-                    enabled=True,
-                    trigger_source="jira",
-                    trigger_project="TEST",
-                    trigger_repo=None,
-                    trigger_tags=[],
-                    agent_prompt_preview="First",
-                    source_file=str(orch_file),
-                ),
-                OrchestrationInfo(
-                    name="jira-orch-2",
-                    enabled=True,
-                    trigger_source="jira",
-                    trigger_project="TEST",
-                    trigger_repo=None,
-                    trigger_tags=[],
-                    agent_prompt_preview="Second",
-                    source_file=str(orch_file),
-                ),
-                OrchestrationInfo(
-                    name="other-project",
-                    enabled=True,
-                    trigger_source="jira",
-                    trigger_project="OTHER",
-                    trigger_repo=None,
-                    trigger_tags=[],
-                    agent_prompt_preview="Other project",
-                    source_file=str(orch_file),
-                ),
-            ]
+        orchestrations = [
+            OrchestrationInfo(
+                name="jira-orch-1",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_repo=None,
+                trigger_tags=[],
+                agent_prompt_preview="First",
+                source_file=str(orch_file),
+            ),
+            OrchestrationInfo(
+                name="jira-orch-2",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_repo=None,
+                trigger_tags=[],
+                agent_prompt_preview="Second",
+                source_file=str(orch_file),
+            ),
+            OrchestrationInfo(
+                name="other-project",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="OTHER",
+                trigger_repo=None,
+                trigger_tags=[],
+                agent_prompt_preview="Other project",
+                source_file=str(orch_file),
+            ),
+        ]
 
-            accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
-            app = self._create_test_app(accessor)
+        accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/orchestrations/bulk-toggle",
-                    json={"source": "jira", "identifier": "TEST", "enabled": False},
-                )
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations/bulk-toggle",
+                json={"source": "jira", "identifier": "TEST", "enabled": False},
+            )
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["success"] is True
-                assert data["toggled_count"] == 2
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["toggled_count"] == 2
 
-                # Verify file was updated
-                updated_content = orch_file.read_text()
-                # The TEST project orchestrations should be disabled
-                # but we can't easily verify order, just count
-                assert updated_content.count("enabled: false") == 2
-                # OTHER project should still be enabled
-                assert "enabled: true" in updated_content
+            # Verify file was updated
+            updated_content = orch_file.read_text()
+            # The TEST project orchestrations should be disabled
+            # but we can't easily verify order, just count
+            assert updated_content.count("enabled: false") == 2
+            # OTHER project should still be enabled
+            assert "enabled: true" in updated_content
 
-    def test_bulk_toggle_github_orchestrations_success(self) -> None:
+    def test_bulk_toggle_github_orchestrations_success(self, temp_logs_dir: Path) -> None:
         """Test bulk toggling GitHub orchestrations by repo."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-
-            orch_file = logs_dir / "github-orchestrations.yaml"
-            orch_file.write_text("""
+        orch_file = temp_logs_dir / "github-orchestrations.yaml"
+        orch_file.write_text("""
 orchestrations:
   - name: "github-orch-1"
     enabled: true
@@ -888,95 +875,89 @@ orchestrations:
       prompt: "Second"
 """)
 
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-            orchestrations = [
-                OrchestrationInfo(
-                    name="github-orch-1",
-                    enabled=True,
-                    trigger_source="github",
-                    trigger_project=None,
-                    trigger_repo="org/repo",
-                    trigger_tags=[],
-                    agent_prompt_preview="First",
-                    source_file=str(orch_file),
-                ),
-                OrchestrationInfo(
-                    name="github-orch-2",
-                    enabled=True,
-                    trigger_source="github",
-                    trigger_project=None,
-                    trigger_repo="org/repo",
-                    trigger_tags=[],
-                    agent_prompt_preview="Second",
-                    source_file=str(orch_file),
-                ),
-            ]
+        orchestrations = [
+            OrchestrationInfo(
+                name="github-orch-1",
+                enabled=True,
+                trigger_source="github",
+                trigger_project=None,
+                trigger_repo="org/repo",
+                trigger_tags=[],
+                agent_prompt_preview="First",
+                source_file=str(orch_file),
+            ),
+            OrchestrationInfo(
+                name="github-orch-2",
+                enabled=True,
+                trigger_source="github",
+                trigger_project=None,
+                trigger_repo="org/repo",
+                trigger_tags=[],
+                agent_prompt_preview="Second",
+                source_file=str(orch_file),
+            ),
+        ]
 
-            accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
-            app = self._create_test_app(accessor)
+        accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/orchestrations/bulk-toggle",
-                    json={"source": "github", "identifier": "org/repo", "enabled": False},
-                )
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations/bulk-toggle",
+                json={"source": "github", "identifier": "org/repo", "enabled": False},
+            )
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["success"] is True
-                assert data["toggled_count"] == 2
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["toggled_count"] == 2
 
-    def test_bulk_toggle_no_matching_orchestrations(self) -> None:
+    def test_bulk_toggle_no_matching_orchestrations(self, temp_logs_dir: Path) -> None:
         """Test 404 when no orchestrations match the identifier."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-            # No matching orchestrations
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-            app = self._create_test_app(accessor)
+        # No matching orchestrations
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/orchestrations/bulk-toggle",
-                    json={"source": "jira", "identifier": "NONEXISTENT", "enabled": False},
-                )
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations/bulk-toggle",
+                json={"source": "jira", "identifier": "NONEXISTENT", "enabled": False},
+            )
 
-                assert response.status_code == 404
-                assert "No orchestrations found" in response.json()["detail"]
+            assert response.status_code == 404
+            assert "No orchestrations found" in response.json()["detail"]
 
-    def test_bulk_toggle_endpoint_exists(self) -> None:
+    def test_bulk_toggle_endpoint_exists(self, temp_logs_dir: Path) -> None:
         """Test that the bulk toggle endpoint exists at the correct path."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
 
-            route_paths = [route.path for route in app.routes]
-            assert "/api/orchestrations/bulk-toggle" in route_paths
+        route_paths = [route.path for route in app.routes]
+        assert "/api/orchestrations/bulk-toggle" in route_paths
 
-    def test_bulk_toggle_invalid_source(self) -> None:
+    def test_bulk_toggle_invalid_source(self, temp_logs_dir: Path) -> None:
         """Test validation error for invalid source type."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
 
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/orchestrations/bulk-toggle",
-                    json={"source": "invalid", "identifier": "TEST", "enabled": False},
-                )
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations/bulk-toggle",
+                json={"source": "invalid", "identifier": "TEST", "enabled": False},
+            )
 
-                # Should return 422 for validation error
-                assert response.status_code == 422
+            # Should return 422 for validation error
+            assert response.status_code == 422
 
 
 class TestToggleRateLimiting:
@@ -986,28 +967,11 @@ class TestToggleRateLimiting:
     Tests configure the rate limiter by passing a Config with custom values.
     """
 
-    def _create_test_app(
-        self, accessor: SentinelStateAccessor, config: Config | None = None
-    ) -> FastAPI:
-        """Create a test FastAPI app with dashboard routes.
-
-        Args:
-            accessor: The state accessor for the test.
-            config: Optional config for rate limiting settings.
-        """
-        app = FastAPI()
-        router = create_routes(accessor, config=config)
-        app.include_router(router)
-        return app
-
-    def test_toggle_rate_limit_enforced(self) -> None:
+    def test_toggle_rate_limit_enforced(self, temp_logs_dir: Path) -> None:
         """Test that rapid toggles are rate limited."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-
-            # Create an orchestration YAML file
-            orch_file = logs_dir / "test-orch.yaml"
-            orch_file.write_text("""
+        # Create an orchestration YAML file
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
 orchestrations:
   - name: "test-orch"
     enabled: true
@@ -1018,49 +982,46 @@ orchestrations:
       prompt: "Test prompt"
 """)
 
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-            orch_info = OrchestrationInfo(
-                name="test-orch",
-                enabled=True,
-                trigger_source="jira",
-                trigger_project="TEST",
-                trigger_repo=None,
-                trigger_tags=[],
-                agent_prompt_preview="Test prompt",
-                source_file=str(orch_file),
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_repo=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        # Use default config which has 2.0 second cooldown
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # First toggle should succeed
+            response1 = client.post(
+                "/api/orchestrations/test-orch/toggle",
+                json={"enabled": False},
             )
+            assert response1.status_code == 200
 
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-            # Use default config which has 2.0 second cooldown
-            app = self._create_test_app(accessor, config=config)
+            # Immediate second toggle should be rate limited
+            response2 = client.post(
+                "/api/orchestrations/test-orch/toggle",
+                json={"enabled": True},
+            )
+            assert response2.status_code == 429
+            assert "Rate limit exceeded" in response2.json()["detail"]
 
-            with TestClient(app) as client:
-                # First toggle should succeed
-                response1 = client.post(
-                    "/api/orchestrations/test-orch/toggle",
-                    json={"enabled": False},
-                )
-                assert response1.status_code == 200
-
-                # Immediate second toggle should be rate limited
-                response2 = client.post(
-                    "/api/orchestrations/test-orch/toggle",
-                    json={"enabled": True},
-                )
-                assert response2.status_code == 429
-                assert "Rate limit exceeded" in response2.json()["detail"]
-
-    def test_rate_limit_allows_after_cooldown(self) -> None:
+    def test_rate_limit_allows_after_cooldown(self, temp_logs_dir: Path) -> None:
         """Test that toggles are allowed after cooldown period."""
         import time
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-
-            orch_file = logs_dir / "test-orch.yaml"
-            orch_file.write_text("""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
 orchestrations:
   - name: "test-orch"
     enabled: true
@@ -1071,49 +1032,46 @@ orchestrations:
       prompt: "Test"
 """)
 
-            # Use a very short cooldown for testing
-            config = Config(agent_logs_dir=logs_dir, toggle_cooldown_seconds=0.1)
-            sentinel = MockSentinelWithOrchestrations(config, [])
+        # Use a very short cooldown for testing
+        config = Config(agent_logs_dir=temp_logs_dir, toggle_cooldown_seconds=0.1)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-            orch_info = OrchestrationInfo(
-                name="test-orch",
-                enabled=True,
-                trigger_source="jira",
-                trigger_project="TEST",
-                trigger_repo=None,
-                trigger_tags=[],
-                agent_prompt_preview="Test",
-                source_file=str(orch_file),
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_repo=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # First toggle should succeed
+            response1 = client.post(
+                "/api/orchestrations/test-orch/toggle",
+                json={"enabled": False},
             )
+            assert response1.status_code == 200
 
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-            app = self._create_test_app(accessor, config=config)
+            # Wait for cooldown
+            time.sleep(0.15)
 
-            with TestClient(app) as client:
-                # First toggle should succeed
-                response1 = client.post(
-                    "/api/orchestrations/test-orch/toggle",
-                    json={"enabled": False},
-                )
-                assert response1.status_code == 200
+            # Second toggle should now succeed
+            response2 = client.post(
+                "/api/orchestrations/test-orch/toggle",
+                json={"enabled": True},
+            )
+            assert response2.status_code == 200
 
-                # Wait for cooldown
-                time.sleep(0.15)
-
-                # Second toggle should now succeed
-                response2 = client.post(
-                    "/api/orchestrations/test-orch/toggle",
-                    json={"enabled": True},
-                )
-                assert response2.status_code == 200
-
-    def test_bulk_toggle_rate_limit_enforced(self) -> None:
+    def test_bulk_toggle_rate_limit_enforced(self, temp_logs_dir: Path) -> None:
         """Test that rapid bulk toggles are rate limited."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-
-            orch_file = logs_dir / "jira-orchestrations.yaml"
-            orch_file.write_text("""
+        orch_file = temp_logs_dir / "jira-orchestrations.yaml"
+        orch_file.write_text("""
 orchestrations:
   - name: "jira-orch-1"
     enabled: true
@@ -1124,40 +1082,40 @@ orchestrations:
       prompt: "First"
 """)
 
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
 
-            orchestrations = [
-                OrchestrationInfo(
-                    name="jira-orch-1",
-                    enabled=True,
-                    trigger_source="jira",
-                    trigger_project="TEST",
-                    trigger_repo=None,
-                    trigger_tags=[],
-                    agent_prompt_preview="First",
-                    source_file=str(orch_file),
-                ),
-            ]
+        orchestrations = [
+            OrchestrationInfo(
+                name="jira-orch-1",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_repo=None,
+                trigger_tags=[],
+                agent_prompt_preview="First",
+                source_file=str(orch_file),
+            ),
+        ]
 
-            accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
-            app = self._create_test_app(accessor, config=config)
+        accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
+        app = create_test_app(accessor, config=config)
 
-            with TestClient(app) as client:
-                # First bulk toggle should succeed
-                response1 = client.post(
-                    "/api/orchestrations/bulk-toggle",
-                    json={"source": "jira", "identifier": "TEST", "enabled": False},
-                )
-                assert response1.status_code == 200
+        with TestClient(app) as client:
+            # First bulk toggle should succeed
+            response1 = client.post(
+                "/api/orchestrations/bulk-toggle",
+                json={"source": "jira", "identifier": "TEST", "enabled": False},
+            )
+            assert response1.status_code == 200
 
-                # Immediate second bulk toggle should be rate limited
-                response2 = client.post(
-                    "/api/orchestrations/bulk-toggle",
-                    json={"source": "jira", "identifier": "TEST", "enabled": True},
-                )
-                assert response2.status_code == 429
-                assert "Rate limit exceeded" in response2.json()["detail"]
+            # Immediate second bulk toggle should be rate limited
+            response2 = client.post(
+                "/api/orchestrations/bulk-toggle",
+                json={"source": "jira", "identifier": "TEST", "enabled": True},
+            )
+            assert response2.status_code == 429
+            assert "Rate limit exceeded" in response2.json()["detail"]
 
 
 class TestToggleRateLimitConfiguration:
@@ -1235,78 +1193,63 @@ class TestToggleRateLimitConfiguration:
 class TestToggleOpenApiDocs:
     """Tests for OpenAPI documentation on toggle endpoints."""
 
-    def _create_test_app(self, accessor: SentinelStateAccessor) -> FastAPI:
-        """Create a test FastAPI app with dashboard routes."""
-        app = FastAPI()
-        router = create_routes(accessor)
-        app.include_router(router)
-        return app
-
-    def test_toggle_endpoint_has_openapi_summary(self) -> None:
+    def test_toggle_endpoint_has_openapi_summary(self, temp_logs_dir: Path) -> None:
         """Test that single toggle endpoint has OpenAPI summary."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
 
-            openapi_schema = app.openapi()
-            toggle_path = openapi_schema["paths"].get("/api/orchestrations/{name}/toggle")
+        openapi_schema = app.openapi()
+        toggle_path = openapi_schema["paths"].get("/api/orchestrations/{name}/toggle")
 
-            assert toggle_path is not None
-            assert "post" in toggle_path
-            assert "summary" in toggle_path["post"]
-            assert toggle_path["post"]["summary"] == "Toggle orchestration enabled status"
+        assert toggle_path is not None
+        assert "post" in toggle_path
+        assert "summary" in toggle_path["post"]
+        assert toggle_path["post"]["summary"] == "Toggle orchestration enabled status"
 
-    def test_toggle_endpoint_has_openapi_description(self) -> None:
+    def test_toggle_endpoint_has_openapi_description(self, temp_logs_dir: Path) -> None:
         """Test that single toggle endpoint has OpenAPI description."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
 
-            openapi_schema = app.openapi()
-            toggle_path = openapi_schema["paths"].get("/api/orchestrations/{name}/toggle")
+        openapi_schema = app.openapi()
+        toggle_path = openapi_schema["paths"].get("/api/orchestrations/{name}/toggle")
 
-            assert toggle_path is not None
-            assert "description" in toggle_path["post"]
-            assert "rate limited" in toggle_path["post"]["description"].lower()
+        assert toggle_path is not None
+        assert "description" in toggle_path["post"]
+        assert "rate limited" in toggle_path["post"]["description"].lower()
 
-    def test_bulk_toggle_endpoint_has_openapi_summary(self) -> None:
+    def test_bulk_toggle_endpoint_has_openapi_summary(self, temp_logs_dir: Path) -> None:
         """Test that bulk toggle endpoint has OpenAPI summary."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
 
-            openapi_schema = app.openapi()
-            bulk_toggle_path = openapi_schema["paths"].get("/api/orchestrations/bulk-toggle")
+        openapi_schema = app.openapi()
+        bulk_toggle_path = openapi_schema["paths"].get("/api/orchestrations/bulk-toggle")
 
-            assert bulk_toggle_path is not None
-            assert "post" in bulk_toggle_path
-            assert "summary" in bulk_toggle_path["post"]
-            assert bulk_toggle_path["post"]["summary"] == "Bulk toggle orchestrations by source"
+        assert bulk_toggle_path is not None
+        assert "post" in bulk_toggle_path
+        assert "summary" in bulk_toggle_path["post"]
+        assert bulk_toggle_path["post"]["summary"] == "Bulk toggle orchestrations by source"
 
-    def test_bulk_toggle_endpoint_has_openapi_description(self) -> None:
+    def test_bulk_toggle_endpoint_has_openapi_description(self, temp_logs_dir: Path) -> None:
         """Test that bulk toggle endpoint has OpenAPI description."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-            app = self._create_test_app(accessor)
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
 
-            openapi_schema = app.openapi()
-            bulk_toggle_path = openapi_schema["paths"].get("/api/orchestrations/bulk-toggle")
+        openapi_schema = app.openapi()
+        bulk_toggle_path = openapi_schema["paths"].get("/api/orchestrations/bulk-toggle")
 
-            assert bulk_toggle_path is not None
-            assert "description" in bulk_toggle_path["post"]
-            assert "rate limited" in bulk_toggle_path["post"]["description"].lower()
+        assert bulk_toggle_path is not None
+        assert "description" in bulk_toggle_path["post"]
+        assert "rate limited" in bulk_toggle_path["post"]["description"].lower()
 
 
 class TestDeprecatedModuleLevelConstants:
@@ -1396,95 +1339,95 @@ class TestCreateRoutesLogging:
     when using provided Config vs. default Config values.
     """
 
-    def test_create_routes_logs_debug_with_provided_config(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_create_routes_logs_debug_with_provided_config(
+        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test that create_routes logs debug message when Config is provided."""
         import logging
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(
-                agent_logs_dir=logs_dir,
-                toggle_cooldown_seconds=5.0,
-                rate_limit_cache_ttl=7200,
-                rate_limit_cache_maxsize=5000,
-            )
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        config = Config(
+            agent_logs_dir=temp_logs_dir,
+            toggle_cooldown_seconds=5.0,
+            rate_limit_cache_ttl=7200,
+            rate_limit_cache_maxsize=5000,
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
-                _ = create_routes(accessor, config=config)
+        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+            _ = create_routes(accessor, config=config)
 
-            # Check that debug log mentions "provided Config"
-            assert any("provided Config" in record.message for record in caplog.records)
-            # Check that the config values are logged
-            assert any("5.0" in record.message for record in caplog.records)
-            assert any("7200" in record.message for record in caplog.records)
-            assert any("5000" in record.message for record in caplog.records)
+        # Check that debug log mentions "provided Config"
+        assert any("provided Config" in record.message for record in caplog.records)
+        # Check that the config values are logged
+        assert any("5.0" in record.message for record in caplog.records)
+        assert any("7200" in record.message for record in caplog.records)
+        assert any("5000" in record.message for record in caplog.records)
 
-    def test_create_routes_logs_debug_with_default_config(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_create_routes_logs_debug_with_default_config(
+        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test that create_routes logs debug message when using default Config."""
         import logging
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        config = Config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
-                _ = create_routes(accessor)  # No config provided
+        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+            _ = create_routes(accessor)  # No config provided
 
-            # Check that debug log mentions "default Config"
-            assert any("default Config" in record.message for record in caplog.records)
-            # Check that default values are logged (2.0s cooldown, 3600s TTL, 10000 maxsize)
-            assert any("2.0" in record.message for record in caplog.records)
-            assert any("3600" in record.message for record in caplog.records)
-            assert any("10000" in record.message for record in caplog.records)
+        # Check that debug log mentions "default Config"
+        assert any("default Config" in record.message for record in caplog.records)
+        # Check that default values are logged (2.0s cooldown, 3600s TTL, 10000 maxsize)
+        assert any("2.0" in record.message for record in caplog.records)
+        assert any("3600" in record.message for record in caplog.records)
+        assert any("10000" in record.message for record in caplog.records)
 
-    def test_create_routes_logs_toggle_cooldown_value(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_create_routes_logs_toggle_cooldown_value(
+        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test that create_routes logs toggle_cooldown_seconds value."""
         import logging
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir, toggle_cooldown_seconds=3.5)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        config = Config(agent_logs_dir=temp_logs_dir, toggle_cooldown_seconds=3.5)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
-                _ = create_routes(accessor, config=config)
+        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+            _ = create_routes(accessor, config=config)
 
-            # Check that the specific cooldown value is logged
-            assert any("toggle_cooldown=3.5" in record.message for record in caplog.records)
+        # Check that the specific cooldown value is logged
+        assert any("toggle_cooldown=3.5" in record.message for record in caplog.records)
 
-    def test_create_routes_logs_cache_ttl_value(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_create_routes_logs_cache_ttl_value(
+        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test that create_routes logs rate_limit_cache_ttl value."""
         import logging
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir, rate_limit_cache_ttl=1800)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        config = Config(agent_logs_dir=temp_logs_dir, rate_limit_cache_ttl=1800)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
-                _ = create_routes(accessor, config=config)
+        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+            _ = create_routes(accessor, config=config)
 
-            # Check that the specific TTL value is logged
-            assert any("cache_ttl=1800" in record.message for record in caplog.records)
+        # Check that the specific TTL value is logged
+        assert any("cache_ttl=1800" in record.message for record in caplog.records)
 
-    def test_create_routes_logs_cache_maxsize_value(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_create_routes_logs_cache_maxsize_value(
+        self, temp_logs_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test that create_routes logs rate_limit_cache_maxsize value."""
         import logging
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir, rate_limit_cache_maxsize=20000)
-            sentinel = MockSentinel(config)
-            accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        config = Config(agent_logs_dir=temp_logs_dir, rate_limit_cache_maxsize=20000)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-            with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
-                _ = create_routes(accessor, config=config)
+        with caplog.at_level(logging.DEBUG, logger="sentinel.dashboard.routes"):
+            _ = create_routes(accessor, config=config)
 
-            # Check that the specific maxsize value is logged
-            assert any("cache_maxsize=20000" in record.message for record in caplog.records)
+        # Check that the specific maxsize value is logged
+        assert any("cache_maxsize=20000" in record.message for record in caplog.records)
