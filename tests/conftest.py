@@ -23,13 +23,15 @@ Module Organization
 
 - ``tests/mocks.py`` - Mock implementations of core interfaces
 - ``tests/helpers.py`` - Test helper functions (make_config, make_orchestration, etc.)
-- ``tests/conftest.py`` - Pytest fixtures and re-exports for backwards compatibility
+- ``tests/conftest.py`` - Pytest fixtures, type aliases, and re-exports for backwards compatibility
 """
 
 from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from types import FrameType
+from typing import Callable
 
 import pytest
 
@@ -54,7 +56,13 @@ from tests.helpers import (
 # This provides backwards compatibility for tests that imported from conftest
 from sentinel.deduplication import build_github_trigger_key
 
+# Type alias for signal handlers to avoid Any type annotations
+# Used by tests that mock signal handling behavior
+SignalHandler = Callable[[int, FrameType | None], None]
+
 __all__ = [
+    # Type aliases (alphabetized)
+    "SignalHandler",
     # Mocks (alphabetized)
     "MockAgentClient",
     "MockAgentClientFactory",

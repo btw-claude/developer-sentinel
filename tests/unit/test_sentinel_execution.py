@@ -4,8 +4,6 @@ import signal
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from types import FrameType
-from typing import Callable
 
 from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.main import Sentinel
@@ -16,12 +14,10 @@ from tests.conftest import (
     MockAgentClient,
     MockTagClient,
     TrackingAgentClient,
+    SignalHandler,
     make_config,
     make_orchestration,
 )
-
-# Type alias for signal handlers to avoid Any
-SignalHandler = Callable[[int, FrameType | None], None]
 
 
 class TestSentinelSignalHandling:
