@@ -289,11 +289,14 @@ class HealthChecker:
                 raise
             except AttributeError as e:
                 # Catch AttributeError explicitly for potential None access issues
-                # when processing health check results
+                # when processing task results (e.g., accessing attributes on the
+                # returned ServiceHealth object). This differs from AttributeError
+                # handling in individual check methods (_check_jira, _check_github,
+                # _check_claude) which catch errors during client attribute access.
                 logger.error(f"None access error in {name} health check: {e}")
                 checks[name] = ServiceHealth(
                     status=HealthStatus.DOWN,
-                    latency_ms=0.0,
+                    latency_ms=0.0,  # No timing context available for result processing errors
                     error=f"Configuration error: {e}",
                 )
             except Exception as e:
@@ -302,7 +305,7 @@ class HealthChecker:
                 logger.error(f"Unexpected error in {name} health check: {e}")
                 checks[name] = ServiceHealth(
                     status=HealthStatus.DOWN,
-                    latency_ms=0.0,
+                    latency_ms=0.0,  # No timing context available for unexpected errors
                     error=str(e),
                 )
 
