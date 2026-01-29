@@ -9,11 +9,12 @@ Usage
 
 Import and use helpers directly in tests::
 
-    from tests.helpers import make_config, make_orchestration, set_mtime_in_future
+    from tests.helpers import make_config, make_orchestration, make_issue, set_mtime_in_future
 
     def test_example():
         config = make_config(max_concurrent_executions=5)
         orch = make_orchestration(name="test", tags=["review"])
+        issue = make_issue(key="TEST-1", summary="Test issue")
         # ... use in test ...
 """
 
@@ -24,7 +25,14 @@ from pathlib import Path
 from typing import Literal
 
 from sentinel.config import Config
-from sentinel.orchestration import AgentConfig, Orchestration, TriggerConfig
+from sentinel.orchestration import (
+    AgentConfig,
+    GitHubContext,
+    Orchestration,
+    RetryConfig,
+    TriggerConfig,
+)
+from sentinel.poller import JiraIssue
 
 
 def make_config(
@@ -61,6 +69,52 @@ def make_config(
     )
 
 
+def make_issue(
+    key: str = "TEST-1",
+    summary: str = "Test issue",
+    description: str = "",
+    status: str = "",
+    assignee: str | None = None,
+    labels: list[str] | None = None,
+    comments: list[str] | None = None,
+    links: list[str] | None = None,
+    epic_key: str | None = None,
+    parent_key: str | None = None,
+) -> JiraIssue:
+    """Create a JiraIssue instance for testing.
+
+    Provides sensible defaults for all issue fields, with the ability
+    to override any parameter.
+
+    Args:
+        key: The Jira issue key (e.g., "TEST-1").
+        summary: Issue summary/title.
+        description: Issue description text.
+        status: Issue status (e.g., "Open", "In Progress").
+        assignee: Display name of the assignee.
+        labels: List of labels on the issue.
+        comments: List of comment texts.
+        links: List of linked issue keys.
+        epic_key: Parent epic key (if issue is linked to an epic).
+        parent_key: Parent issue key (for sub-tasks).
+
+    Returns:
+        A JiraIssue instance with the specified parameters.
+    """
+    return JiraIssue(
+        key=key,
+        summary=summary,
+        description=description,
+        status=status,
+        assignee=assignee,
+        labels=labels or [],
+        comments=comments or [],
+        links=links or [],
+        epic_key=epic_key,
+        parent_key=parent_key,
+    )
+
+
 def make_orchestration(
     name: str = "test-orch",
     project: str = "TEST",
@@ -72,10 +126,17 @@ def make_orchestration(
     project_scope: Literal["org", "user"] = "org",
     project_filter: str = "",
     labels: list[str] | None = None,
+    prompt: str = "Test prompt",
+    tools: list[str] | None = None,
+    github: GitHubContext | None = None,
+    max_attempts: int = 3,
+    success_patterns: list[str] | None = None,
+    failure_patterns: list[str] | None = None,
 ) -> Orchestration:
     """Create an Orchestration instance for testing.
 
-    Supports both Jira and GitHub trigger sources.
+    Supports both Jira and GitHub trigger sources, with optional retry
+    configuration for executor tests.
 
     Args:
         name: The orchestration name.
@@ -88,6 +149,12 @@ def make_orchestration(
         project_scope: GitHub project scope ("org" or "user").
         project_filter: GitHub project filter expression.
         labels: List of GitHub labels to filter by.
+        prompt: The agent prompt template.
+        tools: List of tools to enable for the agent.
+        github: GitHub context for the agent (host, org, repo, branch).
+        max_attempts: Maximum retry attempts for the agent.
+        success_patterns: Patterns that indicate success in agent response.
+        failure_patterns: Patterns that indicate failure in agent response.
 
     Returns:
         An Orchestration instance configured for testing.
@@ -107,8 +174,17 @@ def make_orchestration(
     return Orchestration(
         name=name,
         trigger=trigger,
-        agent=AgentConfig(prompt="Test prompt", tools=["jira"]),
+        agent=AgentConfig(
+            prompt=prompt,
+            tools=tools or ["jira"],
+            github=github,
+        ),
         max_concurrent=max_concurrent,
+        retry=RetryConfig(
+            max_attempts=max_attempts,
+            success_patterns=success_patterns or ["SUCCESS", "completed successfully"],
+            failure_patterns=failure_patterns or ["FAILURE", "failed", "error"],
+        ),
     )
 
 

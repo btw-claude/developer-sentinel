@@ -13,7 +13,11 @@ def make_issue(
     labels: list[str] | None = None,
     summary: str = "Test issue",
 ) -> JiraIssue:
-    """Helper to create a JiraIssue for testing."""
+    """Helper to create a JiraIssue for testing.
+
+    Note: This is a simplified version specific to router tests
+    that only needs key, labels, and summary fields.
+    """
     return JiraIssue(
         key=key,
         summary=summary,
@@ -42,7 +46,12 @@ def make_orchestration(
     tags: list[str] | None = None,
     labels: list[str] | None = None,
 ) -> Orchestration:
-    """Helper to create an Orchestration for testing."""
+    """Helper to create an Orchestration for testing.
+
+    Note: This router-specific version supports both tags and labels
+    simultaneously for testing deprecation of tags field. The generic
+    make_orchestration in tests/helpers.py has different semantics.
+    """
     return Orchestration(
         name=name,
         trigger=TriggerConfig(
