@@ -30,6 +30,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+import types
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -390,7 +391,12 @@ class CircuitBreaker:
             raise CircuitBreakerError(self.service_name, self._state)
         return self
 
-    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
         """Context manager exit - record success or failure."""
         if exc_type is None:
             self.record_success()
