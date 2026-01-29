@@ -89,3 +89,8 @@ pythonpath = ["src"]
 markers = [
     "integration: marks tests as integration tests requiring external services (deselect with '-m \"not integration\"')",
 ]
+# Test type addopts examples (uncomment as needed):
+# Run only unit tests: pytest tests/unit
+# Run only integration tests: pytest tests/integration -m integration
+# Run all tests except integration: pytest -m "not integration"
+# Run all tests: pytest

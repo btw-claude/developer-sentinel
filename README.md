@@ -379,8 +379,17 @@ When work is submitted for execution, Sentinel polls immediately for more work i
 ## Development
 
 ```bash
-# Run tests
+# Run all tests
 pytest
+
+# Run only unit tests (fast, no external dependencies)
+pytest tests/unit
+
+# Run only integration tests
+pytest tests/integration -m integration
+
+# Run tests excluding integration tests
+pytest -m "not integration"
 
 # Run linting
 ruff check src/ tests/
@@ -388,6 +397,8 @@ ruff check src/ tests/
 # Run type checking
 mypy src/
 ```
+
+For detailed testing guidelines, see [docs/TESTING.md](docs/TESTING.md).
 
 ### Contribution Guidelines
 
