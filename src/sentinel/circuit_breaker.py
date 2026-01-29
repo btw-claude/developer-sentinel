@@ -63,21 +63,48 @@ class CircuitBreakerError(Exception):
         super().__init__(msg)
 
 
+class CircuitBreakerConfigError(ValueError):
+    """Raised when circuit breaker configuration is invalid."""
+
+    pass
+
+
 @dataclass
 class CircuitBreakerConfig:
     """Configuration for circuit breaker behavior.
 
     Attributes:
         failure_threshold: Number of failures before opening the circuit (default: 5).
+            Must be a positive integer.
         recovery_timeout: Seconds to wait before attempting recovery (default: 30.0).
+            Must be a positive number.
         half_open_max_calls: Maximum calls to allow in half-open state (default: 3).
+            Must be a positive integer.
         enabled: Whether the circuit breaker is enabled (default: True).
+
+    Raises:
+        CircuitBreakerConfigError: If any threshold values are not positive.
     """
 
     failure_threshold: int = 5
     recovery_timeout: float = 30.0
     half_open_max_calls: int = 3
     enabled: bool = True
+
+    def __post_init__(self) -> None:
+        """Validate configuration values after initialization."""
+        if self.failure_threshold <= 0:
+            raise CircuitBreakerConfigError(
+                f"failure_threshold must be positive, got {self.failure_threshold}"
+            )
+        if self.recovery_timeout <= 0:
+            raise CircuitBreakerConfigError(
+                f"recovery_timeout must be positive, got {self.recovery_timeout}"
+            )
+        if self.half_open_max_calls <= 0:
+            raise CircuitBreakerConfigError(
+                f"half_open_max_calls must be positive, got {self.half_open_max_calls}"
+            )
 
     @classmethod
     def from_env(cls, service_name: str = "") -> CircuitBreakerConfig:
@@ -164,6 +191,14 @@ class CircuitBreaker:
     when failures exceed the configured threshold, preventing further calls
     to a failing service until recovery is attempted.
 
+    Attributes:
+        service_name: Name of the service this circuit breaker protects.
+        config: Configuration for circuit breaker behavior.
+        excluded_exceptions: Optional tuple of exception types that should not
+            count as failures. Useful for excluding business exceptions or
+            system exceptions like KeyboardInterrupt that shouldn't trigger
+            circuit opening.
+
     Usage:
         cb = CircuitBreaker("jira")
 
@@ -184,10 +219,17 @@ class CircuitBreaker:
             except Exception as e:
                 cb.record_failure(e)
                 raise
+
+        # With excluded exceptions
+        cb = CircuitBreaker(
+            "jira",
+            excluded_exceptions=(KeyboardInterrupt, ValidationError)
+        )
     """
 
     service_name: str
     config: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
+    excluded_exceptions: tuple[type[BaseException], ...] = field(default_factory=tuple)
     _state: CircuitState = field(default=CircuitState.CLOSED, init=False)
     _failure_count: int = field(default=0, init=False)
     _success_count: int = field(default=0, init=False)
@@ -208,6 +250,19 @@ class CircuitBreaker:
         """Get current metrics."""
         with self._lock:
             return self._metrics
+
+    def _is_excluded_exception(self, exception: BaseException | None) -> bool:
+        """Check if an exception type is in the excluded exceptions list.
+
+        Args:
+            exception: The exception to check, or None.
+
+        Returns:
+            True if the exception is excluded and should not count as a failure.
+        """
+        if exception is None or not self.excluded_exceptions:
+            return False
+        return isinstance(exception, self.excluded_exceptions)
 
     def _check_state_transition(self) -> None:
         """Check if circuit should transition state based on timeout."""
@@ -290,13 +345,24 @@ class CircuitBreaker:
                 # Reset failure count on success in closed state
                 self._failure_count = 0
 
-    def record_failure(self, exception: Exception | None = None) -> None:
+    def record_failure(self, exception: BaseException | None = None) -> None:
         """Record a failed call.
+
+        If the exception type is in the excluded_exceptions list, the failure
+        will not be recorded and the circuit state will not be affected.
 
         Args:
             exception: Optional exception that caused the failure.
         """
         if not self.config.enabled:
+            return
+
+        # Skip recording if this exception type is excluded
+        if self._is_excluded_exception(exception):
+            logger.debug(
+                f"[CIRCUIT_BREAKER] {self.service_name}: Exception {type(exception).__name__} "
+                "is excluded, not recording as failure"
+            )
             return
 
         with self._lock:
@@ -369,6 +435,10 @@ class CircuitBreaker:
 
         Raises:
             CircuitBreakerError: If circuit is open and request is rejected.
+
+        Note:
+            Exceptions in excluded_exceptions will be re-raised but will not
+            count as failures for circuit breaker state transitions.
         """
 
         @wraps(func)
@@ -379,7 +449,7 @@ class CircuitBreaker:
                 result = func(*args, **kwargs)
                 self.record_success()
                 return result
-            except Exception as e:
+            except BaseException as e:
                 self.record_failure(e)
                 raise
 
@@ -397,11 +467,16 @@ class CircuitBreaker:
         exc_val: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Context manager exit - record success or failure."""
+        """Context manager exit - record success or failure.
+
+        Note:
+            Exceptions in excluded_exceptions will not count as failures
+            for circuit breaker state transitions.
+        """
         if exc_type is None:
             self.record_success()
         else:
-            self.record_failure(exc_val if isinstance(exc_val, Exception) else None)
+            self.record_failure(exc_val)
 
 
 class CircuitBreakerRegistry:
@@ -426,12 +501,15 @@ class CircuitBreakerRegistry:
         self,
         service_name: str,
         config: CircuitBreakerConfig | None = None,
+        excluded_exceptions: tuple[type[BaseException], ...] | None = None,
     ) -> CircuitBreaker:
         """Get or create a circuit breaker for a service.
 
         Args:
             service_name: Name of the service.
             config: Optional configuration. If not provided, loads from env.
+            excluded_exceptions: Optional tuple of exception types that should
+                not count as failures. Only used when creating a new circuit breaker.
 
         Returns:
             CircuitBreaker instance for the service.
@@ -443,6 +521,7 @@ class CircuitBreakerRegistry:
                 self._breakers[service_name] = CircuitBreaker(
                     service_name=service_name,
                     config=config,
+                    excluded_exceptions=excluded_exceptions or (),
                 )
                 logger.info(
                     f"[CIRCUIT_BREAKER] Created circuit breaker for {service_name}: "
@@ -483,6 +562,7 @@ def get_circuit_breaker_registry() -> CircuitBreakerRegistry:
 def get_circuit_breaker(
     service_name: str,
     config: CircuitBreakerConfig | None = None,
+    excluded_exceptions: tuple[type[BaseException], ...] | None = None,
 ) -> CircuitBreaker:
     """Get a circuit breaker from the global registry.
 
@@ -492,8 +572,10 @@ def get_circuit_breaker(
     Args:
         service_name: Name of the service (e.g., "jira", "github", "claude").
         config: Optional configuration override.
+        excluded_exceptions: Optional tuple of exception types that should
+            not count as failures.
 
     Returns:
         CircuitBreaker instance for the service.
     """
-    return _global_registry.get(service_name, config)
+    return _global_registry.get(service_name, config, excluded_exceptions)
