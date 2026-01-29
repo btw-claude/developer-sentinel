@@ -530,10 +530,18 @@ class ClaudeRateLimiter:
             None
 
         Note:
-            This context manager uses a lock to ensure thread-safety. Any requests
-            that start while metrics are paused will not have their metrics recorded.
-            Requests that were already in progress when pause_metrics() was entered
-            may still record metrics for their completion.
+            This context manager achieves thread-safety through object reference
+            swapping rather than an explicit lock. The atomicity of this operation
+            relies on CPython's Global Interpreter Lock (GIL), which ensures that
+            attribute assignment is atomic. Any requests that start while metrics
+            are paused will not have their metrics recorded. Requests that were
+            already in progress when pause_metrics() was entered may still record
+            metrics for their completion.
+
+            This implementation may not be thread-safe on non-CPython interpreters
+            that lack a GIL (e.g., Jython, IronPython, or future GIL-free CPython).
+            If cross-interpreter compatibility is required, an explicit lock should
+            be added.
         """
         # Store the current metrics object reference
         old_metrics = self._metrics
