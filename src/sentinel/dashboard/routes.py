@@ -435,14 +435,16 @@ def create_routes(
         /health/ready for readiness checks with dependency verification.
 
         This endpoint includes a Deprecation header per RFC 8594 to signal
-        to API consumers that this endpoint is deprecated.
+        to API consumers that this endpoint is deprecated. The Sunset header
+        indicates the planned removal date.
 
         Returns:
             JSON with health status.
         """
         # Add Deprecation header per RFC 8594 to signal this endpoint is deprecated
-        # The "@deprecated" value indicates the resource is deprecated without a specific date
-        response.headers["Deprecation"] = "@deprecated"
+        # Using HTTP-date format for the sunset date per RFC 8594
+        response.headers["Deprecation"] = "Sat, 01 Jun 2026 00:00:00 GMT"
+        response.headers["Sunset"] = "Sat, 01 Jun 2026 00:00:00 GMT"
         response.headers["Link"] = '</health/live>; rel="successor-version", </health/ready>; rel="successor-version"'
         return {"status": "healthy"}
 
