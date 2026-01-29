@@ -262,6 +262,10 @@ class ClaudeRateLimiter:
             await make_api_call()
     """
 
+    # Default timeout for queued requests (in seconds).
+    # Used when timeout is not specified and strategy is QUEUE.
+    DEFAULT_QUEUE_TIMEOUT: float = 60.0
+
     def __init__(
         self,
         requests_per_minute: int = 60,
@@ -339,7 +343,11 @@ class ClaudeRateLimiter:
             return True
 
         if timeout is None:
-            timeout = 0.0 if self._strategy == RateLimitStrategy.REJECT else 60.0
+            timeout = (
+                0.0
+                if self._strategy == RateLimitStrategy.REJECT
+                else self.DEFAULT_QUEUE_TIMEOUT
+            )
 
         start_time = time.monotonic()
         deadline = start_time + timeout
@@ -409,7 +417,11 @@ class ClaudeRateLimiter:
             return True
 
         if timeout is None:
-            timeout = 0.0 if self._strategy == RateLimitStrategy.REJECT else 60.0
+            timeout = (
+                0.0
+                if self._strategy == RateLimitStrategy.REJECT
+                else self.DEFAULT_QUEUE_TIMEOUT
+            )
 
         start_time = time.monotonic()
         deadline = start_time + timeout
@@ -479,5 +491,12 @@ class ClaudeRateLimiter:
         return metrics
 
     def reset_metrics(self) -> None:
-        """Reset collected metrics to zero."""
+        """Reset collected metrics to zero.
+
+        Note:
+            This method should only be called when no requests are currently
+            in flight to avoid potential race conditions with metrics recording.
+            Calling this while requests are being processed may result in
+            inconsistent metrics state.
+        """
         self._metrics = RateLimiterMetrics()
