@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sentinel.config import Config
-from sentinel.dashboard.routes import HEALTH_ENDPOINT_SUNSET_DATE
+from sentinel.dashboard.routes import HEALTH_ENDPOINT_SUNSET_DATE, create_routes
 from sentinel.dashboard.state import (
     ExecutionStateSnapshot,
     OrchestrationInfo,
@@ -1337,6 +1337,8 @@ class TestCreateRoutesLogging:
             # Verify debug was called with correct arguments
             mock_logger.debug.assert_called_once()
             call_args = mock_logger.debug.call_args
+            # Verify call_args tuple has expected number of elements for clearer error messages
+            assert len(call_args[0]) >= 5, f"Expected at least 5 positional args, got {len(call_args[0])}"
             # Check format string contains expected placeholders
             assert "create_routes using %s Config" in call_args[0][0]
             # Check positional arguments: config_source, toggle_cooldown, cache_ttl, cache_maxsize
@@ -1359,6 +1361,8 @@ class TestCreateRoutesLogging:
             # Verify debug was called with correct arguments
             mock_logger.debug.assert_called_once()
             call_args = mock_logger.debug.call_args
+            # Verify call_args tuple has expected number of elements for clearer error messages
+            assert len(call_args[0]) >= 5, f"Expected at least 5 positional args, got {len(call_args[0])}"
             # Check format string contains expected placeholders
             assert "create_routes using %s Config" in call_args[0][0]
             # Check positional arguments: config_source, toggle_cooldown, cache_ttl, cache_maxsize
@@ -1380,6 +1384,8 @@ class TestCreateRoutesLogging:
 
             # Verify the toggle_cooldown value is passed correctly
             call_args = mock_logger.debug.call_args
+            # Verify call_args tuple has expected number of elements for clearer error messages
+            assert len(call_args[0]) >= 3, f"Expected at least 3 positional args, got {len(call_args[0])}"
             assert call_args[0][2] == 3.5
 
     def test_create_routes_logs_cache_ttl_value(
@@ -1395,6 +1401,8 @@ class TestCreateRoutesLogging:
 
             # Verify the cache_ttl value is passed correctly
             call_args = mock_logger.debug.call_args
+            # Verify call_args tuple has expected number of elements for clearer error messages
+            assert len(call_args[0]) >= 4, f"Expected at least 4 positional args, got {len(call_args[0])}"
             assert call_args[0][3] == 1800
 
     def test_create_routes_logs_cache_maxsize_value(
@@ -1410,4 +1418,6 @@ class TestCreateRoutesLogging:
 
             # Verify the cache_maxsize value is passed correctly
             call_args = mock_logger.debug.call_args
+            # Verify call_args tuple has expected number of elements for clearer error messages
+            assert len(call_args[0]) >= 5, f"Expected at least 5 positional args, got {len(call_args[0])}"
             assert call_args[0][4] == 20000
