@@ -18,6 +18,7 @@ from sentinel.config import (
     _parse_port,
     _parse_positive_int,
     _validate_agent_type,
+    _validate_branch_name,
     _validate_cursor_mode,
     _validate_log_level,
     load_config,
@@ -1024,3 +1025,215 @@ class TestRateLimitCacheMaxsizeConfig:
 
         assert config.rate_limit_cache_maxsize == 10000
         assert "not positive" in caplog.text
+
+
+class TestValidateBranchName:
+    """Tests for _validate_branch_name helper function."""
+
+    def test_valid_branch_names(self) -> None:
+        """Test that valid branch names are accepted."""
+        assert _validate_branch_name("main") == "main"
+        assert _validate_branch_name("master") == "master"
+        assert _validate_branch_name("develop") == "develop"
+        assert _validate_branch_name("feature/test") == "feature/test"
+        assert _validate_branch_name("release-1.0") == "release-1.0"
+        assert _validate_branch_name("hotfix_123") == "hotfix_123"
+
+    def test_empty_string_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that empty string uses the default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("")
+        assert result == "main"
+        assert "empty branch name" in caplog.text
+
+    def test_whitespace_only_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that whitespace-only string uses the default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("   ")
+        assert result == "main"
+        assert "empty branch name" in caplog.text
+
+    def test_starts_with_hyphen_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name starting with hyphen uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("-feature")
+        assert result == "main"
+        assert "cannot start with '-' or '.'" in caplog.text
+
+    def test_starts_with_period_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name starting with period uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name(".hidden")
+        assert result == "main"
+        assert "cannot start with '-' or '.'" in caplog.text
+
+    def test_ends_with_period_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name ending with period uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature.")
+        assert result == "main"
+        assert "cannot end with '.' or '/'" in caplog.text
+
+    def test_ends_with_slash_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name ending with slash uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature/")
+        assert result == "main"
+        assert "cannot end with '.' or '/'" in caplog.text
+
+    def test_contains_space_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name containing space uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature test")
+        assert result == "main"
+        assert "invalid characters" in caplog.text
+
+    def test_contains_tilde_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name containing tilde uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature~test")
+        assert result == "main"
+        assert "invalid characters" in caplog.text
+
+    def test_contains_caret_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name containing caret uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature^test")
+        assert result == "main"
+        assert "invalid characters" in caplog.text
+
+    def test_contains_colon_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name containing colon uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature:test")
+        assert result == "main"
+        assert "invalid characters" in caplog.text
+
+    def test_contains_question_mark_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name containing question mark uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature?test")
+        assert result == "main"
+        assert "invalid characters" in caplog.text
+
+    def test_contains_asterisk_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name containing asterisk uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature*test")
+        assert result == "main"
+        assert "invalid characters" in caplog.text
+
+    def test_contains_open_bracket_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name containing open bracket uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature[test")
+        assert result == "main"
+        assert "invalid characters" in caplog.text
+
+    def test_contains_backslash_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name containing backslash uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature\\test")
+        assert result == "main"
+        assert "invalid characters" in caplog.text
+
+    def test_contains_at_brace_sequence_uses_default(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that branch name containing @{ sequence uses default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature@{test")
+        assert result == "main"
+        assert "cannot contain '@{'" in caplog.text
+
+    def test_at_without_brace_is_valid(self) -> None:
+        """Test that @ without following { is valid."""
+        assert _validate_branch_name("feature@test") == "feature@test"
+
+    def test_consecutive_periods_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that consecutive periods use default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature..test")
+        assert result == "main"
+        assert "cannot contain '..' or '//'" in caplog.text
+
+    def test_consecutive_slashes_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that consecutive slashes use default."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature//test")
+        assert result == "main"
+        assert "cannot contain '..' or '//'" in caplog.text
+
+    def test_custom_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that custom default is used when provided."""
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("", default="develop")
+        assert result == "develop"
+
+
+class TestDefaultBaseBranchConfig:
+    """Tests for default_base_branch configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that default_base_branch defaults to 'main'."""
+        monkeypatch.delenv("SENTINEL_DEFAULT_BASE_BRANCH", raising=False)
+
+        config = load_config()
+
+        assert config.default_base_branch == "main"
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that default_base_branch loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_DEFAULT_BASE_BRANCH", "develop")
+
+        config = load_config()
+
+        assert config.default_base_branch == "develop"
+
+    def test_master_branch_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that 'master' is a valid branch name."""
+        monkeypatch.setenv("SENTINEL_DEFAULT_BASE_BRANCH", "master")
+
+        config = load_config()
+
+        assert config.default_base_branch == "master"
+
+    def test_feature_branch_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that feature branch names are valid."""
+        monkeypatch.setenv("SENTINEL_DEFAULT_BASE_BRANCH", "feature/test")
+
+        config = load_config()
+
+        assert config.default_base_branch == "feature/test"
+
+    def test_invalid_branch_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid branch names use the default."""
+        monkeypatch.setenv("SENTINEL_DEFAULT_BASE_BRANCH", "feature..test")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.default_base_branch == "main"
+        assert "Invalid SENTINEL_DEFAULT_BASE_BRANCH" in caplog.text
+
+    def test_empty_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that empty value uses the default."""
+        monkeypatch.setenv("SENTINEL_DEFAULT_BASE_BRANCH", "")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.default_base_branch == "main"
+        assert "empty branch name" in caplog.text
+
+    def test_whitespace_trimmed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that whitespace is trimmed from branch names."""
+        monkeypatch.setenv("SENTINEL_DEFAULT_BASE_BRANCH", "  develop  ")
+
+        config = load_config()
+
+        assert config.default_base_branch == "develop"

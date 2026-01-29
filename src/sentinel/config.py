@@ -132,6 +132,11 @@ class Config:
     # Timeout in seconds for individual health checks (default: 5.0)
     health_check_timeout: float = 5.0
 
+    # Base branch configuration
+    # Default base branch for new branch creation (default: "main")
+    # Can be overridden per-orchestration in GitHubContext.base_branch
+    default_base_branch: str = "main"
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -389,6 +394,90 @@ def _parse_warning_threshold(value: str, name: str, default: float) -> float:
         return default
 
 
+def _validate_branch_name(value: str, default: str = "main") -> str:
+    """Validate and normalize a git branch name string.
+
+    Git branch naming rules enforced:
+    - Cannot start with a hyphen (-) or period (.)
+    - Cannot end with a period (.) or forward slash (/)
+    - Cannot contain: space, ~, ^, :, ?, *, [, ], \\, @{
+    - Cannot contain consecutive periods (..) or forward slashes (//)
+    - Cannot be empty
+
+    Args:
+        value: The branch name string to validate.
+        default: The default value to use if invalid.
+
+    Returns:
+        The validated branch name, or the default if invalid.
+
+    Logs a warning if the value is invalid.
+    """
+    if not value or not value.strip():
+        logging.warning(
+            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: empty branch name, using default '%s'",
+            default,
+        )
+        return default
+
+    value = value.strip()
+
+    # Check for invalid starting characters
+    if value.startswith("-") or value.startswith("."):
+        logging.warning(
+            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' cannot start with '-' or '.', "
+            "using default '%s'",
+            value,
+            default,
+        )
+        return default
+
+    # Check for invalid ending characters
+    if value.endswith(".") or value.endswith("/"):
+        logging.warning(
+            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' cannot end with '.' or '/', "
+            "using default '%s'",
+            value,
+            default,
+        )
+        return default
+
+    # Check for invalid characters
+    invalid_chars = set(" ~^:?*[]\\")
+    found_invalid = [c for c in value if c in invalid_chars]
+    if found_invalid:
+        logging.warning(
+            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' contains invalid characters %s, "
+            "using default '%s'",
+            value,
+            found_invalid,
+            default,
+        )
+        return default
+
+    # Check for @{ sequence (reflog syntax)
+    if "@{" in value:
+        logging.warning(
+            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' cannot contain '@{', "
+            "using default '%s'",
+            value,
+            default,
+        )
+        return default
+
+    # Check for consecutive periods or slashes
+    if ".." in value or "//" in value:
+        logging.warning(
+            "Invalid SENTINEL_DEFAULT_BASE_BRANCH: '%s' cannot contain '..' or '//', "
+            "using default '%s'",
+            value,
+            default,
+        )
+        return default
+
+    return value
+
+
 def load_config(env_file: Path | None = None) -> Config:
     """Load configuration from environment variables.
 
@@ -568,6 +657,11 @@ def load_config(env_file: Path | None = None) -> Config:
         5.0,
     )
 
+    # Parse default base branch
+    default_base_branch = _validate_branch_name(
+        os.getenv("SENTINEL_DEFAULT_BASE_BRANCH", "main"),
+    )
+
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
@@ -610,4 +704,5 @@ def load_config(env_file: Path | None = None) -> Config:
         circuit_breaker_half_open_max_calls=circuit_breaker_half_open_max_calls,
         health_check_enabled=health_check_enabled,
         health_check_timeout=health_check_timeout,
+        default_base_branch=default_base_branch,
     )
