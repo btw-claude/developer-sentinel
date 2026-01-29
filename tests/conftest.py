@@ -138,6 +138,10 @@ def test_app_factory() -> TestAppFactory:
             with TestClient(app) as client:
                 response = client.get("/health/live")
                 assert response.status_code == 200
+
+        With optional config parameter for rate limiting settings::
+
+            app = test_app_factory(accessor, config=make_config())
     """
     return create_test_app
 
