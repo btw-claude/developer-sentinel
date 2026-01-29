@@ -54,7 +54,13 @@ if TYPE_CHECKING:
 from sentinel.deduplication import build_github_trigger_key
 
 # Re-export helpers for backwards compatibility with existing test imports
-from tests.helpers import make_config, make_issue, make_orchestration, set_mtime_in_future
+from tests.helpers import (
+    assert_call_args_length,
+    make_config,
+    make_issue,
+    make_orchestration,
+    set_mtime_in_future,
+)
 from tests.mocks import (
     MockAgentClient,
     MockAgentClientFactory,
@@ -78,6 +84,7 @@ __all__ = [
     "MockTagClient",
     "TrackingAgentClient",
     # Helpers (alphabetized)
+    "assert_call_args_length",
     "build_github_trigger_key",
     "create_test_app",
     "make_config",
