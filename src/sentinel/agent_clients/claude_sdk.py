@@ -31,6 +31,7 @@ from sentinel.agent_clients.base import (
 )
 from sentinel.config import Config
 from sentinel.logging import generate_log_filename, get_logger
+from sentinel.rate_limiter import ClaudeRateLimiter, RateLimitExceededError
 
 logger = get_logger(__name__)
 
@@ -436,6 +437,7 @@ class ClaudeSdkAgentClient(AgentClient):
         log_base_dir: Path | None = None,
         disable_streaming_logs: bool | None = None,
         shutdown_controller: ShutdownController | None = None,
+        rate_limiter: ClaudeRateLimiter | None = None,
     ) -> None:
         """Initialize the Claude SDK agent client.
 
@@ -448,6 +450,9 @@ class ClaudeSdkAgentClient(AgentClient):
             shutdown_controller: Optional ShutdownController for shutdown handling.
                 If not provided, uses the default shared controller. Inject a
                 custom controller for testing or isolated shutdown handling.
+            rate_limiter: Optional rate limiter for Claude API calls.
+                If not provided, creates one from config. Inject a custom rate
+                limiter for testing or to share a limiter across clients.
         """
         self.config = config
         self.base_workdir = base_workdir
@@ -464,11 +469,31 @@ class ClaudeSdkAgentClient(AgentClient):
             if shutdown_controller is not None
             else _default_shutdown_controller
         )
+        # Use provided rate limiter or create from config
+        self._rate_limiter = (
+            rate_limiter
+            if rate_limiter is not None
+            else ClaudeRateLimiter.from_config(config)
+        )
 
     @property
     def agent_type(self) -> AgentType:
         """Return the type of agent this client implements."""
         return "claude"
+
+    @property
+    def rate_limiter(self) -> ClaudeRateLimiter:
+        """Get the rate limiter for this client."""
+        return self._rate_limiter
+
+    def get_rate_limit_metrics(self) -> dict[str, Any]:
+        """Get current rate limiter metrics.
+
+        Returns:
+            Dictionary with rate limit metrics including request counts,
+            timing information, and bucket status.
+        """
+        return self._rate_limiter.get_metrics()
 
     def _create_workdir(self, issue_key: str) -> Path:
         if self.base_workdir is None:
@@ -661,6 +686,12 @@ class ClaudeSdkAgentClient(AgentClient):
         self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None
     ) -> str:
         try:
+            # Acquire rate limit permit before making API call
+            if not await self._rate_limiter.acquire_async(timeout=timeout):
+                raise AgentClientError(
+                    "Claude API rate limit timeout - could not acquire permit"
+                )
+
             coro = _run_query(
                 prompt,
                 model,
@@ -670,6 +701,8 @@ class ClaudeSdkAgentClient(AgentClient):
             response = await asyncio.wait_for(coro, timeout=timeout) if timeout else await coro
             logger.info(f"Agent execution completed, response length: {len(response)}")
             return response
+        except RateLimitExceededError as e:
+            raise AgentClientError(f"Claude API rate limit exceeded: {e}") from e
         except ClaudeProcessInterruptedError:
             raise
         except asyncio.TimeoutError:
@@ -740,6 +773,16 @@ class ClaudeSdkAgentClient(AgentClient):
         self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None, issue_key: str, orch_name: str
     ) -> str:
         assert self.log_base_dir is not None
+
+        # Acquire rate limit permit before making API call
+        try:
+            if not await self._rate_limiter.acquire_async(timeout=timeout):
+                raise AgentClientError(
+                    "Claude API rate limit timeout - could not acquire permit"
+                )
+        except RateLimitExceededError as e:
+            raise AgentClientError(f"Claude API rate limit exceeded: {e}") from e
+
         start_time = datetime.now()
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -842,7 +885,11 @@ class ClaudeSdkAgentClient(AgentClient):
             with open(log_path, "a", encoding="utf-8") as f:
                 # Write JSON metrics export for programmatic access
                 f.write(f"\n{sep}\nMETRICS JSON\n{sep}\n\n")
-                f.write(json.dumps(metrics.to_dict(), indent=2))
+                all_metrics = {
+                    "timing": metrics.to_dict(),
+                    "rate_limit": self._rate_limiter.get_metrics(),
+                }
+                f.write(json.dumps(all_metrics, indent=2))
                 f.write("\n")
                 # Write execution summary
                 f.write(f"\n{sep}\nEXECUTION SUMMARY\n{sep}\n\nStatus:         {status}\nEnd Time:       {end_time.isoformat()}\nDuration:       {duration:.2f}s\n\n{sep}\nEND OF LOG\n{sep}\n")
