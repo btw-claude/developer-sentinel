@@ -8,15 +8,15 @@ import shutil
 import time
 import unicodedata
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from sentinel.github_poller import GitHubIssue
 from sentinel.logging import get_logger, log_agent_summary
-from sentinel.orchestration import Orchestration, Outcome, RetryConfig
+from sentinel.orchestration import GitHubContext, Orchestration, Outcome, RetryConfig
 from sentinel.poller import JiraIssue
 
 # Type alias for issues from any supported source
@@ -66,6 +66,226 @@ def slugify(text: str) -> str:
     slug = slug.strip("-.")
 
     return slug
+
+
+def _compute_slug(value: str) -> str:
+    """Compute a slug for computed fields."""
+    return slugify(value)
+
+
+def _format_comments(comments: list[str], limit: int = 3, max_length: int = 500) -> str:
+    """Format comments for template variable.
+
+    Args:
+        comments: List of comment strings.
+        limit: Maximum number of comments to include (from the end).
+        max_length: Maximum length per comment before truncation.
+
+    Returns:
+        Formatted string with numbered comments.
+    """
+    if not comments:
+        return ""
+
+    comment_parts = []
+    for i, comment in enumerate(comments[-limit:], 1):
+        if len(comment) > max_length:
+            comment_parts.append(f"{i}. {comment[:max_length]}...")
+        else:
+            comment_parts.append(f"{i}. {comment}")
+    return "\n".join(comment_parts)
+
+
+def _format_list(items: list[str] | None) -> str:
+    """Format a list as a comma-separated string."""
+    return ", ".join(items) if items else ""
+
+
+@dataclass
+class TemplateContext:
+    """Data-driven template context using dataclass introspection.
+
+    This dataclass holds all template variables available for prompt and branch
+    pattern expansion. Using dataclass introspection, we can automatically
+    generate the variables dict without manual mapping.
+
+    Computed fields (marked with metadata) are derived from other fields:
+    - jira_summary_slug: Derived from jira_summary
+    - github_issue_title_slug: Derived from github_issue_title
+    - jira_labels (formatted): Derived from _jira_labels_list
+    - jira_comments (formatted): Derived from _jira_comments_list
+    - jira_links (formatted): Derived from _jira_links_list
+    - github_issue_assignees (formatted): Derived from _github_issue_assignees_list
+    - github_issue_labels (formatted): Derived from _github_issue_labels_list
+    """
+
+    # GitHub repository context (always available)
+    github_host: str = ""
+    github_org: str = ""
+    github_repo: str = ""
+
+    # Jira context
+    jira_issue_key: str = ""
+    jira_summary: str = ""
+    jira_description: str = ""
+    jira_status: str = ""
+    jira_assignee: str = ""
+    jira_epic_key: str = ""
+    jira_parent_key: str = ""
+
+    # Jira computed/formatted fields (source lists stored privately)
+    _jira_labels_list: list[str] = field(default_factory=list, repr=False)
+    _jira_comments_list: list[str] = field(default_factory=list, repr=False)
+    _jira_links_list: list[str] = field(default_factory=list, repr=False)
+
+    # GitHub Issue context
+    github_issue_number: str = ""
+    github_issue_title: str = ""
+    github_issue_body: str = ""
+    github_issue_state: str = ""
+    github_issue_author: str = ""
+    github_issue_url: str = ""
+    github_is_pr: str = ""
+    github_pr_head: str = ""
+    github_pr_base: str = ""
+    github_pr_draft: str = ""
+    github_parent_issue_number: str = ""
+
+    # GitHub computed/formatted fields (source lists stored privately)
+    _github_issue_assignees_list: list[str] = field(default_factory=list, repr=False)
+    _github_issue_labels_list: list[str] = field(default_factory=list, repr=False)
+
+    def to_dict(self) -> dict[str, str]:
+        """Convert to template variables dict using dataclass introspection.
+
+        Automatically iterates over all fields and includes:
+        - Regular string fields (excluding private _ prefixed ones)
+        - Computed slug fields
+        - Formatted list fields
+
+        Returns:
+            Dict mapping template variable names to string values.
+        """
+        variables: dict[str, str] = {}
+
+        for f in fields(self):
+            # Skip private fields (they're source data for computed fields)
+            if f.name.startswith("_"):
+                continue
+
+            value = getattr(self, f.name)
+            variables[f.name] = value if isinstance(value, str) else str(value)
+
+        # Add computed slug fields
+        variables["jira_summary_slug"] = _compute_slug(self.jira_summary)
+        variables["github_issue_title_slug"] = _compute_slug(self.github_issue_title)
+
+        # Add formatted list fields
+        variables["jira_labels"] = _format_list(self._jira_labels_list)
+        variables["jira_comments"] = _format_comments(self._jira_comments_list)
+        variables["jira_links"] = _format_list(self._jira_links_list)
+        variables["github_issue_assignees"] = _format_list(self._github_issue_assignees_list)
+        variables["github_issue_labels"] = _format_list(self._github_issue_labels_list)
+
+        return variables
+
+    @classmethod
+    def from_jira_issue(
+        cls, issue: JiraIssue, github: GitHubContext | None = None
+    ) -> "TemplateContext":
+        """Create a TemplateContext from a Jira issue.
+
+        Args:
+            issue: The Jira issue to extract data from.
+            github: Optional GitHub context from orchestration.
+
+        Returns:
+            TemplateContext populated with Jira issue data.
+        """
+        return cls(
+            # GitHub repository context
+            github_host=github.host if github else "",
+            github_org=github.org if github else "",
+            github_repo=github.repo if github else "",
+            # Jira context
+            jira_issue_key=issue.key,
+            jira_summary=issue.summary,
+            jira_description=issue.description or "",
+            jira_status=issue.status or "",
+            jira_assignee=issue.assignee or "",
+            jira_epic_key=issue.epic_key or "",
+            jira_parent_key=issue.parent_key or "",
+            _jira_labels_list=issue.labels or [],
+            _jira_comments_list=issue.comments or [],
+            _jira_links_list=issue.links or [],
+            # GitHub Issue context (empty for Jira issues)
+            github_issue_number="",
+            github_issue_title="",
+            github_issue_body="",
+            github_issue_state="",
+            github_issue_author="",
+            github_issue_url="",
+            github_is_pr="",
+            github_pr_head="",
+            github_pr_base="",
+            github_pr_draft="",
+            github_parent_issue_number="",
+            _github_issue_assignees_list=[],
+            _github_issue_labels_list=[],
+        )
+
+    @classmethod
+    def from_github_issue(
+        cls, issue: GitHubIssue, github: GitHubContext | None = None
+    ) -> "TemplateContext":
+        """Create a TemplateContext from a GitHub issue.
+
+        Args:
+            issue: The GitHub issue to extract data from.
+            github: Optional GitHub context from orchestration.
+
+        Returns:
+            TemplateContext populated with GitHub issue data.
+        """
+        # Build GitHub issue URL if we have the necessary info
+        github_issue_url = ""
+        if github and github.host and github.org and github.repo:
+            github_issue_url = (
+                f"https://{github.host}/{github.org}/{github.repo}/"
+                f"{'pull' if issue.is_pull_request else 'issues'}/{issue.number}"
+            )
+
+        return cls(
+            # GitHub repository context
+            github_host=github.host if github else "",
+            github_org=github.org if github else "",
+            github_repo=github.repo if github else "",
+            # Jira context (empty for GitHub issues)
+            jira_issue_key="",
+            jira_summary="",
+            jira_description="",
+            jira_status="",
+            jira_assignee="",
+            jira_epic_key="",
+            jira_parent_key="",
+            _jira_labels_list=[],
+            _jira_comments_list=[],
+            _jira_links_list=[],
+            # GitHub Issue context
+            github_issue_number=str(issue.number),
+            github_issue_title=issue.title,
+            github_issue_body=issue.body or "",
+            github_issue_state=issue.state,
+            github_issue_author=issue.author,
+            github_issue_url=github_issue_url,
+            github_is_pr=str(issue.is_pull_request).lower(),
+            github_pr_head=issue.head_ref if issue.is_pull_request else "",
+            github_pr_base=issue.base_ref if issue.is_pull_request else "",
+            github_pr_draft=str(issue.draft).lower() if issue.is_pull_request else "",
+            github_parent_issue_number=str(issue.parent_issue_number) if issue.parent_issue_number else "",
+            _github_issue_assignees_list=issue.assignees or [],
+            _github_issue_labels_list=issue.labels or [],
+        )
 
 
 @dataclass
@@ -280,106 +500,30 @@ class AgentExecutor:
     ) -> dict[str, str]:
         """Build template variables dict from issue and orchestration context.
 
+        Uses TemplateContext dataclass with introspection to automatically
+        generate the variables dict. This reduces code duplication and makes
+        it easier to add new template variables.
+
         Returns a dict with keys for Jira context (jira_issue_key, jira_summary,
         jira_summary_slug, etc.) and GitHub context (github_issue_number,
         github_issue_title, github_host, github_org, github_repo, etc.).
         Variables for the non-matching source type are set to empty strings.
         """
-        # Get GitHub context from orchestration
         github = orchestration.agent.github
 
-        # Build base variables dict with GitHub repository context
-        variables: dict[str, str] = {
-            # GitHub repository context
-            "github_host": github.host if github else "",
-            "github_org": github.org if github else "",
-            "github_repo": github.repo if github else "",
-        }
-
         if isinstance(issue, JiraIssue):
-            # Format comments - last 3 comments, each truncated to 500 chars
-            comments_text = ""
-            if issue.comments:
-                comment_parts = []
-                for i, comment in enumerate(issue.comments[-3:], 1):
-                    if len(comment) > 500:
-                        comment_parts.append(f"{i}. {comment[:500]}...")
-                    else:
-                        comment_parts.append(f"{i}. {comment}")
-                comments_text = "\n".join(comment_parts)
-
-            # Add Jira-specific variables
-            variables.update({
-                # Jira context
-                "jira_issue_key": issue.key,
-                "jira_summary": issue.summary,
-                "jira_summary_slug": slugify(issue.summary),
-                "jira_description": issue.description or "",
-                "jira_status": issue.status or "",
-                "jira_assignee": issue.assignee or "",
-                "jira_labels": ", ".join(issue.labels) if issue.labels else "",
-                "jira_comments": comments_text,
-                "jira_links": ", ".join(issue.links) if issue.links else "",
-                "jira_epic_key": issue.epic_key or "",
-                "jira_parent_key": issue.parent_key or "",
-                # GitHub Issue variables (empty for Jira issues)
-                "github_issue_number": "",
-                "github_issue_title": "",
-                "github_issue_title_slug": "",
-                "github_issue_body": "",
-                "github_issue_state": "",
-                "github_issue_author": "",
-                "github_issue_assignees": "",
-                "github_issue_labels": "",
-                "github_issue_url": "",
-                "github_is_pr": "",
-                "github_pr_head": "",
-                "github_pr_base": "",
-                "github_pr_draft": "",
-                "github_parent_issue_number": "",
-            })
+            context = TemplateContext.from_jira_issue(issue, github)
         elif isinstance(issue, GitHubIssue):
-            # Build GitHub issue URL if we have the necessary info
-            github_issue_url = ""
-            if github and github.host and github.org and github.repo:
-                github_issue_url = (
-                    f"https://{github.host}/{github.org}/{github.repo}/"
-                    f"{'pull' if issue.is_pull_request else 'issues'}/{issue.number}"
-                )
+            context = TemplateContext.from_github_issue(issue, github)
+        else:
+            # Fallback for unknown issue types - return empty context
+            context = TemplateContext(
+                github_host=github.host if github else "",
+                github_org=github.org if github else "",
+                github_repo=github.repo if github else "",
+            )
 
-            # Add GitHub Issue-specific variables
-            variables.update({
-                # GitHub Issue context
-                "github_issue_number": str(issue.number),
-                "github_issue_title": issue.title,
-                "github_issue_title_slug": slugify(issue.title),
-                "github_issue_body": issue.body or "",
-                "github_issue_state": issue.state,
-                "github_issue_author": issue.author,
-                "github_issue_assignees": ", ".join(issue.assignees) if issue.assignees else "",
-                "github_issue_labels": ", ".join(issue.labels) if issue.labels else "",
-                "github_issue_url": github_issue_url,
-                # PR-specific fields
-                "github_is_pr": str(issue.is_pull_request).lower(),
-                "github_pr_head": issue.head_ref if issue.is_pull_request else "",
-                "github_pr_base": issue.base_ref if issue.is_pull_request else "",
-                "github_pr_draft": str(issue.draft).lower() if issue.is_pull_request else "",
-                "github_parent_issue_number": str(issue.parent_issue_number) if issue.parent_issue_number else "",
-                # Jira variables (empty for GitHub issues)
-                "jira_issue_key": "",
-                "jira_summary": "",
-                "jira_summary_slug": "",
-                "jira_description": "",
-                "jira_status": "",
-                "jira_assignee": "",
-                "jira_labels": "",
-                "jira_comments": "",
-                "jira_links": "",
-                "jira_epic_key": "",
-                "jira_parent_key": "",
-            })
-
-        return variables
+        return context.to_dict()
 
     def _expand_branch_pattern(
         self, issue: AnyIssue, orchestration: Orchestration
