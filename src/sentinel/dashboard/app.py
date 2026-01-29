@@ -157,8 +157,8 @@ def create_app(
     # Create state accessor for read-only access to Sentinel state
     state_accessor = SentinelStateAccessor(sentinel)
 
-    # Create and include routes
-    dashboard_routes = create_routes(state_accessor)
+    # Create and include routes with config for rate limiting
+    dashboard_routes = create_routes(state_accessor, config=sentinel.config)
     app.include_router(dashboard_routes)
 
     return app
