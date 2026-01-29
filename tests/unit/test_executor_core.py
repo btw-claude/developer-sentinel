@@ -315,8 +315,14 @@ class TestAgentExecutorExpandBranchPattern:
 
         assert result == "fix/123"
 
-    def test_expands_jira_summary(self) -> None:
-        """Should expand {jira_summary} in branch pattern."""
+    def test_expands_jira_summary_rejects_spaces(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Should reject {jira_summary} that contains spaces.
+
+        Raw summary text with spaces produces invalid branch names.
+        Users should use {jira_summary_slug} for branch-safe names.
+        Runtime validation now correctly rejects these patterns.
+        """
+        import logging
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="DS-123", summary="Add login button")
@@ -326,12 +332,24 @@ class TestAgentExecutorExpandBranchPattern:
             )
         )
 
-        result = executor._expand_branch_pattern(issue, orch)
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
 
-        assert result == "feature/Add login button"
+        # Spaces in branch names are invalid
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
+        assert "invalid characters" in caplog.text
 
-    def test_expands_github_issue_title(self) -> None:
-        """Should expand {github_issue_title} in branch pattern."""
+    def test_expands_github_issue_title_rejects_spaces(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should reject {github_issue_title} that contains spaces.
+
+        Raw issue title text with spaces produces invalid branch names.
+        Users should use {github_issue_title_slug} for branch-safe names.
+        Runtime validation now correctly rejects these patterns.
+        """
+        import logging
         from sentinel.github_poller import GitHubIssue
 
         client = MockAgentClient()
@@ -343,15 +361,20 @@ class TestAgentExecutorExpandBranchPattern:
             )
         )
 
-        result = executor._expand_branch_pattern(issue, orch)
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
 
-        assert result == "fix/Fix authentication bug"
+        # Spaces in branch names are invalid
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
+        assert "invalid characters" in caplog.text
 
-    def test_expands_multiple_variables(self) -> None:
-        """Should expand multiple variables in branch pattern."""
+    def test_expands_multiple_variables_valid(self) -> None:
+        """Should expand multiple variables in branch pattern when result is valid."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
-        issue = make_issue(key="DS-456", summary="Update docs")
+        # Use a summary without spaces to produce a valid branch name
+        issue = make_issue(key="DS-456", summary="update-docs")
         orch = make_orchestration(
             github=GitHubContext(
                 host="github.com",
@@ -363,7 +386,7 @@ class TestAgentExecutorExpandBranchPattern:
 
         result = executor._expand_branch_pattern(issue, orch)
 
-        assert result == "DS-456-Update docs"
+        assert result == "DS-456-update-docs"
 
     def test_preserves_unknown_variables(self) -> None:
         """Should preserve unknown variables as-is."""
@@ -398,8 +421,16 @@ class TestAgentExecutorExpandBranchPattern:
 
         assert result == "static-branch-name"
 
-    def test_github_issue_jira_variables_empty(self) -> None:
-        """Jira variables should be empty for GitHub issues."""
+    def test_github_issue_jira_variables_empty_rejected(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should reject pattern when Jira variables produce trailing slash.
+
+        When using Jira-specific variables with GitHub issues, they produce
+        empty strings which can result in trailing slashes - invalid branch names.
+        Runtime validation now correctly rejects this pattern.
+        """
+        import logging
         from sentinel.github_poller import GitHubIssue
 
         client = MockAgentClient()
@@ -414,12 +445,23 @@ class TestAgentExecutorExpandBranchPattern:
             )
         )
 
-        result = executor._expand_branch_pattern(issue, orch)
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
 
-        assert result == "feature/"
+        # Trailing slash is invalid
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
 
-    def test_jira_issue_github_variables_empty(self) -> None:
-        """GitHub Issue variables should be empty for Jira issues."""
+    def test_jira_issue_github_variables_empty_rejected(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should reject pattern when GitHub variables produce trailing slash.
+
+        When using GitHub-specific variables with Jira issues, they produce
+        empty strings which can result in trailing slashes - invalid branch names.
+        Runtime validation now correctly rejects this pattern.
+        """
+        import logging
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="DS-123")
@@ -432,9 +474,12 @@ class TestAgentExecutorExpandBranchPattern:
             )
         )
 
-        result = executor._expand_branch_pattern(issue, orch)
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
 
-        assert result == "fix/"
+        # Trailing slash is invalid
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
 
 
 class TestAgentExecutorMatchesPattern:

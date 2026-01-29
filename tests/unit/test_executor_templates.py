@@ -223,8 +223,16 @@ class TestParentEpicBranchPatternExpansion:
 
         assert result == "fix/10/42"
 
-    def test_expand_branch_pattern_epic_empty_when_none(self, executor: AgentExecutor) -> None:
-        """Branch pattern should have empty value when epic_key is None."""
+    def test_expand_branch_pattern_epic_empty_when_none(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Branch pattern should be rejected when empty epic produces consecutive slashes.
+
+        When epic_key is None, it produces an empty string which results in
+        'feature//DS-123' - consecutive slashes are invalid git branch names.
+        Runtime validation now correctly rejects this pattern.
+        """
+        import logging
         issue = JiraIssue(key="DS-123", summary="No epic", epic_key=None)
         orch = make_orchestration(
             github=GitHubContext(
@@ -235,13 +243,24 @@ class TestParentEpicBranchPatternExpansion:
             )
         )
 
-        result = executor._expand_branch_pattern(issue, orch)
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
 
-        # Empty epic_key results in empty string
-        assert result == "feature//DS-123"
+        # Empty epic_key results in consecutive slashes which is invalid
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
+        assert "consecutive" in caplog.text
 
-    def test_expand_branch_pattern_github_parent_empty_when_none(self, executor: AgentExecutor) -> None:
-        """Branch pattern should have empty value when parent_issue_number is None."""
+    def test_expand_branch_pattern_github_parent_empty_when_none(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Branch pattern should be rejected when empty parent produces consecutive slashes.
+
+        When parent_issue_number is None, it produces an empty string which results in
+        'fix//42' - consecutive slashes are invalid git branch names.
+        Runtime validation now correctly rejects this pattern.
+        """
+        import logging
         from sentinel.github_poller import GitHubIssue
 
         issue = GitHubIssue(number=42, title="Top-level", parent_issue_number=None)
@@ -254,10 +273,13 @@ class TestParentEpicBranchPatternExpansion:
             )
         )
 
-        result = executor._expand_branch_pattern(issue, orch)
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
 
-        # Empty parent_issue_number results in empty string
-        assert result == "fix//42"
+        # Empty parent results in consecutive slashes which is invalid
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
+        assert "consecutive" in caplog.text
 
     def test_expand_branch_pattern_multiple_parent_variables(self, executor: AgentExecutor) -> None:
         """Should expand multiple parent/epic variables in complex patterns."""
@@ -296,8 +318,16 @@ class TestParentEpicBranchPatternExpansion:
         # Works fine since jira_issue_key is always present
         assert result == "feature/DS-999"
 
-    def test_expand_branch_pattern_github_parent_jira_variables_empty(self, executor: AgentExecutor) -> None:
-        """Jira parent variables should be empty when used with GitHub issues."""
+    def test_expand_branch_pattern_github_parent_jira_variables_empty(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Branch pattern should be rejected when Jira variable is empty for GitHub issues.
+
+        When using Jira-specific variables with GitHub issues, they produce empty strings
+        which can result in consecutive slashes - invalid git branch names.
+        Runtime validation now correctly rejects this pattern.
+        """
+        import logging
         from sentinel.github_poller import GitHubIssue
 
         issue = GitHubIssue(number=42, title="Fix", parent_issue_number=10)
@@ -310,10 +340,94 @@ class TestParentEpicBranchPatternExpansion:
             )
         )
 
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
+
+        # jira_epic_key is empty for GitHub issues, producing consecutive slashes
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
+        assert "consecutive" in caplog.text
+
+    def test_expand_branch_pattern_runtime_validation_rejects_invalid(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that runtime validation rejects invalid expanded branch names.
+
+        When template substitution produces an invalid branch name
+        (e.g., from a summary with invalid characters), the function
+        should return None and log a warning.
+        """
+        import logging
+        # Create an issue with a summary that contains invalid characters
+        issue = JiraIssue(
+            key="DS-123",
+            summary="Add feature with space",  # Space is invalid in branch names
+        )
+        # The jira_summary_slug should sanitize this, but test with direct summary
+        # Actually, let's test with a pattern that would produce ".." (consecutive dots)
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature..{jira_issue_key}",  # Contains .. which is invalid
+            )
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
+
+        # Should return None due to invalid branch name
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
+        assert "consecutive" in caplog.text
+
+    def test_expand_branch_pattern_runtime_validation_rejects_lock_suffix(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that runtime validation rejects branch names ending with .lock.
+
+        Git disallows branch names ending in .lock as they conflict with
+        git's internal lock files. This test verifies the new .lock validation.
+        """
+        import logging
+        issue = JiraIssue(key="DS-123", summary="Test lock issue")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_issue_key}.lock",  # Invalid: ends with .lock
+            )
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
+
+        # Should return None due to .lock suffix
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
+        assert ".lock" in caplog.text
+
+    def test_expand_branch_pattern_runtime_validation_valid_passes(
+        self, executor: AgentExecutor
+    ) -> None:
+        """Test that valid expanded branch names pass runtime validation."""
+        issue = JiraIssue(key="DS-123", summary="Add login button")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_issue_key}/{jira_summary_slug}",
+            )
+        )
+
         result = executor._expand_branch_pattern(issue, orch)
 
-        # jira_epic_key is empty for GitHub issues
-        assert result == "feature//42"
+        # Should succeed with a valid branch name
+        assert result is not None
+        assert result == "feature/DS-123/add-login-button"
 
 
 class TestParentEpicIntegration:
@@ -576,13 +690,19 @@ class TestSlugTemplateVariables:
 
         assert result == "fix/bug-login-fails-priority-high"
 
-    def test_raw_vs_slug_comparison(self) -> None:
-        """Should show difference between raw and slug variables."""
+    def test_raw_vs_slug_comparison(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Should show difference between raw and slug variables.
+
+        Raw variables with spaces produce invalid branch names.
+        Slugified variables produce valid branch-safe names.
+        Runtime validation correctly distinguishes between these.
+        """
+        import logging
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="DS-789", summary="Add User Profile Page")
 
-        # Test raw (non-slugified)
+        # Test raw (non-slugified) - should be rejected due to spaces
         orch_raw = make_orchestration(
             github=GitHubContext(
                 host="github.com",
@@ -591,10 +711,14 @@ class TestSlugTemplateVariables:
                 branch="feature/{jira_summary}",
             )
         )
-        result_raw = executor._expand_branch_pattern(issue, orch_raw)
-        assert result_raw == "feature/Add User Profile Page"  # Contains spaces
+        with caplog.at_level(logging.WARNING):
+            result_raw = executor._expand_branch_pattern(issue, orch_raw)
+        assert result_raw is None  # Rejected due to spaces
+        assert "Invalid expanded branch name" in caplog.text
 
-        # Test slugified
+        caplog.clear()
+
+        # Test slugified - should succeed
         orch_slug = make_orchestration(
             github=GitHubContext(
                 host="github.com",
@@ -606,8 +730,16 @@ class TestSlugTemplateVariables:
         result_slug = executor._expand_branch_pattern(issue, orch_slug)
         assert result_slug == "feature/add-user-profile-page"  # Branch-safe
 
-    def test_cross_source_jira_slug_with_github_issue(self) -> None:
-        """Should return empty slug when using Jira slug with GitHub issue."""
+    def test_cross_source_jira_slug_with_github_issue(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should reject pattern when Jira slug produces trailing slash.
+
+        When using Jira-specific slug variables with GitHub issues, they produce
+        empty strings which result in trailing slashes - invalid branch names.
+        Runtime validation now correctly rejects this pattern.
+        """
+        import logging
         from sentinel.github_poller import GitHubIssue
 
         client = MockAgentClient()
@@ -622,13 +754,23 @@ class TestSlugTemplateVariables:
             )
         )
 
-        result = executor._expand_branch_pattern(issue, orch)
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
 
-        # jira_summary_slug is empty for GitHub issues
-        assert result == "feature/"
+        # jira_summary_slug is empty for GitHub issues, producing trailing slash
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
 
-    def test_cross_source_github_slug_with_jira_issue(self) -> None:
-        """Should return empty slug when using GitHub slug with Jira issue."""
+    def test_cross_source_github_slug_with_jira_issue(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should reject pattern when GitHub slug produces trailing slash.
+
+        When using GitHub-specific slug variables with Jira issues, they produce
+        empty strings which result in trailing slashes - invalid branch names.
+        Runtime validation now correctly rejects this pattern.
+        """
+        import logging
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="DS-123", summary="Some summary")
@@ -641,10 +783,12 @@ class TestSlugTemplateVariables:
             )
         )
 
-        result = executor._expand_branch_pattern(issue, orch)
+        with caplog.at_level(logging.WARNING):
+            result = executor._expand_branch_pattern(issue, orch)
 
-        # github_issue_title_slug is empty for Jira issues
-        assert result == "feature/"
+        # github_issue_title_slug is empty for Jira issues, producing trailing slash
+        assert result is None
+        assert "Invalid expanded branch name" in caplog.text
 
     def test_slug_in_prompt_substitution(self) -> None:
         """Should substitute slug variables in prompts as well."""

@@ -506,6 +506,21 @@ class TestBranchNameValidation:
         result = _validate_branch_name("feature@test")
         assert result.is_valid
 
+    def test_invalid_ends_with_lock(self) -> None:
+        """Test that branch name ending with .lock is invalid.
+
+        Git disallows branch names ending in .lock as they conflict
+        with git's internal lock files.
+        """
+        result = _validate_branch_name("feature.lock")
+        assert not result.is_valid
+        assert ".lock" in result.error_message
+
+    def test_lock_in_middle_is_valid(self) -> None:
+        """Test that .lock in the middle of a branch name is valid."""
+        result = _validate_branch_name("feature.lock.test")
+        assert result.is_valid
+
 
 class TestGitHubContextBranchValidation:
     """Tests for branch validation in GitHub context parsing."""

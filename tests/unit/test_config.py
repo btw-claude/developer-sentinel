@@ -987,14 +987,14 @@ class TestValidateBranchName:
         with caplog.at_level(logging.WARNING):
             result = _validate_branch_name("")
         assert result == "main"
-        assert "empty branch name" in caplog.text
+        assert "cannot be empty" in caplog.text
 
     def test_whitespace_only_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that whitespace-only string uses the default."""
         with caplog.at_level(logging.WARNING):
             result = _validate_branch_name("   ")
         assert result == "main"
-        assert "empty branch name" in caplog.text
+        assert "cannot be empty" in caplog.text
 
     def test_starts_with_hyphen_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that branch name starting with hyphen uses default."""
@@ -1087,7 +1087,7 @@ class TestValidateBranchName:
         with caplog.at_level(logging.WARNING):
             result = _validate_branch_name("feature@{test")
         assert result == "main"
-        assert "cannot contain '@{'" in caplog.text
+        assert "invalid characters" in caplog.text
 
     def test_at_without_brace_is_valid(self) -> None:
         """Test that @ without following { is valid."""
@@ -1098,20 +1098,35 @@ class TestValidateBranchName:
         with caplog.at_level(logging.WARNING):
             result = _validate_branch_name("feature..test")
         assert result == "main"
-        assert "cannot contain '..' or '//'" in caplog.text
+        assert "consecutive periods" in caplog.text
 
     def test_consecutive_slashes_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that consecutive slashes use default."""
         with caplog.at_level(logging.WARNING):
             result = _validate_branch_name("feature//test")
         assert result == "main"
-        assert "cannot contain '..' or '//'" in caplog.text
+        assert "consecutive" in caplog.text and "slashes" in caplog.text
 
     def test_custom_default(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that custom default is used when provided."""
         with caplog.at_level(logging.WARNING):
             result = _validate_branch_name("", default="develop")
         assert result == "develop"
+
+    def test_ends_with_lock_uses_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that branch name ending with .lock uses default.
+
+        Git disallows branch names ending in .lock as they conflict
+        with git's internal lock files.
+        """
+        with caplog.at_level(logging.WARNING):
+            result = _validate_branch_name("feature.lock")
+        assert result == "main"
+        assert ".lock" in caplog.text
+
+    def test_lock_in_middle_is_valid(self) -> None:
+        """Test that .lock in the middle of a branch name is valid."""
+        assert _validate_branch_name("feature.lock.test") == "feature.lock.test"
 
 
 class TestDefaultBaseBranchConfig:
@@ -1171,7 +1186,7 @@ class TestDefaultBaseBranchConfig:
             config = load_config()
 
         assert config.default_base_branch == "main"
-        assert "empty branch name" in caplog.text
+        assert "cannot be empty" in caplog.text
 
     def test_whitespace_trimmed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that whitespace is trimmed from branch names."""
