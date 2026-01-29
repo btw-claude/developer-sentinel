@@ -110,9 +110,7 @@ some_other_key: value
         """Should raise error when file does not exist."""
         writer = OrchestrationYamlWriter()
 
-        with pytest.raises(
-            OrchestrationYamlWriterError, match="Orchestration file not found"
-        ):
+        with pytest.raises(OrchestrationYamlWriterError, match="Orchestration file not found"):
             writer.toggle_orchestration(tmp_path / "nonexistent.yaml", "test", False)
 
     def test_toggle_orchestration_preserves_formatting(self, tmp_path: Path) -> None:
@@ -292,9 +290,7 @@ orchestrations:
         file_path.write_text(yaml_content)
 
         writer = OrchestrationYamlWriter()
-        count = writer.toggle_by_project(
-            {"test": file_path}, "PROJ-A", False
-        )
+        count = writer.toggle_by_project({"test": file_path}, "PROJ-A", False)
 
         assert count == 2
         updated_content = file_path.read_text()
@@ -329,9 +325,7 @@ orchestrations:
         file2.write_text(file2_content)
 
         writer = OrchestrationYamlWriter()
-        count = writer.toggle_by_project(
-            {"orch1": file1, "orch2": file2}, "PROJ", False
-        )
+        count = writer.toggle_by_project({"orch1": file1, "orch2": file2}, "PROJ", False)
 
         assert count == 2
         assert "enabled: false" in file1.read_text()
@@ -352,9 +346,7 @@ orchestrations:
         file_path.write_text(yaml_content)
 
         writer = OrchestrationYamlWriter()
-        count = writer.toggle_by_project(
-            {"test": file_path}, "NONEXISTENT", False
-        )
+        count = writer.toggle_by_project({"test": file_path}, "NONEXISTENT", False)
 
         assert count == 0
 
@@ -374,9 +366,7 @@ orchestrations:
         file_path.write_text(yaml_content)
 
         writer = OrchestrationYamlWriter()
-        count = writer.toggle_by_project(
-            {"test": file_path}, "my-org", False
-        )
+        count = writer.toggle_by_project({"test": file_path}, "my-org", False)
 
         # Should not match because GitHub triggers use project_owner, not project
         assert count == 0
@@ -539,7 +529,7 @@ orchestrations:
 
     def test_preserves_double_quotes(self, tmp_path: Path) -> None:
         """Should preserve double quotes in YAML."""
-        yaml_content = '''
+        yaml_content = """
 orchestrations:
   - name: "test-orch"
     enabled: true
@@ -548,7 +538,7 @@ orchestrations:
       project: "TEST"
     agent:
       prompt: "Test prompt"
-'''
+"""
         file_path = tmp_path / "test.yaml"
         file_path.write_text(yaml_content)
 
@@ -659,9 +649,7 @@ orchestrations:
         file_path.write_text(yaml_content)
 
         writer = OrchestrationYamlWriter()
-        count = writer.toggle_by_repo(
-            {"test": file_path}, "org/repo-a", False
-        )
+        count = writer.toggle_by_repo({"test": file_path}, "org/repo-a", False)
 
         assert count == 2
         updated_content = file_path.read_text()
@@ -696,9 +684,7 @@ orchestrations:
         file2.write_text(file2_content)
 
         writer = OrchestrationYamlWriter()
-        count = writer.toggle_by_repo(
-            {"orch1": file1, "orch2": file2}, "org/repo", False
-        )
+        count = writer.toggle_by_repo({"orch1": file1, "orch2": file2}, "org/repo", False)
 
         assert count == 2
         assert "enabled: false" in file1.read_text()
@@ -719,9 +705,7 @@ orchestrations:
         file_path.write_text(yaml_content)
 
         writer = OrchestrationYamlWriter()
-        count = writer.toggle_by_repo(
-            {"test": file_path}, "org/nonexistent", False
-        )
+        count = writer.toggle_by_repo({"test": file_path}, "org/nonexistent", False)
 
         assert count == 0
 
@@ -740,9 +724,7 @@ orchestrations:
         file_path.write_text(yaml_content)
 
         writer = OrchestrationYamlWriter()
-        count = writer.toggle_by_repo(
-            {"test": file_path}, "PROJ", False
-        )
+        count = writer.toggle_by_repo({"test": file_path}, "PROJ", False)
 
         # Should not match because Jira triggers use project, not repo
         assert count == 0
@@ -792,9 +774,7 @@ orchestrations:
         file_path.write_text(yaml_content)
 
         writer = OrchestrationYamlWriter()
-        count = writer.toggle_by_repo(
-            {"test": file_path}, "org/repo", True
-        )
+        count = writer.toggle_by_repo({"test": file_path}, "org/repo", True)
 
         assert count == 1
         updated_content = file_path.read_text()

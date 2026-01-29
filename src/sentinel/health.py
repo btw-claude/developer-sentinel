@@ -278,7 +278,7 @@ class HealthChecker:
                 checks[name] = await asyncio.wait_for(
                     task, timeout=self.config.timeout + self.TIMEOUT_BUFFER_SECONDS
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 checks[name] = ServiceHealth(
                     status=HealthStatus.DOWN,
                     latency_ms=self.config.timeout * 1000,

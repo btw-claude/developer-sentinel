@@ -18,14 +18,14 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sentinel.agent_clients import DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD
 from sentinel.config import Config
 from sentinel.sdk_clients import ClaudeSdkAgentClient, TimingMetrics
 
@@ -146,7 +146,7 @@ def create_timed_mock_query(
         )
 
     async def async_gen() -> AsyncIterator[MockMessage]:
-        for response, delay in zip(responses, delays):
+        for response, delay in zip(responses, delays, strict=False):
             if delay > 0:
                 await asyncio.sleep(delay)
             yield MockMessage(response)
@@ -642,7 +642,9 @@ class TestSdkStreamingVsNonStreaming:
         """SDK client with streaming enabled should use _run_with_log."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])
+        ):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -670,7 +672,9 @@ class TestSdkStreamingVsNonStreaming:
         """SDK client with streaming disabled should use _run_simple."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])
+        ):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -692,14 +696,14 @@ class TestSdkStreamingVsNonStreaming:
             log_files = list(logs.glob("test_orch/*.log"))
             assert len(log_files) == 1
 
-    def test_config_disable_streaming_logs_respected(
-        self, temp_dirs: tuple[Path, Path]
-    ) -> None:
+    def test_config_disable_streaming_logs_respected(self, temp_dirs: tuple[Path, Path]) -> None:
         """Should respect disable_streaming_logs from config."""
         workdir, logs = temp_dirs
         config = Config(disable_streaming_logs=True)
 
-        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])
+        ):
             client = ClaudeSdkAgentClient(
                 config,
                 base_workdir=workdir,
@@ -709,9 +713,7 @@ class TestSdkStreamingVsNonStreaming:
             # Verify the internal flag matches config
             assert client._disable_streaming_logs is True
 
-    def test_explicit_disable_overrides_config(
-        self, temp_dirs: tuple[Path, Path]
-    ) -> None:
+    def test_explicit_disable_overrides_config(self, temp_dirs: tuple[Path, Path]) -> None:
         """Explicit disable_streaming_logs parameter should override config."""
         workdir, logs = temp_dirs
         config = Config(disable_streaming_logs=False)
@@ -731,7 +733,9 @@ class TestSdkStreamingVsNonStreaming:
         """Streaming logs should contain timing metrics section."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])
+        ):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -764,7 +768,9 @@ class TestSdkStreamingVsNonStreaming:
         """Streaming logs should contain JSON metrics export for programmatic access."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])
+        ):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -800,7 +806,9 @@ class TestSdkStreamingVsNonStreaming:
         """Non-streaming logs should have correct format."""
         workdir, logs = temp_dirs
 
-        with patch("sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])):
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query", create_timed_mock_query(["response"])
+        ):
             client = ClaudeSdkAgentClient(
                 mock_config,
                 base_workdir=workdir,
@@ -1209,9 +1217,7 @@ class TestCliSubprocessIntegration:
         assert result.returncode == 0
 
     @pytest.mark.integration
-    def test_cli_vs_sdk_timing_comparison_structure(
-        self, cli_available: bool
-    ) -> None:
+    def test_cli_vs_sdk_timing_comparison_structure(self, cli_available: bool) -> None:
         """Validate the structure for comparing CLI vs SDK timing.
 
         This test sets up the comparison structure without actually making

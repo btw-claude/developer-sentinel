@@ -58,27 +58,23 @@ def validate_positive_float(
         value = float(value_str)
         if value < 0:
             logger.error(
-                "%s must be non-negative, got %s. Using default: %s",
-                env_var, value, default
+                "%s must be non-negative, got %s. Using default: %s", env_var, value, default
             )
             return default
         if value < min_val:
             logger.warning(
-                "%s value %s is below minimum %s. Using minimum value.",
-                env_var, value, min_val
+                "%s value %s is below minimum %s. Using minimum value.", env_var, value, min_val
             )
             return min_val
         if value > max_val:
             logger.warning(
-                "%s value %s exceeds maximum %s. Using maximum value.",
-                env_var, value, max_val
+                "%s value %s exceeds maximum %s. Using maximum value.", env_var, value, max_val
             )
             return max_val
         return value
     except ValueError:
         logger.error(
-            "%s must be a valid float, got '%s'. Using default: %s",
-            env_var, value_str, default
+            "%s must be a valid float, got '%s'. Using default: %s", env_var, value_str, default
         )
         return default
 
@@ -107,26 +103,25 @@ def validate_strictly_positive_float(
         if value <= 0:
             logger.error(
                 "%s must be positive (greater than 0), got %s. Using default: %s",
-                env_var, value, default
+                env_var,
+                value,
+                default,
             )
             return default
         if value < min_val:
             logger.warning(
-                "%s value %s is below minimum %s. Using minimum value.",
-                env_var, value, min_val
+                "%s value %s is below minimum %s. Using minimum value.", env_var, value, min_val
             )
             return min_val
         if value > max_val:
             logger.warning(
-                "%s value %s exceeds maximum %s. Using maximum value.",
-                env_var, value, max_val
+                "%s value %s exceeds maximum %s. Using maximum value.", env_var, value, max_val
             )
             return max_val
         return value
     except ValueError:
         logger.error(
-            "%s must be a valid float, got '%s'. Using default: %s",
-            env_var, value_str, default
+            "%s must be a valid float, got '%s'. Using default: %s", env_var, value_str, default
         )
         return default
 
@@ -153,25 +148,24 @@ def validate_positive_int(
         if value <= 0:
             logger.error(
                 "%s must be positive (greater than 0), got %s. Using default: %s",
-                env_var, value, default
+                env_var,
+                value,
+                default,
             )
             return default
         if value < min_val:
             logger.warning(
-                "%s value %s is below minimum %s. Using minimum value.",
-                env_var, value, min_val
+                "%s value %s is below minimum %s. Using minimum value.", env_var, value, min_val
             )
             return min_val
         if value > max_val:
             logger.warning(
-                "%s value %s exceeds maximum %s. Using maximum value.",
-                env_var, value, max_val
+                "%s value %s exceeds maximum %s. Using maximum value.", env_var, value, max_val
             )
             return max_val
         return value
     except ValueError:
         logger.error(
-            "%s must be a valid integer, got '%s'. Using default: %s",
-            env_var, value_str, default
+            "%s must be a valid integer, got '%s'. Using default: %s", env_var, value_str, default
         )
         return default

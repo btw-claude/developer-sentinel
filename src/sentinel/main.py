@@ -27,32 +27,15 @@ from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
 from sentinel.github_poller import GitHubClient, GitHubIssueProtocol, GitHubPoller
 from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
 from sentinel.logging import OrchestrationLogManager, get_logger, setup_logging
-from sentinel.orchestration import (
-    Orchestration,
-    OrchestrationVersion,
-    load_orchestrations,
-)
+from sentinel.orchestration import Orchestration, OrchestrationVersion, load_orchestrations
 from sentinel.orchestration_registry import OrchestrationRegistry
-from sentinel.poll_coordinator import (
-    GitHubIssueWithRepo,
-    PollCoordinator,
-    extract_repo_from_url,
-)
+from sentinel.poll_coordinator import GitHubIssueWithRepo, PollCoordinator, extract_repo_from_url
 from sentinel.poller import JiraClient, JiraIssue, JiraPoller
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.router import Router, RoutingResult
-from sentinel.sdk_clients import (
-    ClaudeProcessInterruptedError,
-    JiraSdkClient,
-    JiraSdkTagClient,
-    request_shutdown as request_claude_shutdown,
-)
-from sentinel.state_tracker import (
-    AttemptCountEntry,
-    QueuedIssueInfo,
-    RunningStepInfo,
-    StateTracker,
-)
+from sentinel.sdk_clients import ClaudeProcessInterruptedError, JiraSdkClient, JiraSdkTagClient
+from sentinel.sdk_clients import request_shutdown as request_claude_shutdown
+from sentinel.state_tracker import AttemptCountEntry, QueuedIssueInfo, RunningStepInfo, StateTracker
 from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
@@ -201,9 +184,7 @@ class Sentinel:
             effective_agent = agent_client
 
         if effective_agent is None:
-            raise ValueError(
-                "Either agent_factory or agent_client must be provided to Sentinel"
-            )
+            raise ValueError("Either agent_factory or agent_client must be provided to Sentinel")
 
         if isinstance(effective_agent, AgentClientFactory):
             self._agent_factory: AgentClientFactory | None = effective_agent
@@ -328,13 +309,9 @@ class Sentinel:
         """Backward compatibility: delegate to state tracker."""
         self._state_tracker.clear_issue_queue()
 
-    def _get_and_increment_attempt_count(
-        self, issue_key: str, orchestration_name: str
-    ) -> int:
+    def _get_and_increment_attempt_count(self, issue_key: str, orchestration_name: str) -> int:
         """Backward compatibility: delegate to state tracker."""
-        return self._state_tracker.get_and_increment_attempt_count(
-            issue_key, orchestration_name
-        )
+        return self._state_tracker.get_and_increment_attempt_count(issue_key, orchestration_name)
 
     def _cleanup_stale_attempt_counts(self) -> int:
         """Backward compatibility: delegate to state tracker."""
@@ -396,7 +373,7 @@ class Sentinel:
         """Get the last GitHub poll time."""
         return self._state_tracker.last_github_poll
 
-    def get_active_versions(self) -> list["OrchestrationVersionSnapshot"]:
+    def get_active_versions(self) -> list[OrchestrationVersionSnapshot]:
         """Get snapshots of active orchestration versions."""
         from sentinel.dashboard.state import OrchestrationVersionSnapshot
 
@@ -412,7 +389,7 @@ class Sentinel:
             for v in versions
         ]
 
-    def get_pending_removal_versions(self) -> list["OrchestrationVersionSnapshot"]:
+    def get_pending_removal_versions(self) -> list[OrchestrationVersionSnapshot]:
         """Get snapshots of versions pending removal."""
         from sentinel.dashboard.state import OrchestrationVersionSnapshot
 
@@ -428,13 +405,11 @@ class Sentinel:
             for v in versions
         ]
 
-    def get_execution_state(self) -> "ExecutionStateSnapshot":
+    def get_execution_state(self) -> ExecutionStateSnapshot:
         """Get a snapshot of the current execution state."""
         from sentinel.dashboard.state import ExecutionStateSnapshot
 
-        return ExecutionStateSnapshot(
-            active_count=self._execution_manager.get_active_count()
-        )
+        return ExecutionStateSnapshot(active_count=self._execution_manager.get_active_count())
 
     def is_shutdown_requested(self) -> bool:
         """Check if shutdown has been requested."""
@@ -633,9 +608,7 @@ class Sentinel:
                     if version is not None:
                         version.decrement_executions()
                     self._state_tracker.decrement_per_orch_count(matched_orch.name)
-                    logger.error(
-                        f"Failed to submit '{matched_orch.name}' for {issue_key}: {e}"
-                    )
+                    logger.error(f"Failed to submit '{matched_orch.name}' for {issue_key}: {e}")
                     try:
                         self.tag_manager.apply_failure_tags(issue_key, matched_orch)
                     except Exception as tag_error:
@@ -668,7 +641,9 @@ class Sentinel:
         self._state_tracker.clear_issue_queue()
 
         # Hot-reload orchestrations
-        new_count, modified_count = self._orchestration_registry.detect_and_load_orchestration_changes()
+        new_count, modified_count = (
+            self._orchestration_registry.detect_and_load_orchestration_changes()
+        )
         if new_count > 0 or modified_count > 0:
             self.orchestrations = self._orchestration_registry.orchestrations
             self.router = self._orchestration_registry.router
@@ -805,9 +780,7 @@ class Sentinel:
                     results, submitted_count = self.run_once()
                     success_count = sum(1 for r in results if r.succeeded)
                     if results:
-                        logger.info(
-                            f"Cycle completed: {success_count}/{len(results)} successful"
-                        )
+                        logger.info(f"Cycle completed: {success_count}/{len(results)} successful")
                 except Exception as e:
                     logger.error(f"Error in polling cycle: {e}")
                     submitted_count = 0
@@ -825,7 +798,9 @@ class Sentinel:
                             pending_futures = self._execution_manager.get_pending_futures()
                             if not pending_futures:
                                 break
-                            done, _ = wait(pending_futures, timeout=1.0, return_when=FIRST_COMPLETED)
+                            done, _ = wait(
+                                pending_futures, timeout=1.0, return_when=FIRST_COMPLETED
+                            )
 
                         if done:
                             logger.debug(
@@ -852,9 +827,7 @@ class Sentinel:
             final_results = self._collect_completed_results()
             if final_results:
                 success_count = sum(1 for r in final_results if r.succeeded)
-                logger.info(
-                    f"Final batch: {success_count}/{len(final_results)} successful"
-                )
+                logger.info(f"Final batch: {success_count}/{len(final_results)} successful")
 
         finally:
             self._execution_manager.shutdown()
@@ -1025,9 +998,7 @@ def main(args: list[str] | None = None) -> int:
             )
             dashboard_server.start(dashboard_app)
         except ImportError as e:
-            logger.warning(
-                f"Dashboard dependencies not available, skipping dashboard: {e}"
-            )
+            logger.warning(f"Dashboard dependencies not available, skipping dashboard: {e}")
         except Exception as e:
             logger.error(f"Failed to start dashboard server: {e}")
 

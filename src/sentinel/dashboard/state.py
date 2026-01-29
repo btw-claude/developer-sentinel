@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from sentinel.logging import LOG_FILENAME_FORMAT, generate_log_filename, parse_log_filename
+from sentinel.logging import generate_log_filename, parse_log_filename
 
 if TYPE_CHECKING:
     from sentinel.main import QueuedIssueInfo, RunningStepInfo
@@ -358,8 +358,7 @@ class SentinelStateAccessor:
 
         # Convert version snapshots to OrchestrationVersionInfo (dashboard-specific DTO)
         active_version_infos = [
-            self._snapshot_to_version_info(snapshot)
-            for snapshot in active_version_snapshots
+            self._snapshot_to_version_info(snapshot) for snapshot in active_version_snapshots
         ]
 
         pending_removal_version_infos = [
@@ -490,7 +489,9 @@ class SentinelStateAccessor:
             source_file=source_file,
         )
 
-    def _snapshot_to_version_info(self, snapshot: OrchestrationVersionSnapshot) -> OrchestrationVersionInfo:
+    def _snapshot_to_version_info(
+        self, snapshot: OrchestrationVersionSnapshot
+    ) -> OrchestrationVersionInfo:
         """Convert an OrchestrationVersionSnapshot to OrchestrationVersionInfo.
 
         Args:
@@ -530,11 +531,15 @@ class SentinelStateAccessor:
 
         # Convert to sorted lists of ProjectOrchestrations
         jira_projects = [
-            ProjectOrchestrations(identifier=key, orchestrations=sorted(orchs, key=lambda o: o.name))
+            ProjectOrchestrations(
+                identifier=key, orchestrations=sorted(orchs, key=lambda o: o.name)
+            )
             for key, orchs in sorted(jira_groups.items())
         ]
         github_repos = [
-            ProjectOrchestrations(identifier=key, orchestrations=sorted(orchs, key=lambda o: o.name))
+            ProjectOrchestrations(
+                identifier=key, orchestrations=sorted(orchs, key=lambda o: o.name)
+            )
             for key, orchs in sorted(github_groups.items())
         ]
 
@@ -576,9 +581,7 @@ class SentinelStateAccessor:
                                 "filename": log_file.name,
                                 "display_name": display_name,
                                 "size": stat.st_size,
-                                "modified": datetime.fromtimestamp(
-                                    stat.st_mtime
-                                ).isoformat(),
+                                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
                             }
                         )
                     except Exception:

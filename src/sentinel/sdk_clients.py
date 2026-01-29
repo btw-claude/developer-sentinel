@@ -13,13 +13,6 @@ import asyncio
 import json
 from typing import Any
 
-from claude_agent_sdk import ClaudeAgentOptions, query
-
-from sentinel.config import Config
-from sentinel.logging import get_logger
-from sentinel.poller import JiraClient, JiraClientError
-from sentinel.tag_manager import JiraTagClient, JiraTagClientError
-
 # Backward-compatible re-exports from agent_clients.claude_sdk
 # Note: _run_query is intentionally not re-exported as it's a private function
 # that consumers should import directly from agent_clients.claude_sdk if needed.
@@ -35,6 +28,10 @@ from sentinel.agent_clients.claude_sdk import (
     request_shutdown,
     reset_shutdown,
 )
+from sentinel.config import Config
+from sentinel.logging import get_logger
+from sentinel.poller import JiraClient, JiraClientError
+from sentinel.tag_manager import JiraTagClient, JiraTagClientError
 
 logger = get_logger(__name__)
 
@@ -94,7 +91,7 @@ Do not include any explanation, just the JSON array."""
 
         except ClaudeProcessInterruptedError:
             raise
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             raise JiraClientError(f"Jira search timed out: {e}") from e
         except json.JSONDecodeError as e:
             raise JiraClientError(f"Failed to parse Jira response as JSON: {e}") from e
@@ -122,18 +119,24 @@ If there's an error, respond with: ERROR: <description>"""
             if "ERROR" in response.upper() and "SUCCESS" not in response.upper():
                 raise JiraTagClientError(f"Failed to {action} label: {response}")
 
-            logger.info(f"{action.capitalize()}ed label '{label}' {'to' if action == 'add' else 'from'} {issue_key}")
+            logger.info(
+                f"{action.capitalize()}ed label '{label}' {'to' if action == 'add' else 'from'} {issue_key}"
+            )
 
         except ClaudeProcessInterruptedError:
             raise
         except JiraTagClientError:
             raise
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             raise JiraTagClientError(f"{action.capitalize()} label timed out: {e}") from e
         except (KeyError, TypeError, ValueError) as e:
-            raise JiraTagClientError(f"{action.capitalize()} label failed due to data error: {e}") from e
+            raise JiraTagClientError(
+                f"{action.capitalize()} label failed due to data error: {e}"
+            ) from e
         except OSError as e:
-            raise JiraTagClientError(f"{action.capitalize()} label failed due to I/O error: {e}") from e
+            raise JiraTagClientError(
+                f"{action.capitalize()} label failed due to I/O error: {e}"
+            ) from e
 
     def add_label(self, issue_key: str, label: str) -> None:
         """Add a label to a Jira issue."""

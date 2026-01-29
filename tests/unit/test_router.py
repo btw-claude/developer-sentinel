@@ -318,7 +318,9 @@ class TestGitHubIssueRouting:
 
     def test_routes_to_correct_source_orchestration(self) -> None:
         jira_orch = make_orchestration(name="jira-review", source="jira", tags=["needs-review"])
-        github_orch = make_orchestration(name="github-review", source="github", tags=["needs-review"])
+        github_orch = make_orchestration(
+            name="github-review", source="github", tags=["needs-review"]
+        )
         router = Router([jira_orch, github_orch])
 
         jira_issue = make_issue(labels=["needs-review"])
@@ -337,7 +339,9 @@ class TestGitHubIssueRouting:
 
     def test_routes_mixed_issues(self) -> None:
         jira_orch = make_orchestration(name="jira-review", source="jira", tags=["needs-review"])
-        github_orch = make_orchestration(name="github-review", source="github", tags=["needs-review"])
+        github_orch = make_orchestration(
+            name="github-review", source="github", tags=["needs-review"]
+        )
         router = Router([jira_orch, github_orch])
 
         issues: list[AnyIssue] = [
@@ -439,7 +443,7 @@ class TestGitHubLabelsFieldRouting:
         orch = make_orchestration(
             source="github",
             tags=["team-a"],  # Deprecated tags field - will be removed in future release
-            labels=["bug"],   # New labels field - preferred approach
+            labels=["bug"],  # New labels field - preferred approach
         )
         # Both must match
         assert router._matches_trigger(issue, orch) is True
@@ -451,7 +455,7 @@ class TestGitHubLabelsFieldRouting:
         orch = make_orchestration(
             source="github",
             tags=["team-a"],  # Issue doesn't have this
-            labels=["bug"],   # Issue has this
+            labels=["bug"],  # Issue has this
         )
         assert router._matches_trigger(issue, orch) is False
 
@@ -477,20 +481,20 @@ class TestGitHubLabelsFieldRouting:
 
         result = router.route(issue)
 
-        assert result.matched is True, (
-            "Issue with ['bug', 'urgent'] labels should match at least one orchestration"
-        )
+        assert (
+            result.matched is True
+        ), "Issue with ['bug', 'urgent'] labels should match at least one orchestration"
         assert len(result.orchestrations) == 2, (
             f"Expected 2 matching orchestrations (bug-handler and urgent-handler), "
             f"but got {len(result.orchestrations)}: {[o.name for o in result.orchestrations]}"
         )
         names = [o.name for o in result.orchestrations]
-        assert "bug-handler" in names, (
-            f"bug-handler should match issue with 'bug' label, but matched: {names}"
-        )
-        assert "urgent-handler" in names, (
-            f"urgent-handler should match issue with 'urgent' label, but matched: {names}"
-        )
-        assert "feature-handler" not in names, (
-            f"feature-handler should NOT match issue without 'feature' label, but it did"
-        )
+        assert (
+            "bug-handler" in names
+        ), f"bug-handler should match issue with 'bug' label, but matched: {names}"
+        assert (
+            "urgent-handler" in names
+        ), f"urgent-handler should match issue with 'urgent' label, but matched: {names}"
+        assert (
+            "feature-handler" not in names
+        ), "feature-handler should NOT match issue without 'feature' label, but it did"

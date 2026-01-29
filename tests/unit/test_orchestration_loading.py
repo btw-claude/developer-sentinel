@@ -4,26 +4,11 @@ This module contains tests for loading orchestration configurations from YAML fi
 and directories.
 """
 
-import warnings
 from pathlib import Path
 
 import pytest
 
-from sentinel.orchestration import (
-    AgentConfig,
-    GitHubContext,
-    OnCompleteConfig,
-    OnFailureConfig,
-    OnStartConfig,
-    Orchestration,
-    OrchestrationError,
-    OrchestrationVersion,
-    Outcome,
-    RetryConfig,
-    TriggerConfig,
-    load_orchestration_file,
-    load_orchestrations,
-)
+from sentinel.orchestration import OrchestrationError, load_orchestration_file, load_orchestrations
 
 
 class TestLoadOrchestrationFile:

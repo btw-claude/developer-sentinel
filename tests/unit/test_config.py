@@ -337,28 +337,40 @@ class TestParsePort:
         with caplog.at_level(logging.WARNING):
             result = _parse_port("0", "TEST_VAR", 8080)
         assert result == 8080
-        assert f"Invalid TEST_VAR: 0 is not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
+        assert (
+            f"Invalid TEST_VAR: 0 is not a valid port (must be {MIN_PORT}-{MAX_PORT})"
+            in caplog.text
+        )
 
     def test_invalid_port_negative(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that negative port numbers are rejected."""
         with caplog.at_level(logging.WARNING):
             result = _parse_port("-1", "TEST_VAR", 8080)
         assert result == 8080
-        assert f"Invalid TEST_VAR: -1 is not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
+        assert (
+            f"Invalid TEST_VAR: -1 is not a valid port (must be {MIN_PORT}-{MAX_PORT})"
+            in caplog.text
+        )
 
     def test_invalid_port_too_high(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that port numbers above MAX_PORT are rejected."""
         with caplog.at_level(logging.WARNING):
             result = _parse_port(str(MAX_PORT + 1), "TEST_VAR", 8080)
         assert result == 8080
-        assert f"Invalid TEST_VAR: {MAX_PORT + 1} is not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
+        assert (
+            f"Invalid TEST_VAR: {MAX_PORT + 1} is not a valid port (must be {MIN_PORT}-{MAX_PORT})"
+            in caplog.text
+        )
 
     def test_invalid_port_way_too_high(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that very large port numbers are rejected."""
         with caplog.at_level(logging.WARNING):
             result = _parse_port("100000", "TEST_VAR", 8080)
         assert result == 8080
-        assert f"Invalid TEST_VAR: 100000 is not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
+        assert (
+            f"Invalid TEST_VAR: 100000 is not a valid port (must be {MIN_PORT}-{MAX_PORT})"
+            in caplog.text
+        )
 
     def test_invalid_non_numeric(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that non-numeric values are rejected."""

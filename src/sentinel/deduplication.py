@@ -12,8 +12,9 @@ yet used in the current implementation. See individual method docstrings for det
 from __future__ import annotations
 
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING
 
 from sentinel.logging import get_logger
 
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def build_github_trigger_key(orch: "Orchestration") -> str:
+def build_github_trigger_key(orch: Orchestration) -> str:
     """Build a deduplication key for a GitHub trigger.
 
     This is the single source of truth for GitHub trigger key format, ensuring

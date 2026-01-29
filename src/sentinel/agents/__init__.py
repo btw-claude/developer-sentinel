@@ -4,25 +4,10 @@ This package provides tool definitions that Claude agents can use to interact wi
 external services like Jira, Confluence, and GitHub.
 """
 
-from sentinel.agents.base import (
-    ParameterType,
-    Tool,
-    ToolParameter,
-    ToolResult,
-    ToolSchema,
-)
-from sentinel.agents.confluence_tools import (
-    ConfluenceToolClient,
-    get_confluence_tools,
-)
-from sentinel.agents.github_tools import (
-    GitHubToolClient,
-    get_github_tools,
-)
-from sentinel.agents.jira_tools import (
-    JiraToolClient,
-    get_jira_tools,
-)
+from sentinel.agents.base import ParameterType, Tool, ToolParameter, ToolResult, ToolSchema
+from sentinel.agents.confluence_tools import ConfluenceToolClient, get_confluence_tools
+from sentinel.agents.github_tools import GitHubToolClient, get_github_tools
+from sentinel.agents.jira_tools import JiraToolClient, get_jira_tools
 from sentinel.agents.registry import (
     ToolRegistry,
     get_tool_schemas_for_orchestration,

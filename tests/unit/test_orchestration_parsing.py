@@ -5,7 +5,6 @@ configurations from YAML files. It tests dataclasses, orchestration versions, fi
 and directory loading functionality.
 """
 
-import warnings
 from pathlib import Path
 
 import pytest
@@ -24,7 +23,6 @@ from sentinel.orchestration import (
     TriggerConfig,
     _validate_branch_name,
     load_orchestration_file,
-    load_orchestrations,
 )
 
 
@@ -538,9 +536,7 @@ class TestGitHubContextBranchValidation:
         assert github.branch == "feature/{jira_issue_key}"
         assert github.base_branch == "develop"
 
-    def test_orchestration_file_with_invalid_branch_raises_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_orchestration_file_with_invalid_branch_raises_error(self, tmp_path: Path) -> None:
         """Test that loading orchestration with invalid branch raises error."""
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
@@ -567,9 +563,7 @@ orchestrations:
         assert "Invalid branch pattern" in str(exc_info.value)
         assert "consecutive periods" in str(exc_info.value)
 
-    def test_orchestration_file_with_invalid_base_branch_raises_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_orchestration_file_with_invalid_base_branch_raises_error(self, tmp_path: Path) -> None:
         """Test that loading orchestration with invalid base_branch raises error."""
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
@@ -596,9 +590,7 @@ orchestrations:
         assert "Invalid base_branch" in str(exc_info.value)
         assert "cannot start with '-' or '.'" in str(exc_info.value)
 
-    def test_orchestration_file_with_valid_branch_pattern_succeeds(
-        self, tmp_path: Path
-    ) -> None:
+    def test_orchestration_file_with_valid_branch_pattern_succeeds(self, tmp_path: Path) -> None:
         """Test that loading orchestration with valid branch pattern succeeds."""
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""

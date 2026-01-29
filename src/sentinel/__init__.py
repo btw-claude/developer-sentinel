@@ -9,11 +9,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0.dev0"
 
 # Re-export DI container for convenience
-from sentinel.container import (
-    SentinelContainer,
-    create_container,
-    create_test_container,
-)
+from sentinel.container import SentinelContainer, create_container, create_test_container
 
 __all__ = [
     "__version__",

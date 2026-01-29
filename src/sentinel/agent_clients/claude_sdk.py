@@ -32,10 +32,7 @@ from sentinel.agent_clients.base import (
     AgentTimeoutError,
     AgentType,
 )
-from sentinel.circuit_breaker import (
-    CircuitBreaker,
-    get_circuit_breaker,
-)
+from sentinel.circuit_breaker import CircuitBreaker, get_circuit_breaker
 from sentinel.config import Config
 from sentinel.logging import generate_log_filename, get_logger
 from sentinel.rate_limiter import ClaudeRateLimiter, RateLimitExceededError
@@ -302,12 +299,12 @@ class ShutdownController:
     def __repr__(self) -> str:
         with self._lock:
             if self._shutdown_event is None:
-                state = 'uninitialized'
+                state = "uninitialized"
             elif self._shutdown_event.is_set():
-                state = 'shutdown_requested'
+                state = "shutdown_requested"
             else:
-                state = 'ready'
-        return f'ShutdownController(state={state})'
+                state = "ready"
+        return f"ShutdownController(state={state})"
 
 
 # Default shared shutdown controller for backward compatibility.
@@ -408,7 +405,9 @@ async def _run_query(
     )
 
     # Use provided controller or fall back to default
-    controller = shutdown_controller if shutdown_controller is not None else _default_shutdown_controller
+    controller = (
+        shutdown_controller if shutdown_controller is not None else _default_shutdown_controller
+    )
     shutdown_event = controller.get_shutdown_event()
     response_text = ""
 
@@ -424,9 +423,7 @@ async def _run_query(
             metrics.record_message_received()
 
         if shutdown_event.is_set():
-            raise ClaudeProcessInterruptedError(
-                "Claude agent interrupted by shutdown request"
-            )
+            raise ClaudeProcessInterruptedError("Claude agent interrupted by shutdown request")
         if hasattr(message, "text"):
             response_text = message.text
         elif hasattr(message, "content"):
@@ -489,15 +486,11 @@ class ClaudeSdkAgentClient(AgentClient):
         )
         # Use provided controller or fall back to default
         self._shutdown_controller = (
-            shutdown_controller
-            if shutdown_controller is not None
-            else _default_shutdown_controller
+            shutdown_controller if shutdown_controller is not None else _default_shutdown_controller
         )
         # Use provided rate limiter or create from config
         self._rate_limiter = (
-            rate_limiter
-            if rate_limiter is not None
-            else ClaudeRateLimiter.from_config(config)
+            rate_limiter if rate_limiter is not None else ClaudeRateLimiter.from_config(config)
         )
         # Use provided circuit breaker or get from global registry
         self._circuit_breaker = circuit_breaker or get_circuit_breaker("claude")
@@ -631,9 +624,7 @@ class ClaudeSdkAgentClient(AgentClient):
 
                 if current_branch == branch and local_sha == remote_sha:
                     # Already on the correct branch and up to date
-                    logger.info(
-                        f"Branch '{branch}' already checked out and up to date with remote"
-                    )
+                    logger.info(f"Branch '{branch}' already checked out and up to date with remote")
                 else:
                     # Branch exists - checkout and pull
                     logger.info(f"Branch '{branch}' exists, checking out and pulling")
@@ -653,9 +644,7 @@ class ClaudeSdkAgentClient(AgentClient):
                     )
             elif create_branch:
                 # Branch doesn't exist but we should create it
-                logger.info(
-                    f"Branch '{branch}' does not exist, creating from origin/{base_branch}"
-                )
+                logger.info(f"Branch '{branch}' does not exist, creating from origin/{base_branch}")
                 subprocess.run(
                     ["git", "checkout", "-b", branch, f"origin/{base_branch}"],
                     cwd=workdir,
@@ -671,8 +660,7 @@ class ClaudeSdkAgentClient(AgentClient):
 
         except subprocess.CalledProcessError as e:
             raise AgentClientError(
-                f"Git operation failed: {e.cmd} returned {e.returncode}. "
-                f"stderr: {e.stderr}"
+                f"Git operation failed: {e.cmd} returned {e.returncode}. " f"stderr: {e.stderr}"
             ) from e
 
     async def run_agent(
@@ -713,7 +701,9 @@ class ClaudeSdkAgentClient(AgentClient):
         use_streaming = can_stream and not self._disable_streaming_logs
 
         if use_streaming:
-            response = await self._run_with_log(full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name)  # type: ignore
+            response = await self._run_with_log(
+                full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name
+            )  # type: ignore
         else:
             response = await self._run_simple(full_prompt, tools, timeout_seconds, workdir, model)
             # When streaming is disabled but we have logging params, write full response after completion
@@ -722,7 +712,12 @@ class ClaudeSdkAgentClient(AgentClient):
         return AgentRunResult(response=response, workdir=workdir)
 
     async def _run_simple(
-        self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None
+        self,
+        prompt: str,
+        tools: list[str],
+        timeout: int | None,
+        workdir: Path | None,
+        model: str | None,
     ) -> str:
         # Check circuit breaker before attempting the request
         if not self._circuit_breaker.allow_request():
@@ -734,9 +729,7 @@ class ClaudeSdkAgentClient(AgentClient):
         try:
             # Acquire rate limit permit before making API call
             if not await self._rate_limiter.acquire_async(timeout=timeout):
-                raise AgentClientError(
-                    "Claude API rate limit timeout - could not acquire permit"
-                )
+                raise AgentClientError("Claude API rate limit timeout - could not acquire permit")
 
             coro = _run_query(
                 prompt,
@@ -761,9 +754,7 @@ class ClaudeSdkAgentClient(AgentClient):
             self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Agent execution failed: {e}") from e
 
-    def _write_simple_log(
-        self, prompt: str, response: str, issue_key: str, orch_name: str
-    ) -> None:
+    def _write_simple_log(self, prompt: str, response: str, issue_key: str, orch_name: str) -> None:
         """Write a simple (non-streaming) log file after execution completes.
 
         This is used when streaming logs are disabled via SENTINEL_DISABLE_STREAMING_LOGS.
@@ -821,7 +812,14 @@ class ClaudeSdkAgentClient(AgentClient):
             logger.warning(f"Failed to write non-streaming log to {log_path}: {e}")
 
     async def _run_with_log(
-        self, prompt: str, tools: list[str], timeout: int | None, workdir: Path | None, model: str | None, issue_key: str, orch_name: str
+        self,
+        prompt: str,
+        tools: list[str],
+        timeout: int | None,
+        workdir: Path | None,
+        model: str | None,
+        issue_key: str,
+        orch_name: str,
     ) -> str:
         assert self.log_base_dir is not None
 
@@ -835,9 +833,7 @@ class ClaudeSdkAgentClient(AgentClient):
         # Acquire rate limit permit before making API call
         try:
             if not await self._rate_limiter.acquire_async(timeout=timeout):
-                raise AgentClientError(
-                    "Claude API rate limit timeout - could not acquire permit"
-                )
+                raise AgentClientError("Claude API rate limit timeout - could not acquire permit")
         except RateLimitExceededError as e:
             self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Claude API rate limit exceeded: {e}") from e
@@ -854,7 +850,10 @@ class ClaudeSdkAgentClient(AgentClient):
 
         sep = "=" * 80
         io_start = time.perf_counter()
-        log_path.write_text(f"{sep}\nAGENT EXECUTION LOG\n{sep}\n\nIssue Key:      {issue_key}\nOrchestration:  {orch_name}\nStart Time:     {start_time.isoformat()}\n\n{sep}\nPROMPT\n{sep}\n\n{prompt}\n\n{sep}\nAGENT OUTPUT\n{sep}\n\n", encoding="utf-8")
+        log_path.write_text(
+            f"{sep}\nAGENT EXECUTION LOG\n{sep}\n\nIssue Key:      {issue_key}\nOrchestration:  {orch_name}\nStart Time:     {start_time.isoformat()}\n\n{sep}\nPROMPT\n{sep}\n\n{prompt}\n\n{sep}\nAGENT OUTPUT\n{sep}\n\n",
+            encoding="utf-8",
+        )
         metrics.add_file_io_time(time.perf_counter() - io_start)
         logger.info(f"Streaming log started: {log_path}")
 
@@ -864,7 +863,10 @@ class ClaudeSdkAgentClient(AgentClient):
                 permission_mode="bypassPermissions",
                 model=model,
                 cwd=str(workdir) if workdir else None,
-                setting_sources=["project", "user"],  # Load skills from project and ~/.claude/skills
+                setting_sources=[
+                    "project",
+                    "user",
+                ],  # Load skills from project and ~/.claude/skills
             )
             shutdown_event = self._shutdown_controller.get_shutdown_event()
 
@@ -898,7 +900,11 @@ class ClaudeSdkAgentClient(AgentClient):
                         api_wait_start = time.perf_counter()
                 return response_text
 
-            response = await asyncio.wait_for(run_streaming(), timeout=timeout) if timeout else await run_streaming()
+            response = (
+                await asyncio.wait_for(run_streaming(), timeout=timeout)
+                if timeout
+                else await run_streaming()
+            )
             status = "COMPLETED"
             self._circuit_breaker.record_success()
             metrics.finish()
@@ -956,6 +962,8 @@ class ClaudeSdkAgentClient(AgentClient):
                 f.write(json.dumps(all_metrics, indent=2))
                 f.write("\n")
                 # Write execution summary
-                f.write(f"\n{sep}\nEXECUTION SUMMARY\n{sep}\n\nStatus:         {status}\nEnd Time:       {end_time.isoformat()}\nDuration:       {duration:.2f}s\n\n{sep}\nEND OF LOG\n{sep}\n")
+                f.write(
+                    f"\n{sep}\nEXECUTION SUMMARY\n{sep}\n\nStatus:         {status}\nEnd Time:       {end_time.isoformat()}\nDuration:       {duration:.2f}s\n\n{sep}\nEND OF LOG\n{sep}\n"
+                )
             metrics.add_file_io_time(time.perf_counter() - io_start)
             logger.info(f"Streaming log completed: {log_path}")

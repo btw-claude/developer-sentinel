@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+
 from sentinel.executor import ExecutionResult, ExecutionStatus
 from sentinel.github_rest_client import GitHubTagClient, GitHubTagClientError
 from sentinel.logging import get_logger
@@ -156,8 +157,7 @@ class TagManager:
 
         if client is None:
             raise ValueError(
-                f"No client available for {platform} platform. "
-                f"Cannot add label to {issue_key}."
+                f"No client available for {platform} platform. " f"Cannot add label to {issue_key}."
             )
 
         if platform == "github" and github_info:

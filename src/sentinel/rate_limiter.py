@@ -31,10 +31,11 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Generator
+from typing import TYPE_CHECKING, Any
 
 from sentinel.logging import get_logger
 
@@ -198,7 +199,10 @@ class TokenBucket:
             # Check warning threshold on both buckets
             minute_fraction = self._minute_tokens / self._minute_capacity
             hour_fraction = self._hour_tokens / self._hour_capacity
-            if minute_fraction <= self._warning_threshold or hour_fraction <= self._warning_threshold:
+            if (
+                minute_fraction <= self._warning_threshold
+                or hour_fraction <= self._warning_threshold
+            ):
                 warning_triggered = True
 
             # Check if we have tokens in both buckets
@@ -297,7 +301,7 @@ class ClaudeRateLimiter:
         self._warning_threshold = warning_threshold
 
     @classmethod
-    def from_config(cls, config: "Config") -> "ClaudeRateLimiter":
+    def from_config(cls, config: Config) -> ClaudeRateLimiter:
         """Create a rate limiter from application configuration.
 
         Args:
@@ -345,9 +349,7 @@ class ClaudeRateLimiter:
 
         if timeout is None:
             timeout = (
-                0.0
-                if self._strategy == RateLimitStrategy.REJECT
-                else self.DEFAULT_QUEUE_TIMEOUT
+                0.0 if self._strategy == RateLimitStrategy.REJECT else self.DEFAULT_QUEUE_TIMEOUT
             )
 
         start_time = time.monotonic()
@@ -382,16 +384,12 @@ class ClaudeRateLimiter:
             if remaining <= 0:
                 self._metrics.record_request(success=False)
                 if self._strategy == RateLimitStrategy.REJECT:
-                    logger.warning(
-                        "Claude API rate limit exceeded - request rejected"
-                    )
+                    logger.warning("Claude API rate limit exceeded - request rejected")
                     raise RateLimitExceededError(
                         f"Claude API rate limit exceeded. "
                         f"Limit: {self._requests_per_minute}/min, {self._requests_per_hour}/hr"
                     )
-                logger.warning(
-                    f"Claude API rate limit timeout after {timeout:.1f}s wait"
-                )
+                logger.warning(f"Claude API rate limit timeout after {timeout:.1f}s wait")
                 return False
 
             # Wait before retrying
@@ -419,9 +417,7 @@ class ClaudeRateLimiter:
 
         if timeout is None:
             timeout = (
-                0.0
-                if self._strategy == RateLimitStrategy.REJECT
-                else self.DEFAULT_QUEUE_TIMEOUT
+                0.0 if self._strategy == RateLimitStrategy.REJECT else self.DEFAULT_QUEUE_TIMEOUT
             )
 
         start_time = time.monotonic()
@@ -456,16 +452,12 @@ class ClaudeRateLimiter:
             if remaining <= 0:
                 self._metrics.record_request(success=False)
                 if self._strategy == RateLimitStrategy.REJECT:
-                    logger.warning(
-                        "Claude API rate limit exceeded - request rejected"
-                    )
+                    logger.warning("Claude API rate limit exceeded - request rejected")
                     raise RateLimitExceededError(
                         f"Claude API rate limit exceeded. "
                         f"Limit: {self._requests_per_minute}/min, {self._requests_per_hour}/hr"
                     )
-                logger.warning(
-                    f"Claude API rate limit timeout after {timeout:.1f}s wait"
-                )
+                logger.warning(f"Claude API rate limit timeout after {timeout:.1f}s wait")
                 return False
 
             # Wait before retrying (async)

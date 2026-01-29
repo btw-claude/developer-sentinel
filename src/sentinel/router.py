@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Union
 
-from sentinel.github_poller import GitHubIssue, GitHubIssueProtocol
+from sentinel.github_poller import GitHubIssueProtocol
 from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraIssue

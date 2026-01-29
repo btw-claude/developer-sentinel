@@ -14,13 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from sentinel.agents.base import (
-    ParameterType,
-    Tool,
-    ToolParameter,
-    ToolResult,
-    ToolSchema,
-)
+from sentinel.agents.base import ParameterType, Tool, ToolParameter, ToolResult, ToolSchema
 from sentinel.logging import get_logger
 
 logger = get_logger(__name__)

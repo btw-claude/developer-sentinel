@@ -10,14 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from sentinel.orchestration import (
-    AgentConfig,
-    OrchestrationError,
-    TriggerConfig,
-    ValidationResult,
-    _validate_github_repo_format,
-    load_orchestration_file,
-)
+from sentinel.orchestration import OrchestrationError, load_orchestration_file
 
 
 class TestLabelsAndTagsValidation:
@@ -478,7 +471,9 @@ orchestrations:
         file_path = tmp_path / "invalid_combo.yaml"
         file_path.write_text(yaml_content)
 
-        with pytest.raises(OrchestrationError, match="cursor_mode.*only valid when agent_type is 'cursor'"):
+        with pytest.raises(
+            OrchestrationError, match="cursor_mode.*only valid when agent_type is 'cursor'"
+        ):
             load_orchestration_file(file_path)
 
     def test_cursor_mode_without_agent_type_allowed(self, tmp_path: Path) -> None:

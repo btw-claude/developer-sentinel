@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from sentinel.branch_validation import (
     BranchValidationResult,
     validate_branch_name_core,
@@ -194,9 +192,7 @@ class TestValidateBranchNameCoreWithTemplates:
             "release/{version}",
         ]
         for pattern in valid_patterns:
-            result = validate_branch_name_core(
-                pattern, allow_template_variables=True
-            )
+            result = validate_branch_name_core(pattern, allow_template_variables=True)
             assert result.is_valid, f"Expected '{pattern}' to be valid"
 
     def test_template_pattern_with_invalid_static_parts_fails(self) -> None:

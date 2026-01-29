@@ -12,7 +12,6 @@ composable components (DS-384).
 
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from collections import defaultdict, deque
@@ -151,9 +150,7 @@ class StateTracker:
     # Attempt Count Tracking
     # =========================================================================
 
-    def get_and_increment_attempt_count(
-        self, issue_key: str, orchestration_name: str
-    ) -> int:
+    def get_and_increment_attempt_count(self, issue_key: str, orchestration_name: str) -> int:
         """Get and increment the attempt count for an issue/orchestration pair.
 
         This method atomically increments the attempt count and returns the new value.
@@ -178,9 +175,7 @@ class StateTracker:
                 new_count = 1
             else:
                 new_count = entry.count + 1
-            self._attempt_counts[key] = AttemptCountEntry(
-                count=new_count, last_access=current_time
-            )
+            self._attempt_counts[key] = AttemptCountEntry(count=new_count, last_access=current_time)
             return new_count
 
     def cleanup_stale_attempt_counts(self) -> int:
@@ -260,7 +255,7 @@ class StateTracker:
         with self._running_steps_lock:
             return self._running_steps.pop(future_id, None)
 
-    def get_running_steps(self, active_futures: list["Future"]) -> list[RunningStepInfo]:
+    def get_running_steps(self, active_futures: list[Future]) -> list[RunningStepInfo]:
         """Get information about currently running execution steps.
 
         Args:
@@ -405,7 +400,7 @@ class StateTracker:
 
     def get_available_slots_for_orchestration(
         self,
-        orchestration: "Orchestration",
+        orchestration: Orchestration,
         global_available: int,
     ) -> int:
         """Get available slots for a specific orchestration considering both limits.

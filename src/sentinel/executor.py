@@ -139,9 +139,15 @@ class TemplateContext:
     jira_parent_key: str = field(default="", metadata={"source": "jira"})
 
     # Jira computed/formatted fields (source lists stored privately)
-    _jira_labels_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "jira"})
-    _jira_comments_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "jira"})
-    _jira_links_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "jira"})
+    _jira_labels_list: list[str] = field(
+        default_factory=list, repr=False, metadata={"source": "jira"}
+    )
+    _jira_comments_list: list[str] = field(
+        default_factory=list, repr=False, metadata={"source": "jira"}
+    )
+    _jira_links_list: list[str] = field(
+        default_factory=list, repr=False, metadata={"source": "jira"}
+    )
 
     # GitHub Issue context
     github_issue_number: str = field(default="", metadata={"source": "github"})
@@ -157,8 +163,12 @@ class TemplateContext:
     github_parent_issue_number: str = field(default="", metadata={"source": "github"})
 
     # GitHub computed/formatted fields (source lists stored privately)
-    _github_issue_assignees_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "github"})
-    _github_issue_labels_list: list[str] = field(default_factory=list, repr=False, metadata={"source": "github"})
+    _github_issue_assignees_list: list[str] = field(
+        default_factory=list, repr=False, metadata={"source": "github"}
+    )
+    _github_issue_labels_list: list[str] = field(
+        default_factory=list, repr=False, metadata={"source": "github"}
+    )
 
     def to_dict(self) -> dict[str, str]:
         """Convert to template variables dict using dataclass introspection.
@@ -197,7 +207,7 @@ class TemplateContext:
     @classmethod
     def from_jira_issue(
         cls, issue: JiraIssue, github: GitHubContext | None = None
-    ) -> "TemplateContext":
+    ) -> TemplateContext:
         """Create a TemplateContext from a Jira issue.
 
         Uses field metadata to auto-initialize GitHub-specific fields to their
@@ -233,7 +243,7 @@ class TemplateContext:
     @classmethod
     def from_github_issue(
         cls, issue: GitHubIssue, github: GitHubContext | None = None
-    ) -> "TemplateContext":
+    ) -> TemplateContext:
         """Create a TemplateContext from a GitHub issue.
 
         Uses field metadata to auto-initialize Jira-specific fields to their
@@ -271,7 +281,9 @@ class TemplateContext:
             github_pr_head=issue.head_ref if issue.is_pull_request else "",
             github_pr_base=issue.base_ref if issue.is_pull_request else "",
             github_pr_draft=str(issue.draft).lower() if issue.is_pull_request else "",
-            github_parent_issue_number=str(issue.parent_issue_number) if issue.parent_issue_number else "",
+            github_parent_issue_number=str(issue.parent_issue_number)
+            if issue.parent_issue_number
+            else "",
             _github_issue_assignees_list=issue.assignees or [],
             _github_issue_labels_list=issue.labels or [],
             # Jira fields auto-initialized to defaults via field metadata
@@ -516,9 +528,7 @@ class AgentExecutor:
 
         return context.to_dict()
 
-    def _expand_branch_pattern(
-        self, issue: AnyIssue, orchestration: Orchestration
-    ) -> str | None:
+    def _expand_branch_pattern(self, issue: AnyIssue, orchestration: Orchestration) -> str | None:
         """Expand template variables in the branch pattern.
 
         Returns None if no branch pattern is configured. Uses variables from
@@ -652,7 +662,7 @@ class AgentExecutor:
                 start_time=start_time,
                 end_time=datetime.now(),
             )
-        except (OSError, IOError) as e:
+        except OSError as e:
             # Log but don't fail the execution due to file I/O errors
             logger.error(f"Failed to write agent execution log due to I/O error: {e}")
         except (TypeError, ValueError) as e:

@@ -14,7 +14,6 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
-
 # Pre-compiled regex pattern for invalid branch characters
 # Branch name invalid characters: space, ~, ^, :, ?, *, [, ], \, @{
 _BRANCH_INVALID_CHARS = re.compile(r"[ ~^:?*\[\]\\]|@\{")
@@ -32,12 +31,12 @@ class BranchValidationResult(NamedTuple):
     error_message: str
 
     @classmethod
-    def success(cls) -> "BranchValidationResult":
+    def success(cls) -> BranchValidationResult:
         """Create a successful validation result."""
         return cls(is_valid=True, error_message="")
 
     @classmethod
-    def failure(cls, message: str) -> "BranchValidationResult":
+    def failure(cls, message: str) -> BranchValidationResult:
         """Create a failed validation result with the given error message."""
         return cls(is_valid=False, error_message=message)
 
@@ -90,28 +89,21 @@ def validate_branch_name_core(
 
     # Check for invalid starting characters
     if branch.startswith("-") or branch.startswith("."):
-        return BranchValidationResult.failure(
-            "branch name cannot start with '-' or '.'"
-        )
+        return BranchValidationResult.failure("branch name cannot start with '-' or '.'")
 
     # Check for invalid ending characters
     if branch.endswith(".") or branch.endswith("/"):
-        return BranchValidationResult.failure(
-            "branch name cannot end with '.' or '/'"
-        )
+        return BranchValidationResult.failure("branch name cannot end with '.' or '/'")
 
     # Check for .lock ending (git disallows this)
     if branch.endswith(".lock"):
-        return BranchValidationResult.failure(
-            "branch name cannot end with '.lock'"
-        )
+        return BranchValidationResult.failure("branch name cannot end with '.lock'")
 
     # Check for invalid characters in static parts
     for part in static_parts:
         if _BRANCH_INVALID_CHARS.search(part):
             return BranchValidationResult.failure(
-                "branch name contains invalid characters "
-                "(space, ~, ^, :, ?, *, [, ], \\, or @{)"
+                "branch name contains invalid characters " "(space, ~, ^, :, ?, *, [, ], \\, or @{)"
             )
 
     # Check for consecutive periods or slashes

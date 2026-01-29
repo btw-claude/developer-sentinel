@@ -7,7 +7,8 @@ and orchestration-specific configuration.
 
 from __future__ import annotations
 
-from typing import Any, Callable, TypeAlias
+from collections.abc import Callable
+from typing import Any, TypeAlias
 
 from sentinel.agent_clients.base import AgentClient, AgentType
 from sentinel.config import Config
@@ -89,9 +90,7 @@ class AgentClientFactory:
         logger.debug(f"Created new {resolved_type} agent client")
         return client
 
-    def get_or_create(
-        self, agent_type: AgentType | None, config: Config
-    ) -> AgentClient:
+    def get_or_create(self, agent_type: AgentType | None, config: Config) -> AgentClient:
         """Get a cached agent client or create a new one.
 
         Clients are cached by (agent_type, config_id) tuple, where config_id
@@ -163,22 +162,22 @@ class AgentClientFactory:
             ValueError: If no builder is registered for the agent type.
             TypeError: If any kwargs values are not hashable.
         """
-        resolved_type: AgentType = orch_agent_type if orch_agent_type is not None else DEFAULT_AGENT_TYPE
+        resolved_type: AgentType = (
+            orch_agent_type if orch_agent_type is not None else DEFAULT_AGENT_TYPE
+        )
         kwargs_key = self._make_kwargs_hashable(kwargs)
         cache_key: OrchestrationCacheKey = (resolved_type, id(config), kwargs_key)
 
         if cache_key in self._cache:
             logger.debug(
-                f"Returning cached {resolved_type} orchestration client "
-                f"(kwargs: {kwargs_key})"
+                f"Returning cached {resolved_type} orchestration client " f"(kwargs: {kwargs_key})"
             )
             return self._cache[cache_key]
 
         client = self.create_for_orchestration(orch_agent_type, config, **kwargs)
         self._cache[cache_key] = client
         logger.debug(
-            f"Created and cached {resolved_type} orchestration client "
-            f"(kwargs: {kwargs_key})"
+            f"Created and cached {resolved_type} orchestration client " f"(kwargs: {kwargs_key})"
         )
         return client
 

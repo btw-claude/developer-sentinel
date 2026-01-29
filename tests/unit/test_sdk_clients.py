@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from sentinel.config import Config
 from sentinel.executor import AgentClientError, AgentTimeoutError
+from sentinel.poller import JiraClientError
 from sentinel.sdk_clients import (
     ClaudeProcessInterruptedError,
     ClaudeSdkAgentClient,
@@ -21,7 +23,6 @@ from sentinel.sdk_clients import (
     request_shutdown,
     reset_shutdown,
 )
-from sentinel.poller import JiraClientError
 from sentinel.tag_manager import JiraTagClientError
 
 
@@ -141,7 +142,7 @@ class TestJiraSdkClient:
         """Should wrap timeout in JiraClientError."""
         with patch(
             "sentinel.agent_clients.claude_sdk.query",
-            create_raising_mock_query(asyncio.TimeoutError()),
+            create_raising_mock_query(TimeoutError()),
         ):
             client = JiraSdkClient(mock_config)
             with pytest.raises(JiraClientError, match="timed out"):
@@ -208,7 +209,7 @@ class TestJiraSdkTagClient:
         """Should wrap timeout in JiraTagClientError."""
         with patch(
             "sentinel.agent_clients.claude_sdk.query",
-            create_raising_mock_query(asyncio.TimeoutError()),
+            create_raising_mock_query(TimeoutError()),
         ):
             client = JiraSdkTagClient(mock_config)
             with pytest.raises(JiraTagClientError, match="timed out"):
@@ -245,7 +246,7 @@ class TestJiraSdkTagClient:
         """Should wrap timeout in JiraTagClientError."""
         with patch(
             "sentinel.agent_clients.claude_sdk.query",
-            create_raising_mock_query(asyncio.TimeoutError()),
+            create_raising_mock_query(TimeoutError()),
         ):
             client = JiraSdkTagClient(mock_config)
             with pytest.raises(JiraTagClientError, match="timed out"):
@@ -283,7 +284,9 @@ class TestClaudeSdkAgentClient:
         """Should include context in prompt."""
         captured_prompt: list[str] = []
 
-        with patch("sentinel.agent_clients.claude_sdk.query", create_capturing_mock_query(captured_prompt)):
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query", create_capturing_mock_query(captured_prompt)
+        ):
             client = ClaudeSdkAgentClient(mock_config)
             asyncio.run(
                 client.run_agent(
@@ -302,7 +305,7 @@ class TestClaudeSdkAgentClient:
         """Should wrap timeout in AgentTimeoutError."""
         with patch(
             "sentinel.agent_clients.claude_sdk.query",
-            create_raising_mock_query(asyncio.TimeoutError()),
+            create_raising_mock_query(TimeoutError()),
         ):
             client = ClaudeSdkAgentClient(mock_config)
             with pytest.raises(AgentTimeoutError, match="timed out"):
@@ -396,9 +399,7 @@ class TestClaudeSdkAgentClient:
             with pytest.raises(ClaudeProcessInterruptedError):
                 asyncio.run(client.run_agent("Do something", []))
 
-    def test_shutdown_interrupts_agent_with_injected_controller(
-        self, mock_config: Config
-    ) -> None:
+    def test_shutdown_interrupts_agent_with_injected_controller(self, mock_config: Config) -> None:
         """Should raise ClaudeProcessInterruptedError with injected ShutdownController.
 
         This test demonstrates the improved testability with dependency injection.
@@ -439,9 +440,7 @@ class TestClaudeSdkAgentClient:
 class TestClaudeSdkAgentClientStreaming:
     """Tests for streaming log functionality in ClaudeSdkAgentClient."""
 
-    def test_constructor_accepts_log_base_dir(
-        self, tmp_path: Path, mock_config: Config
-    ) -> None:
+    def test_constructor_accepts_log_base_dir(self, tmp_path: Path, mock_config: Config) -> None:
         """Should accept log_base_dir in constructor."""
         client = ClaudeSdkAgentClient(mock_config, log_base_dir=tmp_path)
         assert client.log_base_dir == tmp_path
@@ -479,13 +478,13 @@ class TestClaudeSdkAgentClientStreaming:
         log_files = list((log_dir / "test-orch").glob("*.log"))
         assert len(log_files) == 1
 
-    def test_streaming_log_contains_header(
-        self, tmp_path: Path, mock_config: Config
-    ) -> None:
+    def test_streaming_log_contains_header(self, tmp_path: Path, mock_config: Config) -> None:
         """Should write header to log file."""
         log_dir = tmp_path / "logs"
 
-        with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("Agent completed task")):
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query", create_mock_query("Agent completed task")
+        ):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
             result = asyncio.run(
                 client.run_agent(
@@ -562,9 +561,7 @@ class TestClaudeSdkAgentClientStreaming:
         # Logs directory should not be created
         assert not log_dir.exists()
 
-    def test_streaming_log_finalized_on_success(
-        self, tmp_path: Path, mock_config: Config
-    ) -> None:
+    def test_streaming_log_finalized_on_success(self, tmp_path: Path, mock_config: Config) -> None:
         """Should finalize log with COMPLETED status on success."""
         log_dir = tmp_path / "logs"
 
@@ -584,15 +581,13 @@ class TestClaudeSdkAgentClientStreaming:
         assert "Status:         COMPLETED" in content
         assert "END OF LOG" in content
 
-    def test_streaming_log_finalized_on_timeout(
-        self, tmp_path: Path, mock_config: Config
-    ) -> None:
+    def test_streaming_log_finalized_on_timeout(self, tmp_path: Path, mock_config: Config) -> None:
         """Should finalize log with TIMEOUT status on timeout."""
         log_dir = tmp_path / "logs"
 
         with patch(
             "sentinel.agent_clients.claude_sdk.query",
-            create_raising_mock_query(asyncio.TimeoutError()),
+            create_raising_mock_query(TimeoutError()),
         ):
             client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
             with pytest.raises(AgentTimeoutError):
@@ -610,9 +605,7 @@ class TestClaudeSdkAgentClientStreaming:
         content = log_files[0].read_text()
         assert "Status:         TIMEOUT" in content
 
-    def test_streaming_log_finalized_on_error(
-        self, tmp_path: Path, mock_config: Config
-    ) -> None:
+    def test_streaming_log_finalized_on_error(self, tmp_path: Path, mock_config: Config) -> None:
         """Should finalize log with ERROR status on error."""
         log_dir = tmp_path / "logs"
 
@@ -639,9 +632,7 @@ class TestClaudeSdkAgentClientStreaming:
 class TestDisableStreamingLogs:
     """Tests for disable_streaming_logs functionality."""
 
-    def test_constructor_accepts_disable_streaming_logs(
-        self, mock_config: Config
-    ) -> None:
+    def test_constructor_accepts_disable_streaming_logs(self, mock_config: Config) -> None:
         """Should accept disable_streaming_logs parameter in constructor."""
         client = ClaudeSdkAgentClient(mock_config, disable_streaming_logs=True)
         assert client._disable_streaming_logs is True
@@ -652,9 +643,7 @@ class TestDisableStreamingLogs:
         client = ClaudeSdkAgentClient(config)
         assert client._disable_streaming_logs is True
 
-    def test_constructor_defaults_false_when_not_set(
-        self, mock_config: Config
-    ) -> None:
+    def test_constructor_defaults_false_when_not_set(self, mock_config: Config) -> None:
         """Should default to False when config has default value."""
         client = ClaudeSdkAgentClient(mock_config)
         assert client._disable_streaming_logs is False
@@ -665,9 +654,7 @@ class TestDisableStreamingLogs:
         client = ClaudeSdkAgentClient(config, disable_streaming_logs=False)
         assert client._disable_streaming_logs is False
 
-    def test_disabled_streaming_uses_simple_path(
-        self, tmp_path: Path, mock_config: Config
-    ) -> None:
+    def test_disabled_streaming_uses_simple_path(self, tmp_path: Path, mock_config: Config) -> None:
         """Should use _run_simple when streaming is disabled."""
         log_dir = tmp_path / "logs"
 
@@ -787,9 +774,7 @@ class TestDisableStreamingLogs:
 class TestClaudeSdkAgentClientBranchSetup:
     """Tests for ClaudeSdkAgentClient._setup_branch method."""
 
-    def test_checkout_existing_branch(
-        self, tmp_path: Path, mock_config: Config
-    ) -> None:
+    def test_checkout_existing_branch(self, tmp_path: Path, mock_config: Config) -> None:
         """Should checkout and pull when branch exists on remote.
 
         Mock behavior expectations:
@@ -829,10 +814,16 @@ class TestClaudeSdkAgentClientBranchSetup:
 
         # Verify the sequence of git commands
         assert any("fetch" in " ".join(cmd) for cmd in call_history)
-        assert any("ls-remote" in " ".join(cmd) and "feature/DS-123" in " ".join(cmd) for cmd in call_history)
+        assert any(
+            "ls-remote" in " ".join(cmd) and "feature/DS-123" in " ".join(cmd)
+            for cmd in call_history
+        )
         # Verify the optimized rev-parse call with multiple arguments
         assert any("rev-parse" in " ".join(cmd) and "--abbrev-ref" in cmd for cmd in call_history)
-        assert any("checkout" in " ".join(cmd) and "feature/DS-123" in " ".join(cmd) for cmd in call_history)
+        assert any(
+            "checkout" in " ".join(cmd) and "feature/DS-123" in " ".join(cmd)
+            for cmd in call_history
+        )
         assert any("pull" in " ".join(cmd) for cmd in call_history)
 
     def test_skip_checkout_when_already_up_to_date(
@@ -901,10 +892,14 @@ class TestClaudeSdkAgentClientBranchSetup:
             return result
 
         with patch("subprocess.run", side_effect=mock_run):
-            client._setup_branch(workdir, "feature/DS-456", create_branch=True, base_branch="develop")
+            client._setup_branch(
+                workdir, "feature/DS-456", create_branch=True, base_branch="develop"
+            )
 
         # Verify branch creation command
-        checkout_with_b = [cmd for cmd in call_history if "checkout" in " ".join(cmd) and "-b" in cmd]
+        checkout_with_b = [
+            cmd for cmd in call_history if "checkout" in " ".join(cmd) and "-b" in cmd
+        ]
         assert len(checkout_with_b) == 1
         assert "feature/DS-456" in checkout_with_b[0]
         assert "origin/develop" in checkout_with_b[0]
@@ -927,7 +922,9 @@ class TestClaudeSdkAgentClientBranchSetup:
 
         with patch("subprocess.run", side_effect=mock_run):
             with pytest.raises(AgentClientError, match="does not exist on remote"):
-                client._setup_branch(workdir, "nonexistent-branch", create_branch=False, base_branch="main")
+                client._setup_branch(
+                    workdir, "nonexistent-branch", create_branch=False, base_branch="main"
+                )
 
     def test_no_branch_operations_when_branch_is_none(
         self, tmp_path: Path, mock_config: Config
@@ -977,9 +974,7 @@ class TestClaudeSdkAgentClientBranchSetup:
         assert call_args[0][2] is True  # create_branch
         assert call_args[0][3] == "develop"  # base_branch
 
-    def test_git_fetch_failure_raises_error(
-        self, tmp_path: Path, mock_config: Config
-    ) -> None:
+    def test_git_fetch_failure_raises_error(self, tmp_path: Path, mock_config: Config) -> None:
         """Should raise AgentClientError when git fetch fails."""
         import subprocess
 
@@ -999,11 +994,11 @@ class TestClaudeSdkAgentClientBranchSetup:
 
         with patch("subprocess.run", side_effect=mock_run):
             with pytest.raises(AgentClientError, match="Git operation failed"):
-                client._setup_branch(workdir, "feature/DS-123", create_branch=False, base_branch="main")
+                client._setup_branch(
+                    workdir, "feature/DS-123", create_branch=False, base_branch="main"
+                )
 
-    def test_git_checkout_failure_raises_error(
-        self, tmp_path: Path, mock_config: Config
-    ) -> None:
+    def test_git_checkout_failure_raises_error(self, tmp_path: Path, mock_config: Config) -> None:
         """Should raise AgentClientError when git checkout fails."""
         import subprocess
 
@@ -1033,7 +1028,9 @@ class TestClaudeSdkAgentClientBranchSetup:
 
         with patch("subprocess.run", side_effect=mock_run):
             with pytest.raises(AgentClientError, match="Git operation failed"):
-                client._setup_branch(workdir, "feature/DS-123", create_branch=False, base_branch="main")
+                client._setup_branch(
+                    workdir, "feature/DS-123", create_branch=False, base_branch="main"
+                )
 
     def test_malformed_rev_parse_output_raises_error(
         self, tmp_path: Path, mock_config: Config
@@ -1069,5 +1066,9 @@ class TestClaudeSdkAgentClientBranchSetup:
             return result
 
         with patch("subprocess.run", side_effect=mock_run):
-            with pytest.raises(AgentClientError, match="Unexpected git rev-parse output: expected 3 lines, got 2"):
-                client._setup_branch(workdir, "feature/DS-123", create_branch=False, base_branch="main")
+            with pytest.raises(
+                AgentClientError, match="Unexpected git rev-parse output: expected 3 lines, got 2"
+            ):
+                client._setup_branch(
+                    workdir, "feature/DS-123", create_branch=False, base_branch="main"
+                )

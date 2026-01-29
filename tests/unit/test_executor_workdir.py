@@ -12,14 +12,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-from sentinel.executor import (
-    AgentExecutor,
-    AgentRunResult,
-    ExecutionStatus,
-    cleanup_workdir,
-)
+from sentinel.executor import AgentExecutor, AgentRunResult, ExecutionStatus, cleanup_workdir
 from tests.helpers import make_issue, make_orchestration
 from tests.mocks import MockAgentClient
 
@@ -268,9 +261,7 @@ class TestCleanupWorkdir:
 
             with patch("shutil.rmtree", side_effect=mock_rmtree_side_effect):
                 with patch("time.sleep") as mock_sleep:
-                    result = cleanup_workdir(
-                        workdir, force=True, max_retries=3, retry_delay=1.5
-                    )
+                    result = cleanup_workdir(workdir, force=True, max_retries=3, retry_delay=1.5)
 
             assert result is True
             # Should have slept twice (after first and second failures)

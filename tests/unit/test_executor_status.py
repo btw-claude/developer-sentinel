@@ -5,8 +5,6 @@ This module contains executor tests for:
 - execute method tests
 """
 
-from concurrent.futures import ThreadPoolExecutor
-
 from sentinel.executor import AgentExecutor, ExecutionStatus
 from sentinel.orchestration import (
     AgentConfig,

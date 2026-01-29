@@ -49,9 +49,9 @@ def assert_badge_has_class(soup: BeautifulSoup, expected_class: str) -> None:
         AssertionError: If badge is not found or doesn't have the expected class
     """
     badge = assert_badge_exists(soup)
-    assert expected_class in badge.get("class", []), (
-        f"Expected class '{expected_class}' not found in badge classes: {badge.get('class', [])}"
-    )
+    assert expected_class in badge.get(
+        "class", []
+    ), f"Expected class '{expected_class}' not found in badge classes: {badge.get('class', [])}"
 
 
 def assert_badge_not_has_class(soup: BeautifulSoup, unexpected_class: str) -> None:
@@ -65,9 +65,9 @@ def assert_badge_not_has_class(soup: BeautifulSoup, unexpected_class: str) -> No
         AssertionError: If badge is not found or has the unexpected class
     """
     badge = assert_badge_exists(soup)
-    assert unexpected_class not in badge.get("class", []), (
-        f"Unexpected class '{unexpected_class}' found in badge classes: {badge.get('class', [])}"
-    )
+    assert unexpected_class not in badge.get(
+        "class", []
+    ), f"Unexpected class '{unexpected_class}' found in badge classes: {badge.get('class', [])}"
 
 
 def assert_badge_text(soup: BeautifulSoup, expected_text: str) -> None:
@@ -81,9 +81,7 @@ def assert_badge_text(soup: BeautifulSoup, expected_text: str) -> None:
         AssertionError: If badge is not found or text doesn't match
     """
     badge = assert_badge_exists(soup)
-    assert badge.text == expected_text, (
-        f"Expected badge text '{expected_text}', got '{badge.text}'"
-    )
+    assert badge.text == expected_text, f"Expected badge text '{expected_text}', got '{badge.text}'"
 
 
 class TestStatusBadgeMacro:
@@ -101,7 +99,9 @@ class TestStatusBadgeMacro:
     @pytest.fixture
     def jinja_env(self) -> Environment:
         """Create a Jinja2 environment with the templates directory."""
-        templates_dir = Path(__file__).parent.parent / "src" / "sentinel" / "dashboard" / "templates"
+        templates_dir = (
+            Path(__file__).parent.parent / "src" / "sentinel" / "dashboard" / "templates"
+        )
         env = Environment(loader=FileSystemLoader(str(templates_dir)))
         return env
 
@@ -127,6 +127,7 @@ class TestStatusBadgeMacro:
         self, render_status_badge: Callable[[int, int], str]
     ) -> Callable[[int, int], BeautifulSoup]:
         """Create a helper function to render and parse a status badge."""
+
         def parse(active_count: int, total_count: int) -> BeautifulSoup:
             result = render_status_badge(active_count=active_count, total_count=total_count)
             return BeautifulSoup(result, "html.parser")
@@ -141,7 +142,9 @@ class TestStatusBadgeMacro:
         assert_badge_text(soup, "0/5")
 
     @pytest.mark.parametrize("total_count", [1, 10, 100])
-    def test_badge_inactive_with_zero_active_and_various_totals(self, parse_badge, total_count: int) -> None:
+    def test_badge_inactive_with_zero_active_and_various_totals(
+        self, parse_badge, total_count: int
+    ) -> None:
         """Test badge--inactive state with various total_count values."""
         soup = parse_badge(active_count=0, total_count=total_count)
 
@@ -181,7 +184,9 @@ class TestStatusBadgeMacro:
             (50, 100),
         ],
     )
-    def test_badge_default_with_various_partial_counts(self, parse_badge, active_count: int, total_count: int) -> None:
+    def test_badge_default_with_various_partial_counts(
+        self, parse_badge, active_count: int, total_count: int
+    ) -> None:
         """Test default state with various partial active counts."""
         soup = parse_badge(active_count=active_count, total_count=total_count)
 

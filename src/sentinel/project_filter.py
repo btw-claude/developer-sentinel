@@ -99,19 +99,14 @@ class FilterExpression:
         """Validate expression structure."""
         is_leaf = self.condition is not None
         is_composite = (
-            self.left is not None
-            and self.right is not None
-            and self.bool_operator is not None
+            self.left is not None and self.right is not None and self.bool_operator is not None
         )
 
         if is_leaf and is_composite:
-            raise ValueError(
-                "Expression cannot have both a condition and sub-expressions"
-            )
+            raise ValueError("Expression cannot have both a condition and sub-expressions")
         if not is_leaf and not is_composite:
             raise ValueError(
-                "Expression must have either a condition or "
-                "(left, right, bool_operator)"
+                "Expression must have either a condition or " "(left, right, bool_operator)"
             )
 
     @property
@@ -198,9 +193,7 @@ class ProjectFilterParser:
 
         return expr
 
-    def evaluate(
-        self, expression: FilterExpression, fields: dict[str, Any]
-    ) -> bool:
+    def evaluate(self, expression: FilterExpression, fields: dict[str, Any]) -> bool:
         """Evaluate a FilterExpression against field values.
 
         Args:
@@ -372,9 +365,7 @@ class ProjectFilterParser:
         while self._peek() == "OR":
             self._advance()  # consume OR
             right = self._parse_and_expression()
-            left = FilterExpression(
-                left=left, right=right, bool_operator=BooleanOperator.OR
-            )
+            left = FilterExpression(left=left, right=right, bool_operator=BooleanOperator.OR)
 
         return left
 
@@ -389,9 +380,7 @@ class ProjectFilterParser:
         while self._peek() == "AND":
             self._advance()  # consume AND
             right = self._parse_primary()
-            left = FilterExpression(
-                left=left, right=right, bool_operator=BooleanOperator.AND
-            )
+            left = FilterExpression(left=left, right=right, bool_operator=BooleanOperator.AND)
 
         return left
 
@@ -505,9 +494,7 @@ class ProjectFilterParser:
             self._pos += 1
         return token
 
-    def _evaluate_condition(
-        self, condition: Condition, fields: dict[str, Any]
-    ) -> bool:
+    def _evaluate_condition(self, condition: Condition, fields: dict[str, Any]) -> bool:
         """Evaluate a single condition against field values.
 
         Field matching is case-insensitive for field names.

@@ -9,22 +9,17 @@ See DS-402 for background on why this stub file was created.
 from __future__ import annotations
 
 import argparse
-import threading
-from collections import deque
-from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
-from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubIssueProtocol, GitHubTagClient
-from sentinel.logging import OrchestrationLogManager
-from sentinel.orchestration import Orchestration, OrchestrationVersion
+from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubTagClient
+from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraClient
-from sentinel.router import Router, RoutingResult
+from sentinel.router import Router
 from sentinel.tag_manager import JiraTagClient, TagManager
 
 class AttemptCountEntry:
@@ -102,7 +97,6 @@ class GitHubIssueWithRepo:
     def repo_url(self) -> str: ...
     @property
     def parent_issue_number(self) -> int | None: ...
-
     def __getattr__(self, name: str) -> Any: ...
 
 def extract_repo_from_url(url: str) -> str | None: ...

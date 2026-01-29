@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, Mock
 
-import pytest
 from dependency_injector import providers
 
 from sentinel.config import Config
 from sentinel.container import (
-    ClientsContainer,
-    ServicesContainer,
     SentinelContainer,
     create_agent_factory,
     create_agent_logger,

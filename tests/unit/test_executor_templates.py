@@ -77,9 +77,7 @@ class TestParentEpicTemplateVariables:
 
     def test_combined_epic_and_parent_key_variables(self, executor: AgentExecutor) -> None:
         """Should substitute both epic and parent key in same prompt."""
-        issue = JiraIssue(
-            key="DS-123", summary="Sub-task", epic_key="EPIC-50", parent_key="DS-100"
-        )
+        issue = JiraIssue(key="DS-123", summary="Sub-task", epic_key="EPIC-50", parent_key="DS-100")
         orch = make_orchestration(
             prompt="Issue {jira_issue_key} in epic {jira_epic_key} under {jira_parent_key}"
         )
@@ -134,9 +132,7 @@ class TestParentEpicTemplateVariables:
         from sentinel.github_poller import GitHubIssue
 
         issue = GitHubIssue(number=42, title="Test", parent_issue_number=10)
-        orch = make_orchestration(
-            prompt="Epic: [{jira_epic_key}] Parent: [{jira_parent_key}]"
-        )
+        orch = make_orchestration(prompt="Epic: [{jira_epic_key}] Parent: [{jira_parent_key}]")
 
         prompt = executor.build_prompt(issue, orch)
 
@@ -144,9 +140,7 @@ class TestParentEpicTemplateVariables:
 
     def test_github_parent_empty_for_jira_issues(self, executor: AgentExecutor) -> None:
         """GitHub parent variable should be empty for Jira issues."""
-        issue = JiraIssue(
-            key="DS-123", summary="Test", epic_key="EPIC-100", parent_key="DS-100"
-        )
+        issue = JiraIssue(key="DS-123", summary="Test", epic_key="EPIC-100", parent_key="DS-100")
         orch = make_orchestration(prompt="GitHub Parent: [{github_parent_issue_number}]")
 
         prompt = executor.build_prompt(issue, orch)
@@ -205,7 +199,9 @@ class TestParentEpicBranchPatternExpansion:
 
         assert result == "fix/DS-400/DS-456"
 
-    def test_expand_branch_pattern_with_github_parent_issue_number(self, executor: AgentExecutor) -> None:
+    def test_expand_branch_pattern_with_github_parent_issue_number(
+        self, executor: AgentExecutor
+    ) -> None:
         """Should expand {github_parent_issue_number} in branch pattern."""
         from sentinel.github_poller import GitHubIssue
 
@@ -233,6 +229,7 @@ class TestParentEpicBranchPatternExpansion:
         Runtime validation now correctly rejects this pattern.
         """
         import logging
+
         issue = JiraIssue(key="DS-123", summary="No epic", epic_key=None)
         orch = make_orchestration(
             github=GitHubContext(
@@ -261,6 +258,7 @@ class TestParentEpicBranchPatternExpansion:
         Runtime validation now correctly rejects this pattern.
         """
         import logging
+
         from sentinel.github_poller import GitHubIssue
 
         issue = GitHubIssue(number=42, title="Top-level", parent_issue_number=None)
@@ -299,7 +297,9 @@ class TestParentEpicBranchPatternExpansion:
 
         assert result == "EPIC-50/DS-700/DS-789"
 
-    def test_expand_branch_pattern_fallback_with_missing_parent(self, executor: AgentExecutor) -> None:
+    def test_expand_branch_pattern_fallback_with_missing_parent(
+        self, executor: AgentExecutor
+    ) -> None:
         """Test pattern handles missing parent/epic gracefully for branching."""
         # Issue without epic or parent - simulates standalone issue
         issue = JiraIssue(key="DS-999", summary="Standalone", epic_key=None, parent_key=None)
@@ -328,6 +328,7 @@ class TestParentEpicBranchPatternExpansion:
         Runtime validation now correctly rejects this pattern.
         """
         import logging
+
         from sentinel.github_poller import GitHubIssue
 
         issue = GitHubIssue(number=42, title="Fix", parent_issue_number=10)
@@ -358,6 +359,7 @@ class TestParentEpicBranchPatternExpansion:
         should return None and log a warning.
         """
         import logging
+
         # Create an issue with a summary that contains invalid characters
         issue = JiraIssue(
             key="DS-123",
@@ -391,6 +393,7 @@ class TestParentEpicBranchPatternExpansion:
         git's internal lock files. This test verifies the new .lock validation.
         """
         import logging
+
         issue = JiraIssue(key="DS-123", summary="Test lock issue")
         orch = make_orchestration(
             github=GitHubContext(
@@ -448,7 +451,9 @@ class TestParentEpicIntegration:
         """Create an AgentExecutor with a mock client."""
         return AgentExecutor(mock_client)
 
-    def test_execute_with_jira_epic_in_prompt(self, mock_client: MockAgentClient, executor: AgentExecutor) -> None:
+    def test_execute_with_jira_epic_in_prompt(
+        self, mock_client: MockAgentClient, executor: AgentExecutor
+    ) -> None:
         """Execute should properly substitute Jira epic key in prompt."""
         issue = JiraIssue(
             key="DS-123", summary="Fix bug in epic", epic_key="EPIC-100", parent_key="DS-100"
@@ -462,9 +467,11 @@ class TestParentEpicIntegration:
         assert result.succeeded is True
         # Verify the prompt was correctly built
         prompt = mock_client.calls[0][0]
-        assert "Fix issue DS-123 in epic EPIC-100 (parent: DS-100)" == prompt
+        assert prompt == "Fix issue DS-123 in epic EPIC-100 (parent: DS-100)"
 
-    def test_execute_with_github_parent_in_prompt(self, mock_client: MockAgentClient, executor: AgentExecutor) -> None:
+    def test_execute_with_github_parent_in_prompt(
+        self, mock_client: MockAgentClient, executor: AgentExecutor
+    ) -> None:
         """Execute should properly substitute GitHub parent issue number in prompt."""
         from sentinel.github_poller import GitHubIssue
 
@@ -482,9 +489,11 @@ class TestParentEpicIntegration:
 
         assert result.succeeded is True
         prompt = mock_client.calls[0][0]
-        assert "Implement fix for #42 (parent: #10)" == prompt
+        assert prompt == "Implement fix for #42 (parent: #10)"
 
-    def test_full_workflow_jira_with_epic_branch(self, mock_client: MockAgentClient, executor: AgentExecutor) -> None:
+    def test_full_workflow_jira_with_epic_branch(
+        self, mock_client: MockAgentClient, executor: AgentExecutor
+    ) -> None:
         """Test complete workflow: Jira issue with epic-based branch pattern."""
         mock_client.responses = ["SUCCESS: All changes committed"]
         issue = JiraIssue(
@@ -509,9 +518,11 @@ class TestParentEpicIntegration:
         assert result.succeeded is True
         # Verify prompt substitution
         prompt = mock_client.calls[0][0]
-        assert "Implement Implement feature for DS-456 under epic FEAT-100" == prompt
+        assert prompt == "Implement Implement feature for DS-456 under epic FEAT-100"
 
-    def test_full_workflow_github_with_parent_branch(self, mock_client: MockAgentClient, executor: AgentExecutor) -> None:
+    def test_full_workflow_github_with_parent_branch(
+        self, mock_client: MockAgentClient, executor: AgentExecutor
+    ) -> None:
         """Test complete workflow: GitHub issue with parent-based branch pattern."""
         from sentinel.github_poller import GitHubIssue
 
@@ -538,7 +549,7 @@ class TestParentEpicIntegration:
 
         assert result.succeeded is True
         prompt = mock_client.calls[0][0]
-        assert "Complete #55: Sub-task implementation (child of #20)" == prompt
+        assert prompt == "Complete #55: Sub-task implementation (child of #20)"
 
 
 class TestSlugify:
@@ -698,6 +709,7 @@ class TestSlugTemplateVariables:
         Runtime validation correctly distinguishes between these.
         """
         import logging
+
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="DS-789", summary="Add User Profile Page")
@@ -740,6 +752,7 @@ class TestSlugTemplateVariables:
         Runtime validation now correctly rejects this pattern.
         """
         import logging
+
         from sentinel.github_poller import GitHubIssue
 
         client = MockAgentClient()
@@ -771,6 +784,7 @@ class TestSlugTemplateVariables:
         Runtime validation now correctly rejects this pattern.
         """
         import logging
+
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="DS-123", summary="Some summary")
@@ -795,9 +809,7 @@ class TestSlugTemplateVariables:
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="DS-100", summary="Add Login Button")
-        orch = make_orchestration(
-            prompt="Create branch: feature/{jira_summary_slug}"
-        )
+        orch = make_orchestration(prompt="Create branch: feature/{jira_summary_slug}")
 
         prompt = executor.build_prompt(issue, orch)
 

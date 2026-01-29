@@ -505,9 +505,7 @@ class TestOrchestrationLogManager:
         assert logger1 is logger2
         manager.close_all()
 
-    def test_returns_different_loggers_for_different_orchestrations(
-        self, tmp_path: Path
-    ) -> None:
+    def test_returns_different_loggers_for_different_orchestrations(self, tmp_path: Path) -> None:
         """Test that different orchestrations get different loggers."""
         manager = OrchestrationLogManager(tmp_path)
 

@@ -6,12 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from sentinel.github_poller import (
-    GitHubClient,
-    GitHubClientError,
-    GitHubIssue,
-    GitHubPoller,
-)
+from sentinel.github_poller import GitHubClient, GitHubClientError, GitHubIssue, GitHubPoller
 from sentinel.orchestration import TriggerConfig
 
 
@@ -55,9 +50,7 @@ class MockGitHubClient(GitHubClient):
             raise GitHubClientError("API error")
         return self.mock_project
 
-    def list_project_items(
-        self, project_id: str, max_results: int = 100
-    ) -> list[dict[str, Any]]:
+    def list_project_items(self, project_id: str, max_results: int = 100) -> list[dict[str, Any]]:
         self.list_project_items_calls.append((project_id, max_results))
         if self.should_fail and self.fail_count < self.max_fails:
             self.fail_count += 1

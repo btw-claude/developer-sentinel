@@ -172,7 +172,7 @@ class SentinelContainer(containers.DeclarativeContainer):
     )
 
 
-def create_jira_rest_client(config: "Config") -> "JiraClient":
+def create_jira_rest_client(config: Config) -> JiraClient:
     """Create a Jira REST API client.
 
     Args:
@@ -190,7 +190,7 @@ def create_jira_rest_client(config: "Config") -> "JiraClient":
     )
 
 
-def create_jira_sdk_client(config: "Config") -> "JiraClient":
+def create_jira_sdk_client(config: Config) -> JiraClient:
     """Create a Jira SDK client (uses Claude for API calls).
 
     Args:
@@ -204,7 +204,7 @@ def create_jira_sdk_client(config: "Config") -> "JiraClient":
     return JiraSdkClient(config)
 
 
-def create_jira_rest_tag_client(config: "Config") -> "JiraTagClient":
+def create_jira_rest_tag_client(config: Config) -> JiraTagClient:
     """Create a Jira REST API tag client.
 
     Args:
@@ -222,7 +222,7 @@ def create_jira_rest_tag_client(config: "Config") -> "JiraTagClient":
     )
 
 
-def create_jira_sdk_tag_client(config: "Config") -> "JiraTagClient":
+def create_jira_sdk_tag_client(config: Config) -> JiraTagClient:
     """Create a Jira SDK tag client (uses Claude for API calls).
 
     Args:
@@ -236,7 +236,7 @@ def create_jira_sdk_tag_client(config: "Config") -> "JiraTagClient":
     return JiraSdkTagClient(config)
 
 
-def create_github_rest_client(config: "Config") -> "GitHubClient | None":
+def create_github_rest_client(config: Config) -> GitHubClient | None:
     """Create a GitHub REST API client if configured.
 
     Args:
@@ -256,7 +256,7 @@ def create_github_rest_client(config: "Config") -> "GitHubClient | None":
     )
 
 
-def create_github_rest_tag_client(config: "Config") -> "GitHubTagClient | None":
+def create_github_rest_tag_client(config: Config) -> GitHubTagClient | None:
     """Create a GitHub REST API tag client if configured.
 
     Args:
@@ -276,7 +276,7 @@ def create_github_rest_tag_client(config: "Config") -> "GitHubTagClient | None":
     )
 
 
-def create_agent_factory(config: "Config") -> "AgentClientFactory":
+def create_agent_factory(config: Config) -> AgentClientFactory:
     """Create the agent client factory with default builders.
 
     Args:
@@ -290,7 +290,7 @@ def create_agent_factory(config: "Config") -> "AgentClientFactory":
     return create_default_factory(config)
 
 
-def create_agent_logger(config: "Config") -> "AgentLogger":
+def create_agent_logger(config: Config) -> AgentLogger:
     """Create the agent execution logger.
 
     Args:
@@ -305,9 +305,9 @@ def create_agent_logger(config: "Config") -> "AgentLogger":
 
 
 def create_tag_manager(
-    jira_tag_client: "JiraTagClient",
-    github_tag_client: "GitHubTagClient | None",
-) -> "TagManager":
+    jira_tag_client: JiraTagClient,
+    github_tag_client: GitHubTagClient | None,
+) -> TagManager:
     """Create the tag manager with configured clients.
 
     Args:
@@ -326,15 +326,15 @@ def create_tag_manager(
 
 
 def create_sentinel(
-    config: "Config",
-    orchestrations: "list[Orchestration]",
-    jira_client: "JiraClient",
-    jira_tag_client: "JiraTagClient",
-    agent_factory: "AgentClientFactory",
-    agent_logger: "AgentLogger",
-    github_client: "GitHubClient | None" = None,
-    github_tag_client: "GitHubTagClient | None" = None,
-) -> "Sentinel":
+    config: Config,
+    orchestrations: list[Orchestration],
+    jira_client: JiraClient,
+    jira_tag_client: JiraTagClient,
+    agent_factory: AgentClientFactory,
+    agent_logger: AgentLogger,
+    github_client: GitHubClient | None = None,
+    github_tag_client: GitHubTagClient | None = None,
+) -> Sentinel:
     """Create a Sentinel instance with all dependencies.
 
     This factory function creates a Sentinel instance with all required
@@ -369,8 +369,8 @@ def create_sentinel(
 
 
 def create_container(
-    config: "Config | None" = None,
-    orchestrations: "list[Orchestration] | None" = None,
+    config: Config | None = None,
+    orchestrations: list[Orchestration] | None = None,
 ) -> SentinelContainer:
     """Create and configure the main DI container.
 
@@ -417,35 +417,25 @@ def create_container(
 
     # Configure Jira clients based on configuration
     if config.jira_configured:
-        container.clients.jira_client.override(
-            providers.Singleton(create_jira_rest_client, config)
-        )
+        container.clients.jira_client.override(providers.Singleton(create_jira_rest_client, config))
         container.clients.jira_tag_client.override(
             providers.Singleton(create_jira_rest_tag_client, config)
         )
     else:
-        container.clients.jira_client.override(
-            providers.Singleton(create_jira_sdk_client, config)
-        )
+        container.clients.jira_client.override(providers.Singleton(create_jira_sdk_client, config))
         container.clients.jira_tag_client.override(
             providers.Singleton(create_jira_sdk_tag_client, config)
         )
 
     # Configure GitHub clients (may be None)
-    container.clients.github_client.override(
-        providers.Singleton(create_github_rest_client, config)
-    )
+    container.clients.github_client.override(providers.Singleton(create_github_rest_client, config))
     container.clients.github_tag_client.override(
         providers.Singleton(create_github_rest_tag_client, config)
     )
 
     # Configure services
-    container.services.agent_factory.override(
-        providers.Singleton(create_agent_factory, config)
-    )
-    container.services.agent_logger.override(
-        providers.Singleton(create_agent_logger, config)
-    )
+    container.services.agent_factory.override(providers.Singleton(create_agent_factory, config))
+    container.services.agent_logger.override(providers.Singleton(create_agent_logger, config))
     container.services.tag_manager.override(
         providers.Singleton(
             create_tag_manager,
@@ -473,8 +463,8 @@ def create_container(
 
 
 def create_test_container(
-    config: "Config | None" = None,
-    orchestrations: "list[Orchestration] | None" = None,
+    config: Config | None = None,
+    orchestrations: list[Orchestration] | None = None,
 ) -> SentinelContainer:
     """Create a container pre-configured for testing.
 

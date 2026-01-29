@@ -1,25 +1,22 @@
 """Tests for Sentinel polling and core functionality."""
 
 import logging
-import signal
 import threading
 import time
 from concurrent.futures import Future
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from sentinel.main import Sentinel, parse_args, setup_logging
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    make_config,
-    make_orchestration,
     MockAgentClient,
     MockJiraClient,
     MockTagClient,
     SignalHandler,
+    make_config,
+    make_orchestration,
 )
 
 
@@ -294,8 +291,6 @@ class TestSentinelEagerPolling:
 
         The test uses the full run() method with mocked sleep and signal.
         """
-        from concurrent.futures import Future
-        from unittest.mock import MagicMock
 
         # Save original sleep function before patching
         real_sleep = time.sleep
@@ -371,9 +366,11 @@ class TestSentinelEagerPolling:
         def run_sentinel() -> None:
             nonlocal sentinel_exception
             try:
-                with patch("time.sleep", side_effect=mock_sleep), \
-                     patch("signal.signal", side_effect=mock_signal), \
-                     patch("sentinel.main.wait", side_effect=mock_wait):
+                with (
+                    patch("time.sleep", side_effect=mock_sleep),
+                    patch("signal.signal", side_effect=mock_signal),
+                    patch("sentinel.main.wait", side_effect=mock_wait),
+                ):
                     sentinel.run()
             except Exception as e:
                 sentinel_exception = e
@@ -449,8 +446,10 @@ class TestSentinelEagerPolling:
         def run_sentinel() -> None:
             nonlocal sentinel_exception
             try:
-                with patch("time.sleep", side_effect=mock_sleep), \
-                     patch("signal.signal", side_effect=mock_signal):
+                with (
+                    patch("time.sleep", side_effect=mock_sleep),
+                    patch("signal.signal", side_effect=mock_signal),
+                ):
                     sentinel.run()
             except Exception as e:
                 sentinel_exception = e

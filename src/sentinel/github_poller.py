@@ -275,9 +275,7 @@ class GitHubClient(ABC):
     """
 
     @abstractmethod
-    def search_issues(
-        self, query: str, max_results: int = 50
-    ) -> list[dict[str, Any]]:
+    def search_issues(self, query: str, max_results: int = 50) -> list[dict[str, Any]]:
         """Search for issues and pull requests using GitHub search syntax.
 
         Args:
@@ -316,9 +314,7 @@ class GitHubClient(ABC):
         pass
 
     @abstractmethod
-    def list_project_items(
-        self, project_id: str, max_results: int = 100
-    ) -> list[dict[str, Any]]:
+    def list_project_items(self, project_id: str, max_results: int = 100) -> list[dict[str, Any]]:
         """List items in a GitHub Project (v2) with pagination.
 
         Args:
@@ -438,9 +434,7 @@ class GitHubPoller:
         issue_labels_lower = {label.lower() for label in issue.labels}
         return all(label.lower() in issue_labels_lower for label in required_labels)
 
-    def _apply_filter(
-        self, items: list[dict[str, Any]], filter_expr: str
-    ) -> list[dict[str, Any]]:
+    def _apply_filter(self, items: list[dict[str, Any]], filter_expr: str) -> list[dict[str, Any]]:
         """Apply a project_filter expression to filter items.
 
         Args:
@@ -465,9 +459,7 @@ class GitHubPoller:
             if self._filter_parser.evaluate(parsed_filter, fields):
                 filtered.append(item)
 
-        logger.debug(
-            f"Filter '{filter_expr}' matched {len(filtered)}/{len(items)} items"
-        )
+        logger.debug(f"Filter '{filter_expr}' matched {len(filtered)}/{len(items)} items")
         return filtered
 
     def build_query(self, trigger: TriggerConfig) -> str:
@@ -506,7 +498,10 @@ class GitHubPoller:
             conditions.append(trigger.query_filter)
 
         # Default: only open issues/PRs
-        if not any("state:" in c.lower() or "is:open" in c.lower() or "is:closed" in c.lower() for c in conditions):
+        if not any(
+            "state:" in c.lower() or "is:open" in c.lower() or "is:closed" in c.lower()
+            for c in conditions
+        ):
             conditions.append("state:open")
 
         return " ".join(conditions) if conditions else ""
@@ -531,13 +526,9 @@ class GitHubPoller:
         """
         # Validate project configuration
         if trigger.project_number is None:
-            raise GitHubClientError(
-                "GitHub trigger requires project_number to be configured"
-            )
+            raise GitHubClientError("GitHub trigger requires project_number to be configured")
         if not trigger.project_owner:
-            raise GitHubClientError(
-                "GitHub trigger requires project_owner to be configured"
-            )
+            raise GitHubClientError("GitHub trigger requires project_owner to be configured")
 
         logger.info(
             f"Polling GitHub project: {trigger.project_owner}/project/{trigger.project_number}"

@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-
 # Log filename format constant
 # Used across the codebase for consistent log file naming: YYYYMMDD_HHMMSS.log
 LOG_FILENAME_FORMAT = "%Y%m%d_%H%M%S"
@@ -367,7 +366,7 @@ class OrchestrationLogManager:
         self._handlers.clear()
         self._loggers.clear()
 
-    def __enter__(self) -> "OrchestrationLogManager":
+    def __enter__(self) -> OrchestrationLogManager:
         """Enter the context manager.
 
         Returns:
