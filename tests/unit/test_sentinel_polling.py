@@ -6,8 +6,6 @@ import threading
 import time
 from concurrent.futures import Future
 from pathlib import Path
-from types import FrameType
-from typing import Callable
 from unittest.mock import patch
 
 import pytest
@@ -19,12 +17,10 @@ from tests.conftest import (
     MockJiraClient,
     MockAgentClient,
     MockTagClient,
+    SignalHandler,
     make_config,
     make_orchestration,
 )
-
-# Type alias for signal handlers to avoid Any
-SignalHandler = Callable[[int, FrameType | None], None]
 
 
 class TestParseArgs:
