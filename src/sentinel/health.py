@@ -287,6 +287,15 @@ class HealthChecker:
             except asyncio.CancelledError:
                 # Task was cancelled, propagate to allow clean shutdown
                 raise
+            except AttributeError as e:
+                # Catch AttributeError explicitly for potential None access issues
+                # when processing health check results
+                logger.error(f"None access error in {name} health check: {e}")
+                checks[name] = ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=0.0,
+                    error=f"Configuration error: {e}",
+                )
             except Exception as e:
                 # Broad catch intentional for health checks - they should never crash
                 # Log at error level since this is unexpected
@@ -365,6 +374,16 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=str(e),
             )
+        except AttributeError as e:
+            # Catch AttributeError explicitly for potential None access issues
+            # (e.g., accessing attributes on partially configured clients)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Jira health check failed due to None access: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Configuration error: {e}",
+            )
         except Exception as e:
             # Broad catch intentional for health checks - document justification
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -434,6 +453,16 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=str(e),
             )
+        except AttributeError as e:
+            # Catch AttributeError explicitly for potential None access issues
+            # (e.g., accessing attributes on partially configured clients)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"GitHub health check failed due to None access: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Configuration error: {e}",
+            )
         except Exception as e:
             # Broad catch intentional for health checks - document justification
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -501,6 +530,16 @@ class HealthChecker:
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
                 error=str(e),
+            )
+        except AttributeError as e:
+            # Catch AttributeError explicitly for potential None access issues
+            # (e.g., accessing attributes on partially configured clients)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Claude health check failed due to None access: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Configuration error: {e}",
             )
         except Exception as e:
             # Broad catch intentional for health checks - document justification
