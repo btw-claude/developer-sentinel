@@ -396,7 +396,7 @@ class Sentinel:
         """Get the last GitHub poll time."""
         return self._state_tracker.last_github_poll
 
-    def get_active_versions(self) -> list[dict]:
+    def get_active_versions(self) -> list["OrchestrationVersionSnapshot"]:
         """Get snapshots of active orchestration versions."""
         from sentinel.dashboard.state import OrchestrationVersionSnapshot
 
@@ -412,7 +412,7 @@ class Sentinel:
             for v in versions
         ]
 
-    def get_pending_removal_versions(self) -> list[dict]:
+    def get_pending_removal_versions(self) -> list["OrchestrationVersionSnapshot"]:
         """Get snapshots of versions pending removal."""
         from sentinel.dashboard.state import OrchestrationVersionSnapshot
 
@@ -428,7 +428,7 @@ class Sentinel:
             for v in versions
         ]
 
-    def get_execution_state(self) -> dict:
+    def get_execution_state(self) -> "ExecutionStateSnapshot":
         """Get a snapshot of the current execution state."""
         from sentinel.dashboard.state import ExecutionStateSnapshot
 
