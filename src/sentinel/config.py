@@ -37,7 +37,6 @@ class Config:
     # Polling configuration
     poll_interval: int = 60  # seconds
     max_issues_per_poll: int = 50
-    max_eager_iterations: int = 10  # Deprecated: No longer used, kept for backward compatibility
 
     # Concurrent execution
     max_concurrent_executions: int = 1  # Number of orchestrations to run in parallel
@@ -517,12 +516,6 @@ def load_config(env_file: Path | None = None) -> Config:
         1,
     )
 
-    max_eager = _parse_positive_int(
-        os.getenv("SENTINEL_MAX_EAGER_ITERATIONS", "10"),
-        "SENTINEL_MAX_EAGER_ITERATIONS",
-        10,
-    )
-
     # Validate log level
     log_level = _validate_log_level(
         os.getenv("SENTINEL_LOG_LEVEL", "INFO"),
@@ -665,7 +658,6 @@ def load_config(env_file: Path | None = None) -> Config:
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
-        max_eager_iterations=max_eager,
         max_concurrent_executions=max_concurrent,
         log_level=log_level,
         log_json=log_json,

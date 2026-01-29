@@ -31,7 +31,6 @@ def make_config(
     poll_interval: int = 60,
     max_issues: int = 50,
     max_concurrent_executions: int = 1,
-    max_eager_iterations: int = 10,
     orchestrations_dir: Path | None = None,
     attempt_counts_ttl: int = 3600,
     max_queue_size: int = 100,
@@ -45,7 +44,6 @@ def make_config(
         poll_interval: Seconds between polling cycles.
         max_issues: Maximum issues to fetch per poll.
         max_concurrent_executions: Global concurrency limit.
-        max_eager_iterations: Maximum eager poll iterations.
         orchestrations_dir: Directory containing orchestration files.
         attempt_counts_ttl: TTL for attempt counts cache.
         max_queue_size: Maximum size of the execution queue.
@@ -57,7 +55,6 @@ def make_config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
         max_concurrent_executions=max_concurrent_executions,
-        max_eager_iterations=max_eager_iterations,
         orchestrations_dir=orchestrations_dir or Path("orchestrations"),
         attempt_counts_ttl=attempt_counts_ttl,
         max_queue_size=max_queue_size,
