@@ -103,13 +103,13 @@ class TestQueueEvictionBehavior:
 
         caplog.clear()
 
-        with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
+        with caplog.at_level(logging.DEBUG, logger="sentinel.state_tracker"):
             sentinel._add_to_issue_queue("NEW-ITEM", "orch-new")
 
         eviction_records = [
             r for r in caplog.records
             if r.levelno == logging.DEBUG
-            and r.name == "sentinel.main"
+            and r.name == "sentinel.state_tracker"
             and "capacity" in r.message
             and "evicted" in r.message
         ]
@@ -212,14 +212,14 @@ class TestQueueEvictionBehavior:
         sentinel._add_to_issue_queue("ITEM-A", "orch-a")
         sentinel._add_to_issue_queue("ITEM-B", "orch-b")
 
-        with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
+        with caplog.at_level(logging.DEBUG, logger="sentinel.state_tracker"):
             sentinel._add_to_issue_queue("ITEM-C", "orch-c")
             sentinel._add_to_issue_queue("ITEM-D", "orch-d")
 
         eviction_records = [
             r for r in caplog.records
             if r.levelno == logging.DEBUG
-            and r.name == "sentinel.main"
+            and r.name == "sentinel.state_tracker"
             and "capacity" in r.message
             and "evicted" in r.message
         ]
@@ -289,7 +289,7 @@ class TestQueueEvictionBehavior:
         ]
         time_iterator = iter(mock_times)
 
-        with patch("sentinel.main.datetime") as mock_datetime:
+        with patch("sentinel.state_tracker.datetime") as mock_datetime:
             mock_datetime.now.side_effect = lambda: next(time_iterator)
             mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -297,6 +298,7 @@ class OrchestrationVersion:
         orchestration: The underlying orchestration configuration.
         source_file: Path to the file this orchestration was loaded from.
         mtime: Modification time of the source file when loaded.
+        loaded_at: Datetime when this version was loaded.
         active_executions: Count of currently running executions using this version.
     """
 
@@ -304,6 +306,7 @@ class OrchestrationVersion:
     orchestration: Orchestration
     source_file: Path
     mtime: float
+    loaded_at: datetime
     active_executions: int = 0
 
     @classmethod
@@ -328,6 +331,7 @@ class OrchestrationVersion:
             orchestration=orchestration,
             source_file=source_file,
             mtime=mtime,
+            loaded_at=datetime.now(),
         )
 
     @property
