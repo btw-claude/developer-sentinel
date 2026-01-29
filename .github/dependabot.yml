@@ -7,5 +7,8 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
-    reviewers:
-      - "btw-claude"
+    # Note: The 'reviewers' option is deprecated by GitHub and being replaced by CODEOWNERS.
+    # See: https://github.blog/changelog/2025-04-29-dependabot-reviewers-configuration-option-being-replaced-by-code-owners/
+    # Using 'assignees' for auto-assignment as it remains supported.
+    assignees:
+      - "btw-ca"
