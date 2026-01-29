@@ -530,10 +530,15 @@ class ClaudeRateLimiter:
             already in progress when pause_metrics() was entered may still record
             metrics for their completion.
 
-            This implementation may not be thread-safe on non-CPython interpreters
-            that lack a GIL (e.g., Jython, IronPython, or future GIL-free CPython).
-            If cross-interpreter compatibility is required, an explicit lock should
-            be added.
+            This implementation is compatible with CPython and PyPy (which also has
+            a GIL). However, it may not be thread-safe on interpreters that lack a
+            GIL, such as Jython, IronPython, or experimental free-threaded Python
+            3.13+ builds (python --disable-gil). If cross-interpreter compatibility
+            is required, an explicit lock should be added.
+
+        See Also:
+            :class:`_PausedMetrics`: The no-op metrics class used internally to
+                discard recordings during the pause period.
         """
         # Store the current metrics object reference
         old_metrics = self._metrics
