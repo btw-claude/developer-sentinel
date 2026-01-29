@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING, Protocol
 from sentinel.logging import LOG_FILENAME_FORMAT, generate_log_filename, parse_log_filename
 
 if TYPE_CHECKING:
-    from sentinel.main import QueuedIssueInfo, RunningStepInfo, Sentinel
-    from sentinel.orchestration import Orchestration, OrchestrationVersion
+    from sentinel.main import QueuedIssueInfo, RunningStepInfo
+    from sentinel.orchestration import Orchestration
 
 
 @dataclass(frozen=True)
@@ -204,11 +204,43 @@ class DashboardState:
     system_status: SystemStatusInfo | None = None
 
 
+@dataclass(frozen=True)
+class OrchestrationVersionSnapshot:
+    """Snapshot of an orchestration version for dashboard display.
+
+    This DTO captures version information at a point in time without
+    exposing internal OrchestrationVersion implementation details.
+    """
+
+    name: str
+    version_id: str
+    source_file: str
+    loaded_at: datetime
+    active_executions: int
+
+
+@dataclass(frozen=True)
+class ExecutionStateSnapshot:
+    """Snapshot of execution state for dashboard display.
+
+    This DTO captures the current execution state without exposing
+    internal threading primitives or Future objects.
+    """
+
+    active_count: int
+    """Number of currently active executions."""
+
+
 class SentinelStateProvider(Protocol):
     """Protocol for objects that can provide Sentinel state.
 
-    This protocol allows the dashboard to work with any object that exposes
-    the required state attributes, enabling easier testing and decoupling.
+    This protocol defines the public interface that Sentinel must implement
+    for the dashboard to access state. It enables decoupling between the
+    dashboard and Sentinel internals - the dashboard only depends on this
+    protocol, not on Sentinel's internal implementation details.
+
+    All methods return DTOs or primitive types, never exposing internal
+    state structures like locks, futures, or mutable collections.
     """
 
     @property
@@ -225,20 +257,73 @@ class SentinelStateProvider(Protocol):
         """Return hot-reload metrics."""
         ...
 
+    def get_running_steps(self) -> list[RunningStepInfo]:
+        """Return information about currently running execution steps."""
+        ...
+
+    def get_issue_queue(self) -> list[QueuedIssueInfo]:
+        """Return information about issues waiting in queue."""
+        ...
+
+    def get_start_time(self) -> datetime:
+        """Return the process start time."""
+        ...
+
+    def get_last_jira_poll(self) -> datetime | None:
+        """Return the time of the last Jira poll, or None if never polled."""
+        ...
+
+    def get_last_github_poll(self) -> datetime | None:
+        """Return the time of the last GitHub poll, or None if never polled."""
+        ...
+
+    def get_active_versions(self) -> list[OrchestrationVersionSnapshot]:
+        """Return snapshots of active orchestration versions.
+
+        This method returns immutable DTOs instead of exposing internal
+        OrchestrationVersion objects, maintaining encapsulation.
+        """
+        ...
+
+    def get_pending_removal_versions(self) -> list[OrchestrationVersionSnapshot]:
+        """Return snapshots of versions pending removal.
+
+        This method returns immutable DTOs instead of exposing internal
+        OrchestrationVersion objects, maintaining encapsulation.
+        """
+        ...
+
+    def get_execution_state(self) -> ExecutionStateSnapshot:
+        """Return a snapshot of the current execution state.
+
+        This method returns an immutable DTO instead of exposing internal
+        threading primitives or Future objects.
+        """
+        ...
+
+    def is_shutdown_requested(self) -> bool:
+        """Return whether shutdown has been requested."""
+        ...
+
 
 class SentinelStateAccessor:
     """Thread-safe, read-only accessor for Sentinel state.
 
-    This class wraps a Sentinel instance and provides read-only access to its
-    state for the dashboard. All methods return immutable copies of the data
-    to prevent accidental modification.
+    This class wraps a Sentinel instance (via the SentinelStateProvider protocol)
+    and provides read-only access to its state for the dashboard. All methods
+    return immutable copies of the data to prevent accidental modification.
+
+    The accessor uses only public methods defined in SentinelStateProvider,
+    never accessing private attributes directly. This decouples the dashboard
+    from Sentinel's internal implementation details, making both components
+    easier to test and maintain independently.
     """
 
-    def __init__(self, sentinel: Sentinel) -> None:
+    def __init__(self, sentinel: SentinelStateProvider) -> None:
         """Initialize the state accessor.
 
         Args:
-            sentinel: The Sentinel instance to monitor.
+            sentinel: An object implementing SentinelStateProvider protocol.
         """
         self._sentinel = sentinel
 
@@ -251,41 +336,40 @@ class SentinelStateAccessor:
         sentinel = self._sentinel
         config = sentinel.config
 
-        # Build a mapping from orchestration to source_file for lookup.
-        # This is needed because source_file is stored in OrchestrationVersion.
-        #
-        # We use id(orch) as keys because Orchestration objects are identity-based
-        # (each instance is unique) and the _versions_lock ensures the orchestration
-        # objects referenced here remain valid and unchanged for the duration of
-        # this method. This approach avoids requiring Orchestration to be hashable
-        # while still providing O(1) lookup performance.
-        orch_to_source_file: dict[int, str] = {}
-        with sentinel._versions_lock:
-            for version in sentinel._active_versions:
-                orch_to_source_file[id(version.orchestration)] = str(version.source_file)
+        # Get active version snapshots through public API
+        # These are already DTOs, not internal objects
+        active_version_snapshots = sentinel.get_active_versions()
+
+        # Build a mapping from orchestration name to source_file for lookup.
+        # This uses the public API instead of accessing internal _versions_lock
+        # and _active_versions directly.
+        orch_name_to_source_file: dict[str, str] = {
+            v.name: v.source_file for v in active_version_snapshots
+        }
 
         # Extract orchestration info
         orchestration_infos = [
-            self._orchestration_to_info(orch, orch_to_source_file.get(id(orch), ""))
+            self._orchestration_to_info(orch, orch_name_to_source_file.get(orch.name, ""))
             for orch in sentinel.orchestrations
         ]
 
         # Group orchestrations by project/repo
         jira_projects, github_repos = self._group_orchestrations(orchestration_infos)
 
-        # Extract version info (thread-safe access)
-        active_version_infos: list[OrchestrationVersionInfo] = []
-        pending_removal_version_infos: list[OrchestrationVersionInfo] = []
+        # Convert version snapshots to OrchestrationVersionInfo (dashboard-specific DTO)
+        active_version_infos = [
+            self._snapshot_to_version_info(snapshot)
+            for snapshot in active_version_snapshots
+        ]
 
-        with sentinel._versions_lock:
-            for version in sentinel._active_versions:
-                active_version_infos.append(self._version_to_info(version))
-            for version in sentinel._pending_removal_versions:
-                pending_removal_version_infos.append(self._version_to_info(version))
+        pending_removal_version_infos = [
+            self._snapshot_to_version_info(snapshot)
+            for snapshot in sentinel.get_pending_removal_versions()
+        ]
 
-        # Get execution state (thread-safe access)
-        with sentinel._futures_lock:
-            active_count = sum(1 for f in sentinel._active_futures if not f.done())
+        # Get execution state through public API
+        execution_state = sentinel.get_execution_state()
+        active_count = execution_state.active_count
 
         available_slots = config.max_concurrent_executions - active_count
 
@@ -297,9 +381,9 @@ class SentinelStateAccessor:
             orchestrations_reloaded_total=metrics["orchestrations_reloaded_total"],
         )
 
-        # Get count of pending (not yet started) futures
-        with sentinel._futures_lock:
-            pending_count = sum(1 for f in sentinel._active_futures if not f.done())
+        # pending_count is the same as active_count for dashboard purposes
+        # (tracks incomplete tasks for display)
+        pending_count = active_count
 
         # Get running step info
         running_steps_raw = sentinel.get_running_steps()
@@ -369,7 +453,7 @@ class SentinelStateAccessor:
             running_steps=running_step_views,
             issue_queue=issue_queue_views,
             hot_reload_metrics=hot_reload_metrics,
-            shutdown_requested=sentinel._shutdown_requested,
+            shutdown_requested=sentinel.is_shutdown_requested(),
             active_incomplete_tasks=pending_count,
             system_status=system_status,
         )
@@ -406,21 +490,21 @@ class SentinelStateAccessor:
             source_file=source_file,
         )
 
-    def _version_to_info(self, version: OrchestrationVersion) -> OrchestrationVersionInfo:
-        """Convert an OrchestrationVersion to OrchestrationVersionInfo.
+    def _snapshot_to_version_info(self, snapshot: OrchestrationVersionSnapshot) -> OrchestrationVersionInfo:
+        """Convert an OrchestrationVersionSnapshot to OrchestrationVersionInfo.
 
         Args:
-            version: The version to convert.
+            snapshot: The version snapshot to convert.
 
         Returns:
             An OrchestrationVersionInfo object with read-only data.
         """
         return OrchestrationVersionInfo(
-            name=version.name,
-            version_id=version.version_id,
-            source_file=str(version.source_file),
-            loaded_at=version.loaded_at,
-            active_executions=version.active_executions,
+            name=snapshot.name,
+            version_id=snapshot.version_id,
+            source_file=snapshot.source_file,
+            loaded_at=snapshot.loaded_at,
+            active_executions=snapshot.active_executions,
         )
 
     def _group_orchestrations(
