@@ -1,41 +1,53 @@
-"""Main entry point for the Developer Sentinel orchestrator."""
+"""Main entry point for the Developer Sentinel orchestrator.
+
+This module contains the Sentinel class, the core orchestrator that coordinates
+polling, routing, and execution of orchestrations.
+
+The module structure has been refactored for single responsibility:
+- cli.py: Command-line argument parsing
+- bootstrap.py: Startup and dependency wiring
+- app.py: Application runner and lifecycle
+- shutdown.py: Graceful termination
+- dashboard_server.py: Dashboard management
+
+For backward compatibility, this module re-exports commonly used functions
+and classes from the new modules.
+"""
 
 from __future__ import annotations
 
-import argparse
 import logging
 import signal
-import sys
-import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, wait
-from dataclasses import replace
 from datetime import datetime
-from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import uvicorn
-    from starlette.types import ASGIApp
-
     from sentinel.dashboard.state import ExecutionStateSnapshot, OrchestrationVersionSnapshot
 
-from sentinel.agent_clients.factory import AgentClientFactory, create_default_factory
+from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.agent_logger import AgentLogger
-from sentinel.config import Config, load_config
+
+# Import main from app module
+from sentinel.app import main
+
+# Import from refactored modules for backward compatibility
+from sentinel.cli import parse_args
+from sentinel.config import Config
+from sentinel.dashboard_server import DashboardServer
 from sentinel.execution_manager import ExecutionManager
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
 from sentinel.github_poller import GitHubClient, GitHubIssueProtocol, GitHubPoller
-from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
+from sentinel.github_rest_client import GitHubTagClient
 from sentinel.logging import OrchestrationLogManager, get_logger, setup_logging
-from sentinel.orchestration import Orchestration, OrchestrationVersion, load_orchestrations
+from sentinel.orchestration import Orchestration, OrchestrationVersion
 from sentinel.orchestration_registry import OrchestrationRegistry
 from sentinel.poll_coordinator import GitHubIssueWithRepo, PollCoordinator, extract_repo_from_url
 from sentinel.poller import JiraClient, JiraIssue, JiraPoller
-from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.router import Router, RoutingResult
-from sentinel.sdk_clients import ClaudeProcessInterruptedError, JiraSdkClient, JiraSdkTagClient
+from sentinel.sdk_clients import ClaudeProcessInterruptedError
 from sentinel.sdk_clients import request_shutdown as request_claude_shutdown
 from sentinel.state_tracker import AttemptCountEntry, QueuedIssueInfo, RunningStepInfo, StateTracker
 from sentinel.tag_manager import JiraTagClient, TagManager
@@ -52,84 +64,11 @@ __all__ = [
     "Sentinel",
     "parse_args",
     "main",
+    "setup_logging",
     # Re-exports from poll_coordinator for backward compatibility
     "extract_repo_from_url",
     "GitHubIssueWithRepo",
 ]
-
-
-class DashboardServer:
-    """Background server for the dashboard web interface.
-
-    This class manages a uvicorn server running in a background thread,
-    allowing the dashboard to run alongside the main Sentinel polling loop.
-    """
-
-    def __init__(self, host: str, port: int) -> None:
-        """Initialize the dashboard server.
-
-        Args:
-            host: The host address to bind to.
-            port: The port to listen on.
-        """
-        self._host = host
-        self._port = port
-        self._server: uvicorn.Server | None = None
-        self._thread: threading.Thread | None = None
-
-    def start(self, app: ASGIApp) -> None:
-        """Start the dashboard server in a background thread.
-
-        Args:
-            app: The ASGI application to serve.
-        """
-        import uvicorn
-
-        config = uvicorn.Config(
-            app=app,
-            host=self._host,
-            port=self._port,
-            log_level="warning",
-            access_log=False,
-        )
-        self._server = uvicorn.Server(config)
-        server = self._server
-
-        def run_server() -> None:
-            """Run the uvicorn server."""
-            server.run()
-
-        self._thread = threading.Thread(
-            target=run_server,
-            name="dashboard-server",
-            daemon=True,
-        )
-        self._thread.start()
-
-        # Wait for uvicorn server to be ready
-        start_wait = time.monotonic()
-        timeout = 5.0
-        while not self._server.started:
-            if time.monotonic() - start_wait > timeout:
-                logger.warning("Dashboard server startup timed out, continuing anyway")
-                break
-            time.sleep(0.05)
-
-        if self._server.started:
-            logger.info(f"Dashboard server started at http://{self._host}:{self._port}")
-
-    def shutdown(self) -> None:
-        """Shutdown the dashboard server gracefully."""
-        if self._server is not None:
-            logger.info("Shutting down dashboard server...")
-            self._server.should_exit = True
-
-            if self._thread is not None and self._thread.is_alive():
-                self._thread.join(timeout=5.0)
-                if self._thread.is_alive():
-                    logger.warning("Dashboard server thread did not terminate gracefully")
-
-            logger.info("Dashboard server shutdown complete")
 
 
 class Sentinel:
@@ -775,184 +714,6 @@ class Sentinel:
         logger.info("Sentinel shutdown complete")
 
 
-def parse_args(args: list[str] | None = None) -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Developer Sentinel - Jira to Claude Agent orchestrator",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-
-    parser.add_argument(
-        "--config-dir",
-        type=Path,
-        default=None,
-        help="Path to orchestrations directory (default: ./orchestrations)",
-    )
-
-    parser.add_argument(
-        "--once",
-        action="store_true",
-        help="Run once and exit (no polling loop)",
-    )
-
-    parser.add_argument(
-        "--interval",
-        type=int,
-        default=None,
-        help="Poll interval in seconds (overrides SENTINEL_POLL_INTERVAL)",
-    )
-
-    parser.add_argument(
-        "--log-level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default=None,
-        help="Log level (overrides SENTINEL_LOG_LEVEL)",
-    )
-
-    parser.add_argument(
-        "--env-file",
-        type=Path,
-        default=None,
-        help="Path to .env file (default: ./.env)",
-    )
-
-    return parser.parse_args(args)
-
-
-def main(args: list[str] | None = None) -> int:
-    """Main entry point."""
-    parsed = parse_args(args)
-
-    # Load configuration
-    config = load_config(parsed.env_file)
-
-    # Apply CLI overrides
-    overrides: dict[str, Any] = {}
-    if parsed.config_dir:
-        overrides["orchestrations_dir"] = parsed.config_dir
-    if parsed.interval:
-        overrides["poll_interval"] = parsed.interval
-    if parsed.log_level:
-        overrides["log_level"] = parsed.log_level
-    if overrides:
-        config = replace(config, **overrides)
-
-    # Setup logging
-    setup_logging(config.log_level, json_format=config.log_json)
-
-    # Load orchestrations
-    logger.info(f"Loading orchestrations from {config.orchestrations_dir}")
-    try:
-        orchestrations = load_orchestrations(config.orchestrations_dir)
-    except Exception as e:
-        logger.error(f"Failed to load orchestrations: {e}")
-        return 1
-
-    if not orchestrations:
-        logger.warning("No orchestrations found, exiting")
-        return 0
-
-    logger.info(f"Loaded {len(orchestrations)} orchestrations")
-
-    # Initialize clients
-    jira_client: JiraClient
-    tag_client: JiraTagClient
-
-    if config.jira_configured:
-        logger.info("Using Jira REST API clients (direct HTTP)")
-        jira_client = JiraRestClient(
-            base_url=config.jira_base_url,
-            email=config.jira_email,
-            api_token=config.jira_api_token,
-        )
-        tag_client = JiraRestTagClient(
-            base_url=config.jira_base_url,
-            email=config.jira_email,
-            api_token=config.jira_api_token,
-        )
-    else:
-        logger.info("Using Jira SDK clients (via Claude Agent SDK)")
-        logger.warning(
-            "Jira REST API not configured. Set JIRA_BASE_URL, JIRA_EMAIL, "
-            "and JIRA_API_TOKEN for faster polling."
-        )
-        jira_client = JiraSdkClient(config)
-        tag_client = JiraSdkTagClient(config)
-
-    # Initialize GitHub clients
-    github_client: GitHubClient | None = None
-    github_tag_client: GitHubTagClient | None = None
-
-    if config.github_configured:
-        logger.info("Using GitHub REST API clients (direct HTTP)")
-        github_client = GitHubRestClient(
-            token=config.github_token,
-            base_url=config.github_api_url if config.github_api_url else None,
-        )
-        github_tag_client = GitHubRestTagClient(
-            token=config.github_token,
-            base_url=config.github_api_url if config.github_api_url else None,
-        )
-    else:
-        github_orchestrations = [o for o in orchestrations if o.trigger.source == "github"]
-        if github_orchestrations:
-            logger.warning(
-                f"Found {len(github_orchestrations)} GitHub-triggered orchestrations "
-                "but GitHub is not configured. Set GITHUB_TOKEN to enable GitHub polling."
-            )
-
-    # Create agent factory
-    agent_factory = create_default_factory(config)
-    agent_logger = AgentLogger(base_dir=config.agent_logs_dir)
-
-    logger.info(f"Initialized agent factory with types: {agent_factory.registered_types}")
-
-    # Create Sentinel
-    sentinel = Sentinel(
-        config=config,
-        orchestrations=orchestrations,
-        jira_client=jira_client,
-        tag_client=tag_client,
-        agent_factory=agent_factory,
-        agent_logger=agent_logger,
-        github_client=github_client,
-        github_tag_client=github_tag_client,
-    )
-
-    # Start dashboard
-    dashboard_server: DashboardServer | None = None
-    if config.dashboard_enabled:
-        try:
-            from sentinel.dashboard import create_app
-
-            logger.info(
-                f"Starting dashboard server on {config.dashboard_host}:{config.dashboard_port}"
-            )
-            dashboard_app = create_app(sentinel)
-            dashboard_server = DashboardServer(
-                host=config.dashboard_host,
-                port=config.dashboard_port,
-            )
-            dashboard_server.start(dashboard_app)
-        except ImportError as e:
-            logger.warning(f"Dashboard dependencies not available, skipping dashboard: {e}")
-        except Exception as e:
-            logger.error(f"Failed to start dashboard server: {e}")
-
-    try:
-        if parsed.once:
-            logger.info("Running single polling cycle (--once mode)")
-            results = sentinel.run_once_and_wait()
-            success_count = sum(1 for r in results if r.succeeded)
-            logger.info(f"Completed: {success_count}/{len(results)} successful")
-            return 0 if success_count == len(results) or not results else 1
-
-        sentinel.run()
-        return 0
-    finally:
-        if dashboard_server is not None:
-            dashboard_server.shutdown()
-
-
 if __name__ == "__main__":
+    import sys
     sys.exit(main())

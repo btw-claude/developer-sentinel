@@ -170,6 +170,11 @@ class SentinelContainer(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
         modules=[
             "sentinel.main",
+            "sentinel.app",
+            "sentinel.bootstrap",
+            "sentinel.cli",
+            "sentinel.shutdown",
+            "sentinel.dashboard_server",
         ]
     )
 
