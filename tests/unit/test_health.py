@@ -9,6 +9,7 @@ import pytest
 
 from sentinel.health import (
     HealthCheckConfig,
+    HealthCheckContext,
     HealthChecker,
     HealthCheckResult,
     HealthStatus,
@@ -112,6 +113,113 @@ class TestServiceHealth:
             "latency_ms": 0.0,
             "error": "Connection refused",
         }
+
+
+class TestHealthCheckContext:
+    """Tests for HealthCheckContext."""
+
+    def test_elapsed_ms_calculation(self) -> None:
+        """Test that elapsed_ms calculates time correctly."""
+        ctx = HealthCheckContext("test")
+        with ctx.handle_exceptions():
+            pass  # No exception, just test timing
+        # elapsed_ms should return a non-negative value
+        assert ctx.elapsed_ms() >= 0
+
+    def test_handle_exceptions_no_error(self) -> None:
+        """Test context manager with no exception."""
+        ctx = HealthCheckContext("test")
+        with ctx.handle_exceptions():
+            pass  # No exception
+        assert ctx.result is None
+
+    def test_handle_exceptions_attribute_error(self) -> None:
+        """Test context manager handles AttributeError."""
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            raise AttributeError("'NoneType' object has no attribute 'foo'")
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert "Configuration error" in ctx.result.error
+
+    def test_handle_exceptions_type_error(self) -> None:
+        """Test context manager handles TypeError."""
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            raise TypeError("expected str, got int")
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert "Data error" in ctx.result.error
+
+    def test_handle_exceptions_value_error(self) -> None:
+        """Test context manager handles ValueError."""
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            raise ValueError("invalid value")
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert "Data error" in ctx.result.error
+
+    def test_handle_exceptions_key_error(self) -> None:
+        """Test context manager handles KeyError."""
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            raise KeyError("missing_key")
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert "Data error" in ctx.result.error
+
+    def test_handle_exceptions_os_error(self) -> None:
+        """Test context manager handles OSError."""
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            raise OSError("Network unreachable")
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert "OS error" in ctx.result.error
+
+    def test_handle_exceptions_runtime_error(self) -> None:
+        """Test context manager handles RuntimeError."""
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            raise RuntimeError("Event loop is closed")
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert "Runtime error" in ctx.result.error
+
+    def test_handle_exceptions_generic_exception(self) -> None:
+        """Test context manager handles unexpected exceptions."""
+        ctx = HealthCheckContext("TestService")
+
+        class CustomError(Exception):
+            pass
+
+        with ctx.handle_exceptions():
+            raise CustomError("Something unexpected")
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert "Unexpected error" in ctx.result.error
+        assert "CustomError" in ctx.result.error
+
+    def test_handle_exceptions_latency_is_tracked(self) -> None:
+        """Test that latency is tracked even when exceptions occur."""
+        import time
+
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            time.sleep(0.01)  # Sleep for 10ms
+            raise ValueError("test error")
+
+        assert ctx.result is not None
+        # Latency should be at least 10ms (we slept for 10ms)
+        assert ctx.result.latency_ms >= 10.0
 
 
 class TestHealthCheckResult:
