@@ -186,21 +186,21 @@ class TimingMetrics:
 
     def log_metrics(self, operation: str = "Query") -> None:
         """Log the collected timing metrics."""
-        logger.info(f"[TIMING] {operation} Performance Metrics:")
-        logger.info(f"[TIMING]   Total elapsed time: {self.total_elapsed_time:.3f}s")
+        logger.info("[TIMING] %s Performance Metrics:", operation)
+        logger.info("[TIMING]   Total elapsed time: %.3fs", self.total_elapsed_time)
         if self.time_to_first_message is not None:
-            logger.info(f"[TIMING]   Time to first message: {self.time_to_first_message:.3f}s")
-        logger.info(f"[TIMING]   Messages received: {self.message_count}")
+            logger.info("[TIMING]   Time to first message: %.3fs", self.time_to_first_message)
+        logger.info("[TIMING]   Messages received: %s", self.message_count)
         if self.avg_inter_message_time is not None:
-            logger.info(f"[TIMING]   Avg inter-message time: {self.avg_inter_message_time:.3f}s")
+            logger.info("[TIMING]   Avg inter-message time: %.3fs", self.avg_inter_message_time)
         if self.file_io_time > 0:
-            logger.info(f"[TIMING]   File I/O time: {self.file_io_time:.3f}s")
+            logger.info("[TIMING]   File I/O time: %.3fs", self.file_io_time)
         if self.api_wait_time > 0:
-            logger.info(f"[TIMING]   API wait time: {self.api_wait_time:.3f}s")
+            logger.info("[TIMING]   API wait time: %.3fs", self.api_wait_time)
         if self.inter_message_times:
             min_time = min(self.inter_message_times)
             max_time = max(self.inter_message_times)
-            logger.info(f"[TIMING]   Inter-message time range: {min_time:.3f}s - {max_time:.3f}s")
+            logger.info("[TIMING]   Inter-message time range: %.3fs - %.3fs", min_time, max_time)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert metrics to dictionary for logging/reporting.
@@ -418,8 +418,10 @@ def _extract_usage_from_message(message: Any) -> UsageInfo | None:
             usage_info.total_tokens = usage_info.input_tokens + usage_info.output_tokens
 
     logger.debug(
-        f"[USAGE] Extracted usage info: tokens={usage_info.total_tokens}, "
-        f"cost=${usage_info.total_cost_usd:.6f}, turns={usage_info.num_turns}"
+        "[USAGE] Extracted usage info: tokens=%s, cost=$%.6f, turns=%s",
+        usage_info.total_tokens,
+        usage_info.total_cost_usd,
+        usage_info.num_turns,
     )
 
     return usage_info
@@ -596,7 +598,7 @@ class ClaudeSdkAgentClient(AgentClient):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         workdir = self.base_workdir / f"{issue_key}_{timestamp}"
         workdir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Created agent working directory: {workdir}")
+        logger.info("Created agent working directory: %s", workdir)
         return workdir
 
     def _setup_branch(
@@ -623,7 +625,7 @@ class ClaudeSdkAgentClient(AgentClient):
                 or if git operations fail.
             AgentTimeoutError: If a git operation times out.
         """
-        logger.info(f"Setting up branch '{branch}' in {workdir}")
+        logger.info("Setting up branch '%s' in %s", branch, workdir)
 
         # Get timeout from config, or use None for no timeout
         timeout = self.config.subprocess_timeout if self.config.subprocess_timeout > 0 else None
@@ -693,10 +695,12 @@ class ClaudeSdkAgentClient(AgentClient):
 
                 if current_branch == branch and local_sha == remote_sha:
                     # Already on the correct branch and up to date
-                    logger.info(f"Branch '{branch}' already checked out and up to date with remote")
+                    logger.info(
+                        "Branch '%s' already checked out and up to date with remote", branch
+                    )
                 else:
                     # Branch exists - checkout and pull
-                    logger.info(f"Branch '{branch}' exists, checking out and pulling")
+                    logger.info("Branch '%s' exists, checking out and pulling", branch)
                     subprocess.run(
                         ["git", "checkout", branch],
                         cwd=workdir,
@@ -715,7 +719,9 @@ class ClaudeSdkAgentClient(AgentClient):
                     )
             elif create_branch:
                 # Branch doesn't exist but we should create it
-                logger.info(f"Branch '{branch}' does not exist, creating from origin/{base_branch}")
+                logger.info(
+                    "Branch '%s' does not exist, creating from origin/%s", branch, base_branch
+                )
                 subprocess.run(
                     ["git", "checkout", "-b", branch, f"origin/{base_branch}"],
                     cwd=workdir,
@@ -732,7 +738,7 @@ class ClaudeSdkAgentClient(AgentClient):
 
         except subprocess.TimeoutExpired as e:
             logger.debug(
-                f"Subprocess timeout expired: command={e.cmd}, timeout={timeout}s"
+                "Subprocess timeout expired: command=%s, timeout=%ss", e.cmd, timeout
             )
             raise AgentTimeoutError(
                 f"Git operation timed out after {timeout}s: {' '.join(e.cmd)}"
@@ -832,7 +838,7 @@ class ClaudeSdkAgentClient(AgentClient):
             result = await asyncio.wait_for(coro, timeout=timeout) if timeout else await coro
             response, usage_info = result
             self._circuit_breaker.record_success()
-            logger.info(f"Agent execution completed, response length: {len(response)}")
+            logger.info("Agent execution completed, response length: %s", len(response))
             return response, usage_info
         except RateLimitExceededError as e:
             self._circuit_breaker.record_failure(e)
@@ -842,7 +848,7 @@ class ClaudeSdkAgentClient(AgentClient):
             raise
         except TimeoutError as e:
             self._circuit_breaker.record_failure(e)
-            logger.debug(f"Agent execution timeout: timeout={timeout}s, error={e}")
+            logger.debug("Agent execution timeout: timeout=%ss, error=%s", timeout, e)
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s") from e
         except OSError as e:
             self._circuit_breaker.record_failure(e)
@@ -907,14 +913,14 @@ class ClaudeSdkAgentClient(AgentClient):
 
         try:
             log_path.write_text(log_content, encoding="utf-8")
-            logger.info(f"Non-streaming log written: {log_path}")
+            logger.info("Non-streaming log written: %s", log_path)
         except OSError as e:
             logger.warning(
-                f"Failed to write non-streaming log to {log_path} due to I/O error: {e}"
+                "Failed to write non-streaming log to %s due to I/O error: %s", log_path, e
             )
         except (UnicodeEncodeError, UnicodeDecodeError) as e:
             logger.warning(
-                f"Failed to write non-streaming log to {log_path} due to encoding error: {e}"
+                "Failed to write non-streaming log to %s due to encoding error: %s", log_path, e
             )
 
     async def _run_with_log(
@@ -981,7 +987,7 @@ class ClaudeSdkAgentClient(AgentClient):
             encoding="utf-8",
         )
         metrics.add_file_io_time(time.perf_counter() - io_start)
-        logger.info(f"Streaming log started: {log_path}")
+        logger.info("Streaming log started: %s", log_path)
 
         status = "ERROR"
         usage_info: UsageInfo | None = None
@@ -1044,7 +1050,7 @@ class ClaudeSdkAgentClient(AgentClient):
             self._circuit_breaker.record_success()
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key})")
-            logger.info(f"Agent execution completed, response length: {len(response)}")
+            logger.info("Agent execution completed, response length: %s", len(response))
             return response, usage_info
         except ClaudeProcessInterruptedError:
             status = "INTERRUPTED"
@@ -1058,7 +1064,8 @@ class ClaudeSdkAgentClient(AgentClient):
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key}) - TIMEOUT")
             logger.debug(
-                f"Agent execution timeout: issue_key={issue_key}, timeout={timeout}s, error={e}"
+                "Agent execution timeout: issue_key=%s, timeout=%ss, error=%s",
+                issue_key, timeout, e
             )
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s") from e
         except OSError as e:
@@ -1143,4 +1150,4 @@ class ClaudeSdkAgentClient(AgentClient):
                 )
                 f.write(exec_summary)
             metrics.add_file_io_time(time.perf_counter() - io_start)
-            logger.info(f"Streaming log completed: {log_path}")
+            logger.info("Streaming log completed: %s", log_path)

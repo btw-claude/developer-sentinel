@@ -100,7 +100,7 @@ AGENT OUTPUT (streaming)
         self._file.write(header)
         self._file.flush()
 
-        logger.info(f"Streaming log started: {self._log_path}")
+        logger.info("Streaming log started: %s", self._log_path)
         return self
 
     def _get_timestamp(self) -> str:
@@ -187,7 +187,7 @@ END OF LOG
         if self._file is not None:
             self._file.close()
             self._file = None
-            logger.info(f"Streaming log completed: {self._log_path}")
+            logger.info("Streaming log completed: %s", self._log_path)
 
 
 class AgentLogger:
@@ -279,5 +279,5 @@ END OF LOG
 """
 
         log_path.write_text(log_content)
-        logger.info(f"Agent execution log written to {log_path}")
+        logger.info("Agent execution log written to %s", log_path)
         return log_path

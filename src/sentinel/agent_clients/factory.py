@@ -62,7 +62,7 @@ class AgentClientFactory:
             builder: A callable that takes a Config and returns an AgentClient.
         """
         self._builders[agent_type] = builder
-        logger.debug(f"Registered builder for agent type: {agent_type}")
+        logger.debug("Registered builder for agent type: %s", agent_type)
 
     def create(self, agent_type: AgentType | None, config: Config) -> AgentClient:
         """Create a new agent client instance.
@@ -88,7 +88,7 @@ class AgentClientFactory:
 
         builder = self._builders[resolved_type]
         client = builder(config)
-        logger.debug(f"Created new {resolved_type} agent client")
+        logger.debug("Created new %s agent client", resolved_type)
         return client
 
     def get_or_create(self, agent_type: AgentType | None, config: Config) -> AgentClient:
@@ -112,7 +112,7 @@ class AgentClientFactory:
         cache_key: SimpleCacheKey = (resolved_type, id(config))
 
         if cache_key in self._cache:
-            logger.debug(f"Returning cached {resolved_type} agent client")
+            logger.debug("Returning cached %s agent client", resolved_type)
             return self._cache[cache_key]
 
         client = self.create(resolved_type, config)
@@ -171,16 +171,18 @@ class AgentClientFactory:
 
         if cache_key in self._cache:
             logger.debug(
-                f"Returning cached {resolved_type} orchestration client "
-                f"(kwargs: {kwargs_key})"
+                "Returning cached %s orchestration client (kwargs: %s)",
+                resolved_type,
+                kwargs_key,
             )
             return self._cache[cache_key]
 
         client = self.create_for_orchestration(orch_agent_type, config, **kwargs)
         self._cache[cache_key] = client
         logger.debug(
-            f"Created and cached {resolved_type} orchestration client "
-            f"(kwargs: {kwargs_key})"
+            "Created and cached %s orchestration client (kwargs: %s)",
+            resolved_type,
+            kwargs_key,
         )
         return client
 
@@ -287,5 +289,5 @@ def create_default_factory(config: Config) -> AgentClientFactory:
     # Register the Cursor CLI builder
     factory.register(AgentTypeEnum.CURSOR.value, _build_cursor_client)
 
-    logger.info(f"Created default factory with registered types: {factory.registered_types}")
+    logger.info("Created default factory with registered types: %s", factory.registered_types)
     return factory

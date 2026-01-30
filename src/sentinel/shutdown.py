@@ -64,7 +64,7 @@ class ShutdownHandler:
             frame: The current stack frame (unused).
         """
         signal_name = signal.Signals(signum).name
-        logger.info(f"Received {signal_name}, initiating graceful shutdown...")
+        logger.info("Received %s, initiating graceful shutdown...", signal_name)
         self.request_shutdown()
 
     def install_signal_handlers(self) -> None:

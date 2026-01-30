@@ -136,14 +136,15 @@ class HealthCheckConfig:
             timeout = float(timeout_str)
             if timeout <= 0:
                 logger.warning(
-                    f"Invalid SENTINEL_HEALTH_CHECK_TIMEOUT: {timeout} must be "
-                    "positive, using default 5.0"
+                    "Invalid SENTINEL_HEALTH_CHECK_TIMEOUT: %s must be positive, using default 5.0",
+                    timeout,
                 )
                 timeout = 5.0
         except ValueError:
             logger.warning(
-                f"Invalid SENTINEL_HEALTH_CHECK_TIMEOUT: '{timeout_str}' is not "
-                "a valid number, using default 5.0"
+                "Invalid SENTINEL_HEALTH_CHECK_TIMEOUT: '%s' is not a valid number, "
+                "using default 5.0",
+                timeout_str,
             )
             timeout = 5.0
 
@@ -228,7 +229,7 @@ class HealthCheckContext:
             yield
         except httpx.TimeoutException:
             latency_ms = self.elapsed_ms()
-            logger.warning(f"{self.service_name} health check timed out after {latency_ms:.2f}ms")
+            logger.warning("%s health check timed out after %.2fms", self.service_name, latency_ms)
             self.result = ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
@@ -237,7 +238,7 @@ class HealthCheckContext:
         except httpx.HTTPStatusError as e:
             latency_ms = self.elapsed_ms()
             error_msg = f"HTTP {e.response.status_code}"
-            logger.warning(f"{self.service_name} health check failed: {error_msg}")
+            logger.warning("%s health check failed: %s", self.service_name, error_msg)
             self.result = ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
@@ -245,7 +246,7 @@ class HealthCheckContext:
             )
         except httpx.RequestError as e:
             latency_ms = self.elapsed_ms()
-            logger.warning(f"{self.service_name} health check failed due to request error: {e}")
+            logger.warning("%s health check failed due to request error: %s", self.service_name, e)
             self.result = ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
@@ -253,7 +254,7 @@ class HealthCheckContext:
             )
         except AttributeError as e:
             latency_ms = self.elapsed_ms()
-            logger.error(f"{self.service_name} health check failed due to None access: {e}")
+            logger.error("%s health check failed due to None access: %s", self.service_name, e)
             self.result = ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
@@ -261,7 +262,7 @@ class HealthCheckContext:
             )
         except (TypeError, ValueError, KeyError) as e:
             latency_ms = self.elapsed_ms()
-            logger.error(f"{self.service_name} health check failed due to data error: {e}")
+            logger.error("%s health check failed due to data error: %s", self.service_name, e)
             self.result = ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
@@ -269,7 +270,7 @@ class HealthCheckContext:
             )
         except OSError as e:
             latency_ms = self.elapsed_ms()
-            logger.error(f"{self.service_name} health check failed due to OS error: {e}")
+            logger.error("%s health check failed due to OS error: %s", self.service_name, e)
             self.result = ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
@@ -278,7 +279,9 @@ class HealthCheckContext:
         except RuntimeError as e:
             latency_ms = self.elapsed_ms()
             logger.error(
-                f"{self.service_name} health check failed due to runtime error: {e}",
+                "%s health check failed due to runtime error: %s",
+                self.service_name,
+                e,
                 extra={"service": self.service_name, "error_type": "RuntimeError"},
             )
             self.result = ServiceHealth(
@@ -291,11 +294,12 @@ class HealthCheckContext:
             # All known exception types are caught above; this catches truly unexpected
             # errors to ensure graceful degradation. Log with full context for debugging.
             latency_ms = self.elapsed_ms()
-            logger.error(
-                f"{self.service_name} health check failed with unexpected error: "
-                f"{type(e).__name__}: {e}",
+            logger.exception(
+                "%s health check failed with unexpected error: %s: %s",
+                self.service_name,
+                type(e).__name__,
+                e,
                 extra={"service": self.service_name, "error_type": type(e).__name__},
-                exc_info=True,
             )
             self.result = ServiceHealth(
                 status=HealthStatus.DOWN,
@@ -436,7 +440,7 @@ class HealthChecker:
                 # returned ServiceHealth object). This differs from AttributeError
                 # handling in individual check methods (_check_jira, _check_github,
                 # _check_claude) which catch errors during client attribute access.
-                logger.error(f"None access error in {name} health check: {e}")
+                logger.error("None access error in %s health check: %s", name, e)
                 checks[name] = ServiceHealth(
                     status=HealthStatus.DOWN,
                     latency_ms=0.0,  # No timing context available for result processing errors
@@ -445,7 +449,7 @@ class HealthChecker:
             except (TypeError, ValueError, KeyError) as e:
                 # Catch data processing errors that may occur when handling
                 # health check results (e.g., invalid types, missing keys)
-                logger.error(f"Data processing error in {name} health check: {e}")
+                logger.error("Data processing error in %s health check: %s", name, e)
                 checks[name] = ServiceHealth(
                     status=HealthStatus.DOWN,
                     latency_ms=0.0,  # No timing context available for data errors
@@ -454,7 +458,7 @@ class HealthChecker:
             except OSError as e:
                 # Catch OS-level errors (filesystem issues, network socket errors)
                 # that may occur during health check operations
-                logger.error(f"OS error in {name} health check: {e}")
+                logger.error("OS error in %s health check: %s", name, e)
                 checks[name] = ServiceHealth(
                     status=HealthStatus.DOWN,
                     latency_ms=0.0,  # No timing context available for OS errors
@@ -464,7 +468,9 @@ class HealthChecker:
                 # Catch runtime errors (event loop issues, threading problems)
                 # that may occur during async health check operations
                 logger.error(
-                    f"Runtime error in {name} health check: {e}",
+                    "Runtime error in %s health check: %s",
+                    name,
+                    e,
                     extra={"service": name, "error_type": "RuntimeError"},
                 )
                 checks[name] = ServiceHealth(
@@ -478,10 +484,12 @@ class HealthChecker:
                 # errors (e.g., third-party library bugs) to ensure graceful degradation.
                 # Log at error level with full context since this indicates an unexpected
                 # condition that should be investigated and potentially handled specifically.
-                logger.error(
-                    f"Unexpected error in {name} health check: {type(e).__name__}: {e}",
+                logger.exception(
+                    "Unexpected error in %s health check: %s: %s",
+                    name,
+                    type(e).__name__,
+                    e,
                     extra={"service": name, "error_type": type(e).__name__},
-                    exc_info=True,
                 )
                 checks[name] = ServiceHealth(
                     status=HealthStatus.DOWN,
@@ -535,7 +543,7 @@ class HealthChecker:
                 response.raise_for_status()
 
             latency_ms = ctx.elapsed_ms()
-            logger.debug(f"Jira health check succeeded in {latency_ms:.2f}ms")
+            logger.debug("Jira health check succeeded in %.2fms", latency_ms)
             return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
 
         # If ctx.result is set, an exception was caught by the context manager
@@ -579,7 +587,7 @@ class HealthChecker:
                 response.raise_for_status()
 
             latency_ms = ctx.elapsed_ms()
-            logger.debug(f"GitHub health check succeeded in {latency_ms:.2f}ms")
+            logger.debug("GitHub health check succeeded in %.2fms", latency_ms)
             return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
 
         # If ctx.result is set, an exception was caught by the context manager
@@ -622,7 +630,7 @@ class HealthChecker:
                 response.raise_for_status()
 
             latency_ms = ctx.elapsed_ms()
-            logger.debug(f"Claude health check succeeded in {latency_ms:.2f}ms")
+            logger.debug("Claude health check succeeded in %.2fms", latency_ms)
             return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
 
         # If ctx.result is set, an exception was caught by the context manager

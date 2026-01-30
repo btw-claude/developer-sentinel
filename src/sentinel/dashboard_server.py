@@ -109,7 +109,7 @@ class DashboardServer:
             time.sleep(0.05)
 
         if self._server.started:
-            logger.info(f"Dashboard server started at http://{self._host}:{self._port}")
+            logger.info("Dashboard server started at http://%s:%s", self._host, self._port)
 
     def shutdown(self) -> None:
         """Shutdown the dashboard server gracefully.

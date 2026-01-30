@@ -172,8 +172,9 @@ def create_github_clients(
         ]
         if github_orchestrations:
             logger.warning(
-                f"Found {len(github_orchestrations)} GitHub-triggered orchestrations "
-                "but GitHub is not configured. Set GITHUB_TOKEN to enable GitHub polling."
+                "Found %s GitHub-triggered orchestrations "
+                "but GitHub is not configured. Set GITHUB_TOKEN to enable GitHub polling.",
+                len(github_orchestrations)
             )
 
     return github_client, github_tag_client
@@ -203,24 +204,24 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
     setup_logging(config.log_level, json_format=config.log_json)
 
     # Load orchestrations
-    logger.info(f"Loading orchestrations from {config.orchestrations_dir}")
+    logger.info("Loading orchestrations from %s", config.orchestrations_dir)
     try:
         orchestrations = load_orchestrations(config.orchestrations_dir)
     except OSError as e:
         logger.error(
-            f"Failed to load orchestrations due to file system error: {e}",
+            "Failed to load orchestrations due to file system error: %s", e,
             extra={"orchestrations_dir": str(config.orchestrations_dir)},
         )
         return None
     except (KeyError, ValueError) as e:
         logger.error(
-            f"Failed to load orchestrations due to configuration error: {e}",
+            "Failed to load orchestrations due to configuration error: %s", e,
             extra={"orchestrations_dir": str(config.orchestrations_dir)},
         )
         return None
     except OrchestrationError as e:
         logger.error(
-            f"Failed to load orchestrations: {e}",
+            "Failed to load orchestrations: %s", e,
             extra={"orchestrations_dir": str(config.orchestrations_dir)},
         )
         return None
@@ -229,7 +230,7 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
         logger.warning("No orchestrations found, exiting")
         return None
 
-    logger.info(f"Loaded {len(orchestrations)} orchestrations")
+    logger.info("Loaded %s orchestrations", len(orchestrations))
 
     # Initialize clients
     jira_client, tag_client = create_jira_clients(config)
@@ -239,7 +240,7 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
     agent_factory = create_default_factory(config)
     agent_logger = AgentLogger(base_dir=config.agent_logs_dir)
 
-    logger.info(f"Initialized agent factory with types: {agent_factory.registered_types}")
+    logger.info("Initialized agent factory with types: %s", agent_factory.registered_types)
 
     return BootstrapContext(
         config=config,

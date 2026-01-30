@@ -108,8 +108,10 @@ class CursorAgentClient(AgentClient):
         self._default_mode = CursorMode.from_string(config.cursor_default_mode)
 
         logger.debug(
-            f"Initialized CursorAgentClient with path={self._cursor_path}, "
-            f"model={self._default_model}, mode={self._default_mode.value}"
+            "Initialized CursorAgentClient with path=%s, model=%s, mode=%s",
+            self._cursor_path,
+            self._default_model,
+            self._default_mode.value,
         )
 
     @property
@@ -136,7 +138,7 @@ class CursorAgentClient(AgentClient):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         workdir = self.base_workdir / f"{issue_key}_{timestamp}"
         workdir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Created agent working directory: {workdir}")
+        logger.info("Created agent working directory: %s", workdir)
         return workdir
 
     def _build_command(
@@ -237,11 +239,12 @@ class CursorAgentClient(AgentClient):
             effective_timeout = int(self.config.subprocess_timeout)
 
         logger.info(
-            f"Running Cursor CLI: mode={(effective_mode or self._default_mode).value}, "
-            f"model={model or self._default_model or 'default'}, "
-            f"timeout={effective_timeout}s"
+            "Running Cursor CLI: mode=%s, model=%s, timeout=%ss",
+            (effective_mode or self._default_mode).value,
+            model or self._default_model or 'default',
+            effective_timeout,
         )
-        logger.debug(f"Cursor command: {' '.join(cmd[:3])}...")
+        logger.debug("Cursor command: %s...", ' '.join(cmd[:3]))
 
         def _run_subprocess() -> subprocess.CompletedProcess[str]:
             """Run subprocess in a thread to avoid blocking the event loop."""
@@ -258,26 +261,28 @@ class CursorAgentClient(AgentClient):
 
             if result.returncode != 0:
                 error_msg = result.stderr.strip() or f"Exit code: {result.returncode}"
-                logger.error(f"Cursor CLI failed: {error_msg}")
+                logger.error("Cursor CLI failed: %s", error_msg)
                 raise AgentClientError(f"Cursor CLI execution failed: {error_msg}")
 
             response = result.stdout.strip()
-            logger.info(f"Cursor execution completed, response length: {len(response)}")
+            logger.info("Cursor execution completed, response length: %s", len(response))
 
             return AgentRunResult(response=response, workdir=workdir)
 
         except subprocess.TimeoutExpired:
             logger.debug(
-                f"Cursor subprocess timeout: timeout={effective_timeout}s, "
-                f"workdir={workdir}, mode={(effective_mode or self._default_mode).value}"
+                "Cursor subprocess timeout: timeout=%ss, workdir=%s, mode=%s",
+                effective_timeout,
+                workdir,
+                (effective_mode or self._default_mode).value,
             )
-            logger.error(f"Cursor CLI timed out after {effective_timeout}s")
+            logger.error("Cursor CLI timed out after %ss", effective_timeout)
             msg = f"Cursor agent execution timed out after {effective_timeout}s"
             raise AgentTimeoutError(msg) from None
         except FileNotFoundError:
-            logger.error(f"Cursor CLI not found at path: {self._cursor_path}")
+            logger.error("Cursor CLI not found at path: %s", self._cursor_path)
             msg = f"Cursor CLI executable not found: {self._cursor_path}"
             raise AgentClientError(msg) from None
         except OSError as e:
-            logger.error(f"Failed to execute Cursor CLI: {e}")
+            logger.error("Failed to execute Cursor CLI: %s", e)
             raise AgentClientError(f"Failed to execute Cursor CLI: {e}") from e

@@ -94,7 +94,8 @@ class TestHandleExecutionFailure:
                 mock_logger.error.assert_called_once()
                 call_args = mock_logger.error.call_args
                 assert "Failed to apply failure tags due to I/O error" in call_args[0][0]
-                assert "Network error" in call_args[0][0]
+                # With lazy % formatting, the error is passed as an argument
+                assert "Network error" in str(call_args[0][1])
 
     def test_handles_timeout_error_during_tag_application(self) -> None:
         """Test that TimeoutError during tag application is caught and logged."""
@@ -118,7 +119,8 @@ class TestHandleExecutionFailure:
                 mock_logger.error.assert_called_once()
                 call_args = mock_logger.error.call_args
                 assert "Failed to apply failure tags due to I/O error" in call_args[0][0]
-                assert "Request timed out" in call_args[0][0]
+                # With lazy % formatting, the error is passed as an argument
+                assert "Request timed out" in str(call_args[0][1])
 
     def test_handles_keyerror_during_tag_application(self) -> None:
         """Test that KeyError during tag application is caught and logged."""
@@ -165,7 +167,8 @@ class TestHandleExecutionFailure:
                 mock_logger.error.assert_called_once()
                 call_args = mock_logger.error.call_args
                 assert "Failed to apply failure tags due to data error" in call_args[0][0]
-                assert "Invalid value" in call_args[0][0]
+                # With lazy % formatting, the error is passed as an argument
+                assert "Invalid value" in str(call_args[0][1])
 
     def test_different_error_types_logged_correctly(self) -> None:
         """Test that different error types are logged with correct descriptors."""

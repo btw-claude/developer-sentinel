@@ -126,10 +126,11 @@ class OrchestrationRegistry:
                     mtime = file_path.stat().st_mtime
                     self._known_orchestration_files[file_path] = mtime
                 except OSError as e:
-                    logger.warning(f"Could not stat orchestration file {file_path}: {e}")
+                    logger.warning("Could not stat orchestration file %s: %s", file_path, e)
 
         logger.debug(
-            f"Initialized with {len(self._known_orchestration_files)} known orchestration files"
+            "Initialized with %s known orchestration files",
+            len(self._known_orchestration_files),
         )
 
     def get_hot_reload_metrics(self) -> dict[str, int]:
@@ -210,14 +211,14 @@ class OrchestrationRegistry:
             try:
                 current_mtime = file_path.stat().st_mtime
             except OSError as e:
-                logger.warning(f"Could not stat orchestration file {file_path}: {e}")
+                logger.warning("Could not stat orchestration file %s: %s", file_path, e)
                 continue
 
             known_mtime = self._known_orchestration_files.get(file_path)
 
             if known_mtime is None:
                 # New file detected
-                logger.info(f"Detected new orchestration file: {file_path}")
+                logger.info("Detected new orchestration file: %s", file_path)
                 loaded = self._load_orchestrations_from_file(
                     file_path, current_mtime, rebuild_router=False
                 )
@@ -227,8 +228,10 @@ class OrchestrationRegistry:
             elif current_mtime > known_mtime:
                 # Modified file detected
                 logger.info(
-                    f"Detected modified orchestration file: {file_path} "
-                    f"(mtime: {known_mtime} -> {current_mtime})"
+                    "Detected modified orchestration file: %s (mtime: %s -> %s)",
+                    file_path,
+                    known_mtime,
+                    current_mtime,
                 )
                 reloaded = self._reload_modified_file(file_path, current_mtime)
                 modified_orchestrations_count += reloaded
@@ -240,9 +243,10 @@ class OrchestrationRegistry:
 
         if new_orchestrations_count > 0 or modified_orchestrations_count > 0:
             logger.info(
-                f"Hot-reload complete: {new_orchestrations_count} new, "
-                f"{modified_orchestrations_count} reloaded, "
-                f"total active: {len(self._orchestrations)}"
+                "Hot-reload complete: %s new, %s reloaded, total active: %s",
+                new_orchestrations_count,
+                modified_orchestrations_count,
+                len(self._orchestrations),
             )
 
         return new_orchestrations_count, modified_orchestrations_count
@@ -262,7 +266,7 @@ class OrchestrationRegistry:
         # Check which known files no longer exist
         for file_path in list(self._known_orchestration_files.keys()):
             if not file_path.exists():
-                logger.info(f"Detected removed orchestration file: {file_path}")
+                logger.info("Detected removed orchestration file: %s", file_path)
                 removed_files.append(file_path)
 
         # Process each removed file
@@ -273,8 +277,10 @@ class OrchestrationRegistry:
 
         if unloaded_count > 0:
             logger.info(
-                f"Unloaded {unloaded_count} orchestration(s) from {len(removed_files)} "
-                f"removed file(s), total active: {len(self._orchestrations)}"
+                "Unloaded %s orchestration(s) from %s removed file(s), total active: %s",
+                unloaded_count,
+                len(removed_files),
+                len(self._orchestrations),
             )
 
         return unloaded_count
@@ -293,14 +299,15 @@ class OrchestrationRegistry:
                     still_pending.append(version)
                 else:
                     logger.info(
-                        f"Cleaned up old orchestration version '{version.name}' "
-                        f"(version {version.version_id[:8]})"
+                        "Cleaned up old orchestration version '%s' (version %s)",
+                        version.name,
+                        version.version_id[:8],
                     )
                     cleaned_count += 1
             self._pending_removal_versions = still_pending
 
         if cleaned_count > 0:
-            logger.info(f"Cleaned up {cleaned_count} old orchestration version(s)")
+            logger.info("Cleaned up %s old orchestration version(s)", cleaned_count)
 
         return cleaned_count
 
@@ -335,27 +342,35 @@ class OrchestrationRegistry:
                 self._orchestrations_loaded_total += len(new_orchestrations)
 
                 logger.info(
-                    f"Loaded {len(new_orchestrations)} orchestration(s) from {file_path.name}"
+                    "Loaded %s orchestration(s) from %s",
+                    len(new_orchestrations),
+                    file_path.name,
                 )
                 return len(new_orchestrations)
             else:
-                logger.debug(f"No enabled orchestrations in {file_path.name}")
+                logger.debug("No enabled orchestrations in %s", file_path.name)
                 return 0
         except OSError as e:
             logger.error(
-                f"Failed to load orchestration file {file_path} due to I/O error: {e}",
+                "Failed to load orchestration file %s due to I/O error: %s",
+                file_path,
+                e,
                 extra={"file_path": str(file_path)},
             )
             return 0
         except (KeyError, ValueError) as e:
             logger.error(
-                f"Failed to load orchestration file {file_path} due to data error: {e}",
+                "Failed to load orchestration file %s due to data error: %s",
+                file_path,
+                e,
                 extra={"file_path": str(file_path)},
             )
             return 0
         except OrchestrationError as e:
             logger.error(
-                f"Failed to load orchestration file {file_path}: {e}",
+                "Failed to load orchestration file %s: %s",
+                file_path,
+                e,
                 extra={"file_path": str(file_path)},
             )
             return 0
@@ -374,19 +389,25 @@ class OrchestrationRegistry:
             new_orchestrations = load_orchestration_file(file_path)
         except OSError as e:
             logger.error(
-                f"Failed to reload modified orchestration file {file_path} due to I/O error: {e}",
+                "Failed to reload modified orchestration file %s due to I/O error: %s",
+                file_path,
+                e,
                 extra={"file_path": str(file_path)},
             )
             return 0
         except (KeyError, ValueError) as e:
             logger.error(
-                f"Failed to reload modified orchestration file {file_path} due to data error: {e}",
+                "Failed to reload modified orchestration file %s due to data error: %s",
+                file_path,
+                e,
                 extra={"file_path": str(file_path)},
             )
             return 0
         except OrchestrationError as e:
             logger.error(
-                f"Failed to reload modified orchestration file {file_path}: {e}",
+                "Failed to reload modified orchestration file %s: %s",
+                file_path,
+                e,
                 extra={"file_path": str(file_path)},
             )
             return 0
@@ -399,14 +420,17 @@ class OrchestrationRegistry:
                 if old_version.has_active_executions:
                     self._pending_removal_versions.append(old_version)
                     logger.info(
-                        f"Orchestration '{old_version.name}' "
-                        f"(version {old_version.version_id[:8]}) moved to pending "
-                        f"removal with {old_version.active_executions} active execution(s)"
+                        "Orchestration '%s' (version %s) moved to pending removal "
+                        "with %s active execution(s)",
+                        old_version.name,
+                        old_version.version_id[:8],
+                        old_version.active_executions,
                     )
                 else:
                     logger.debug(
-                        f"Orchestration '{old_version.name}' "
-                        f"(version {old_version.version_id[:8]}) removed immediately"
+                        "Orchestration '%s' (version %s) removed immediately",
+                        old_version.name,
+                        old_version.version_id[:8],
                     )
 
             # Remove old orchestrations from the main list
@@ -426,7 +450,9 @@ class OrchestrationRegistry:
                 for orch in new_orchestrations:
                     version = OrchestrationVersion.create(orch, file_path, new_mtime)
                     self._active_versions.append(version)
-                    logger.info(f"Created new version {version.version_id[:8]} for '{orch.name}'")
+                    logger.info(
+                        "Created new version %s for '%s'", version.version_id[:8], orch.name
+                    )
 
         # Update the router with the updated orchestrations
         self._router = self._router_factory(self._orchestrations)
@@ -434,7 +460,7 @@ class OrchestrationRegistry:
         # Update observability counter
         self._orchestrations_reloaded_total += len(new_orchestrations)
 
-        logger.info(f"Reloaded {len(new_orchestrations)} orchestration(s) from {file_path.name}")
+        logger.info("Reloaded %s orchestration(s) from %s", len(new_orchestrations), file_path.name)
         return len(new_orchestrations)
 
     def _unload_orchestrations_from_file(self, file_path: Path) -> int:
@@ -459,14 +485,17 @@ class OrchestrationRegistry:
                     # Keep alive until executions complete
                     self._pending_removal_versions.append(version)
                     logger.info(
-                        f"Orchestration '{version.name}' "
-                        f"(version {version.version_id[:8]}) moved to pending "
-                        f"removal with {version.active_executions} active execution(s)"
+                        "Orchestration '%s' (version %s) moved to pending removal "
+                        "with %s active execution(s)",
+                        version.name,
+                        version.version_id[:8],
+                        version.active_executions,
                     )
                 else:
                     logger.debug(
-                        f"Orchestration '{version.name}' "
-                        f"(version {version.version_id[:8]}) removed immediately"
+                        "Orchestration '%s' (version %s) removed immediately",
+                        version.name,
+                        version.version_id[:8],
                     )
 
                 unloaded_count += 1
