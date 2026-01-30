@@ -39,8 +39,9 @@ def reset_sse_app_status() -> Generator[None, None, None]:
     loops, this causes RuntimeError. This fixture resets the AppStatus before
     each test.
     """
-    from sse_starlette.sse import AppStatus
     import asyncio
+
+    from sse_starlette.sse import AppStatus
 
     # Reset the should_exit_event to a new Event
     AppStatus.should_exit_event = asyncio.Event()
