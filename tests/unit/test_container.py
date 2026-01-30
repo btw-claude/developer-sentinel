@@ -149,22 +149,24 @@ class TestCreateSentinel:
     """Tests for the create_sentinel factory function."""
 
     def test_create_sentinel_with_all_dependencies(self) -> None:
-        """Test creating Sentinel with all dependencies."""
+        """Test creating Sentinel with all dependencies (new DI pattern)."""
         config = Config()
         orchestrations: list = []
-        mock_jira = Mock()
         mock_jira_tag = Mock()
         mock_agent_factory = MagicMock()
         mock_agent_factory.create_for_orchestration.return_value = Mock()
         mock_agent_logger = Mock()
+        mock_jira_poller = Mock()
+        mock_router = Mock()
 
         sentinel = create_sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=mock_jira,
             jira_tag_client=mock_jira_tag,
             agent_factory=mock_agent_factory,
             agent_logger=mock_agent_logger,
+            jira_poller=mock_jira_poller,
+            router=mock_router,
         )
 
         assert sentinel is not None
@@ -172,30 +174,32 @@ class TestCreateSentinel:
         assert sentinel.orchestrations is orchestrations
 
     def test_create_sentinel_with_github_clients(self) -> None:
-        """Test creating Sentinel with GitHub clients."""
+        """Test creating Sentinel with GitHub poller (new DI pattern)."""
         config = Config()
         orchestrations: list = []
-        mock_jira = Mock()
         mock_jira_tag = Mock()
         mock_agent_factory = MagicMock()
         mock_agent_factory.create_for_orchestration.return_value = Mock()
         mock_agent_logger = Mock()
-        mock_github = Mock()
+        mock_jira_poller = Mock()
+        mock_router = Mock()
+        mock_github_poller = Mock()
         mock_github_tag = Mock()
 
         sentinel = create_sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=mock_jira,
             jira_tag_client=mock_jira_tag,
             agent_factory=mock_agent_factory,
             agent_logger=mock_agent_logger,
-            github_client=mock_github,
+            jira_poller=mock_jira_poller,
+            router=mock_router,
+            github_poller=mock_github_poller,
             github_tag_client=mock_github_tag,
         )
 
         assert sentinel is not None
-        assert sentinel.github_poller is not None
+        assert sentinel.github_poller is mock_github_poller
 
 
 class TestSentinelContainer:

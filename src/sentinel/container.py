@@ -31,11 +31,12 @@ if TYPE_CHECKING:
     from sentinel.agent_clients.factory import AgentClientFactory
     from sentinel.agent_logger import AgentLogger
     from sentinel.config import Config
-    from sentinel.github_poller import GitHubClient
+    from sentinel.github_poller import GitHubClient, GitHubPoller
     from sentinel.github_rest_client import GitHubTagClient
     from sentinel.main import Sentinel
     from sentinel.orchestration import Orchestration
-    from sentinel.poller import JiraClient
+    from sentinel.poller import JiraClient, JiraPoller
+    from sentinel.router import Router
     from sentinel.tag_manager import JiraTagClient, TagManager
 
 
@@ -65,6 +66,28 @@ class ClientsContainer(containers.DeclarativeContainer):
     )
 
 
+class PollersContainer(containers.DeclarativeContainer):
+    """Container for pollers (JiraPoller, GitHubPoller).
+
+    This sub-container groups poller dependencies that fetch issues from
+    external systems.
+    """
+
+    config: providers.Dependency[Config] = providers.Dependency()
+    clients = providers.DependenciesContainer()
+
+    # JiraPoller - polls Jira for issues matching triggers
+    jira_poller = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+
+    # GitHubPoller - polls GitHub for issues/PRs matching triggers (optional)
+    # Uses factory pattern since it may be None if GitHub is not configured
+    github_poller = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+
+
 class ServicesContainer(containers.DeclarativeContainer):
     """Container for core services.
 
@@ -87,6 +110,11 @@ class ServicesContainer(containers.DeclarativeContainer):
 
     # TagManager - manages issue labels/tags
     tag_manager = providers.Singleton(
+        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+    )
+
+    # Router - routes issues to matching orchestrations
+    router = providers.Singleton(
         providers.Callable(lambda: None)  # Placeholder, overridden at runtime
     )
 
@@ -161,6 +189,12 @@ class SentinelContainer(containers.DeclarativeContainer):
     clients = providers.Container(
         ClientsContainer,
         config=config,
+    )
+
+    pollers = providers.Container(
+        PollersContainer,
+        config=config,
+        clients=clients,
     )
 
     services = providers.Container(
@@ -279,6 +313,57 @@ def create_github_rest_tag_client(config: Config) -> GitHubTagClient | None:
     )
 
 
+def create_jira_poller(jira_client: JiraClient, config: Config) -> JiraPoller:
+    """Create a JiraPoller with the configured client.
+
+    Args:
+        jira_client: Jira client for API operations.
+        config: Application configuration.
+
+    Returns:
+        JiraPoller configured with the client and epic link field from config.
+    """
+    from sentinel.poller import JiraPoller
+
+    return JiraPoller(
+        jira_client,
+        epic_link_field=config.jira_epic_link_field,
+    )
+
+
+def create_github_poller(github_client: GitHubClient | None) -> GitHubPoller | None:
+    """Create a GitHubPoller if GitHub client is configured.
+
+    Uses factory pattern since the poller may be None if GitHub is not configured.
+
+    Args:
+        github_client: Optional GitHub client for API operations.
+
+    Returns:
+        GitHubPoller if GitHub client is provided, None otherwise.
+    """
+    if github_client is None:
+        return None
+
+    from sentinel.github_poller import GitHubPoller
+
+    return GitHubPoller(github_client)
+
+
+def create_router(orchestrations: list[Orchestration]) -> Router:
+    """Create a Router with the provided orchestrations.
+
+    Args:
+        orchestrations: List of orchestration configurations.
+
+    Returns:
+        Router configured with the orchestrations.
+    """
+    from sentinel.router import Router
+
+    return Router(orchestrations)
+
+
 def create_agent_factory(config: Config) -> AgentClientFactory:
     """Create the agent client factory with default builders.
 
@@ -331,11 +416,12 @@ def create_tag_manager(
 def create_sentinel(
     config: Config,
     orchestrations: list[Orchestration],
-    jira_client: JiraClient,
     jira_tag_client: JiraTagClient,
     agent_factory: AgentClientFactory,
     agent_logger: AgentLogger,
-    github_client: GitHubClient | None = None,
+    jira_poller: JiraPoller,
+    router: Router,
+    github_poller: GitHubPoller | None = None,
     github_tag_client: GitHubTagClient | None = None,
 ) -> Sentinel:
     """Create a Sentinel instance with all dependencies.
@@ -347,11 +433,12 @@ def create_sentinel(
     Args:
         config: Application configuration.
         orchestrations: List of orchestration configurations.
-        jira_client: Jira client for polling issues.
         jira_tag_client: Jira client for tag operations.
         agent_factory: Factory for creating agent clients.
         agent_logger: Logger for agent execution.
-        github_client: Optional GitHub client for polling.
+        jira_poller: Poller for fetching Jira issues.
+        router: Router for matching issues to orchestrations.
+        github_poller: Optional poller for GitHub issues/PRs.
         github_tag_client: Optional GitHub client for tag operations.
 
     Returns:
@@ -362,11 +449,12 @@ def create_sentinel(
     return Sentinel(
         config=config,
         orchestrations=orchestrations,
-        jira_client=jira_client,
         tag_client=jira_tag_client,
         agent_factory=agent_factory,
         agent_logger=agent_logger,
-        github_client=github_client,
+        jira_poller=jira_poller,
+        router=router,
+        github_poller=github_poller,
         github_tag_client=github_tag_client,
     )
 
@@ -436,6 +524,21 @@ def create_container(
         providers.Singleton(create_github_rest_tag_client, config)
     )
 
+    # Configure pollers
+    container.pollers.jira_poller.override(
+        providers.Singleton(
+            create_jira_poller,
+            container.clients.jira_client,
+            config,
+        )
+    )
+    container.pollers.github_poller.override(
+        providers.Singleton(
+            create_github_poller,
+            container.clients.github_client,
+        )
+    )
+
     # Configure services
     container.services.agent_factory.override(providers.Singleton(create_agent_factory, config))
     container.services.agent_logger.override(providers.Singleton(create_agent_logger, config))
@@ -446,6 +549,12 @@ def create_container(
             container.clients.github_tag_client,
         )
     )
+    container.services.router.override(
+        providers.Singleton(
+            create_router,
+            container.orchestrations,
+        )
+    )
 
     # Configure Sentinel factory
     container.sentinel.override(
@@ -453,11 +562,12 @@ def create_container(
             create_sentinel,
             config=container.config,
             orchestrations=container.orchestrations,
-            jira_client=container.clients.jira_client,
             jira_tag_client=container.clients.jira_tag_client,
             agent_factory=container.services.agent_factory,
             agent_logger=container.services.agent_logger,
-            github_client=container.clients.github_client,
+            jira_poller=container.pollers.jira_poller,
+            router=container.services.router,
+            github_poller=container.pollers.github_poller,
             github_tag_client=container.clients.github_tag_client,
         )
     )
@@ -515,6 +625,7 @@ def create_test_container(
 __all__ = [
     "SentinelContainer",
     "ClientsContainer",
+    "PollersContainer",
     "ServicesContainer",
     "create_container",
     "create_test_container",
@@ -525,6 +636,9 @@ __all__ = [
     "create_jira_sdk_tag_client",
     "create_github_rest_client",
     "create_github_rest_tag_client",
+    "create_jira_poller",
+    "create_github_poller",
+    "create_router",
     "create_agent_factory",
     "create_agent_logger",
     "create_tag_manager",
