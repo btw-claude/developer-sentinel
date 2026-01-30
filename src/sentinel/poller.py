@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import re
 import time
 from abc import ABC, abstractmethod
@@ -261,12 +262,22 @@ class JiraClient(ABC):
 class JiraPoller:
     """Polls Jira for issues matching orchestration triggers."""
 
+    # Default maximum delay cap (5 minutes) to prevent excessively long waits
+    DEFAULT_MAX_DELAY: float = 300.0
+
+    # Default jitter range (0.5-1.5x multiplier) to prevent thundering herd
+    DEFAULT_JITTER_MIN: float = 0.5
+    DEFAULT_JITTER_MAX: float = 1.5
+
     def __init__(
         self,
         client: JiraClient,
         max_retries: int = 3,
         retry_delay: float = 1.0,
         epic_link_field: str = "customfield_10014",
+        max_delay: float | None = None,
+        jitter_min: float | None = None,
+        jitter_max: float | None = None,
     ) -> None:
         """Initialize the Jira poller.
 
@@ -277,11 +288,45 @@ class JiraPoller:
             epic_link_field: The custom field ID for epic links (varies by Jira instance).
                 Defaults to "customfield_10014" which is common for classic Jira projects.
                 Can be configured via JIRA_EPIC_LINK_FIELD environment variable.
+            max_delay: Maximum delay in seconds between retries (default: 300.0 / 5 minutes).
+                Caps the exponential backoff to prevent excessively long waits.
+            jitter_min: Minimum jitter multiplier (default: 0.5).
+                Applied to delay to prevent thundering herd problem.
+            jitter_max: Maximum jitter multiplier (default: 1.5).
+                Applied to delay to prevent thundering herd problem.
         """
         self.client = client
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.epic_link_field = epic_link_field
+        self.max_delay = max_delay if max_delay is not None else self.DEFAULT_MAX_DELAY
+        self.jitter_min = jitter_min if jitter_min is not None else self.DEFAULT_JITTER_MIN
+        self.jitter_max = jitter_max if jitter_max is not None else self.DEFAULT_JITTER_MAX
+
+    def _calculate_retry_delay(self, attempt: int) -> float:
+        """Calculate delay before the next retry attempt with jitter and max cap.
+
+        Implements exponential backoff with random jitter to prevent the
+        thundering herd problem where all failing clients retry at exactly
+        the same time.
+
+        Args:
+            attempt: Current retry attempt number (0-indexed).
+
+        Returns:
+            Delay in seconds before next retry, with jitter applied and
+            capped at max_delay.
+        """
+        # Calculate base exponential backoff: retry_delay * 2^attempt
+        base_delay = self.retry_delay * (2**attempt)
+
+        # Cap at maximum delay to prevent excessively long waits
+        capped_delay = min(base_delay, self.max_delay)
+
+        # Apply random jitter (0.5-1.5x by default) to prevent thundering herd
+        jitter: float = random.uniform(self.jitter_min, self.jitter_max)
+        final_delay: float = capped_delay * jitter
+        return final_delay
 
     def build_jql(self, trigger: TriggerConfig) -> str:
         """Build a JQL query from trigger configuration.
@@ -354,7 +399,7 @@ class JiraPoller:
             except JiraClientError as e:
                 last_error = e
                 if attempt < self.max_retries - 1:
-                    delay = self.retry_delay * (2**attempt)
+                    delay = self._calculate_retry_delay(attempt)
                     logger.warning(
                         f"Jira API error (attempt {attempt + 1}/{self.max_retries}): {e}. "
                         f"Retrying in {delay:.1f}s..."
