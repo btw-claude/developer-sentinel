@@ -559,8 +559,12 @@ class ClaudeSdkAgentClient(AgentClient):
         Raises:
             AgentClientError: If branch doesn't exist and create_branch is False,
                 or if git operations fail.
+            AgentTimeoutError: If a git operation times out.
         """
         logger.info(f"Setting up branch '{branch}' in {workdir}")
+
+        # Get timeout from config, or use None for no timeout
+        timeout = self.config.subprocess_timeout if self.config.subprocess_timeout > 0 else None
 
         try:
             # Fetch latest from remote
@@ -570,6 +574,7 @@ class ClaudeSdkAgentClient(AgentClient):
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=timeout,
             )
 
             # Check if branch exists on remote
@@ -579,6 +584,7 @@ class ClaudeSdkAgentClient(AgentClient):
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=timeout,
             )
             branch_exists = bool(result.stdout.strip())
 
@@ -608,6 +614,7 @@ class ClaudeSdkAgentClient(AgentClient):
                     check=True,
                     capture_output=True,
                     text=True,
+                    timeout=timeout,
                 )
                 lines = branch_state_result.stdout.strip().split("\n")
                 # Defensive validation for expected 3-line output.
@@ -634,6 +641,7 @@ class ClaudeSdkAgentClient(AgentClient):
                         check=True,
                         capture_output=True,
                         text=True,
+                        timeout=timeout,
                     )
                     subprocess.run(
                         ["git", "pull", "origin", branch],
@@ -641,6 +649,7 @@ class ClaudeSdkAgentClient(AgentClient):
                         check=True,
                         capture_output=True,
                         text=True,
+                        timeout=timeout,
                     )
             elif create_branch:
                 # Branch doesn't exist but we should create it
@@ -651,6 +660,7 @@ class ClaudeSdkAgentClient(AgentClient):
                     check=True,
                     capture_output=True,
                     text=True,
+                    timeout=timeout,
                 )
             else:
                 # Branch doesn't exist and we shouldn't create it
@@ -658,6 +668,10 @@ class ClaudeSdkAgentClient(AgentClient):
                     f"Branch '{branch}' does not exist on remote and create_branch is False"
                 )
 
+        except subprocess.TimeoutExpired as e:
+            raise AgentTimeoutError(
+                f"Git operation timed out after {timeout}s: {' '.join(e.cmd)}"
+            ) from e
         except subprocess.CalledProcessError as e:
             raise AgentClientError(
                 f"Git operation failed: {e.cmd} returned {e.returncode}. "

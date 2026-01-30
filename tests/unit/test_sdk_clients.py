@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -1071,3 +1072,132 @@ class TestClaudeSdkAgentClientBranchSetup:
             client._setup_branch(
                 workdir, "feature/DS-123", create_branch=False, base_branch="main"
             )
+
+    def test_git_fetch_timeout_raises_timeout_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Should raise AgentTimeoutError when git fetch times out.
+
+        This test verifies that subprocess.TimeoutExpired exceptions from git commands
+        are properly converted to AgentTimeoutError with a descriptive message.
+        """
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        # Create config with a short timeout for testing
+        config = Config(subprocess_timeout=5.0)
+        client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            if "fetch" in cmd:
+                raise subprocess.TimeoutExpired(cmd, timeout=5.0)
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            with pytest.raises(AgentTimeoutError, match="Git operation timed out"):
+                client._setup_branch(
+                    workdir, "feature/DS-123", create_branch=False, base_branch="main"
+                )
+
+    def test_git_pull_timeout_raises_timeout_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Should raise AgentTimeoutError when git pull times out."""
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        config = Config(subprocess_timeout=5.0)
+        client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            if "pull" in cmd:
+                raise subprocess.TimeoutExpired(cmd, timeout=5.0)
+            result = MagicMock()
+            result.returncode = 0
+            result.stderr = ""
+
+            # ls-remote returns branch info when branch exists
+            if "ls-remote" in cmd:
+                result.stdout = "abc123\trefs/heads/feature/DS-123"
+            # rev-parse with multiple args returns newline-separated output
+            # Return different SHAs to trigger the checkout/pull path
+            elif "rev-parse" in cmd and "--abbrev-ref" in cmd:
+                result.stdout = "main\nlocal123\nremote456"
+            else:
+                result.stdout = ""
+
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            with pytest.raises(AgentTimeoutError, match="Git operation timed out"):
+                client._setup_branch(
+                    workdir, "feature/DS-123", create_branch=False, base_branch="main"
+                )
+
+    def test_subprocess_timeout_passed_to_run(
+        self, tmp_path: Path
+    ) -> None:
+        """Should pass subprocess_timeout from config to subprocess.run.
+
+        This test verifies that the timeout parameter from config is correctly
+        passed to all subprocess.run calls.
+        """
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        config = Config(subprocess_timeout=30.0)
+        client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
+
+        captured_timeouts: list[float | None] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            captured_timeouts.append(kwargs.get("timeout"))
+            result = MagicMock()
+            result.returncode = 0
+            result.stderr = ""
+            # ls-remote returns empty (branch doesn't exist)
+            result.stdout = ""
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            client._setup_branch(
+                workdir, "feature/new-branch", create_branch=True, base_branch="main"
+            )
+
+        # All calls should have used the configured timeout
+        assert all(t == 30.0 for t in captured_timeouts)
+        # Should have called fetch, ls-remote, and checkout -b
+        assert len(captured_timeouts) == 3
+
+    def test_zero_timeout_disables_timeout(
+        self, tmp_path: Path
+    ) -> None:
+        """Should pass None as timeout when subprocess_timeout is 0.
+
+        A timeout of 0 disables the timeout, allowing commands to run indefinitely.
+        """
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+
+        config = Config(subprocess_timeout=0.0)
+        client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
+
+        captured_timeouts: list[float | None] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            captured_timeouts.append(kwargs.get("timeout"))
+            result = MagicMock()
+            result.returncode = 0
+            result.stderr = ""
+            result.stdout = ""
+            return result
+
+        with patch("subprocess.run", side_effect=mock_run):
+            client._setup_branch(
+                workdir, "feature/new-branch", create_branch=True, base_branch="main"
+            )
+
+        # All calls should have None as timeout (disabled)
+        assert all(t is None for t in captured_timeouts)
