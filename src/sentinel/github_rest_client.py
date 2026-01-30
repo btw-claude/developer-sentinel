@@ -21,7 +21,7 @@ from typing import Any, Self, TypeVar
 
 import httpx
 
-from sentinel.circuit_breaker import CircuitBreaker, get_circuit_breaker
+from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from sentinel.github_poller import GitHubClient, GitHubClientError
 from sentinel.logging import get_logger
 
@@ -543,15 +543,18 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
                      For GitHub Enterprise: "https://your-ghe-host/api/v3"
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
-            circuit_breaker: Optional circuit breaker instance. If not provided,
-                uses the global "github" circuit breaker from the registry.
+            circuit_breaker: Circuit breaker instance for resilience. If not provided,
+                creates a default circuit breaker for the "github" service.
         """
         super().__init__()
         self.base_url = (base_url or DEFAULT_GITHUB_API_URL).rstrip("/")
         self.token = token
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
-        self._circuit_breaker = circuit_breaker or get_circuit_breaker("github")
+        self._circuit_breaker = circuit_breaker or CircuitBreaker(
+            service_name="github",
+            config=CircuitBreakerConfig.from_env("github"),
+        )
         self._headers = {
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
@@ -976,15 +979,18 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
                      For GitHub Enterprise: "https://your-ghe-host/api/v3"
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
-            circuit_breaker: Optional circuit breaker instance. If not provided,
-                uses the global "github" circuit breaker from the registry.
+            circuit_breaker: Circuit breaker instance for resilience. If not provided,
+                creates a default circuit breaker for the "github" service.
         """
         super().__init__()
         self.base_url = (base_url or DEFAULT_GITHUB_API_URL).rstrip("/")
         self.token = token
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
-        self._circuit_breaker = circuit_breaker or get_circuit_breaker("github")
+        self._circuit_breaker = circuit_breaker or CircuitBreaker(
+            service_name="github",
+            config=CircuitBreakerConfig.from_env("github"),
+        )
         self._headers = {
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",

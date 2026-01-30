@@ -14,10 +14,14 @@ a rate limit token, ensuring efficient use of rate limit capacity.
 
 Usage:
     from sentinel.resilience import ResilienceWrapper
+    from sentinel.circuit_breaker import CircuitBreakerRegistry
 
-    # Create wrapper with existing circuit breaker and rate limiter
+    # Create registry and get circuit breaker via dependency injection
+    registry = CircuitBreakerRegistry()
+
+    # Create wrapper with injected circuit breaker and rate limiter
     wrapper = ResilienceWrapper(
-        circuit_breaker=get_circuit_breaker("claude"),
+        circuit_breaker=registry.get("claude"),
         rate_limiter=ClaudeRateLimiter.from_config(config),
     )
 
@@ -133,8 +137,11 @@ class ResilienceWrapper:
     - Both synchronous and asynchronous acquire methods
 
     Example:
+        # Create registry for dependency injection
+        registry = CircuitBreakerRegistry()
+
         wrapper = ResilienceWrapper(
-            circuit_breaker=get_circuit_breaker("claude"),
+            circuit_breaker=registry.get("claude"),
             rate_limiter=ClaudeRateLimiter.from_config(config),
         )
 

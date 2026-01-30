@@ -251,10 +251,12 @@ class TestCreateDefaultFactory:
         factory = create_default_factory(config)
         client = factory.create("claude", config)
 
+        # Circuit breaker is None when no registry is provided
         mock_claude_class.assert_called_once_with(
             config=config,
             base_workdir=config.agent_workdir,
             log_base_dir=config.agent_logs_dir,
+            circuit_breaker=None,
         )
         assert client is mock_instance
 

@@ -20,7 +20,7 @@ from typing import Any, TypeVar
 
 import httpx
 
-from sentinel.circuit_breaker import CircuitBreaker, get_circuit_breaker
+from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from sentinel.logging import get_logger
 from sentinel.poller import JiraClient, JiraClientError
 from sentinel.tag_manager import JiraTagClient, JiraTagClientError
@@ -207,14 +207,17 @@ class JiraRestClient(JiraClient):
             api_token: API token for authentication.
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
-            circuit_breaker: Optional circuit breaker instance. If not provided,
-                uses the global "jira" circuit breaker from the registry.
+            circuit_breaker: Circuit breaker instance for resilience. If not provided,
+                creates a default circuit breaker for the "jira" service.
         """
         self.base_url = base_url.rstrip("/")
         self.auth = (email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
-        self._circuit_breaker = circuit_breaker or get_circuit_breaker("jira")
+        self._circuit_breaker = circuit_breaker or CircuitBreaker(
+            service_name="jira",
+            config=CircuitBreakerConfig.from_env("jira"),
+        )
 
     @property
     def circuit_breaker(self) -> CircuitBreaker:
@@ -310,14 +313,17 @@ class JiraRestTagClient(JiraTagClient):
             api_token: API token for authentication.
             timeout: Optional custom timeout configuration.
             retry_config: Optional retry configuration for rate limiting.
-            circuit_breaker: Optional circuit breaker instance. If not provided,
-                uses the global "jira" circuit breaker from the registry.
+            circuit_breaker: Circuit breaker instance for resilience. If not provided,
+                creates a default circuit breaker for the "jira" service.
         """
         self.base_url = base_url.rstrip("/")
         self.auth = (email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
-        self._circuit_breaker = circuit_breaker or get_circuit_breaker("jira")
+        self._circuit_breaker = circuit_breaker or CircuitBreaker(
+            service_name="jira",
+            config=CircuitBreakerConfig.from_env("jira"),
+        )
 
     @property
     def circuit_breaker(self) -> CircuitBreaker:

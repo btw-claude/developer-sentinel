@@ -3,17 +3,25 @@
 This module provides a factory for creating agent clients, supporting
 multiple agent backends (Claude SDK, Cursor CLI, etc.) with caching
 and orchestration-specific configuration.
+
+Circuit breakers are injected via dependency injection. When a
+CircuitBreakerRegistry is provided to create_default_factory(),
+circuit breakers are retrieved from the registry and injected into
+agent clients rather than having clients create their own.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from sentinel.agent_clients.base import AgentClient, AgentType
 from sentinel.config import Config
 from sentinel.logging import get_logger
 from sentinel.types import AgentType as AgentTypeEnum
+
+if TYPE_CHECKING:
+    from sentinel.circuit_breaker import CircuitBreakerRegistry
 
 logger = get_logger(__name__)
 
@@ -233,43 +241,65 @@ class AgentClientFactory:
         return list(self._builders.keys())
 
 
-def _build_claude_sdk_client(config: Config) -> AgentClient:
-    """Builder function for ClaudeSdkAgentClient.
+def _create_claude_sdk_builder(
+    circuit_breaker_registry: CircuitBreakerRegistry | None = None,
+) -> AgentClientBuilder:
+    """Create a builder function for ClaudeSdkAgentClient.
 
     Args:
-        config: Configuration object.
+        circuit_breaker_registry: Optional registry to get circuit breakers from.
+            If provided, the Claude circuit breaker will be retrieved from this
+            registry and injected into the client.
 
     Returns:
-        A configured ClaudeSdkAgentClient instance.
+        A builder function that creates ClaudeSdkAgentClient instances.
     """
-    from sentinel.agent_clients.claude_sdk import ClaudeSdkAgentClient
+    def builder(config: Config) -> AgentClient:
+        from sentinel.agent_clients.claude_sdk import ClaudeSdkAgentClient
 
-    return ClaudeSdkAgentClient(
-        config=config,
-        base_workdir=config.agent_workdir,
-        log_base_dir=config.agent_logs_dir,
-    )
+        # Get circuit breaker from registry if available
+        circuit_breaker = (
+            circuit_breaker_registry.get("claude") if circuit_breaker_registry else None
+        )
+
+        return ClaudeSdkAgentClient(
+            config=config,
+            base_workdir=config.agent_workdir,
+            log_base_dir=config.agent_logs_dir,
+            circuit_breaker=circuit_breaker,
+        )
+
+    return builder
 
 
-def _build_cursor_client(config: Config) -> AgentClient:
-    """Builder function for CursorAgentClient.
+def _create_cursor_builder(
+    circuit_breaker_registry: CircuitBreakerRegistry | None = None,
+) -> AgentClientBuilder:
+    """Create a builder function for CursorAgentClient.
 
     Args:
-        config: Configuration object.
+        circuit_breaker_registry: Optional registry to get circuit breakers from.
+            Reserved for future use when Cursor client supports circuit breakers.
 
     Returns:
-        A configured CursorAgentClient instance.
+        A builder function that creates CursorAgentClient instances.
     """
-    from sentinel.agent_clients.cursor import CursorAgentClient
+    def builder(config: Config) -> AgentClient:
+        from sentinel.agent_clients.cursor import CursorAgentClient
 
-    return CursorAgentClient(
-        config=config,
-        base_workdir=config.agent_workdir,
-        log_base_dir=config.agent_logs_dir,
-    )
+        return CursorAgentClient(
+            config=config,
+            base_workdir=config.agent_workdir,
+            log_base_dir=config.agent_logs_dir,
+        )
+
+    return builder
 
 
-def create_default_factory(config: Config) -> AgentClientFactory:
+def create_default_factory(
+    config: Config,
+    circuit_breaker_registry: CircuitBreakerRegistry | None = None,
+) -> AgentClientFactory:
     """Create a factory with default builders registered.
 
     This is the recommended way to create a factory for production use.
@@ -277,17 +307,27 @@ def create_default_factory(config: Config) -> AgentClientFactory:
 
     Args:
         config: Configuration object (used for logging context).
+        circuit_breaker_registry: Optional registry for circuit breaker injection.
+            If provided, circuit breakers will be retrieved from this registry
+            and injected into agent clients that support them. This enables
+            sharing circuit breaker state across components.
 
     Returns:
         An AgentClientFactory with all default builders registered.
     """
     factory = AgentClientFactory()
 
-    # Register the Claude SDK builder
-    factory.register(AgentTypeEnum.CLAUDE.value, _build_claude_sdk_client)
+    # Register the Claude SDK builder with circuit breaker support
+    factory.register(
+        AgentTypeEnum.CLAUDE.value,
+        _create_claude_sdk_builder(circuit_breaker_registry),
+    )
 
     # Register the Cursor CLI builder
-    factory.register(AgentTypeEnum.CURSOR.value, _build_cursor_client)
+    factory.register(
+        AgentTypeEnum.CURSOR.value,
+        _create_cursor_builder(circuit_breaker_registry),
+    )
 
     logger.info("Created default factory with registered types: %s", factory.registered_types)
     return factory
