@@ -172,7 +172,7 @@ class TestAddRepoContextFromUrls:
             ),
         ]
 
-        result = sentinel._add_repo_context_from_urls(issues)
+        result = sentinel._poll_coordinator._add_repo_context_from_urls(issues)
 
         assert len(result) == 2
         assert result[0].key == "org1/repo1#1"
@@ -215,7 +215,7 @@ class TestAddRepoContextFromUrls:
         ]
 
         with caplog.at_level(logging.WARNING):
-            result = sentinel._add_repo_context_from_urls(issues)
+            result = sentinel._poll_coordinator._add_repo_context_from_urls(issues)
 
         # Only valid issue should be returned
         assert len(result) == 1
@@ -262,7 +262,7 @@ class TestAddRepoContextFromUrls:
             ),
         ]
 
-        result = sentinel._add_repo_context_from_urls(issues)
+        result = sentinel._poll_coordinator._add_repo_context_from_urls(issues)
 
         assert len(result) == 3
         assert result[0].key == "org/repo-a#10"

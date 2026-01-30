@@ -266,11 +266,11 @@ class TestSentinelConcurrentExecution:
         )
 
         # Manually set up the thread pool and simulate a busy slot
-        sentinel._thread_pool = ThreadPoolExecutor(max_workers=1)
+        sentinel._execution_manager._thread_pool = ThreadPoolExecutor(max_workers=1)
         # Submit a dummy task to occupy the slot
         block_event = threading.Event()
-        future = sentinel._thread_pool.submit(lambda: block_event.wait(timeout=5))
-        sentinel._active_futures = [future]
+        future = sentinel._execution_manager._thread_pool.submit(lambda: block_event.wait(timeout=5))
+        sentinel._execution_manager._active_futures = [future]
 
         # First run_once should skip polling since slot is busy
         results, submitted_count = sentinel.run_once()
@@ -285,8 +285,8 @@ class TestSentinelConcurrentExecution:
         future.result()  # Wait for completion
 
         # Clean up
-        sentinel._thread_pool.shutdown(wait=True)
-        sentinel._thread_pool = None
+        sentinel._execution_manager._thread_pool.shutdown(wait=True)
+        sentinel._execution_manager._thread_pool = None
 
     def test_concurrent_execution_with_thread_pool(self) -> None:
         """Test that run() uses thread pool correctly."""

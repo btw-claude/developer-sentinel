@@ -39,18 +39,18 @@ class TestQueueEvictionBehavior:
             tag_client=tag_client,
         )
 
-        sentinel._add_to_issue_queue("TEST-1", "orch-1")
-        sentinel._add_to_issue_queue("TEST-2", "orch-2")
-        sentinel._add_to_issue_queue("TEST-3", "orch-3")
+        sentinel._state_tracker.add_to_issue_queue("TEST-1", "orch-1")
+        sentinel._state_tracker.add_to_issue_queue("TEST-2", "orch-2")
+        sentinel._state_tracker.add_to_issue_queue("TEST-3", "orch-3")
 
-        assert len(sentinel._issue_queue) == 3
-        queue_keys = [item.issue_key for item in sentinel._issue_queue]
+        assert len(sentinel._state_tracker._issue_queue) == 3
+        queue_keys = [item.issue_key for item in sentinel._state_tracker._issue_queue]
         assert queue_keys == ["TEST-1", "TEST-2", "TEST-3"]
 
-        sentinel._add_to_issue_queue("TEST-4", "orch-4")
+        sentinel._state_tracker.add_to_issue_queue("TEST-4", "orch-4")
 
-        assert len(sentinel._issue_queue) == 3
-        queue_keys = [item.issue_key for item in sentinel._issue_queue]
+        assert len(sentinel._state_tracker._issue_queue) == 3
+        queue_keys = [item.issue_key for item in sentinel._state_tracker._issue_queue]
         assert queue_keys == ["TEST-2", "TEST-3", "TEST-4"]
         assert "TEST-1" not in queue_keys
 
@@ -71,13 +71,13 @@ class TestQueueEvictionBehavior:
         )
 
         for i in range(1, 6):
-            sentinel._add_to_issue_queue(f"TEST-{i}", f"orch-{i}")
+            sentinel._state_tracker.add_to_issue_queue(f"TEST-{i}", f"orch-{i}")
 
-        queue_keys = [item.issue_key for item in sentinel._issue_queue]
+        queue_keys = [item.issue_key for item in sentinel._state_tracker._issue_queue]
         assert queue_keys == ["TEST-1", "TEST-2", "TEST-3", "TEST-4", "TEST-5"]
 
-        assert sentinel._issue_queue[0].issue_key == "TEST-1"
-        assert sentinel._issue_queue[-1].issue_key == "TEST-5"
+        assert sentinel._state_tracker._issue_queue[0].issue_key == "TEST-1"
+        assert sentinel._state_tracker._issue_queue[-1].issue_key == "TEST-5"
 
     def test_eviction_logging_includes_evicted_item_key(
         self, caplog: pytest.LogCaptureFixture
@@ -97,13 +97,13 @@ class TestQueueEvictionBehavior:
             tag_client=tag_client,
         )
 
-        sentinel._add_to_issue_queue("EVICT-ME", "orch-old")
-        sentinel._add_to_issue_queue("TEST-2", "orch-2")
+        sentinel._state_tracker.add_to_issue_queue("EVICT-ME", "orch-old")
+        sentinel._state_tracker.add_to_issue_queue("TEST-2", "orch-2")
 
         caplog.clear()
 
         with caplog.at_level(logging.DEBUG, logger="sentinel.state_tracker"):
-            sentinel._add_to_issue_queue("NEW-ITEM", "orch-new")
+            sentinel._state_tracker.add_to_issue_queue("NEW-ITEM", "orch-new")
 
         eviction_records = [
             r
@@ -147,7 +147,7 @@ class TestQueueEvictionBehavior:
         )
 
         for i in range(1, 6):
-            sentinel._add_to_issue_queue(f"TEST-{i}", f"orch-{i}")
+            sentinel._state_tracker.add_to_issue_queue(f"TEST-{i}", f"orch-{i}")
 
         queue = sentinel.get_issue_queue()
         assert len(queue) == 3
@@ -173,16 +173,16 @@ class TestQueueEvictionBehavior:
             tag_client=tag_client,
         )
 
-        with caplog.at_level(logging.DEBUG, logger="sentinel.main"):
-            sentinel._add_to_issue_queue("TEST-1", "orch-1")
-            sentinel._add_to_issue_queue("TEST-2", "orch-2")
-            sentinel._add_to_issue_queue("TEST-3", "orch-3")
+        with caplog.at_level(logging.DEBUG, logger="sentinel.state_tracker"):
+            sentinel._state_tracker.add_to_issue_queue("TEST-1", "orch-1")
+            sentinel._state_tracker.add_to_issue_queue("TEST-2", "orch-2")
+            sentinel._state_tracker.add_to_issue_queue("TEST-3", "orch-3")
 
         eviction_records = [
             r
             for r in caplog.records
             if r.levelno == logging.DEBUG
-            and r.name == "sentinel.main"
+            and r.name == "sentinel.state_tracker"
             and "capacity" in r.message
             and "evicted" in r.message
         ]
@@ -208,12 +208,12 @@ class TestQueueEvictionBehavior:
             tag_client=tag_client,
         )
 
-        sentinel._add_to_issue_queue("ITEM-A", "orch-a")
-        sentinel._add_to_issue_queue("ITEM-B", "orch-b")
+        sentinel._state_tracker.add_to_issue_queue("ITEM-A", "orch-a")
+        sentinel._state_tracker.add_to_issue_queue("ITEM-B", "orch-b")
 
         with caplog.at_level(logging.DEBUG, logger="sentinel.state_tracker"):
-            sentinel._add_to_issue_queue("ITEM-C", "orch-c")
-            sentinel._add_to_issue_queue("ITEM-D", "orch-d")
+            sentinel._state_tracker.add_to_issue_queue("ITEM-C", "orch-c")
+            sentinel._state_tracker.add_to_issue_queue("ITEM-D", "orch-d")
 
         eviction_records = [
             r
@@ -253,18 +253,18 @@ class TestQueueEvictionBehavior:
         )
 
         for i in range(1, 4):
-            sentinel._add_to_issue_queue(f"OLD-{i}", f"orch-{i}")
+            sentinel._state_tracker.add_to_issue_queue(f"OLD-{i}", f"orch-{i}")
 
-        assert len(sentinel._issue_queue) == 3
+        assert len(sentinel._state_tracker._issue_queue) == 3
 
-        sentinel._clear_issue_queue()
+        sentinel._state_tracker.clear_issue_queue()
 
-        assert len(sentinel._issue_queue) == 0
+        assert len(sentinel._state_tracker._issue_queue) == 0
 
-        sentinel._add_to_issue_queue("NEW-1", "new-orch-1")
+        sentinel._state_tracker.add_to_issue_queue("NEW-1", "new-orch-1")
 
-        assert len(sentinel._issue_queue) == 1
-        assert sentinel._issue_queue[0].issue_key == "NEW-1"
+        assert len(sentinel._state_tracker._issue_queue) == 1
+        assert sentinel._state_tracker._issue_queue[0].issue_key == "NEW-1"
 
     def test_eviction_preserves_queued_at_timestamp_ordering(self) -> None:
         """Test that queued_at timestamps are preserved and ordered correctly."""
@@ -293,11 +293,11 @@ class TestQueueEvictionBehavior:
             mock_datetime.now.side_effect = lambda: next(time_iterator)
             mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
 
-            sentinel._add_to_issue_queue("TEST-1", "orch-1")
-            sentinel._add_to_issue_queue("TEST-2", "orch-2")
-            sentinel._add_to_issue_queue("TEST-3", "orch-3")
+            sentinel._state_tracker.add_to_issue_queue("TEST-1", "orch-1")
+            sentinel._state_tracker.add_to_issue_queue("TEST-2", "orch-2")
+            sentinel._state_tracker.add_to_issue_queue("TEST-3", "orch-3")
 
-        queue_items = list(sentinel._issue_queue)
+        queue_items = list(sentinel._state_tracker._issue_queue)
         assert len(queue_items) == 2
 
         assert queue_items[0].issue_key == "TEST-2"

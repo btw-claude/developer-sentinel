@@ -46,9 +46,9 @@ class TestSentinelOrchestrationHotReload:
                 tag_client=tag_client,
             )
 
-            assert len(sentinel._known_orchestration_files) == 2
-            assert orch_dir / "existing1.yaml" in sentinel._known_orchestration_files
-            assert orch_dir / "existing2.yml" in sentinel._known_orchestration_files
+            assert len(sentinel._orchestration_registry._known_orchestration_files) == 2
+            assert orch_dir / "existing1.yaml" in sentinel._orchestration_registry._known_orchestration_files
+            assert orch_dir / "existing2.yml" in sentinel._orchestration_registry._known_orchestration_files
 
     def test_detects_new_orchestration_files(self) -> None:
         """Test that new orchestration files are detected during poll cycles."""
@@ -69,7 +69,7 @@ class TestSentinelOrchestrationHotReload:
                 tag_client=tag_client,
             )
 
-            assert len(sentinel._known_orchestration_files) == 0
+            assert len(sentinel._orchestration_registry._known_orchestration_files) == 0
             assert len(sentinel.orchestrations) == 0
 
             (orch_dir / "new_orch.yaml").write_text(
@@ -86,8 +86,8 @@ class TestSentinelOrchestrationHotReload:
 
             sentinel.run_once()
 
-            assert len(sentinel._known_orchestration_files) == 1
-            assert orch_dir / "new_orch.yaml" in sentinel._known_orchestration_files
+            assert len(sentinel._orchestration_registry._known_orchestration_files) == 1
+            assert orch_dir / "new_orch.yaml" in sentinel._orchestration_registry._known_orchestration_files
             assert len(sentinel.orchestrations) == 1
             assert sentinel.orchestrations[0].name == "new-orchestration"
 
@@ -196,7 +196,7 @@ class TestSentinelOrchestrationHotReload:
 
             sentinel.run_once()
 
-            assert orch_dir / "invalid.yaml" in sentinel._known_orchestration_files
+            assert orch_dir / "invalid.yaml" in sentinel._orchestration_registry._known_orchestration_files
             assert len(sentinel.orchestrations) == 0
 
     def test_no_router_rebuild_for_empty_or_invalid_files(self) -> None:
@@ -235,9 +235,9 @@ class TestSentinelOrchestrationHotReload:
 
             sentinel.run_once()
 
-            assert orch_dir / "invalid.yaml" in sentinel._known_orchestration_files
-            assert orch_dir / "empty.yaml" in sentinel._known_orchestration_files
-            assert orch_dir / "disabled.yaml" in sentinel._known_orchestration_files
+            assert orch_dir / "invalid.yaml" in sentinel._orchestration_registry._known_orchestration_files
+            assert orch_dir / "empty.yaml" in sentinel._orchestration_registry._known_orchestration_files
+            assert orch_dir / "disabled.yaml" in sentinel._orchestration_registry._known_orchestration_files
             assert len(sentinel.orchestrations) == 0
             assert sentinel.router is original_router
 
@@ -269,7 +269,7 @@ class TestSentinelOrchestrationHotReload:
                 tag_client=tag_client,
             )
 
-            assert len(sentinel._known_orchestration_files) == 1
+            assert len(sentinel._orchestration_registry._known_orchestration_files) == 1
             sentinel.run_once()
             assert len(sentinel.orchestrations) == 0
 
@@ -293,7 +293,7 @@ class TestSentinelOrchestrationHotReload:
             tag_client=tag_client,
         )
 
-        assert len(sentinel._known_orchestration_files) == 0
+        assert len(sentinel._orchestration_registry._known_orchestration_files) == 0
         sentinel.run_once()
         assert len(sentinel.orchestrations) == 0
 
@@ -328,9 +328,9 @@ class TestSentinelOrchestrationHotReload:
                 tag_client=tag_client,
             )
 
-            assert len(sentinel._known_orchestration_files) == 1
-            assert orch_file in sentinel._known_orchestration_files
-            original_mtime = sentinel._known_orchestration_files[orch_file]
+            assert len(sentinel._orchestration_registry._known_orchestration_files) == 1
+            assert orch_file in sentinel._orchestration_registry._known_orchestration_files
+            original_mtime = sentinel._orchestration_registry._known_orchestration_files[orch_file]
 
             sentinel.run_once()
             assert len(sentinel.orchestrations) == 0
@@ -353,7 +353,7 @@ class TestSentinelOrchestrationHotReload:
             assert len(sentinel.orchestrations) == 1
             assert sentinel.orchestrations[0].name == "modified-orch"
             assert sentinel.orchestrations[0].agent.prompt == "Modified prompt"
-            assert sentinel._known_orchestration_files[orch_file] > original_mtime
+            assert sentinel._orchestration_registry._known_orchestration_files[orch_file] > original_mtime
 
     def test_modified_file_moves_old_version_to_pending_removal(self) -> None:
         """Test that modifying a file moves old versions to pending removal."""
@@ -385,8 +385,8 @@ class TestSentinelOrchestrationHotReload:
                 tag_client=tag_client,
             )
 
-            assert len(sentinel._active_versions) == 0
-            assert len(sentinel._pending_removal_versions) == 0
+            assert len(sentinel._orchestration_registry._active_versions) == 0
+            assert len(sentinel._orchestration_registry._pending_removal_versions) == 0
 
             new_file = orch_dir / "new_versioned.yaml"
             new_file.write_text(
@@ -402,10 +402,10 @@ class TestSentinelOrchestrationHotReload:
 
             sentinel.run_once()
 
-            assert len(sentinel._active_versions) == 1
-            assert sentinel._active_versions[0].name == "new-versioned-orch"
+            assert len(sentinel._orchestration_registry._active_versions) == 1
+            assert sentinel._orchestration_registry._active_versions[0].name == "new-versioned-orch"
 
-            sentinel._active_versions[0].increment_executions()
+            sentinel._orchestration_registry._active_versions[0].increment_executions()
 
             new_file.write_text(
                 """orchestrations:
@@ -421,13 +421,13 @@ class TestSentinelOrchestrationHotReload:
 
             sentinel.run_once()
 
-            assert len(sentinel._pending_removal_versions) == 1
+            assert len(sentinel._orchestration_registry._pending_removal_versions) == 1
             assert (
-                sentinel._pending_removal_versions[0].orchestration.agent.prompt == "New Version 1"
+                sentinel._orchestration_registry._pending_removal_versions[0].orchestration.agent.prompt == "New Version 1"
             )
-            assert len(sentinel._active_versions) == 1
+            assert len(sentinel._orchestration_registry._active_versions) == 1
             assert (
-                sentinel._active_versions[0].orchestration.agent.prompt
+                sentinel._orchestration_registry._active_versions[0].orchestration.agent.prompt
                 == "New Version 2 - Modified"
             )
 
@@ -462,7 +462,7 @@ class TestSentinelOrchestrationHotReload:
             )
 
             sentinel.run_once()
-            sentinel._active_versions[0].increment_executions()
+            sentinel._orchestration_registry._active_versions[0].increment_executions()
 
             orch_file.write_text(
                 """orchestrations:
@@ -477,13 +477,13 @@ class TestSentinelOrchestrationHotReload:
 
             sentinel.run_once()
 
-            assert len(sentinel._pending_removal_versions) == 1
-            assert sentinel._pending_removal_versions[0].active_executions == 1
+            assert len(sentinel._orchestration_registry._pending_removal_versions) == 1
+            assert sentinel._orchestration_registry._pending_removal_versions[0].active_executions == 1
 
-            sentinel._pending_removal_versions[0].decrement_executions()
+            sentinel._orchestration_registry._pending_removal_versions[0].decrement_executions()
             sentinel.run_once()
 
-            assert len(sentinel._pending_removal_versions) == 0
+            assert len(sentinel._orchestration_registry._pending_removal_versions) == 0
 
     def test_version_without_active_executions_removed_immediately(self) -> None:
         """Test that old versions without active executions are removed immediately."""
@@ -516,7 +516,7 @@ class TestSentinelOrchestrationHotReload:
             )
 
             sentinel.run_once()
-            assert sentinel._active_versions[0].active_executions == 0
+            assert sentinel._orchestration_registry._active_versions[0].active_executions == 0
 
             orch_file.write_text(
                 """orchestrations:
@@ -531,9 +531,9 @@ class TestSentinelOrchestrationHotReload:
 
             sentinel.run_once()
 
-            assert len(sentinel._pending_removal_versions) == 0
-            assert len(sentinel._active_versions) == 1
-            assert sentinel._active_versions[0].orchestration.agent.prompt == "Version 2"
+            assert len(sentinel._orchestration_registry._pending_removal_versions) == 0
+            assert len(sentinel._orchestration_registry._active_versions) == 1
+            assert sentinel._orchestration_registry._active_versions[0].orchestration.agent.prompt == "Version 2"
 
     def test_known_files_stores_mtime(self) -> None:
         """Test that _known_orchestration_files stores mtimes, not just presence."""
@@ -564,8 +564,8 @@ class TestSentinelOrchestrationHotReload:
                 tag_client=tag_client,
             )
 
-            assert isinstance(sentinel._known_orchestration_files[orch_file], float)
-            assert sentinel._known_orchestration_files[orch_file] > 0
+            assert isinstance(sentinel._orchestration_registry._known_orchestration_files[orch_file], float)
+            assert sentinel._orchestration_registry._known_orchestration_files[orch_file] > 0
 
     def test_detects_removed_orchestration_files(self) -> None:
         """Test that removed orchestration files are detected and their orchestrations unloaded."""
@@ -602,13 +602,13 @@ class TestSentinelOrchestrationHotReload:
 
             assert len(sentinel.orchestrations) == 1
             assert sentinel.orchestrations[0].name == "removable-orch"
-            assert orch_file in sentinel._known_orchestration_files
+            assert orch_file in sentinel._orchestration_registry._known_orchestration_files
 
             orch_file.unlink()
             sentinel.run_once()
 
             assert len(sentinel.orchestrations) == 0
-            assert orch_file not in sentinel._known_orchestration_files
+            assert orch_file not in sentinel._orchestration_registry._known_orchestration_files
 
     def test_removed_file_with_active_execution_moves_to_pending_removal(self) -> None:
         """Test that orchestrations from removed files with active executions go to pending removal."""
@@ -641,19 +641,19 @@ class TestSentinelOrchestrationHotReload:
             )
 
             sentinel.run_once()
-            assert len(sentinel._active_versions) == 1
+            assert len(sentinel._orchestration_registry._active_versions) == 1
 
-            sentinel._active_versions[0].increment_executions()
-            assert sentinel._active_versions[0].active_executions == 1
+            sentinel._orchestration_registry._active_versions[0].increment_executions()
+            assert sentinel._orchestration_registry._active_versions[0].active_executions == 1
 
             orch_file.unlink()
             sentinel.run_once()
 
             assert len(sentinel.orchestrations) == 0
-            assert len(sentinel._pending_removal_versions) == 1
-            assert sentinel._pending_removal_versions[0].name == "active-orch"
-            assert sentinel._pending_removal_versions[0].active_executions == 1
-            assert len(sentinel._active_versions) == 0
+            assert len(sentinel._orchestration_registry._pending_removal_versions) == 1
+            assert sentinel._orchestration_registry._pending_removal_versions[0].name == "active-orch"
+            assert sentinel._orchestration_registry._pending_removal_versions[0].active_executions == 1
+            assert len(sentinel._orchestration_registry._active_versions) == 0
 
     def test_removed_file_without_active_execution_removed_immediately(self) -> None:
         """Test that orchestrations from removed files without active executions are removed immediately."""
@@ -686,15 +686,15 @@ class TestSentinelOrchestrationHotReload:
             )
 
             sentinel.run_once()
-            assert len(sentinel._active_versions) == 1
-            assert sentinel._active_versions[0].active_executions == 0
+            assert len(sentinel._orchestration_registry._active_versions) == 1
+            assert sentinel._orchestration_registry._active_versions[0].active_executions == 0
 
             orch_file.unlink()
             sentinel.run_once()
 
             assert len(sentinel.orchestrations) == 0
-            assert len(sentinel._pending_removal_versions) == 0
-            assert len(sentinel._active_versions) == 0
+            assert len(sentinel._orchestration_registry._pending_removal_versions) == 0
+            assert len(sentinel._orchestration_registry._active_versions) == 0
 
     def test_pending_removal_from_file_deletion_cleaned_up_after_execution(self) -> None:
         """Test that pending removal versions from deleted files are cleaned up after execution completes."""
@@ -727,15 +727,15 @@ class TestSentinelOrchestrationHotReload:
             )
 
             sentinel.run_once()
-            sentinel._active_versions[0].increment_executions()
+            sentinel._orchestration_registry._active_versions[0].increment_executions()
 
             orch_file.unlink()
             sentinel.run_once()
-            assert len(sentinel._pending_removal_versions) == 1
+            assert len(sentinel._orchestration_registry._pending_removal_versions) == 1
 
-            sentinel._pending_removal_versions[0].decrement_executions()
+            sentinel._orchestration_registry._pending_removal_versions[0].decrement_executions()
             sentinel.run_once()
-            assert len(sentinel._pending_removal_versions) == 0
+            assert len(sentinel._orchestration_registry._pending_removal_versions) == 0
 
     def test_router_updated_after_file_removal(self) -> None:
         """Test that the router is updated when orchestrations are removed."""
@@ -823,14 +823,14 @@ class TestSentinelOrchestrationHotReload:
 
             sentinel.run_once()
             assert len(sentinel.orchestrations) == 3
-            assert len(sentinel._active_versions) == 3
+            assert len(sentinel._orchestration_registry._active_versions) == 3
 
             orch_file.unlink()
             sentinel.run_once()
 
             assert len(sentinel.orchestrations) == 0
-            assert len(sentinel._active_versions) == 0
-            assert orch_file not in sentinel._known_orchestration_files
+            assert len(sentinel._orchestration_registry._active_versions) == 0
+            assert orch_file not in sentinel._orchestration_registry._known_orchestration_files
 
     def test_removal_of_one_file_does_not_affect_others(self) -> None:
         """Test that removing one file doesn't affect orchestrations from other files."""
@@ -875,12 +875,12 @@ class TestSentinelOrchestrationHotReload:
 
             sentinel.run_once()
             assert len(sentinel.orchestrations) == 2
-            assert len(sentinel._known_orchestration_files) == 2
+            assert len(sentinel._orchestration_registry._known_orchestration_files) == 2
 
             file2.unlink()
             sentinel.run_once()
 
             assert len(sentinel.orchestrations) == 1
             assert sentinel.orchestrations[0].name == "keep-orch"
-            assert file1 in sentinel._known_orchestration_files
-            assert file2 not in sentinel._known_orchestration_files
+            assert file1 in sentinel._orchestration_registry._known_orchestration_files
+            assert file2 not in sentinel._orchestration_registry._known_orchestration_files
