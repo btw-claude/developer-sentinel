@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from sentinel.execution_manager import TrackedFuture
 from sentinel.main import Sentinel, parse_args, setup_logging
 
 # Import shared fixtures and helpers from conftest.py
@@ -268,7 +269,7 @@ class TestSentinelEagerPolling:
         sentinel._execution_manager._thread_pool = ThreadPoolExecutor(max_workers=1)
         block_event = threading.Event()
         future = sentinel._execution_manager._thread_pool.submit(lambda: block_event.wait(timeout=5))
-        sentinel._execution_manager._active_futures = [future]
+        sentinel._execution_manager._active_futures = [TrackedFuture(future=future)]
 
         # run_once should return 0 submitted since slot is busy
         results, submitted_count = sentinel.run_once()

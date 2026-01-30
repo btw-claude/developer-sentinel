@@ -6,6 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from sentinel.execution_manager import TrackedFuture
 from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.main import Sentinel
 
@@ -270,7 +271,7 @@ class TestSentinelConcurrentExecution:
         # Submit a dummy task to occupy the slot
         block_event = threading.Event()
         future = sentinel._execution_manager._thread_pool.submit(lambda: block_event.wait(timeout=5))
-        sentinel._execution_manager._active_futures = [future]
+        sentinel._execution_manager._active_futures = [TrackedFuture(future=future)]
 
         # First run_once should skip polling since slot is busy
         results, submitted_count = sentinel.run_once()
