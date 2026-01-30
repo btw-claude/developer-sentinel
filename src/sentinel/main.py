@@ -320,6 +320,46 @@ class Sentinel:
             orchestration, global_available
         )
 
+    def _handle_execution_failure(
+        self,
+        issue_key: str,
+        orchestration: Orchestration,
+        exception: Exception,
+        error_type: str,
+    ) -> None:
+        """Handle execution failure by logging and applying failure tags.
+
+        This helper method encapsulates the common failure handling logic that was
+        previously duplicated across multiple exception handlers. It logs the error
+        and attempts to apply failure tags, handling any errors that occur during
+        tag application.
+
+        Args:
+            issue_key: The issue key (e.g., "PROJ-123") being processed.
+            orchestration: The orchestration that failed.
+            exception: The exception that caused the failure.
+            error_type: A descriptive type of the error for logging (e.g., "I/O error",
+                "runtime error", "data error").
+        """
+        self._log_for_orchestration(
+            orchestration.name,
+            logging.ERROR,
+            f"Failed to execute '{orchestration.name}' for {issue_key} "
+            f"due to {error_type}: {exception}",
+        )
+        try:
+            self.tag_manager.apply_failure_tags(issue_key, orchestration)
+        except (OSError, TimeoutError) as tag_error:
+            logger.error(
+                f"Failed to apply failure tags due to I/O error: {tag_error}",
+                extra={"issue_key": issue_key, "orchestration": orchestration.name},
+            )
+        except (KeyError, ValueError) as tag_error:
+            logger.error(
+                f"Failed to apply failure tags due to data error: {tag_error}",
+                extra={"issue_key": issue_key, "orchestration": orchestration.name},
+            )
+
     def _execute_orchestration_task(
         self,
         issue: JiraIssue | GitHubIssueProtocol,
@@ -386,62 +426,13 @@ class Sentinel:
                 )
             return None
         except (OSError, TimeoutError) as e:
-            self._log_for_orchestration(
-                orchestration.name,
-                logging.ERROR,
-                f"Failed to execute '{orchestration.name}' for {issue_key} due to I/O error: {e}",
-            )
-            try:
-                self.tag_manager.apply_failure_tags(issue_key, orchestration)
-            except (OSError, TimeoutError) as tag_error:
-                logger.error(
-                    f"Failed to apply failure tags due to I/O error: {tag_error}",
-                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
-                )
-            except (KeyError, ValueError) as tag_error:
-                logger.error(
-                    f"Failed to apply failure tags due to data error: {tag_error}",
-                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
-                )
+            self._handle_execution_failure(issue_key, orchestration, e, "I/O error")
             return None
         except RuntimeError as e:
-            self._log_for_orchestration(
-                orchestration.name,
-                logging.ERROR,
-                f"Failed to execute '{orchestration.name}' for {issue_key} "
-                f"due to runtime error: {e}",
-            )
-            try:
-                self.tag_manager.apply_failure_tags(issue_key, orchestration)
-            except (OSError, TimeoutError) as tag_error:
-                logger.error(
-                    f"Failed to apply failure tags due to I/O error: {tag_error}",
-                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
-                )
-            except (KeyError, ValueError) as tag_error:
-                logger.error(
-                    f"Failed to apply failure tags due to data error: {tag_error}",
-                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
-                )
+            self._handle_execution_failure(issue_key, orchestration, e, "runtime error")
             return None
         except (KeyError, ValueError) as e:
-            self._log_for_orchestration(
-                orchestration.name,
-                logging.ERROR,
-                f"Failed to execute '{orchestration.name}' for {issue_key} due to data error: {e}",
-            )
-            try:
-                self.tag_manager.apply_failure_tags(issue_key, orchestration)
-            except (OSError, TimeoutError) as tag_error:
-                logger.error(
-                    f"Failed to apply failure tags due to I/O error: {tag_error}",
-                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
-                )
-            except (KeyError, ValueError) as tag_error:
-                logger.error(
-                    f"Failed to apply failure tags due to data error: {tag_error}",
-                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
-                )
+            self._handle_execution_failure(issue_key, orchestration, e, "data error")
             return None
         finally:
             if version is not None:
