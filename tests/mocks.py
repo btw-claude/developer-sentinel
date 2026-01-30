@@ -30,7 +30,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from sentinel.agent_clients.base import AgentType
+from sentinel.agent_clients.base import AgentType, UsageInfo
 from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.config import Config
 from sentinel.executor import AgentClient, AgentRunResult
@@ -95,10 +95,12 @@ class MockAgentClient(AgentClient):
         responses: List of response strings to return. Cycles through if needed.
         workdir: Optional workdir path to return in results.
         agent_type_value: The agent type this mock represents.
+        usage: Optional UsageInfo to return in results for testing usage data propagation.
 
     Attributes:
         responses: The responses to return from run_agent.
         workdir: The workdir to return in AgentRunResult.
+        usage: The usage info to return in AgentRunResult.
         call_count: Number of times run_agent was called.
         calls: List of call arguments for verification.
         should_error: If True, raises AgentClientError (up to max_errors times).
@@ -114,9 +116,11 @@ class MockAgentClient(AgentClient):
         responses: list[str] | None = None,
         workdir: Path | None = None,
         agent_type_value: AgentType = "claude",
+        usage: UsageInfo | None = None,
     ) -> None:
         self.responses = responses or ["SUCCESS: Task completed"]
         self.workdir = workdir
+        self.usage = usage
         self.call_count = 0
         self.calls: list[
             tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None]
@@ -164,7 +168,7 @@ class MockAgentClient(AgentClient):
         # The min() ensures we don't index past the end of the responses list.
         response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
-        return AgentRunResult(response=response, workdir=self.workdir)
+        return AgentRunResult(response=response, workdir=self.workdir, usage=self.usage)
 
 
 class MockTagClient(JiraTagClient):

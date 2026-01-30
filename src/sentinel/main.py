@@ -288,17 +288,11 @@ class Sentinel:
             result: The execution result containing status and usage data.
             running_step: The running step info with timing and context.
         """
-        # Extract usage data from result if available
-        # Note: result.usage is populated from AgentRunResult.usage when available
-        input_tokens = 0
-        output_tokens = 0
-        total_cost_usd = 0.0
-
-        # The result object doesn't directly contain usage info - it comes from
-        # the AgentRunResult returned by the client. Since we don't have access
-        # to that here, we default to zeros. The usage data will be populated
-        # in future when we pass it through the execution result.
-        # For now, we record the execution with available metadata.
+        # Extract usage data from result
+        # Usage data is populated from AgentRunResult.usage in executor.py
+        input_tokens = result.input_tokens
+        output_tokens = result.output_tokens
+        total_cost_usd = result.total_cost_usd
 
         completed_info = CompletedExecutionInfo(
             issue_key=result.issue_key,
