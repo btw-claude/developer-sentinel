@@ -114,7 +114,12 @@ def _count_unescaped_chars(value: str, char: str) -> int:
 
     Returns:
         The count of unescaped occurrences of the character.
+
+    Raises:
+        ValueError: If char is not exactly one character.
     """
+    if len(char) != 1:
+        raise ValueError("char must be exactly one character")
     count = 0
     i = 0
     while i < len(value):
