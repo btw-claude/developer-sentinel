@@ -241,7 +241,16 @@ class TestAttemptCountTracking:
 
             task_started_event.wait(timeout=5)
 
-            running_steps = sentinel.get_running_steps()
+            # Wait for the running step to be registered (race condition fix)
+            # The task may start running before add_running_step is called in
+            # _submit_execution_tasks, so we retry a few times with a short delay.
+            running_steps = []
+            for _ in range(50):  # 50 * 0.01s = 0.5s max wait
+                running_steps = sentinel.get_running_steps()
+                if len(running_steps) == 1:
+                    break
+                time.sleep(0.01)
+
             assert len(running_steps) == 1, "Should have one running step"
             step = running_steps[0]
             assert step.attempt_number == 2, "Attempt number should be 2 (second attempt)"
