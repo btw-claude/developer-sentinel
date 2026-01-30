@@ -133,14 +133,18 @@ def validate_jql_filter(value: str) -> str:
 
     # Check for null bytes which could cause issues
     if "\x00" in value:
-        raise JqlSanitizationError("jql_filter contains invalid null character")
+        error_msg = "jql_filter contains invalid null character"
+        logger.debug("JQL filter validation failed: %s. Filter: %r", error_msg, value)
+        raise JqlSanitizationError(error_msg)
 
     # Check for excessively long values that could be DoS attempts
     max_length = 10000
     if len(value) > max_length:
-        raise JqlSanitizationError(
-            f"jql_filter exceeds maximum length of {max_length} characters"
+        error_msg = f"jql_filter exceeds maximum length of {max_length} characters"
+        logger.debug(
+            "JQL filter validation failed: %s. Filter length: %d", error_msg, len(value)
         )
+        raise JqlSanitizationError(error_msg)
 
     # Check for unbalanced parentheses (basic structure validation)
     paren_count = 0
@@ -150,17 +154,21 @@ def validate_jql_filter(value: str) -> str:
         elif char == ")":
             paren_count -= 1
         if paren_count < 0:
-            raise JqlSanitizationError(
+            error_msg = (
                 "jql_filter contains unbalanced parentheses (unexpected closing parenthesis)"
             )
+            logger.debug("JQL filter validation failed: %s. Filter: %r", error_msg, value)
+            raise JqlSanitizationError(error_msg)
     if paren_count != 0:
-        raise JqlSanitizationError(
+        error_msg = (
             "jql_filter contains unbalanced parentheses (unclosed opening parenthesis)"
         )
+        logger.debug("JQL filter validation failed: %s. Filter: %r", error_msg, value)
+        raise JqlSanitizationError(error_msg)
 
     # Check for unbalanced double quotes (basic string literal validation)
     # Count quotes that are not escaped
-    quote_count = 0
+    double_quote_count = 0
     i = 0
     while i < len(value):
         if value[i] == '"':
@@ -172,13 +180,35 @@ def validate_jql_filter(value: str) -> str:
                 j -= 1
             # Quote is escaped only if preceded by odd number of backslashes
             if num_backslashes % 2 == 0:
-                quote_count += 1
+                double_quote_count += 1
         i += 1
 
-    if quote_count % 2 != 0:
-        raise JqlSanitizationError(
-            "jql_filter contains unbalanced quotes (unclosed string literal)"
-        )
+    if double_quote_count % 2 != 0:
+        error_msg = "jql_filter contains unbalanced double quotes (unclosed string literal)"
+        logger.debug("JQL filter validation failed: %s. Filter: %r", error_msg, value)
+        raise JqlSanitizationError(error_msg)
+
+    # Check for unbalanced single quotes (JQL supports both quote styles)
+    # Count single quotes that are not escaped
+    single_quote_count = 0
+    i = 0
+    while i < len(value):
+        if value[i] == "'":
+            # Check if this quote is escaped
+            num_backslashes = 0
+            j = i - 1
+            while j >= 0 and value[j] == "\\":
+                num_backslashes += 1
+                j -= 1
+            # Quote is escaped only if preceded by odd number of backslashes
+            if num_backslashes % 2 == 0:
+                single_quote_count += 1
+        i += 1
+
+    if single_quote_count % 2 != 0:
+        error_msg = "jql_filter contains unbalanced single quotes (unclosed string literal)"
+        logger.debug("JQL filter validation failed: %s. Filter: %r", error_msg, value)
+        raise JqlSanitizationError(error_msg)
 
     return value
 
