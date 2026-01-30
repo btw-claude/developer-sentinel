@@ -557,7 +557,12 @@ class AgentExecutor:
 
         return context.to_dict()
 
-    def _expand_branch_pattern(self, issue: AnyIssue, orchestration: Orchestration) -> str | None:
+    def _expand_branch_pattern(
+        self,
+        issue: AnyIssue,
+        orchestration: Orchestration,
+        strict: bool = False,
+    ) -> str | None:
         """Expand template variables in the branch pattern.
 
         Returns None if no branch pattern is configured. Uses variables from
@@ -567,21 +572,49 @@ class AgentExecutor:
         After template substitution, the fully-resolved branch name is validated
         against git branch naming rules. If validation fails, a warning is logged
         and None is returned to prevent using an invalid branch name.
+
+        Args:
+            issue: The issue (Jira or GitHub) to extract variables from.
+            orchestration: The orchestration configuration.
+            strict: If True, raise ValueError for unknown template variables.
+                If False (default), log a warning and preserve unknown variables.
+
+        Raises:
+            ValueError: If strict=True and an unknown template variable is found.
         """
         github = orchestration.agent.github
         if not github or not github.branch:
             return None
 
         variables = self._build_template_variables(issue, orchestration)
+        unknown_vars: list[str] = []
 
         # Expand variables in branch pattern
         def replace_var(match: re.Match[str]) -> str:
             var_name = match.group(1)
             if var_name in variables:
                 return variables[var_name]
+            unknown_vars.append(var_name)
             return match.group(0)
 
         expanded_branch = re.sub(r"\{(\w+)\}", replace_var, github.branch)
+
+        # Handle unknown template variables
+        if unknown_vars:
+            available_vars = sorted(variables.keys())
+            if strict:
+                raise ValueError(
+                    f"Unknown template variable(s) in branch pattern: {unknown_vars}. "
+                    f"Available variables: {available_vars}"
+                )
+            logger.warning(
+                "Unknown template variable(s) in branch pattern '%s': %s. "
+                "Available variables: %s. "
+                "Variable(s) will be preserved as-is in the output.",
+                github.branch,
+                unknown_vars,
+                available_vars,
+            )
 
         # Validate the fully-resolved branch name at runtime
         validation_result = validate_runtime_branch_name(expanded_branch)
@@ -597,15 +630,33 @@ class AgentExecutor:
 
         return expanded_branch
 
-    def build_prompt(self, issue: AnyIssue, orchestration: Orchestration) -> str:
+    def build_prompt(
+        self,
+        issue: AnyIssue,
+        orchestration: Orchestration,
+        strict: bool = False,
+    ) -> str:
         """Build the agent prompt by substituting template variables.
 
         Uses variables from _build_template_variables(). Unknown variables
-        are preserved as-is in the output. See GitHubContext docstring for
-        available template variables.
+        are preserved as-is in the output with a warning logged. See GitHubContext
+        docstring for available template variables.
+
+        Args:
+            issue: The issue (Jira or GitHub) to extract variables from.
+            orchestration: The orchestration configuration.
+            strict: If True, raise ValueError for unknown template variables.
+                If False (default), log a warning and preserve unknown variables.
+
+        Returns:
+            The prompt with template variables substituted.
+
+        Raises:
+            ValueError: If strict=True and an unknown template variable is found.
         """
         template = orchestration.agent.prompt
         variables = self._build_template_variables(issue, orchestration)
+        unknown_vars: list[str] = []
 
         # Use a custom substitution to handle missing/unknown variables gracefully
         # This preserves any {unknown_var} that isn't in our variables dict
@@ -613,11 +664,28 @@ class AgentExecutor:
             var_name = match.group(1)
             if var_name in variables:
                 return variables[var_name]
-            # Keep unknown variables as-is (user might have literal braces)
+            # Track unknown variable and keep as-is
+            unknown_vars.append(var_name)
             return match.group(0)
 
         # Match {variable_name} patterns
         prompt = re.sub(r"\{(\w+)\}", replace_var, template)
+
+        # Handle unknown template variables
+        if unknown_vars:
+            available_vars = sorted(variables.keys())
+            if strict:
+                raise ValueError(
+                    f"Unknown template variable(s) in prompt: {unknown_vars}. "
+                    f"Available variables: {available_vars}"
+                )
+            logger.warning(
+                "Unknown template variable(s) in prompt: %s. "
+                "Available variables: %s. "
+                "Variable(s) will be preserved as-is in the output.",
+                unknown_vars,
+                available_vars,
+            )
 
         return prompt
 

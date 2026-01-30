@@ -815,3 +815,160 @@ class TestSlugTemplateVariables:
         prompt = executor.build_prompt(issue, orch)
 
         assert prompt == "Create branch: feature/add-login-button"
+
+
+class TestUnknownTemplateVariableWarning:
+    """Tests for unknown template variable warning functionality.
+
+    When an unknown template variable is used (e.g., {jira_sumary} instead of
+    {jira_summary}), the executor should log a warning with the unknown variable
+    name and the list of available variables to help users identify typos.
+    """
+
+    @pytest.fixture
+    def mock_client(self) -> MockAgentClient:
+        """Create a MockAgentClient for testing."""
+        return MockAgentClient()
+
+    @pytest.fixture
+    def executor(self, mock_client: MockAgentClient) -> AgentExecutor:
+        """Create an AgentExecutor with a mock client."""
+        return AgentExecutor(mock_client)
+
+    def test_warns_on_unknown_variable_in_prompt(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should log warning when unknown template variable is found in prompt."""
+        import logging
+
+        issue = make_issue(key="DS-123", summary="Test summary")
+        # Note the typo: jira_sumary instead of jira_summary
+        orch = make_orchestration(prompt="Issue: {jira_issue_key} - {jira_sumary}")
+
+        with caplog.at_level(logging.WARNING):
+            prompt = executor.build_prompt(issue, orch)
+
+        # Variable should be preserved as-is
+        assert prompt == "Issue: DS-123 - {jira_sumary}"
+        # Warning should be logged
+        assert "Unknown template variable(s) in prompt" in caplog.text
+        assert "jira_sumary" in caplog.text
+        assert "jira_summary" in caplog.text  # Should show available variables
+
+    def test_warns_on_unknown_variable_in_branch_pattern(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should log warning when unknown template variable is found in branch pattern."""
+        import logging
+
+        issue = make_issue(key="DS-123", summary="Test summary")
+        # Note the typo: jira_isue_key instead of jira_issue_key
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_isue_key}",
+            )
+        )
+
+        with caplog.at_level(logging.WARNING):
+            executor._expand_branch_pattern(issue, orch)
+
+        # Check that warning was logged (result may be None due to validation failure)
+        assert "Unknown template variable(s) in branch pattern" in caplog.text
+        assert "jira_isue_key" in caplog.text
+        assert "jira_issue_key" in caplog.text  # Should show available variables
+
+    def test_warns_on_multiple_unknown_variables(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should list all unknown variables in the warning."""
+        import logging
+
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(prompt="{unknown1} and {unknown2} with {jira_issue_key}")
+
+        with caplog.at_level(logging.WARNING):
+            prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "{unknown1} and {unknown2} with DS-123"
+        assert "unknown1" in caplog.text
+        assert "unknown2" in caplog.text
+
+    def test_no_warning_for_valid_variables(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should not log warning when all variables are valid."""
+        import logging
+
+        issue = make_issue(key="DS-123", summary="Test summary")
+        orch = make_orchestration(prompt="Issue: {jira_issue_key} - {jira_summary}")
+
+        with caplog.at_level(logging.WARNING):
+            prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Issue: DS-123 - Test summary"
+        assert "Unknown template variable" not in caplog.text
+
+    def test_strict_mode_raises_error_in_prompt(self, executor: AgentExecutor) -> None:
+        """Should raise ValueError in strict mode when unknown variable found in prompt."""
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(prompt="Issue: {jira_issue_key} - {jira_sumary}")
+
+        with pytest.raises(ValueError) as exc_info:
+            executor.build_prompt(issue, orch, strict=True)
+
+        assert "Unknown template variable(s) in prompt" in str(exc_info.value)
+        assert "jira_sumary" in str(exc_info.value)
+        assert "Available variables" in str(exc_info.value)
+
+    def test_strict_mode_raises_error_in_branch_pattern(
+        self, executor: AgentExecutor
+    ) -> None:
+        """Should raise ValueError in strict mode when unknown variable found in branch pattern."""
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_isue_key}",
+            )
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            executor._expand_branch_pattern(issue, orch, strict=True)
+
+        assert "Unknown template variable(s) in branch pattern" in str(exc_info.value)
+        assert "jira_isue_key" in str(exc_info.value)
+        assert "Available variables" in str(exc_info.value)
+
+    def test_strict_mode_no_error_for_valid_variables(
+        self, executor: AgentExecutor
+    ) -> None:
+        """Should not raise error in strict mode when all variables are valid."""
+        issue = make_issue(key="DS-123", summary="Test summary")
+        orch = make_orchestration(prompt="Issue: {jira_issue_key} - {jira_summary}")
+
+        # Should not raise
+        prompt = executor.build_prompt(issue, orch, strict=True)
+        assert prompt == "Issue: DS-123 - Test summary"
+
+    def test_warning_includes_all_available_variables(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Warning should include common available variables for discoverability."""
+        import logging
+
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(prompt="{typo_var}")
+
+        with caplog.at_level(logging.WARNING):
+            executor.build_prompt(issue, orch)
+
+        # Should include key available variables
+        assert "jira_issue_key" in caplog.text
+        assert "jira_summary" in caplog.text
+        assert "github_org" in caplog.text
+        assert "github_repo" in caplog.text
