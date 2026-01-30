@@ -6,6 +6,9 @@ limiter properly handle error conditions under real-world scenarios.
 The tests use HTTP mocking (respx) to simulate various failure conditions
 while testing the actual circuit breaker and rate limiter implementations.
 
+Time-dependent tests use freezegun for deterministic behavior instead of
+time.sleep(), making tests faster and more reliable.
+
 Run with: pytest tests/integration -m integration
 Skip with: pytest -m "not integration"
 """
@@ -13,11 +16,12 @@ Skip with: pytest -m "not integration"
 from __future__ import annotations
 
 import contextlib
-import time
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import httpx
 import pytest
+from freezegun import freeze_time
 
 from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitState
 from sentinel.github_poller import GitHubClientError
@@ -83,75 +87,84 @@ class TestCircuitBreakerStateTransitions:
         """Circuit should transition to half-open after recovery timeout."""
         config = CircuitBreakerConfig(
             failure_threshold=2,
-            recovery_timeout=0.1,  # Very short for testing
+            recovery_timeout=60.0,  # Use realistic timeout (time is mocked)
             half_open_max_calls=2,
         )
-        breaker = CircuitBreaker(service_name="test", config=config)
+        initial_time = datetime.now()
 
-        # Force circuit open
-        for _ in range(2):
-            breaker.record_failure(Exception("failure"))
+        with freeze_time(initial_time) as frozen_time:
+            breaker = CircuitBreaker(service_name="test", config=config)
 
-        assert breaker.state == CircuitState.OPEN
+            # Force circuit open
+            for _ in range(2):
+                breaker.record_failure(Exception("failure"))
 
-        # Wait for recovery timeout
-        time.sleep(0.15)
+            assert breaker.state == CircuitState.OPEN
 
-        # Next request should be allowed (half-open state)
-        assert breaker.allow_request()
-        assert breaker.state == CircuitState.HALF_OPEN
+            # Advance time past recovery timeout using freezegun
+            frozen_time.tick(delta=timedelta(seconds=61))
+
+            # Next request should be allowed (half-open state)
+            assert breaker.allow_request()
+            assert breaker.state == CircuitState.HALF_OPEN
 
     @pytest.mark.integration
     def test_half_open_closes_on_success(self) -> None:
         """Half-open circuit should close after successful call."""
         config = CircuitBreakerConfig(
             failure_threshold=2,
-            recovery_timeout=0.1,
+            recovery_timeout=60.0,  # Use realistic timeout (time is mocked)
             half_open_max_calls=1,
         )
-        breaker = CircuitBreaker(service_name="test", config=config)
+        initial_time = datetime.now()
 
-        # Force circuit open
-        for _ in range(2):
-            breaker.record_failure(Exception("failure"))
+        with freeze_time(initial_time) as frozen_time:
+            breaker = CircuitBreaker(service_name="test", config=config)
 
-        # Wait for recovery timeout
-        time.sleep(0.15)
-        breaker.allow_request()  # Transition to half-open
+            # Force circuit open
+            for _ in range(2):
+                breaker.record_failure(Exception("failure"))
 
-        assert breaker.state == CircuitState.HALF_OPEN
+            # Advance time past recovery timeout using freezegun
+            frozen_time.tick(delta=timedelta(seconds=61))
+            breaker.allow_request()  # Transition to half-open
 
-        # Record success
-        breaker.record_success()
+            assert breaker.state == CircuitState.HALF_OPEN
 
-        # Circuit should close
-        assert breaker.state == CircuitState.CLOSED
+            # Record success
+            breaker.record_success()
+
+            # Circuit should close
+            assert breaker.state == CircuitState.CLOSED
 
     @pytest.mark.integration
     def test_half_open_reopens_on_failure(self) -> None:
         """Half-open circuit should reopen after failure."""
         config = CircuitBreakerConfig(
             failure_threshold=2,
-            recovery_timeout=0.1,
+            recovery_timeout=60.0,  # Use realistic timeout (time is mocked)
             half_open_max_calls=2,
         )
-        breaker = CircuitBreaker(service_name="test", config=config)
+        initial_time = datetime.now()
 
-        # Force circuit open
-        for _ in range(2):
-            breaker.record_failure(Exception("failure"))
+        with freeze_time(initial_time) as frozen_time:
+            breaker = CircuitBreaker(service_name="test", config=config)
 
-        # Wait for recovery timeout
-        time.sleep(0.15)
-        breaker.allow_request()  # Transition to half-open
+            # Force circuit open
+            for _ in range(2):
+                breaker.record_failure(Exception("failure"))
 
-        assert breaker.state == CircuitState.HALF_OPEN
+            # Advance time past recovery timeout using freezegun
+            frozen_time.tick(delta=timedelta(seconds=61))
+            breaker.allow_request()  # Transition to half-open
 
-        # Record failure in half-open
-        breaker.record_failure(Exception("failure during recovery"))
+            assert breaker.state == CircuitState.HALF_OPEN
 
-        # Circuit should reopen
-        assert breaker.state == CircuitState.OPEN
+            # Record failure in half-open
+            breaker.record_failure(Exception("failure during recovery"))
+
+            # Circuit should reopen
+            assert breaker.state == CircuitState.OPEN
 
 
 class TestCircuitBreakerWithJiraClient:
@@ -538,31 +551,32 @@ class TestFaultInjectionScenarios:
     @pytest.mark.integration
     def test_recovery_after_prolonged_outage(self) -> None:
         """System should recover after prolonged outage."""
-        breaker = CircuitBreaker(
-            service_name="outage_test",
-            config=CircuitBreakerConfig(
-                failure_threshold=2,
-                recovery_timeout=0.1,  # Short for testing
-                half_open_max_calls=1,
-            ),
+        config = CircuitBreakerConfig(
+            failure_threshold=2,
+            recovery_timeout=300.0,  # 5 minute outage (time is mocked)
+            half_open_max_calls=1,
         )
+        initial_time = datetime.now()
 
-        # Simulate outage
-        for _ in range(2):
-            breaker.record_failure(Exception("outage"))
+        with freeze_time(initial_time) as frozen_time:
+            breaker = CircuitBreaker(service_name="outage_test", config=config)
 
-        assert breaker.state == CircuitState.OPEN
+            # Simulate outage
+            for _ in range(2):
+                breaker.record_failure(Exception("outage"))
 
-        # Wait for recovery timeout
-        time.sleep(0.15)
+            assert breaker.state == CircuitState.OPEN
 
-        # Should allow probe request
-        assert breaker.allow_request()
-        assert breaker.state == CircuitState.HALF_OPEN
+            # Advance time past recovery timeout using freezegun
+            frozen_time.tick(delta=timedelta(seconds=301))
 
-        # Simulate successful recovery
-        breaker.record_success()
+            # Should allow probe request
+            assert breaker.allow_request()
+            assert breaker.state == CircuitState.HALF_OPEN
 
-        # Should be fully recovered
-        assert breaker.state == CircuitState.CLOSED
-        assert breaker.allow_request()
+            # Simulate successful recovery
+            breaker.record_success()
+
+            # Should be fully recovered
+            assert breaker.state == CircuitState.CLOSED
+            assert breaker.allow_request()
