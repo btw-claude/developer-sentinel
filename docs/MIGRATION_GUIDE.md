@@ -2,6 +2,22 @@
 
 This guide helps you migrate from the deprecated `Sentinel.__init__` parameters to the current API.
 
+## Deprecation History
+
+The following table documents the full deprecation timeline for the removed parameters:
+
+| Parameter | Introduced | Deprecated | Removed | Replacement |
+|-----------|------------|------------|---------|-------------|
+| `jira_client` | v0.1.0 (DS-4) | v0.1.0 (DS-296) | v1.0 (DS-503) | `jira_poller` |
+| `github_client` | v0.1.0 (DS-51) | v0.1.0 (DS-296) | v1.0 (DS-503) | `github_poller` |
+| `agent_client` | v0.1.0 (DS-8) | v0.1.0 (DS-296) | v1.0 (DS-503) | `agent_factory` |
+
+### Timeline
+
+- **v0.1.0 (Initial Release)**: The original `jira_client`, `github_client`, and `agent_client` parameters were introduced as part of the initial Sentinel implementation.
+- **v0.1.0 (DS-296)**: The `AgentClientFactory` pattern was introduced to support per-orchestration agent configuration. Backward compatibility was maintained with deprecation warnings for the legacy parameters.
+- **v1.0 (DS-503)**: The deprecated parameters were removed to reduce maintenance burden and cognitive load. Users must now use the new poller and factory patterns.
+
 ## Overview
 
 The following parameters have been removed from `Sentinel.__init__`:
