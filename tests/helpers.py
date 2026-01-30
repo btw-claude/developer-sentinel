@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from unittest.mock import _Call
 
     from sentinel.router import Router
-    from tests.mocks import MockJiraPoller
+    from tests.mocks import MockJiraPoller, MockRouter
 
 from sentinel.config import Config
 from sentinel.orchestration import (
@@ -273,3 +273,43 @@ def make_router(orchestrations: list[Orchestration] | None = None) -> Router:
     from sentinel.router import Router
 
     return Router(orchestrations or [])
+
+
+def make_mock_router(
+    orchestrations: list[Orchestration] | None = None,
+    route_results: dict[str, list[Orchestration]] | None = None,
+) -> MockRouter:
+    """Create a MockRouter for testing with more control over routing behavior.
+
+    Unlike make_router() which creates a real Router, this function creates a
+    MockRouter that allows tests to:
+    - Track which issues were routed via route_calls
+    - Override routing results for specific issue keys via route_results
+    - Still delegate to real routing logic when no override is specified
+
+    Args:
+        orchestrations: List of orchestrations to configure the router with.
+        route_results: Optional dict mapping issue keys to lists of orchestrations
+            that should be returned as matches. When an issue key is in this dict,
+            the MockRouter returns those orchestrations instead of performing
+            real routing logic.
+
+    Returns:
+        A MockRouter configured with the specified orchestrations and route results.
+
+    Example::
+
+        # Create a mock router that returns specific orchestrations for TEST-1
+        orch = make_orchestration(name="test")
+        router = make_mock_router(route_results={"TEST-1": [orch]})
+
+        # Route an issue - will use custom result
+        result = router.route(issue)
+        assert result.orchestrations == [orch]
+
+        # Verify routing was called
+        assert len(router.route_calls) == 1
+    """
+    from tests.mocks import MockRouter
+
+    return MockRouter(orchestrations=orchestrations, route_results=route_results)

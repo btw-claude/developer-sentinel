@@ -50,19 +50,23 @@ class ClientsContainer(containers.DeclarativeContainer):
     config: providers.Dependency[Config] = providers.Dependency()
 
     # Jira clients - provided lazily to support both REST and SDK implementations
+    # Note: The providers.Callable(lambda: None) pattern creates a placeholder provider
+    # that is overridden at runtime in create_container(). This allows the container
+    # structure to be defined declaratively while deferring the actual implementation
+    # choice (REST vs SDK) until container initialization based on configuration.
     jira_client = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
     jira_tag_client = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
 
     # GitHub clients - optional, may be None if not configured
     github_client = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
     github_tag_client = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
 
 
@@ -77,14 +81,18 @@ class PollersContainer(containers.DeclarativeContainer):
     clients = providers.DependenciesContainer()
 
     # JiraPoller - polls Jira for issues matching triggers
+    # Note: The providers.Callable(lambda: None) pattern creates a placeholder provider
+    # that is overridden at runtime in create_container(). This allows the container
+    # structure to be defined declaratively while deferring the actual implementation
+    # until container initialization.
     jira_poller = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
 
     # GitHubPoller - polls GitHub for issues/PRs matching triggers (optional)
     # Uses factory pattern since it may be None if GitHub is not configured
     github_poller = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
 
 
@@ -99,23 +107,27 @@ class ServicesContainer(containers.DeclarativeContainer):
     clients = providers.DependenciesContainer()
 
     # AgentClientFactory - creates agent clients based on orchestration config
+    # Note: The providers.Callable(lambda: None) pattern creates a placeholder provider
+    # that is overridden at runtime in create_container(). This allows the container
+    # structure to be defined declaratively while deferring the actual implementation
+    # until container initialization.
     agent_factory = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
 
     # AgentLogger - logs agent execution output
     agent_logger = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
 
     # TagManager - manages issue labels/tags
     tag_manager = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
 
     # Router - routes issues to matching orchestrations
     router = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
+        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
     )
 
 
