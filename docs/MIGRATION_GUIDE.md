@@ -10,7 +10,7 @@ The following table documents the full deprecation timeline for the removed para
 |-----------|------------|------------|---------|-------------|
 | `jira_client` | v0.1.0 (DS-4) | v0.1.0 (DS-296) | v1.0 (DS-503) | `jira_poller` |
 | `github_client` | v0.1.0 (DS-51) | v0.1.0 (DS-296) | v1.0 (DS-503) | `github_poller` |
-| `agent_client` | v0.1.0 | v0.1.0 (DS-296) | v1.0 (DS-503) | `agent_factory` |
+| `agent_client` | v0.1.0 (DS-8) | v0.1.0 (DS-296) | v1.0 (DS-503) | `agent_factory` |
 
 ### Timeline
 
