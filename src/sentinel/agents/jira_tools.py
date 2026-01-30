@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from sentinel.agents.base import ParameterType, Tool, ToolParameter, ToolResult, ToolSchema
+from sentinel.agents.exceptions import handle_tool_exceptions
 from sentinel.logging import get_logger
 
 logger = get_logger(__name__)
@@ -101,35 +102,14 @@ class GetIssueTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="JIRA_ERROR",
+        error_message_template="Failed to get issue {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         issue_key = kwargs["issue_key"]
-        try:
-            result = self.client.get_issue(issue_key)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get issue {issue_key}: {e}", "JIRA_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get issue {issue_key}: {e}", "JIRA_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get issue {issue_key}: {e}", "JIRA_ERROR")
+        result = self.client.get_issue(issue_key)
+        return ToolResult.ok(result)
 
 
 class UpdateIssueTool(Tool):
@@ -176,40 +156,19 @@ class UpdateIssueTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="JIRA_ERROR",
+        error_message_template="Failed to update issue {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         issue_key = kwargs["issue_key"]
-        try:
-            result = self.client.update_issue(
-                issue_key=issue_key,
-                summary=kwargs.get("summary"),
-                description=kwargs.get("description"),
-                priority=kwargs.get("priority"),
-            )
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to update issue {issue_key}: {e}", "JIRA_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to update issue {issue_key}: {e}", "JIRA_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to update issue {issue_key}: {e}", "JIRA_ERROR")
+        result = self.client.update_issue(
+            issue_key=issue_key,
+            summary=kwargs.get("summary"),
+            description=kwargs.get("description"),
+            priority=kwargs.get("priority"),
+        )
+        return ToolResult.ok(result)
 
 
 class AddCommentTool(Tool):
@@ -241,36 +200,15 @@ class AddCommentTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="JIRA_ERROR",
+        error_message_template="Failed to add comment to {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         issue_key = kwargs["issue_key"]
         body = kwargs["body"]
-        try:
-            result = self.client.add_comment(issue_key, body)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to add comment to {issue_key}: {e}", "JIRA_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to add comment to {issue_key}: {e}", "JIRA_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to add comment to {issue_key}: {e}", "JIRA_ERROR")
+        result = self.client.add_comment(issue_key, body)
+        return ToolResult.ok(result)
 
 
 class TransitionIssueTool(Tool):
@@ -305,36 +243,15 @@ class TransitionIssueTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="JIRA_ERROR",
+        error_message_template="Failed to transition issue {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         issue_key = kwargs["issue_key"]
         transition_id = kwargs["transition_id"]
-        try:
-            result = self.client.transition_issue(issue_key, transition_id)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to transition issue {issue_key}: {e}", "JIRA_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to transition issue {issue_key}: {e}", "JIRA_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to transition issue {issue_key}: {e}", "JIRA_ERROR")
+        result = self.client.transition_issue(issue_key, transition_id)
+        return ToolResult.ok(result)
 
 
 class GetTransitionsTool(Tool):
@@ -363,35 +280,14 @@ class GetTransitionsTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="JIRA_ERROR",
+        error_message_template="Failed to get transitions for {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         issue_key = kwargs["issue_key"]
-        try:
-            result = self.client.get_transitions(issue_key)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get transitions for {issue_key}: {e}", "JIRA_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get transitions for {issue_key}: {e}", "JIRA_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get transitions for {issue_key}: {e}", "JIRA_ERROR")
+        result = self.client.get_transitions(issue_key)
+        return ToolResult.ok(result)
 
 
 class AddLabelTool(Tool):
@@ -423,36 +319,15 @@ class AddLabelTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="JIRA_ERROR",
+        error_message_template="Failed to add label to {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         issue_key = kwargs["issue_key"]
         label = kwargs["label"]
-        try:
-            result = self.client.add_label(issue_key, label)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to add label to {issue_key}: {e}", "JIRA_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to add label to {issue_key}: {e}", "JIRA_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to add label to {issue_key}: {e}", "JIRA_ERROR")
+        result = self.client.add_label(issue_key, label)
+        return ToolResult.ok(result)
 
 
 class RemoveLabelTool(Tool):
@@ -484,36 +359,15 @@ class RemoveLabelTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="JIRA_ERROR",
+        error_message_template="Failed to remove label from {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         issue_key = kwargs["issue_key"]
         label = kwargs["label"]
-        try:
-            result = self.client.remove_label(issue_key, label)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to remove label from {issue_key}: {e}", "JIRA_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to remove label from {issue_key}: {e}", "JIRA_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to remove label from {issue_key}: {e}", "JIRA_ERROR")
+        result = self.client.remove_label(issue_key, label)
+        return ToolResult.ok(result)
 
 
 class SearchIssuesTool(Tool):
@@ -549,36 +403,15 @@ class SearchIssuesTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="JIRA_ERROR",
+        error_message_template="Failed to search issues: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         jql = kwargs["jql"]
         max_results = kwargs.get("max_results", 50)
-        try:
-            results = self.client.search_issues(jql, max_results)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok({"issues": results, "count": len(results)})
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to search issues: {e}", "JIRA_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to search issues: {e}", "JIRA_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to search issues: {e}", "JIRA_ERROR")
+        results = self.client.search_issues(jql, max_results)
+        return ToolResult.ok({"issues": results, "count": len(results)})
 
 
 def get_jira_tools(client: JiraToolClient) -> list[Tool]:
