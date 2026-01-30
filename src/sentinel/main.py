@@ -716,11 +716,18 @@ class Sentinel:
             all_results: list[ExecutionResult] = []
 
             while True:
-                cycle_results, _ = self.run_once()
+                cycle_results, submitted_count = self.run_once()
                 all_results.extend(cycle_results)
 
                 pending_futures = self._execution_manager.get_pending_futures()
                 if not pending_futures:
+                    # If we submitted work this cycle but no futures are pending,
+                    # tasks completed very quickly. Collect their results before exiting.
+                    # This fixes a race condition where fast-completing tasks on Python 3.13
+                    # could finish before we check pending_futures (DS-542).
+                    if submitted_count > 0:
+                        final_results = self._collect_completed_results()
+                        all_results.extend(final_results)
                     break
 
                 logger.info("Waiting for %s execution(s) to complete...", len(pending_futures))
