@@ -300,11 +300,12 @@ def make_mock_router(
     Example::
 
         # Create a mock router that returns specific orchestrations for TEST-1
-        orch = make_orchestration(name="test")
-        router = make_mock_router(route_results={"TEST-1": [orch]})
+        orch: Orchestration = make_orchestration(name="test")
+        router: MockRouter = make_mock_router(route_results={"TEST-1": [orch]})
 
         # Route an issue - will use custom result
-        result = router.route(issue)
+        issue: JiraIssue = make_issue(key="TEST-1")
+        result: RoutingResult = router.route(issue)
         assert result.orchestrations == [orch]
 
         # Verify routing was called
