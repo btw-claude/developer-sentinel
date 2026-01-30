@@ -113,6 +113,7 @@ class TestSubConfigs:
         assert dashboard.toggle_cooldown_seconds == 2.0
         assert dashboard.rate_limit_cache_ttl == 3600
         assert dashboard.rate_limit_cache_maxsize == 10000
+        assert dashboard.max_recent_executions == 10
 
     def test_rate_limit_config_defaults(self) -> None:
         rate_limit = RateLimitConfig()

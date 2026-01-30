@@ -3,6 +3,10 @@
 This module provides a factory function for creating the FastAPI application
 that serves the dashboard. The application is configured with Jinja2 templates
 and routes for displaying Sentinel state.
+
+Custom Jinja2 filters:
+    format_duration: Formats a duration in seconds as a human-readable string.
+        Example: 125 -> "2m 5s", 45 -> "45s"
 """
 
 from __future__ import annotations
@@ -20,6 +24,38 @@ from sentinel.dashboard.state import SentinelStateAccessor
 
 if TYPE_CHECKING:
     from sentinel.main import Sentinel
+
+
+def format_duration(seconds: float | int | None) -> str:
+    """Format a duration in seconds as a human-readable string.
+
+    Converts a duration value to a friendly minutes/seconds format.
+    If the duration is 60 seconds or more, displays as "Xm Ys".
+    Otherwise, displays as "Xs".
+
+    Args:
+        seconds: Duration in seconds, or None.
+
+    Returns:
+        Formatted duration string, or "0s" if None or negative.
+
+    Examples:
+        >>> format_duration(125)
+        '2m 5s'
+        >>> format_duration(45)
+        '45s'
+        >>> format_duration(None)
+        '0s'
+    """
+    if seconds is None or seconds < 0:
+        return "0s"
+
+    minutes = int(seconds // 60)
+    remaining_seconds = int(seconds % 60)
+
+    if minutes > 0:
+        return f"{minutes}m {remaining_seconds}s"
+    return f"{remaining_seconds}s"
 
 
 class TemplateEnvironmentWrapper:
@@ -146,6 +182,9 @@ def create_app(
         autoescape=select_autoescape(["html", "xml"]),
         enable_async=True,
     )
+
+    # Register custom filters
+    template_env.filters["format_duration"] = format_duration
 
     # Store wrapped templates in app state for access in routes
     app.state.templates = TemplateEnvironmentWrapper(template_env)
