@@ -332,13 +332,17 @@ def cleanup_workdir(
         except OSError as e:
             logger.warning(f"OS error while cleaning up workdir {workdir}: {e}")
             return False
-        except (TypeError, ValueError) as e:
-            # Handle unexpected argument errors that shouldn't occur in normal operation
-            logger.error(f"Unexpected argument error while cleaning up workdir {workdir}: {e}")
-            return False
-        except Exception as e:
-            # Catch-all for unexpected errors
-            logger.error(f"Unexpected error while cleaning up workdir {workdir}: {e}")
+        except (TypeError, ValueError, AttributeError, RuntimeError) as e:
+            # Handle unexpected argument/runtime errors that shouldn't occur in normal operation
+            # - TypeError/ValueError: invalid arguments
+            # - AttributeError: path object missing expected methods
+            # - RuntimeError: unexpected runtime issues
+            logger.error(
+                "Unexpected %s while cleaning up workdir %s: %s",
+                type(e).__name__,
+                workdir,
+                e,
+            )
             return False
 
     # Force mode: retry on recoverable errors, use ignore_errors on final attempt
@@ -378,13 +382,17 @@ def cleanup_workdir(
                     f"attempts: {e}"
                 )
                 return False
-        except (TypeError, ValueError) as e:
-            # Non-recoverable argument error, don't retry
-            logger.error(f"Unexpected argument error while cleaning up workdir {workdir}: {e}")
-            return False
-        except Exception as e:
-            # Catch-all for unexpected errors, don't retry
-            logger.error(f"Unexpected error while cleaning up workdir {workdir}: {e}")
+        except (TypeError, ValueError, AttributeError, RuntimeError) as e:
+            # Non-recoverable argument/runtime error, don't retry
+            # - TypeError/ValueError: invalid arguments
+            # - AttributeError: path object missing expected methods
+            # - RuntimeError: unexpected runtime issues
+            logger.error(
+                "Unexpected %s while cleaning up workdir %s: %s",
+                type(e).__name__,
+                workdir,
+                e,
+            )
             return False
 
     return False
