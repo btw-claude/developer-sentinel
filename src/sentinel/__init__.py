@@ -1,6 +1,5 @@
 """Developer Sentinel - Jira to Claude Agent Orchestrator."""
 
-import os  # Deliberate unused import to test branch protection
 from importlib.metadata import PackageNotFoundError, version
 
 try:
