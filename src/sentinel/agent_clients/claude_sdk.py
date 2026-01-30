@@ -707,7 +707,8 @@ class ClaudeSdkAgentClient(AgentClient):
             )  # type: ignore
         else:
             response = await self._run_simple(full_prompt, tools, timeout_seconds, workdir, model)
-            # When streaming is disabled but we have logging params, write full response after completion
+            # When streaming is disabled but we have logging params, write full
+            # response after completion
             if can_stream and self._disable_streaming_logs:
                 self._write_simple_log(full_prompt, response, issue_key, orchestration_name)  # type: ignore
         return AgentRunResult(response=response, workdir=workdir)
@@ -750,7 +751,7 @@ class ClaudeSdkAgentClient(AgentClient):
             raise
         except TimeoutError as e:
             self._circuit_breaker.record_failure(e)
-            raise AgentTimeoutError(f"Agent execution timed out after {timeout}s")
+            raise AgentTimeoutError(f"Agent execution timed out after {timeout}s") from e
         except Exception as e:
             self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Agent execution failed: {e}") from e
@@ -851,8 +852,23 @@ class ClaudeSdkAgentClient(AgentClient):
 
         sep = "=" * 80
         io_start = time.perf_counter()
+        log_header = (
+            f"{sep}\n"
+            f"AGENT EXECUTION LOG\n"
+            f"{sep}\n\n"
+            f"Issue Key:      {issue_key}\n"
+            f"Orchestration:  {orch_name}\n"
+            f"Start Time:     {start_time.isoformat()}\n\n"
+            f"{sep}\n"
+            f"PROMPT\n"
+            f"{sep}\n\n"
+            f"{prompt}\n\n"
+            f"{sep}\n"
+            f"AGENT OUTPUT\n"
+            f"{sep}\n\n"
+        )
         log_path.write_text(
-            f"{sep}\nAGENT EXECUTION LOG\n{sep}\n\nIssue Key:      {issue_key}\nOrchestration:  {orch_name}\nStart Time:     {start_time.isoformat()}\n\n{sep}\nPROMPT\n{sep}\n\n{prompt}\n\n{sep}\nAGENT OUTPUT\n{sep}\n\n",
+            log_header,
             encoding="utf-8",
         )
         metrics.add_file_io_time(time.perf_counter() - io_start)
@@ -923,7 +939,7 @@ class ClaudeSdkAgentClient(AgentClient):
             self._circuit_breaker.record_failure(e)
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key}) - TIMEOUT")
-            raise AgentTimeoutError(f"Agent execution timed out after {timeout}s")
+            raise AgentTimeoutError(f"Agent execution timed out after {timeout}s") from e
         except Exception as e:
             self._circuit_breaker.record_failure(e)
             metrics.finish()
@@ -963,8 +979,17 @@ class ClaudeSdkAgentClient(AgentClient):
                 f.write(json.dumps(all_metrics, indent=2))
                 f.write("\n")
                 # Write execution summary
-                f.write(
-                    f"\n{sep}\nEXECUTION SUMMARY\n{sep}\n\nStatus:         {status}\nEnd Time:       {end_time.isoformat()}\nDuration:       {duration:.2f}s\n\n{sep}\nEND OF LOG\n{sep}\n"
+                exec_summary = (
+                    f"\n{sep}\n"
+                    f"EXECUTION SUMMARY\n"
+                    f"{sep}\n\n"
+                    f"Status:         {status}\n"
+                    f"End Time:       {end_time.isoformat()}\n"
+                    f"Duration:       {duration:.2f}s\n\n"
+                    f"{sep}\n"
+                    f"END OF LOG\n"
+                    f"{sep}\n"
                 )
+                f.write(exec_summary)
             metrics.add_file_io_time(time.perf_counter() - io_start)
             logger.info(f"Streaming log completed: {log_path}")
