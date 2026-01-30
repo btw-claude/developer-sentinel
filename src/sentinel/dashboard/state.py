@@ -585,8 +585,11 @@ class SentinelStateAccessor:
                                 "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
                             }
                         )
-                    except Exception:
-                        # Skip files that can't be accessed
+                    except OSError:
+                        # Skip files that can't be accessed due to permissions or I/O issues
+                        pass
+                    except (ValueError, OverflowError):
+                        # Skip files with invalid timestamps
                         pass
 
             # Sort files by modified time (newest first)

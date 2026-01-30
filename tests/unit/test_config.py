@@ -119,13 +119,19 @@ class TestValidateLogLevel:
 class TestLoadConfig:
     """Tests for load_config function."""
 
-    def test_loads_defaults_without_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_loads_defaults_without_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Clear any existing env vars
         monkeypatch.delenv("SENTINEL_POLL_INTERVAL", raising=False)
         monkeypatch.delenv("SENTINEL_MAX_ISSUES", raising=False)
         monkeypatch.delenv("SENTINEL_LOG_LEVEL", raising=False)
 
-        config = load_config()
+        # Use an empty .env file to prevent load_dotenv() from searching parent directories
+        empty_env_file = tmp_path / ".env"
+        empty_env_file.touch()
+
+        config = load_config(empty_env_file)
 
         assert config.poll_interval == 60
         assert config.max_issues_per_poll == 50

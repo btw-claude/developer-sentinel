@@ -107,9 +107,22 @@ class GetPageTool(Tool):
             result = self.client.get_page(page_id)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get page {page_id}: {e}", "CONFLUENCE_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get page {page_id}: {e}", "CONFLUENCE_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to get page {page_id}: {e}", "CONFLUENCE_ERROR")
 
@@ -160,9 +173,28 @@ class GetPageByTitleTool(Tool):
             if result is None:
                 return ToolResult.ok({"found": False, "page": None})
             return ToolResult.ok({"found": True, "page": result})
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to find page '{title}' in space {space_key}: {e}",
+                "CONFLUENCE_ERROR",
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to find page '{title}' in space {space_key}: {e}",
+                "CONFLUENCE_ERROR",
+            )
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(
                 f"Failed to find page '{title}' in space {space_key}: {e}",
@@ -229,9 +261,22 @@ class CreatePageTool(Tool):
             )
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to create page: {e}", "CONFLUENCE_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to create page: {e}", "CONFLUENCE_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to create page: {e}", "CONFLUENCE_ERROR")
 
@@ -296,9 +341,22 @@ class UpdatePageTool(Tool):
             )
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to update page {page_id}: {e}", "CONFLUENCE_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to update page {page_id}: {e}", "CONFLUENCE_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to update page {page_id}: {e}", "CONFLUENCE_ERROR")
 
@@ -348,9 +406,22 @@ class SearchContentTool(Tool):
             results = self.client.search_content(cql, limit)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok({"results": results, "count": len(results)})
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to search content: {e}", "CONFLUENCE_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to search content: {e}", "CONFLUENCE_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to search content: {e}", "CONFLUENCE_ERROR")
 
@@ -396,9 +467,26 @@ class AddCommentTool(Tool):
             result = self.client.add_comment(page_id, body)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to add comment to page {page_id}: {e}", "CONFLUENCE_ERROR"
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to add comment to page {page_id}: {e}", "CONFLUENCE_ERROR"
+            )
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(
                 f"Failed to add comment to page {page_id}: {e}", "CONFLUENCE_ERROR"

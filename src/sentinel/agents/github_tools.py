@@ -107,9 +107,22 @@ class GetIssueTool(Tool):
             result = self.client.get_issue(issue_number)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get issue #{issue_number}: {e}", "GITHUB_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get issue #{issue_number}: {e}", "GITHUB_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to get issue #{issue_number}: {e}", "GITHUB_ERROR")
 
@@ -151,9 +164,22 @@ class GetPullRequestTool(Tool):
             result = self.client.get_pull_request(pr_number)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get PR #{pr_number}: {e}", "GITHUB_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get PR #{pr_number}: {e}", "GITHUB_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to get PR #{pr_number}: {e}", "GITHUB_ERROR")
 
@@ -195,9 +221,22 @@ class ListPRFilesTool(Tool):
             files = self.client.list_pr_files(pr_number)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok({"files": files, "count": len(files)})
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to list files for PR #{pr_number}: {e}", "GITHUB_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to list files for PR #{pr_number}: {e}", "GITHUB_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to list files for PR #{pr_number}: {e}", "GITHUB_ERROR")
 
@@ -246,9 +285,22 @@ class GetFileContentsTool(Tool):
             result = self.client.get_file_contents(path, ref)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get file contents for {path}: {e}", "GITHUB_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get file contents for {path}: {e}", "GITHUB_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to get file contents for {path}: {e}", "GITHUB_ERROR")
 
@@ -297,9 +349,26 @@ class CreateCommentTool(Tool):
             result = self.client.create_issue_comment(issue_number, body)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to create comment on #{issue_number}: {e}", "GITHUB_ERROR"
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to create comment on #{issue_number}: {e}", "GITHUB_ERROR"
+            )
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(
                 f"Failed to create comment on #{issue_number}: {e}", "GITHUB_ERROR"
@@ -358,9 +427,26 @@ class CreatePRReviewTool(Tool):
             result = self.client.create_pr_review(pr_number, body, event)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to create review on PR #{pr_number}: {e}", "GITHUB_ERROR"
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to create review on PR #{pr_number}: {e}", "GITHUB_ERROR"
+            )
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(
                 f"Failed to create review on PR #{pr_number}: {e}", "GITHUB_ERROR"
@@ -404,9 +490,26 @@ class ListPRCommentsTool(Tool):
             comments = self.client.list_pr_comments(pr_number)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok({"comments": comments, "count": len(comments)})
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to list comments for PR #{pr_number}: {e}", "GITHUB_ERROR"
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(
+                f"Failed to list comments for PR #{pr_number}: {e}", "GITHUB_ERROR"
+            )
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(
                 f"Failed to list comments for PR #{pr_number}: {e}", "GITHUB_ERROR"

@@ -219,8 +219,23 @@ class PollCoordinator:
                         logging.INFO,
                         f"Found {len(issues)} Jira issues for '{orch.name}'",
                     )
-            except Exception as e:
-                logger.error(f"Failed to poll Jira for '{orch.name}': {e}")
+            except (OSError, TimeoutError) as e:
+                logger.error(
+                    f"Failed to poll Jira for '{orch.name}': {e}",
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                continue
+            except (KeyError, TypeError, ValueError) as e:
+                logger.error(
+                    f"Failed to poll Jira for '{orch.name}' due to data error: {e}",
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                continue
+            except RuntimeError as e:
+                logger.error(
+                    f"Failed to poll Jira for '{orch.name}' due to runtime error: {e}",
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
                 continue
 
             # Route issues to matching orchestrations
@@ -287,8 +302,23 @@ class PollCoordinator:
                         logging.INFO,
                         f"Found {len(issues)} GitHub issues/PRs for '{orch.name}'",
                     )
-            except Exception as e:
-                logger.error(f"Failed to poll GitHub for '{orch.name}': {e}")
+            except (OSError, TimeoutError) as e:
+                logger.error(
+                    f"Failed to poll GitHub for '{orch.name}': {e}",
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                continue
+            except (KeyError, TypeError, ValueError) as e:
+                logger.error(
+                    f"Failed to poll GitHub for '{orch.name}' due to data error: {e}",
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                continue
+            except RuntimeError as e:
+                logger.error(
+                    f"Failed to poll GitHub for '{orch.name}' due to runtime error: {e}",
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
                 continue
 
             # Convert GitHub issues to include repo context

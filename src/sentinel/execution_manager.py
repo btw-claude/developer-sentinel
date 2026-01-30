@@ -290,8 +290,21 @@ class ExecutionManager:
                     result = tracked.future.result()
                     if result is not None:
                         results.append(result)
-                except Exception as e:
-                    logger.error(f"Error collecting result from future: {e}")
+                except (OSError, TimeoutError) as e:
+                    logger.error(
+                        f"Error collecting result from future due to I/O or timeout: {e}",
+                        extra={"description": tracked.description, "error_type": type(e).__name__},
+                    )
+                except RuntimeError as e:
+                    logger.error(
+                        f"Error collecting result from future due to runtime error: {e}",
+                        extra={"description": tracked.description, "error_type": type(e).__name__},
+                    )
+                except (KeyError, TypeError, ValueError) as e:
+                    logger.error(
+                        f"Error collecting result from future due to data error: {e}",
+                        extra={"description": tracked.description, "error_type": type(e).__name__},
+                    )
 
             # Log warnings for long-running futures
             self._log_long_running_futures()
@@ -440,8 +453,23 @@ class ExecutionManager:
         """
         try:
             return fn(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"Error in synchronous execution: {e}")
+        except (OSError, TimeoutError) as e:
+            logger.error(
+                f"Error in synchronous execution due to I/O or timeout: {e}",
+                extra={"error_type": type(e).__name__},
+            )
+            return None
+        except RuntimeError as e:
+            logger.error(
+                f"Error in synchronous execution due to runtime error: {e}",
+                extra={"error_type": type(e).__name__},
+            )
+            return None
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Error in synchronous execution due to data error: {e}",
+                extra={"error_type": type(e).__name__},
+            )
             return None
 
     def cleanup_completed_futures(
@@ -462,8 +490,22 @@ class ExecutionManager:
                 if on_future_done:
                     try:
                         on_future_done(tracked.future)
-                    except Exception as e:
-                        logger.error(f"Error in future done callback: {e}")
+                    except (OSError, RuntimeError) as e:
+                        logger.error(
+                            f"Error in future done callback due to runtime/I/O error: {e}",
+                            extra={
+                                "description": tracked.description,
+                                "error_type": type(e).__name__,
+                            },
+                        )
+                    except (KeyError, TypeError, ValueError) as e:
+                        logger.error(
+                            f"Error in future done callback due to data error: {e}",
+                            extra={
+                                "description": tracked.description,
+                                "error_type": type(e).__name__,
+                            },
+                        )
                 cleaned_count += 1
 
             # Also clean up stale futures

@@ -770,9 +770,15 @@ class ClaudeSdkAgentClient(AgentClient):
         except TimeoutError as e:
             self._circuit_breaker.record_failure(e)
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s") from e
-        except Exception as e:
+        except OSError as e:
             self._circuit_breaker.record_failure(e)
-            raise AgentClientError(f"Agent execution failed: {e}") from e
+            raise AgentClientError(f"Agent execution failed due to I/O error: {e}") from e
+        except (KeyError, TypeError, ValueError) as e:
+            self._circuit_breaker.record_failure(e)
+            raise AgentClientError(f"Agent execution failed due to data error: {e}") from e
+        except RuntimeError as e:
+            self._circuit_breaker.record_failure(e)
+            raise AgentClientError(f"Agent execution failed due to runtime error: {e}") from e
 
     def _write_simple_log(self, prompt: str, response: str, issue_key: str, orch_name: str) -> None:
         """Write a simple (non-streaming) log file after execution completes.
@@ -828,8 +834,14 @@ class ClaudeSdkAgentClient(AgentClient):
         try:
             log_path.write_text(log_content, encoding="utf-8")
             logger.info(f"Non-streaming log written: {log_path}")
-        except Exception as e:
-            logger.warning(f"Failed to write non-streaming log to {log_path}: {e}")
+        except OSError as e:
+            logger.warning(
+                f"Failed to write non-streaming log to {log_path} due to I/O error: {e}"
+            )
+        except (UnicodeEncodeError, UnicodeDecodeError) as e:
+            logger.warning(
+                f"Failed to write non-streaming log to {log_path} due to encoding error: {e}"
+            )
 
     async def _run_with_log(
         self,
@@ -958,15 +970,42 @@ class ClaudeSdkAgentClient(AgentClient):
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key}) - TIMEOUT")
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s") from e
-        except Exception as e:
+        except OSError as e:
             self._circuit_breaker.record_failure(e)
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key}) - ERROR")
-            io_start = time.perf_counter()
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"\n[Error] {e}\n")
-            metrics.add_file_io_time(time.perf_counter() - io_start)
-            raise AgentClientError(f"Agent execution failed: {e}") from e
+            try:
+                io_start = time.perf_counter()
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(f"\n[Error] {e}\n")
+                metrics.add_file_io_time(time.perf_counter() - io_start)
+            except OSError:
+                pass  # Ignore errors when writing error to log
+            raise AgentClientError(f"Agent execution failed due to I/O error: {e}") from e
+        except (KeyError, TypeError, ValueError) as e:
+            self._circuit_breaker.record_failure(e)
+            metrics.finish()
+            metrics.log_metrics(f"_run_with_log ({issue_key}) - ERROR")
+            try:
+                io_start = time.perf_counter()
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(f"\n[Error] {e}\n")
+                metrics.add_file_io_time(time.perf_counter() - io_start)
+            except OSError:
+                pass  # Ignore errors when writing error to log
+            raise AgentClientError(f"Agent execution failed due to data error: {e}") from e
+        except RuntimeError as e:
+            self._circuit_breaker.record_failure(e)
+            metrics.finish()
+            metrics.log_metrics(f"_run_with_log ({issue_key}) - ERROR")
+            try:
+                io_start = time.perf_counter()
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(f"\n[Error] {e}\n")
+                metrics.add_file_io_time(time.perf_counter() - io_start)
+            except OSError:
+                pass  # Ignore errors when writing error to log
+            raise AgentClientError(f"Agent execution failed due to runtime error: {e}") from e
         finally:
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
