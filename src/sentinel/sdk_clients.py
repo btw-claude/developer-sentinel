@@ -73,7 +73,7 @@ Return ONLY a valid JSON array of issues. Each issue should have at minimum:
 Do not include any explanation, just the JSON array."""
 
         try:
-            response = await _run_query(prompt)
+            response, _usage = await _run_query(prompt)
 
             # Parse JSON response, handling markdown code blocks
             json_str = response
@@ -117,7 +117,7 @@ If successful, respond with exactly: SUCCESS
 If there's an error, respond with: ERROR: <description>"""
 
         try:
-            response = await _run_query(prompt)
+            response, _usage = await _run_query(prompt)
 
             if "ERROR" in response.upper() and "SUCCESS" not in response.upper():
                 raise JiraTagClientError(f"Failed to {action} label: {response}")

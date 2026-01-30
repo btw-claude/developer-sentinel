@@ -31,6 +31,7 @@ from sentinel.agent_clients.base import (
     AgentRunResult,
     AgentTimeoutError,
     AgentType,
+    UsageInfo,
 )
 from sentinel.circuit_breaker import CircuitBreaker, get_circuit_breaker
 from sentinel.config import Config
@@ -372,13 +373,65 @@ class ClaudeProcessInterruptedError(Exception):
     pass
 
 
+def _extract_usage_from_message(message: Any) -> UsageInfo | None:
+    """Extract usage information from a Claude SDK ResultMessage.
+
+    The ResultMessage from Claude Agent SDK contains usage data including
+    token counts and cost information. This function extracts that data
+    into a UsageInfo dataclass.
+
+    Args:
+        message: A message from the Claude Agent SDK query stream.
+
+    Returns:
+        UsageInfo if the message contains usage data, None otherwise.
+    """
+    # Check for ResultMessage by looking for characteristic attributes
+    # ResultMessage has total_cost_usd at the top level
+    if not hasattr(message, "total_cost_usd"):
+        return None
+
+    usage_info = UsageInfo()
+
+    # Extract top-level fields from ResultMessage
+    if hasattr(message, "total_cost_usd"):
+        usage_info.total_cost_usd = getattr(message, "total_cost_usd", 0.0) or 0.0
+    if hasattr(message, "duration_ms"):
+        usage_info.duration_ms = getattr(message, "duration_ms", 0.0) or 0.0
+    if hasattr(message, "duration_api_ms"):
+        usage_info.duration_api_ms = getattr(message, "duration_api_ms", 0.0) or 0.0
+    if hasattr(message, "num_turns"):
+        usage_info.num_turns = getattr(message, "num_turns", 0) or 0
+
+    # Extract token counts from the usage dict if present
+    if hasattr(message, "usage") and message.usage is not None:
+        usage_dict = message.usage
+        if isinstance(usage_dict, dict):
+            usage_info.input_tokens = usage_dict.get("input_tokens", 0) or 0
+            usage_info.output_tokens = usage_dict.get("output_tokens", 0) or 0
+            # Calculate total_tokens if not provided
+            usage_info.total_tokens = usage_info.input_tokens + usage_info.output_tokens
+        elif hasattr(usage_dict, "input_tokens"):
+            # Handle case where usage is an object with attributes
+            usage_info.input_tokens = getattr(usage_dict, "input_tokens", 0) or 0
+            usage_info.output_tokens = getattr(usage_dict, "output_tokens", 0) or 0
+            usage_info.total_tokens = usage_info.input_tokens + usage_info.output_tokens
+
+    logger.debug(
+        f"[USAGE] Extracted usage info: tokens={usage_info.total_tokens}, "
+        f"cost=${usage_info.total_cost_usd:.6f}, turns={usage_info.num_turns}"
+    )
+
+    return usage_info
+
+
 async def _run_query(
     prompt: str,
     model: str | None = None,
     cwd: str | None = None,
     collect_metrics: bool = True,
     shutdown_controller: ShutdownController | None = None,
-) -> str:
+) -> tuple[str, UsageInfo | None]:
     """Run a query using the Claude Agent SDK.
 
     Args:
@@ -390,7 +443,8 @@ async def _run_query(
             If not provided, uses the default shared controller.
 
     Returns:
-        The response text.
+        A tuple of (response_text, usage_info) where usage_info is extracted
+        from the ResultMessage if available, or None otherwise.
 
     Raises:
         ClaudeProcessInterruptedError: If shutdown was requested.
@@ -410,6 +464,7 @@ async def _run_query(
     )
     shutdown_event = controller.get_shutdown_event()
     response_text = ""
+    usage_info: UsageInfo | None = None
 
     if metrics:
         metrics.start_query()
@@ -424,6 +479,13 @@ async def _run_query(
 
         if shutdown_event.is_set():
             raise ClaudeProcessInterruptedError("Claude agent interrupted by shutdown request")
+
+        # Check for ResultMessage and extract usage data
+        extracted_usage = _extract_usage_from_message(message)
+        if extracted_usage is not None:
+            usage_info = extracted_usage
+
+        # Extract response text from message
         if hasattr(message, "text"):
             response_text = message.text
         elif hasattr(message, "content"):
@@ -438,7 +500,7 @@ async def _run_query(
         metrics.finish()
         metrics.log_metrics("_run_query")
 
-    return response_text
+    return response_text, usage_info
 
 
 class ClaudeSdkAgentClient(AgentClient):
@@ -723,16 +785,18 @@ class ClaudeSdkAgentClient(AgentClient):
             # (via can_stream check above), but mypy can't infer this
             assert issue_key is not None
             assert orchestration_name is not None
-            response = await self._run_with_log(
+            response, usage_info = await self._run_with_log(
                 full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name
             )
         else:
-            response = await self._run_simple(full_prompt, tools, timeout_seconds, workdir, model)
+            response, usage_info = await self._run_simple(
+                full_prompt, tools, timeout_seconds, workdir, model
+            )
             # When streaming is disabled but we have logging params, write full
             # response after completion
             if can_stream and self._disable_streaming_logs:
                 self._write_simple_log(full_prompt, response, issue_key, orchestration_name)  # type: ignore
-        return AgentRunResult(response=response, workdir=workdir)
+        return AgentRunResult(response=response, workdir=workdir, usage=usage_info)
 
     async def _run_simple(
         self,
@@ -741,7 +805,12 @@ class ClaudeSdkAgentClient(AgentClient):
         timeout: int | None,
         workdir: Path | None,
         model: str | None,
-    ) -> str:
+    ) -> tuple[str, UsageInfo | None]:
+        """Run agent without streaming logs.
+
+        Returns:
+            A tuple of (response_text, usage_info).
+        """
         # Check circuit breaker before attempting the request
         if not self._circuit_breaker.allow_request():
             raise AgentClientError(
@@ -760,10 +829,11 @@ class ClaudeSdkAgentClient(AgentClient):
                 str(workdir) if workdir else None,
                 shutdown_controller=self._shutdown_controller,
             )
-            response = await asyncio.wait_for(coro, timeout=timeout) if timeout else await coro
+            result = await asyncio.wait_for(coro, timeout=timeout) if timeout else await coro
+            response, usage_info = result
             self._circuit_breaker.record_success()
             logger.info(f"Agent execution completed, response length: {len(response)}")
-            return response
+            return response, usage_info
         except RateLimitExceededError as e:
             self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Claude API rate limit exceeded: {e}") from e
@@ -856,7 +926,12 @@ class ClaudeSdkAgentClient(AgentClient):
         model: str | None,
         issue_key: str,
         orch_name: str,
-    ) -> str:
+    ) -> tuple[str, UsageInfo | None]:
+        """Run agent with streaming logs.
+
+        Returns:
+            A tuple of (response_text, usage_info).
+        """
         assert self.log_base_dir is not None
 
         # Check circuit breaker before attempting the request
@@ -909,6 +984,7 @@ class ClaudeSdkAgentClient(AgentClient):
         logger.info(f"Streaming log started: {log_path}")
 
         status = "ERROR"
+        usage_info: UsageInfo | None = None
         try:
             options = ClaudeAgentOptions(
                 permission_mode="bypassPermissions",
@@ -921,7 +997,8 @@ class ClaudeSdkAgentClient(AgentClient):
             )
             shutdown_event = self._shutdown_controller.get_shutdown_event()
 
-            async def run_streaming() -> str:
+            async def run_streaming() -> tuple[str, UsageInfo | None]:
+                nonlocal usage_info
                 response_text = ""
                 metrics.start_query()
                 logger.debug("[TIMING] Streaming query started")
@@ -935,6 +1012,12 @@ class ClaudeSdkAgentClient(AgentClient):
 
                         if shutdown_event.is_set():
                             raise ClaudeProcessInterruptedError("Interrupted by shutdown")
+
+                        # Check for ResultMessage and extract usage data
+                        extracted_usage = _extract_usage_from_message(message)
+                        if extracted_usage is not None:
+                            usage_info = extracted_usage
+
                         text = ""
                         if hasattr(message, "text"):
                             text = response_text = message.text
@@ -949,19 +1032,20 @@ class ClaudeSdkAgentClient(AgentClient):
                             metrics.add_file_io_time(time.perf_counter() - io_start)
 
                         api_wait_start = time.perf_counter()
-                return response_text
+                return response_text, usage_info
 
-            response = (
+            result = (
                 await asyncio.wait_for(run_streaming(), timeout=timeout)
                 if timeout
                 else await run_streaming()
             )
+            response, usage_info = result
             status = "COMPLETED"
             self._circuit_breaker.record_success()
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key})")
             logger.info(f"Agent execution completed, response length: {len(response)}")
-            return response
+            return response, usage_info
         except ClaudeProcessInterruptedError:
             status = "INTERRUPTED"
             # Don't count interrupts as failures - they're intentional
@@ -1035,11 +1119,14 @@ class ClaudeSdkAgentClient(AgentClient):
             with open(log_path, "a", encoding="utf-8") as f:
                 # Write JSON metrics export for programmatic access
                 f.write(f"\n{sep}\nMETRICS JSON\n{sep}\n\n")
-                all_metrics = {
+                all_metrics: dict[str, Any] = {
                     "timing": metrics.to_dict(),
                     "rate_limit": self._rate_limiter.get_metrics(),
                     "circuit_breaker": self._circuit_breaker.get_status(),
                 }
+                # Include usage info if available
+                if usage_info is not None:
+                    all_metrics["usage"] = usage_info.to_dict()
                 f.write(json.dumps(all_metrics, indent=2))
                 f.write("\n")
                 # Write execution summary

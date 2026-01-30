@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from sentinel.agent_clients.base import UsageInfo
+from sentinel.agent_clients.claude_sdk import _extract_usage_from_message
 from sentinel.config import Config
 from sentinel.executor import AgentClientError, AgentTimeoutError
 from sentinel.poller import JiraClientError
@@ -46,6 +48,32 @@ class MockMessage:
         self.text = text
 
 
+class MockResultMessage:
+    """Mock ResultMessage from the Claude Agent SDK with usage data.
+
+    This simulates the ResultMessage that is yielded at the end of a query
+    containing token usage and cost data.
+    """
+
+    def __init__(
+        self,
+        total_cost_usd: float = 0.05,
+        duration_ms: float = 1500.0,
+        duration_api_ms: float = 1200.0,
+        num_turns: int = 3,
+        input_tokens: int = 1000,
+        output_tokens: int = 500,
+    ) -> None:
+        self.total_cost_usd = total_cost_usd
+        self.duration_ms = duration_ms
+        self.duration_api_ms = duration_api_ms
+        self.num_turns = num_turns
+        self.usage = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+
+
 def create_mock_query(return_value: str) -> MagicMock:
     """Create a mock query function that returns messages with the given text."""
 
@@ -53,6 +81,32 @@ def create_mock_query(return_value: str) -> MagicMock:
         yield MockMessage(return_value)
 
     # Return a regular MagicMock that returns the async generator when called
+    mock = MagicMock(return_value=async_gen())
+    return mock
+
+
+def create_mock_query_with_usage(
+    return_value: str,
+    total_cost_usd: float = 0.05,
+    duration_ms: float = 1500.0,
+    duration_api_ms: float = 1200.0,
+    num_turns: int = 3,
+    input_tokens: int = 1000,
+    output_tokens: int = 500,
+) -> MagicMock:
+    """Create a mock query that returns text message followed by ResultMessage with usage data."""
+
+    async def async_gen() -> AsyncIterator[MockMessage | MockResultMessage]:
+        yield MockMessage(return_value)
+        yield MockResultMessage(
+            total_cost_usd=total_cost_usd,
+            duration_ms=duration_ms,
+            duration_api_ms=duration_api_ms,
+            num_turns=num_turns,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
     mock = MagicMock(return_value=async_gen())
     return mock
 
@@ -1201,3 +1255,204 @@ class TestClaudeSdkAgentClientBranchSetup:
 
         # All calls should have None as timeout (disabled)
         assert all(t is None for t in captured_timeouts)
+
+
+class TestUsageInfo:
+    """Tests for UsageInfo dataclass."""
+
+    def test_default_values(self) -> None:
+        """Should have sensible default values."""
+        usage = UsageInfo()
+        assert usage.input_tokens == 0
+        assert usage.output_tokens == 0
+        assert usage.total_tokens == 0
+        assert usage.total_cost_usd == 0.0
+        assert usage.duration_ms == 0.0
+        assert usage.duration_api_ms == 0.0
+        assert usage.num_turns == 0
+
+    def test_to_dict_returns_all_fields(self) -> None:
+        """Should serialize all fields to dictionary."""
+        usage = UsageInfo(
+            input_tokens=1000,
+            output_tokens=500,
+            total_tokens=1500,
+            total_cost_usd=0.05,
+            duration_ms=1500.0,
+            duration_api_ms=1200.0,
+            num_turns=3,
+        )
+        result = usage.to_dict()
+
+        assert result["input_tokens"] == 1000
+        assert result["output_tokens"] == 500
+        assert result["total_tokens"] == 1500
+        assert result["total_cost_usd"] == 0.05
+        assert result["duration_ms"] == 1500.0
+        assert result["duration_api_ms"] == 1200.0
+        assert result["num_turns"] == 3
+
+    def test_to_dict_default_values(self) -> None:
+        """Should serialize default values correctly."""
+        usage = UsageInfo()
+        result = usage.to_dict()
+
+        assert result["input_tokens"] == 0
+        assert result["output_tokens"] == 0
+        assert result["total_tokens"] == 0
+        assert result["total_cost_usd"] == 0.0
+
+
+class TestExtractUsageFromMessage:
+    """Tests for _extract_usage_from_message function."""
+
+    def test_extracts_usage_from_result_message(self) -> None:
+        """Should extract usage info from ResultMessage."""
+        message = MockResultMessage(
+            total_cost_usd=0.10,
+            duration_ms=2000.0,
+            duration_api_ms=1800.0,
+            num_turns=5,
+            input_tokens=2000,
+            output_tokens=1000,
+        )
+        result = _extract_usage_from_message(message)
+
+        assert result is not None
+        assert result.total_cost_usd == 0.10
+        assert result.duration_ms == 2000.0
+        assert result.duration_api_ms == 1800.0
+        assert result.num_turns == 5
+        assert result.input_tokens == 2000
+        assert result.output_tokens == 1000
+        assert result.total_tokens == 3000
+
+    def test_returns_none_for_regular_message(self) -> None:
+        """Should return None for messages without usage data."""
+        message = MockMessage("Hello world")
+        result = _extract_usage_from_message(message)
+
+        assert result is None
+
+    def test_handles_missing_usage_dict(self) -> None:
+        """Should handle ResultMessage with no usage dict."""
+
+        class MockResultWithoutUsage:
+            total_cost_usd = 0.05
+            duration_ms = 1000.0
+            duration_api_ms = 800.0
+            num_turns = 2
+            usage = None
+
+        message = MockResultWithoutUsage()
+        result = _extract_usage_from_message(message)
+
+        assert result is not None
+        assert result.total_cost_usd == 0.05
+        assert result.input_tokens == 0
+        assert result.output_tokens == 0
+        assert result.total_tokens == 0
+
+    def test_handles_object_style_usage(self) -> None:
+        """Should handle usage as object with attributes instead of dict."""
+
+        class MockUsageObject:
+            input_tokens = 500
+            output_tokens = 250
+
+        class MockResultWithObjectUsage:
+            total_cost_usd = 0.03
+            duration_ms = 800.0
+            duration_api_ms = 600.0
+            num_turns = 1
+            usage = MockUsageObject()
+
+        message = MockResultWithObjectUsage()
+        result = _extract_usage_from_message(message)
+
+        assert result is not None
+        assert result.input_tokens == 500
+        assert result.output_tokens == 250
+        assert result.total_tokens == 750
+
+
+class TestClaudeSdkAgentClientUsage:
+    """Tests for usage extraction in ClaudeSdkAgentClient."""
+
+    def test_run_agent_returns_usage_info(self, mock_config: Config) -> None:
+        """Should include usage info in AgentRunResult when ResultMessage is received."""
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query",
+            create_mock_query_with_usage(
+                "Agent completed successfully",
+                total_cost_usd=0.08,
+                duration_ms=2500.0,
+                duration_api_ms=2000.0,
+                num_turns=4,
+                input_tokens=1500,
+                output_tokens=800,
+            ),
+        ):
+            client = ClaudeSdkAgentClient(mock_config)
+            result = asyncio.run(client.run_agent("Do something", ["jira"]))
+
+        assert result.response == "Agent completed successfully"
+        assert result.usage is not None
+        assert result.usage.total_cost_usd == 0.08
+        assert result.usage.duration_ms == 2500.0
+        assert result.usage.duration_api_ms == 2000.0
+        assert result.usage.num_turns == 4
+        assert result.usage.input_tokens == 1500
+        assert result.usage.output_tokens == 800
+        assert result.usage.total_tokens == 2300
+
+    def test_run_agent_returns_none_usage_when_no_result_message(
+        self, mock_config: Config
+    ) -> None:
+        """Should return None usage when no ResultMessage is received."""
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query",
+            create_mock_query("Agent completed without usage"),
+        ):
+            client = ClaudeSdkAgentClient(mock_config)
+            result = asyncio.run(client.run_agent("Do something", ["jira"]))
+
+        assert result.response == "Agent completed without usage"
+        assert result.usage is None
+
+    def test_streaming_log_includes_usage_in_metrics_json(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should include usage info in metrics JSON when streaming logs."""
+        log_dir = tmp_path / "logs"
+
+        with patch(
+            "sentinel.agent_clients.claude_sdk.query",
+            create_mock_query_with_usage(
+                "Agent completed task",
+                total_cost_usd=0.12,
+                input_tokens=3000,
+                output_tokens=1500,
+            ),
+        ):
+            client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
+            result = asyncio.run(
+                client.run_agent(
+                    "Test prompt",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test-orch",
+                )
+            )
+
+        assert result.usage is not None
+        assert result.usage.total_cost_usd == 0.12
+
+        # Check log file contains usage in JSON metrics
+        log_files = list((log_dir / "test-orch").glob("*.log"))
+        assert len(log_files) == 1
+        content = log_files[0].read_text()
+        assert '"usage":' in content
+        assert '"input_tokens": 3000' in content
+        assert '"output_tokens": 1500' in content
+        assert '"total_cost_usd": 0.12' in content

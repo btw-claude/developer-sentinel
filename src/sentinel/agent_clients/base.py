@@ -20,16 +20,63 @@ AgentType = Literal["claude", "cursor"]
 
 
 @dataclass
+class UsageInfo:
+    """Usage information from Claude Agent SDK ResultMessage.
+
+    Captures token usage and cost data from the Claude Agent SDK's ResultMessage
+    that is yielded at the end of each query. This data is valuable for tracking
+    costs, monitoring usage patterns, and optimizing agent operations.
+
+    Attributes:
+        input_tokens: Number of input tokens consumed.
+        output_tokens: Number of output tokens generated.
+        total_tokens: Total tokens (input + output).
+        total_cost_usd: Total cost in USD for this query.
+        duration_ms: Total duration in milliseconds.
+        duration_api_ms: Time spent on API calls in milliseconds.
+        num_turns: Number of conversation turns in this query.
+    """
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    total_cost_usd: float = 0.0
+    duration_ms: float = 0.0
+    duration_api_ms: float = 0.0
+    num_turns: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert usage info to dictionary for serialization.
+
+        Returns:
+            Dictionary representation of usage data for JSON export.
+        """
+        return {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "total_cost_usd": self.total_cost_usd,
+            "duration_ms": self.duration_ms,
+            "duration_api_ms": self.duration_api_ms,
+            "num_turns": self.num_turns,
+        }
+
+
+@dataclass
 class AgentRunResult:
     """Result of running an agent.
 
     Attributes:
         response: The agent's response text.
         workdir: Path to the agent's working directory, if one was created.
+        usage: Optional usage information (tokens, cost, duration) from the agent.
+            Only populated for Claude SDK client when ResultMessage is available.
+            CursorAgentClient returns None for backward compatibility.
     """
 
     response: str
     workdir: Path | None = None
+    usage: UsageInfo | None = None
 
 
 class AgentClientError(Exception):
