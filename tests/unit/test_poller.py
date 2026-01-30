@@ -14,6 +14,7 @@ from sentinel.poller import (
     JqlSanitizationError,
     _extract_adf_text,
     sanitize_jql_string,
+    validate_jql_filter,
     validate_jql_identifier,
 )
 
@@ -328,6 +329,120 @@ class TestValidateJqlIdentifier:
         """Test that custom field name appears in error messages."""
         with pytest.raises(JqlSanitizationError, match="project_key cannot be empty"):
             validate_jql_identifier("", "project_key")
+
+
+class TestValidateJqlFilter:
+    """Tests for validate_jql_filter function."""
+
+    def test_empty_string_returns_empty(self) -> None:
+        """Test that empty strings are valid (optional field)."""
+        assert validate_jql_filter("") == ""
+
+    def test_valid_jql_filter_unchanged(self) -> None:
+        """Test that valid JQL filters pass through unchanged."""
+        filter1 = 'priority = "High"'
+        assert validate_jql_filter(filter1) == filter1
+
+        filter2 = 'type = "Bug" AND status = "Open"'
+        assert validate_jql_filter(filter2) == filter2
+
+        filter3 = 'labels IN ("urgent", "critical")'
+        assert validate_jql_filter(filter3) == filter3
+
+    def test_complex_jql_with_nested_parens(self) -> None:
+        """Test that complex JQL with nested parentheses is valid."""
+        jql = '(priority = "High" OR priority = "Critical") AND (type = "Bug")'
+        assert validate_jql_filter(jql) == jql
+
+    def test_jql_with_escaped_quotes(self) -> None:
+        """Test that JQL with escaped quotes is valid."""
+        jql = 'summary ~ "test\\"quoted\\"value"'
+        assert validate_jql_filter(jql) == jql
+
+    def test_rejects_null_character(self) -> None:
+        """Test that null characters are rejected."""
+        with pytest.raises(JqlSanitizationError, match="invalid null character"):
+            validate_jql_filter('priority = "High"\x00DROP')
+
+    def test_rejects_excessively_long_filter(self) -> None:
+        """Test that very long filters are rejected."""
+        long_filter = 'priority = "' + "a" * 10001 + '"'
+        with pytest.raises(JqlSanitizationError, match="exceeds maximum length"):
+            validate_jql_filter(long_filter)
+
+    def test_rejects_unbalanced_opening_paren(self) -> None:
+        """Test that unbalanced opening parentheses are rejected."""
+        with pytest.raises(JqlSanitizationError, match="unclosed opening parenthesis"):
+            validate_jql_filter('(priority = "High"')
+
+    def test_rejects_unbalanced_closing_paren(self) -> None:
+        """Test that unbalanced closing parentheses are rejected."""
+        with pytest.raises(JqlSanitizationError, match="unexpected closing parenthesis"):
+            validate_jql_filter('priority = "High")')
+
+    def test_rejects_multiple_unbalanced_parens(self) -> None:
+        """Test that multiple unbalanced parentheses are rejected."""
+        with pytest.raises(JqlSanitizationError, match="unclosed opening parenthesis"):
+            validate_jql_filter('((priority = "High")')
+
+    def test_rejects_unbalanced_quotes(self) -> None:
+        """Test that unbalanced quotes are rejected."""
+        with pytest.raises(JqlSanitizationError, match="unclosed string literal"):
+            validate_jql_filter('priority = "High')
+
+    def test_balanced_quotes_with_escaped_quotes(self) -> None:
+        """Test that escaped quotes don't count as unbalanced."""
+        # This has balanced quotes: open " content with \" inside " close
+        jql = 'summary ~ "test\\"value"'
+        assert validate_jql_filter(jql) == jql
+
+    def test_quotes_with_multiple_escapes(self) -> None:
+        """Test handling of multiple backslashes before quotes."""
+        # Two backslashes before quote = escaped backslash + real quote
+        jql = 'summary ~ "test\\\\"'  # "test\\" - ends with escaped backslash
+        # This should have balanced quotes: one opening, one closing
+        assert validate_jql_filter(jql) == jql
+
+    def test_accepts_jql_without_quotes(self) -> None:
+        """Test that JQL without quotes is valid."""
+        jql = "project = TEST AND status != Done"
+        assert validate_jql_filter(jql) == jql
+
+
+class TestJqlFilterValidationInBuildJql:
+    """Tests verifying jql_filter validation is applied in build_jql."""
+
+    def test_jql_filter_with_null_raises_error(self) -> None:
+        """Test that jql_filter with null characters raises JqlSanitizationError."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(jql_filter='priority = "High"\x00injection')
+        with pytest.raises(JqlSanitizationError, match="invalid null character"):
+            poller.build_jql(trigger)
+
+    def test_jql_filter_with_unbalanced_parens_raises_error(self) -> None:
+        """Test that jql_filter with unbalanced parentheses raises error."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(jql_filter='(priority = "High"')
+        with pytest.raises(JqlSanitizationError, match="unclosed opening parenthesis"):
+            poller.build_jql(trigger)
+
+    def test_jql_filter_with_unbalanced_quotes_raises_error(self) -> None:
+        """Test that jql_filter with unbalanced quotes raises error."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(jql_filter='priority = "High')
+        with pytest.raises(JqlSanitizationError, match="unclosed string literal"):
+            poller.build_jql(trigger)
+
+    def test_valid_jql_filter_passes_through(self) -> None:
+        """Test that valid jql_filter is included in built JQL."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(jql_filter='priority = "High" AND type = "Bug"')
+        jql = poller.build_jql(trigger)
+        assert '(priority = "High" AND type = "Bug")' in jql
 
 
 class TestJqlSanitizationInBuildJql:

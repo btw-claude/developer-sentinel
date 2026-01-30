@@ -66,6 +66,21 @@ class TriggerConfig:
 
     Multiple tags/labels use AND logic (issue must have all specified).
 
+    Attributes:
+        source: Trigger source type ("jira" or "github").
+        project: Jira project key (validated for safe characters: alphanumeric,
+            underscores, hyphens, must start with letter).
+        jql_filter: Custom JQL fragment for advanced filtering. Security validated
+            for structural integrity (balanced parentheses/quotes, no null bytes,
+            length limits). Should only be configured by trusted administrators.
+            Full JQL syntax validation is performed by the Jira API.
+        tags: List of Jira labels the issue must have (sanitized for safe use in JQL).
+
+    Security Note:
+        The jql_filter field accepts raw JQL fragments and provides defense-in-depth
+        validation. However, it should only be configured by trusted administrators
+        as it directly influences the JQL query sent to Jira.
+
     Note: repo, query_filter, and tags are DEPRECATED for GitHub triggers.
     """
 
