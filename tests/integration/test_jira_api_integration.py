@@ -305,7 +305,11 @@ class TestJiraApiPerformance:
             try:
                 jira_client.search_issues("project is not EMPTY", max_results=1)
                 successful_calls += 1
-            except Exception:
+            except httpx.HTTPError:
+                # Handle HTTP-related errors (network issues, status errors)
+                pass
+            except OSError:
+                # Handle OS-level network errors (connection refused, DNS failure)
                 pass
 
         # At least 2 out of 3 calls should succeed

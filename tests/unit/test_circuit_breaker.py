@@ -517,7 +517,7 @@ class TestCircuitBreakerThreadSafety:
         config = CircuitBreakerConfig(failure_threshold=100)
         cb = CircuitBreaker("test", config)
 
-        errors: list[Exception] = []
+        errors: list[BaseException] = []
 
         def worker() -> None:
             try:
@@ -526,8 +526,10 @@ class TestCircuitBreakerThreadSafety:
                         if threading.current_thread().name.endswith("0"):
                             cb.record_success()
                         else:
-                            cb.record_failure(Exception("Error"))
-            except Exception as e:
+                            cb.record_failure(RuntimeError("Error"))
+            except BaseException as e:
+                # Intentional broad catch: Test observer needs to capture any exception
+                # from the concurrent worker threads for assertion and debugging.
                 errors.append(e)
 
         threads = [threading.Thread(target=worker, name=f"thread-{i}") for i in range(4)]

@@ -319,14 +319,33 @@ class HealthChecker:
                     latency_ms=0.0,  # No timing context available for OS errors
                     error=f"OS error: {e}",
                 )
+            except RuntimeError as e:
+                # Catch runtime errors (event loop issues, threading problems)
+                # that may occur during async health check operations
+                logger.error(
+                    f"Runtime error in {name} health check: {e}",
+                    extra={"service": name, "error_type": "RuntimeError"},
+                )
+                checks[name] = ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=0.0,  # No timing context available for runtime errors
+                    error=f"Runtime error: {e}",
+                )
             except Exception as e:
-                # Broad catch intentional for health checks - they should never crash
-                # Log at error level since this is unexpected
-                logger.error(f"Unexpected error in {name} health check: {e}")
+                # INTENTIONAL BROAD CATCH: Health checks must never crash the application.
+                # All known exception types are caught above; this catches truly unexpected
+                # errors (e.g., third-party library bugs) to ensure graceful degradation.
+                # Log at error level with full context since this indicates an unexpected
+                # condition that should be investigated and potentially handled specifically.
+                logger.error(
+                    f"Unexpected error in {name} health check: {type(e).__name__}: {e}",
+                    extra={"service": name, "error_type": type(e).__name__},
+                    exc_info=True,
+                )
                 checks[name] = ServiceHealth(
                     status=HealthStatus.DOWN,
                     latency_ms=0.0,  # No timing context available for unexpected errors
-                    error=str(e),
+                    error=f"Unexpected error ({type(e).__name__}): {e}",
                 )
 
         # Determine overall status
@@ -425,14 +444,32 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=f"OS error: {e}",
             )
-        except Exception as e:
-            # Broad catch intentional for health checks - document justification
+        except RuntimeError as e:
+            # Catch runtime errors (event loop issues, threading problems)
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Jira health check failed with unexpected error: {e}")
+            logger.error(
+                f"Jira health check failed due to runtime error: {e}",
+                extra={"service": "jira", "error_type": "RuntimeError"},
+            )
             return ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
-                error=str(e),
+                error=f"Runtime error: {e}",
+            )
+        except Exception as e:
+            # INTENTIONAL BROAD CATCH: Health checks must never crash the application.
+            # All known exception types are caught above; this catches truly unexpected
+            # errors to ensure graceful degradation. Log with full context for debugging.
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(
+                f"Jira health check failed with unexpected error: {type(e).__name__}: {e}",
+                extra={"service": "jira", "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Unexpected error ({type(e).__name__}): {e}",
             )
 
     async def _check_github(self) -> ServiceHealth:
@@ -522,14 +559,32 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=f"OS error: {e}",
             )
-        except Exception as e:
-            # Broad catch intentional for health checks - document justification
+        except RuntimeError as e:
+            # Catch runtime errors (event loop issues, threading problems)
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"GitHub health check failed with unexpected error: {e}")
+            logger.error(
+                f"GitHub health check failed due to runtime error: {e}",
+                extra={"service": "github", "error_type": "RuntimeError"},
+            )
             return ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
-                error=str(e),
+                error=f"Runtime error: {e}",
+            )
+        except Exception as e:
+            # INTENTIONAL BROAD CATCH: Health checks must never crash the application.
+            # All known exception types are caught above; this catches truly unexpected
+            # errors to ensure graceful degradation. Log with full context for debugging.
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(
+                f"GitHub health check failed with unexpected error: {type(e).__name__}: {e}",
+                extra={"service": "github", "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Unexpected error ({type(e).__name__}): {e}",
             )
 
     async def _check_claude(self) -> ServiceHealth:
@@ -618,12 +673,30 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=f"OS error: {e}",
             )
-        except Exception as e:
-            # Broad catch intentional for health checks - document justification
+        except RuntimeError as e:
+            # Catch runtime errors (event loop issues, threading problems)
             latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Claude health check failed with unexpected error: {e}")
+            logger.error(
+                f"Claude health check failed due to runtime error: {e}",
+                extra={"service": "claude", "error_type": "RuntimeError"},
+            )
             return ServiceHealth(
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
-                error=str(e),
+                error=f"Runtime error: {e}",
+            )
+        except Exception as e:
+            # INTENTIONAL BROAD CATCH: Health checks must never crash the application.
+            # All known exception types are caught above; this catches truly unexpected
+            # errors to ensure graceful degradation. Log with full context for debugging.
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(
+                f"Claude health check failed with unexpected error: {type(e).__name__}: {e}",
+                extra={"service": "claude", "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Unexpected error ({type(e).__name__}): {e}",
             )
