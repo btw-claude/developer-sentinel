@@ -82,10 +82,7 @@ def validate_branch_name_core(
     # For branch patterns with template variables, validate the static parts
     # by checking each segment between template variables
     # e.g., "feature/{jira_issue_key}/test" -> check "feature/", "/test"
-    if allow_template_variables:
-        static_parts = re.split(r"\{[^}]+\}", branch)
-    else:
-        static_parts = [branch]
+    static_parts = re.split(r"\{[^}]+\}", branch) if allow_template_variables else [branch]
 
     # Check for invalid starting characters
     if branch.startswith("-") or branch.startswith("."):
