@@ -5,6 +5,10 @@ These tests verify the memory safety improvements added in DS-467:
 - TTL-based cleanup of stale futures
 - Maximum list size with overflow handling
 - Monitoring/logging for long-running futures
+
+DS-481 additions:
+- Warning deduplication for long-running futures via last_warned_at tracking
+- Configurable stale_removal_fraction for max_futures limit enforcement
 """
 
 import threading
@@ -15,6 +19,8 @@ from unittest.mock import patch
 from sentinel.execution_manager import (
     DEFAULT_FUTURE_TTL_SECONDS,
     DEFAULT_MAX_FUTURES,
+    DEFAULT_STALE_REMOVAL_FRACTION,
+    LONG_RUNNING_WARNING_INTERVAL,
     LONG_RUNNING_WARNING_THRESHOLD,
     ExecutionManager,
     TrackedFuture,
@@ -393,3 +399,238 @@ class TestExecutionManagerBackwardsCompatibility:
             future.result(timeout=1.0)
         finally:
             manager.shutdown()
+
+
+class TestDS481WarningDeduplication:
+    """Tests for DS-481: Long-running future warning deduplication."""
+
+    def test_tracked_future_last_warned_at_defaults_to_none(self) -> None:
+        """Test that last_warned_at defaults to None."""
+        future: Future[int] = Future()
+        tracked = TrackedFuture(future=future)
+
+        assert tracked.last_warned_at is None
+
+    def test_tracked_future_last_warned_at_can_be_set(self) -> None:
+        """Test that last_warned_at can be provided."""
+        future: Future[int] = Future()
+        warned_time = time.monotonic()
+        tracked = TrackedFuture(future=future, last_warned_at=warned_time)
+
+        assert tracked.last_warned_at == warned_time
+
+    def test_first_warning_logs_at_warning_level(self) -> None:
+        """Test that first warning for a long-running future logs at WARNING level."""
+        manager = ExecutionManager(
+            max_concurrent_executions=2,
+            future_ttl_seconds=300.0,
+        )
+        manager.start()
+
+        try:
+            block_event = threading.Event()
+            manager.submit(
+                lambda: block_event.wait(timeout=10),
+                description="long task",
+            )
+
+            # Simulate a long-running future
+            with manager._futures_lock:
+                manager._active_futures[0].created_at = (
+                    time.monotonic() - LONG_RUNNING_WARNING_THRESHOLD - 10
+                )
+                # Ensure last_warned_at is None (first warning)
+                assert manager._active_futures[0].last_warned_at is None
+
+            with patch("sentinel.execution_manager.logger") as mock_logger:
+                manager.collect_completed_results()
+
+                # Verify WARNING was logged (not just DEBUG)
+                warning_calls = [
+                    call for call in mock_logger.warning.call_args_list
+                    if "Long-running future detected" in str(call)
+                ]
+                assert len(warning_calls) >= 1
+
+            # Verify last_warned_at was updated
+            with manager._futures_lock:
+                assert manager._active_futures[0].last_warned_at is not None
+
+            block_event.set()
+
+        finally:
+            manager.shutdown(cancel_futures=True)
+
+    def test_subsequent_warning_logs_at_debug_level(self) -> None:
+        """Test that subsequent warnings within interval log at DEBUG level."""
+        manager = ExecutionManager(
+            max_concurrent_executions=2,
+            future_ttl_seconds=300.0,
+        )
+        manager.start()
+
+        try:
+            block_event = threading.Event()
+            manager.submit(
+                lambda: block_event.wait(timeout=10),
+                description="long task",
+            )
+
+            # Simulate a long-running future that was recently warned
+            current_time = time.monotonic()
+            with manager._futures_lock:
+                manager._active_futures[0].created_at = (
+                    current_time - LONG_RUNNING_WARNING_THRESHOLD - 10
+                )
+                # Set last_warned_at to recent time (within interval)
+                manager._active_futures[0].last_warned_at = current_time - 10
+
+            with patch("sentinel.execution_manager.logger") as mock_logger:
+                manager.collect_completed_results()
+
+                # Verify DEBUG was logged (not WARNING)
+                debug_calls = [
+                    call for call in mock_logger.debug.call_args_list
+                    if "Long-running future detected" in str(call)
+                ]
+                # Should have at least one DEBUG call
+                assert len(debug_calls) >= 1
+
+                # Should NOT have a new WARNING call for long-running
+                warning_calls = [
+                    call for call in mock_logger.warning.call_args_list
+                    if "Long-running future detected" in str(call)
+                ]
+                assert len(warning_calls) == 0
+
+            block_event.set()
+
+        finally:
+            manager.shutdown(cancel_futures=True)
+
+    def test_warning_after_interval_logs_at_warning_level(self) -> None:
+        """Test that warning after interval has elapsed logs at WARNING level."""
+        manager = ExecutionManager(
+            max_concurrent_executions=2,
+            future_ttl_seconds=300.0,
+        )
+        manager.start()
+
+        try:
+            block_event = threading.Event()
+            manager.submit(
+                lambda: block_event.wait(timeout=10),
+                description="long task",
+            )
+
+            # Simulate a long-running future that was warned long ago
+            current_time = time.monotonic()
+            with manager._futures_lock:
+                manager._active_futures[0].created_at = (
+                    current_time - LONG_RUNNING_WARNING_THRESHOLD - 10
+                )
+                # Set last_warned_at to old time (beyond interval)
+                manager._active_futures[0].last_warned_at = (
+                    current_time - LONG_RUNNING_WARNING_INTERVAL - 10
+                )
+
+            with patch("sentinel.execution_manager.logger") as mock_logger:
+                manager.collect_completed_results()
+
+                # Verify WARNING was logged
+                warning_calls = [
+                    call for call in mock_logger.warning.call_args_list
+                    if "Long-running future detected" in str(call)
+                ]
+                assert len(warning_calls) >= 1
+
+            block_event.set()
+
+        finally:
+            manager.shutdown(cancel_futures=True)
+
+
+class TestDS481StaleRemovalFraction:
+    """Tests for DS-481: Configurable stale_removal_fraction."""
+
+    def test_default_stale_removal_fraction_is_set(self) -> None:
+        """Test that default stale_removal_fraction is set correctly."""
+        manager = ExecutionManager(max_concurrent_executions=2)
+
+        assert manager.stale_removal_fraction == DEFAULT_STALE_REMOVAL_FRACTION
+
+    def test_custom_stale_removal_fraction_can_be_set(self) -> None:
+        """Test that custom stale_removal_fraction can be provided."""
+        manager = ExecutionManager(
+            max_concurrent_executions=2,
+            stale_removal_fraction=0.75,
+        )
+
+        assert manager.stale_removal_fraction == 0.75
+
+    def test_stale_removal_fraction_clamped_to_valid_range(self) -> None:
+        """Test that stale_removal_fraction is clamped to 0.0-1.0."""
+        # Test value below 0
+        manager_low = ExecutionManager(
+            max_concurrent_executions=2,
+            stale_removal_fraction=-0.5,
+        )
+        assert manager_low.stale_removal_fraction == 0.0
+
+        # Test value above 1
+        manager_high = ExecutionManager(
+            max_concurrent_executions=2,
+            stale_removal_fraction=1.5,
+        )
+        assert manager_high.stale_removal_fraction == 1.0
+
+    def test_get_futures_stats_includes_stale_removal_fraction(self) -> None:
+        """Test that get_futures_stats includes stale_removal_fraction."""
+        manager = ExecutionManager(
+            max_concurrent_executions=2,
+            stale_removal_fraction=0.3,
+        )
+        manager.start()
+
+        try:
+            stats = manager.get_futures_stats()
+            assert "stale_removal_fraction" in stats
+            assert stats["stale_removal_fraction"] == 0.3
+        finally:
+            manager.shutdown()
+
+    def test_stale_removal_uses_configured_fraction(self) -> None:
+        """Test that stale removal uses the configured fraction."""
+        # Use a high fraction to remove more stale futures
+        manager = ExecutionManager(
+            max_concurrent_executions=10,
+            max_futures=5,
+            future_ttl_seconds=0.01,  # Very short TTL
+            stale_removal_fraction=0.8,  # Remove 80%
+        )
+        manager.start()
+
+        try:
+            # Create stale futures
+            events = []
+            for i in range(5):
+                event = threading.Event()
+                events.append(event)
+                manager.submit(lambda e=event: e.wait(timeout=10), description=f"task-{i}")
+
+            # Wait for them to become stale
+            time.sleep(0.1)
+
+            # Submit one more to trigger max_futures enforcement
+            with patch("sentinel.execution_manager.logger"):
+                manager.submit(lambda: 42, description="trigger")
+
+                # Should have removed some stale futures using the configured fraction
+                assert manager.stale_futures_cleaned > 0
+
+            # Clean up
+            for event in events:
+                event.set()
+
+        finally:
+            manager.shutdown(cancel_futures=True)
