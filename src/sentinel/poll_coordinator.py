@@ -245,19 +245,25 @@ class PollCoordinator:
                     )
             except (OSError, TimeoutError) as e:
                 logger.error(
-                    f"Failed to poll Jira for '{orch.name}': {e}",
+                    "Failed to poll Jira for '%s': %s",
+                    orch.name,
+                    e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
                 continue
             except (KeyError, ValueError) as e:
                 logger.error(
-                    f"Failed to poll Jira for '{orch.name}' due to data error: {e}",
+                    "Failed to poll Jira for '%s' due to data error: %s",
+                    orch.name,
+                    e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
                 continue
             except RuntimeError as e:
                 logger.error(
-                    f"Failed to poll Jira for '{orch.name}' due to runtime error: {e}",
+                    "Failed to poll Jira for '%s' due to runtime error: %s",
+                    orch.name,
+                    e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
                 continue
@@ -328,19 +334,25 @@ class PollCoordinator:
                     )
             except (OSError, TimeoutError) as e:
                 logger.error(
-                    f"Failed to poll GitHub for '{orch.name}': {e}",
+                    "Failed to poll GitHub for '%s': %s",
+                    orch.name,
+                    e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
                 continue
             except (KeyError, ValueError) as e:
                 logger.error(
-                    f"Failed to poll GitHub for '{orch.name}' due to data error: {e}",
+                    "Failed to poll GitHub for '%s' due to data error: %s",
+                    orch.name,
+                    e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
                 continue
             except RuntimeError as e:
                 logger.error(
-                    f"Failed to poll GitHub for '{orch.name}' due to runtime error: {e}",
+                    "Failed to poll GitHub for '%s' due to runtime error: %s",
+                    orch.name,
+                    e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
                 continue
@@ -373,8 +385,9 @@ class PollCoordinator:
                 result.append(GitHubIssueWithRepo(issue, repo))
             else:
                 logger.warning(
-                    f"Could not extract repo from URL for issue #{issue.number}: "
-                    f"{issue.repo_url!r}"
+                    "Could not extract repo from URL for issue #%s: %r",
+                    issue.number,
+                    issue.repo_url,
                 )
         return result
 

@@ -101,7 +101,7 @@ def _check_rate_limit_warning(response: httpx.Response) -> None:
         remaining = response.headers.get("X-RateLimit-Remaining", "unknown")
         reset_time = response.headers.get("X-RateLimit-Reset", "unknown")
         logger.warning(
-            f"Jira rate limit near exhaustion. Remaining: {remaining}, Reset: {reset_time}"
+            "Jira rate limit near exhaustion. Remaining: %s, Reset: %s", remaining, reset_time
         )
 
 
@@ -119,7 +119,7 @@ def _get_retry_after(response: httpx.Response) -> float | None:
         try:
             return float(retry_after)
         except ValueError:
-            logger.warning(f"Invalid Retry-After header value: {retry_after}")
+            logger.warning("Invalid Retry-After header value: %s", retry_after)
     return None
 
 
@@ -167,8 +167,12 @@ def _execute_with_retry(
 
             reason = e.response.headers.get("RateLimit-Reason", "unknown")
             logger.warning(
-                f"Rate limited (attempt {attempt + 1}/{config.max_retries + 1}). "
-                f"Reason: {reason}. Retrying in {delay:.2f}s"
+                "Rate limited (attempt %s/%s). "
+                "Reason: %s. Retrying in %.2fs",
+                attempt + 1,
+                config.max_retries + 1,
+                reason,
+                delay,
             )
 
             time.sleep(delay)
@@ -247,7 +251,7 @@ class JiraRestClient(JiraClient):
             "fields": "summary,description,status,assignee,labels,comment,issuelinks",
         }
 
-        logger.debug(f"Searching Jira: {jql}")
+        logger.debug("Searching Jira: %s", jql)
 
         def do_search() -> list[dict[str, Any]]:
             with httpx.Client(auth=self.auth, timeout=self.timeout) as client:
@@ -256,7 +260,7 @@ class JiraRestClient(JiraClient):
                 response.raise_for_status()
                 data: dict[str, Any] = response.json()
                 issues: list[dict[str, Any]] = data.get("issues", [])
-                logger.info(f"JQL search returned {len(issues)} issues")
+                logger.info("JQL search returned %s issues", len(issues))
                 return issues
 
         try:
@@ -428,9 +432,9 @@ class JiraRestTagClient(JiraTagClient):
         if label not in current_labels:
             new_labels = current_labels + [label]
             self._update_labels(issue_key, new_labels)
-            logger.info(f"Added label '{label}' to {issue_key}")
+            logger.info("Added label '%s' to %s", label, issue_key)
         else:
-            logger.debug(f"Label '{label}' already exists on {issue_key}")
+            logger.debug("Label '%s' already exists on %s", label, issue_key)
 
     def remove_label(self, issue_key: str, label: str) -> None:
         """Remove a label from a Jira issue via REST API.
@@ -446,6 +450,6 @@ class JiraRestTagClient(JiraTagClient):
         if label in current_labels:
             new_labels = [lbl for lbl in current_labels if lbl != label]
             self._update_labels(issue_key, new_labels)
-            logger.info(f"Removed label '{label}' from {issue_key}")
+            logger.info("Removed label '%s' from %s", label, issue_key)
         else:
-            logger.debug(f"Label '{label}' not found on {issue_key}")
+            logger.debug("Label '%s' not found on %s", label, issue_key)

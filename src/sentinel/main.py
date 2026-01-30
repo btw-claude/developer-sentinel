@@ -161,8 +161,8 @@ class Sentinel:
         if config.orchestration_logs_dir is not None:
             self._orch_log_manager = OrchestrationLogManager(config.orchestration_logs_dir)
             logger.info(
-                f"Per-orchestration logging enabled, logs will be written to: "
-                f"{config.orchestration_logs_dir}"
+                "Per-orchestration logging enabled, logs will be written to: %s",
+                config.orchestration_logs_dir
             )
 
     def request_shutdown(self) -> None:
@@ -347,12 +347,14 @@ class Sentinel:
             self.tag_manager.apply_failure_tags(issue_key, orchestration)
         except (OSError, TimeoutError) as tag_error:
             logger.error(
-                f"Failed to apply failure tags due to I/O error: {tag_error}",
+                "Failed to apply failure tags due to I/O error: %s",
+                tag_error,
                 extra={"issue_key": issue_key, "orchestration": orchestration.name},
             )
         except (KeyError, ValueError) as tag_error:
             logger.error(
-                f"Failed to apply failure tags due to data error: {tag_error}",
+                "Failed to apply failure tags due to data error: %s",
+                tag_error,
                 extra={"issue_key": issue_key, "orchestration": orchestration.name},
             )
 
@@ -415,12 +417,14 @@ class Sentinel:
                 self.tag_manager.apply_failure_tags(issue_key, orchestration)
             except (OSError, TimeoutError) as tag_error:
                 logger.error(
-                    f"Failed to apply failure tags due to I/O error: {tag_error}",
+                    "Failed to apply failure tags due to I/O error: %s",
+                    tag_error,
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
                 )
             except (KeyError, ValueError) as tag_error:
                 logger.error(
-                    f"Failed to apply failure tags due to data error: {tag_error}",
+                    "Failed to apply failure tags due to data error: %s",
+                    tag_error,
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
                 )
             return None
@@ -529,15 +533,18 @@ class Sentinel:
                         version.decrement_executions()
                     self._state_tracker.decrement_per_orch_count(matched_orch.name)
                     logger.error(
-                        f"Failed to submit '{matched_orch.name}' for {issue_key} "
-                        f"due to I/O error: {e}",
+                        "Failed to submit '%s' for %s due to I/O error: %s",
+                        matched_orch.name,
+                        issue_key,
+                        e,
                         extra={"issue_key": issue_key, "orchestration": matched_orch.name},
                     )
                     try:
                         self.tag_manager.apply_failure_tags(issue_key, matched_orch)
                     except (OSError, TimeoutError, KeyError, ValueError) as tag_error:
                         logger.error(
-                            f"Failed to apply failure tags: {tag_error}",
+                            "Failed to apply failure tags: %s",
+                            tag_error,
                             extra={"issue_key": issue_key, "orchestration": matched_orch.name},
                         )
                 except RuntimeError as e:
@@ -545,15 +552,18 @@ class Sentinel:
                         version.decrement_executions()
                     self._state_tracker.decrement_per_orch_count(matched_orch.name)
                     logger.error(
-                        f"Failed to submit '{matched_orch.name}' for {issue_key} "
-                        f"due to runtime error: {e}",
+                        "Failed to submit '%s' for %s due to runtime error: %s",
+                        matched_orch.name,
+                        issue_key,
+                        e,
                         extra={"issue_key": issue_key, "orchestration": matched_orch.name},
                     )
                     try:
                         self.tag_manager.apply_failure_tags(issue_key, matched_orch)
                     except (OSError, TimeoutError, KeyError, ValueError) as tag_error:
                         logger.error(
-                            f"Failed to apply failure tags: {tag_error}",
+                            "Failed to apply failure tags: %s",
+                            tag_error,
                             extra={"issue_key": issue_key, "orchestration": matched_orch.name},
                         )
                 except (KeyError, ValueError) as e:
@@ -561,15 +571,18 @@ class Sentinel:
                         version.decrement_executions()
                     self._state_tracker.decrement_per_orch_count(matched_orch.name)
                     logger.error(
-                        f"Failed to submit '{matched_orch.name}' for {issue_key} "
-                        f"due to data error: {e}",
+                        "Failed to submit '%s' for %s due to data error: %s",
+                        matched_orch.name,
+                        issue_key,
+                        e,
                         extra={"issue_key": issue_key, "orchestration": matched_orch.name},
                     )
                     try:
                         self.tag_manager.apply_failure_tags(issue_key, matched_orch)
                     except (OSError, TimeoutError, KeyError, ValueError) as tag_error:
                         logger.error(
-                            f"Failed to apply failure tags: {tag_error}",
+                            "Failed to apply failure tags: %s",
+                            tag_error,
                             extra={"issue_key": issue_key, "orchestration": matched_orch.name},
                         )
 
@@ -635,8 +648,8 @@ class Sentinel:
         available_slots = self._get_available_slots()
         if available_slots <= 0:
             logger.debug(
-                f"All {self.config.max_concurrent_executions} execution slots busy, "
-                "skipping polling this cycle"
+                "All %s execution slots busy, skipping polling this cycle",
+                self.config.max_concurrent_executions
             )
             return all_results, 0
 
@@ -678,20 +691,21 @@ class Sentinel:
                 submitted_count += github_submitted
             else:
                 logger.warning(
-                    f"Found {len(github_orchestrations)} GitHub-triggered orchestrations "
-                    "but GitHub client is not configured. Set GITHUB_TOKEN to enable."
+                    "Found %s GitHub-triggered orchestrations but GitHub client is not "
+                    "configured. Set GITHUB_TOKEN to enable.",
+                    len(github_orchestrations)
                 )
 
         if submitted_count > 0:
-            logger.info(f"Submitted {submitted_count} execution tasks")
+            logger.info("Submitted %s execution tasks", submitted_count)
 
         return all_results, submitted_count
 
     def run_once_and_wait(self) -> list[ExecutionResult]:
         """Run a single polling cycle with concurrent execution and wait for completion."""
         logger.info(
-            f"Starting single cycle with max {self.config.max_concurrent_executions} "
-            "concurrent executions"
+            "Starting single cycle with max %s concurrent executions",
+            self.config.max_concurrent_executions
         )
 
         self._execution_manager.start()
@@ -707,7 +721,7 @@ class Sentinel:
                 if not pending_futures:
                     break
 
-                logger.info(f"Waiting for {len(pending_futures)} execution(s) to complete...")
+                logger.info("Waiting for %s execution(s) to complete...", len(pending_futures))
 
                 # Wait for all to complete
                 while True:
@@ -731,7 +745,7 @@ class Sentinel:
 
         def handle_shutdown(signum: int, frame: FrameType | None) -> None:
             signal_name = signal.Signals(signum).name
-            logger.info(f"Received {signal_name}, initiating graceful shutdown...")
+            logger.info("Received %s, initiating graceful shutdown...", signal_name)
             self._shutdown_requested = True
             request_claude_shutdown()
 
@@ -739,9 +753,11 @@ class Sentinel:
         signal.signal(signal.SIGTERM, handle_shutdown)
 
         logger.info(
-            f"Starting Sentinel with {len(self.orchestrations)} orchestrations, "
-            f"polling every {self.config.poll_interval}s, "
-            f"max concurrent executions: {self.config.max_concurrent_executions}"
+            "Starting Sentinel with %s orchestrations, polling every %ss, "
+            "max concurrent executions: %s",
+            len(self.orchestrations),
+            self.config.poll_interval,
+            self.config.max_concurrent_executions
         )
 
         self._execution_manager.start()
@@ -752,22 +768,27 @@ class Sentinel:
                     results, submitted_count = self.run_once()
                     success_count = sum(1 for r in results if r.succeeded)
                     if results:
-                        logger.info(f"Cycle completed: {success_count}/{len(results)} successful")
+                        logger.info(
+                            "Cycle completed: %s/%s successful", success_count, len(results)
+                        )
                 except (OSError, TimeoutError) as e:
                     logger.error(
-                        f"Error in polling cycle due to I/O or timeout: {e}",
+                        "Error in polling cycle due to I/O or timeout: %s",
+                        e,
                         extra={"error_type": type(e).__name__},
                     )
                     submitted_count = 0
                 except RuntimeError as e:
                     logger.error(
-                        f"Error in polling cycle due to runtime error: {e}",
+                        "Error in polling cycle due to runtime error: %s",
+                        e,
                         extra={"error_type": type(e).__name__},
                     )
                     submitted_count = 0
                 except (KeyError, ValueError) as e:
                     logger.error(
-                        f"Error in polling cycle due to data error: {e}",
+                        "Error in polling cycle due to data error: %s",
+                        e,
                         extra={"error_type": type(e).__name__},
                     )
                     submitted_count = 0
@@ -778,7 +799,8 @@ class Sentinel:
 
                     if pending_futures:
                         logger.debug(
-                            f"Waiting for {len(pending_futures)} task(s) to complete"
+                            "Waiting for %s task(s) to complete",
+                            len(pending_futures)
                         )
                         done, _ = wait(pending_futures, timeout=1.0, return_when=FIRST_COMPLETED)
                         while not done and not self._shutdown_requested:
@@ -791,30 +813,31 @@ class Sentinel:
 
                         if done:
                             logger.debug(
-                                f"{len(done)} task(s) completed, polling immediately for more work"
+                                "%s task(s) completed, polling immediately for more work",
+                                len(done)
                             )
                     elif submitted_count == 0:
-                        logger.debug(f"Sleeping for {self.config.poll_interval}s")
+                        logger.debug("Sleeping for %ss", self.config.poll_interval)
                         for _ in range(self.config.poll_interval):
                             if self._shutdown_requested:
                                 break
                             time.sleep(1)
                     else:
                         logger.debug(
-                            f"Submitted {submitted_count} task(s) but all completed quickly, "
-                            "polling immediately"
+                            "Submitted %s task(s) but all completed quickly, polling immediately",
+                            submitted_count
                         )
 
             # Wait for active tasks
             logger.info("Waiting for active executions to complete...")
             active_count = self._execution_manager.get_active_count()
             if active_count > 0:
-                logger.info(f"Waiting for {active_count} active execution(s)...")
+                logger.info("Waiting for %s active execution(s)...", active_count)
 
             final_results = self._collect_completed_results()
             if final_results:
                 success_count = sum(1 for r in final_results if r.succeeded)
-                logger.info(f"Final batch: {success_count}/{len(final_results)} successful")
+                logger.info("Final batch: %s/%s successful", success_count, len(final_results))
 
         finally:
             self._execution_manager.shutdown()

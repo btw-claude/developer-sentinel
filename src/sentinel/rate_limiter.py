@@ -365,8 +365,10 @@ class ClaudeRateLimiter:
                 status = self._bucket.get_status()
                 logger.warning(
                     "Claude API rate limit approaching threshold - "
-                    f"minute: {status['minute_tokens']:.1f}/{status['minute_capacity']:.0f}, "
-                    f"hour: {status['hour_tokens']:.1f}/{status['hour_capacity']:.0f}"
+                    "minute: %.1f/%.0f, "
+                    "hour: %.1f/%.0f",
+                    status['minute_tokens'], status['minute_capacity'],
+                    status['hour_tokens'], status['hour_capacity']
                 )
 
             if success:
@@ -376,7 +378,8 @@ class ClaudeRateLimiter:
                 )
                 if was_queued:
                     logger.debug(
-                        f"Claude API rate limit permit acquired after {wait_time:.2f}s wait"
+                        "Claude API rate limit permit acquired after %.2fs wait",
+                        wait_time
                     )
                 return True
 
@@ -390,7 +393,7 @@ class ClaudeRateLimiter:
                         f"Claude API rate limit exceeded. "
                         f"Limit: {self._requests_per_minute}/min, {self._requests_per_hour}/hr"
                     )
-                logger.warning(f"Claude API rate limit timeout after {timeout:.1f}s wait")
+                logger.warning("Claude API rate limit timeout after %ss wait", f"{timeout:.1f}")
                 return False
 
             # Wait before retrying
@@ -433,8 +436,10 @@ class ClaudeRateLimiter:
                 status = self._bucket.get_status()
                 logger.warning(
                     "Claude API rate limit approaching threshold - "
-                    f"minute: {status['minute_tokens']:.1f}/{status['minute_capacity']:.0f}, "
-                    f"hour: {status['hour_tokens']:.1f}/{status['hour_capacity']:.0f}"
+                    "minute: %.1f/%.0f, "
+                    "hour: %.1f/%.0f",
+                    status['minute_tokens'], status['minute_capacity'],
+                    status['hour_tokens'], status['hour_capacity']
                 )
 
             if success:
@@ -444,7 +449,8 @@ class ClaudeRateLimiter:
                 )
                 if was_queued:
                     logger.debug(
-                        f"Claude API rate limit permit acquired after {wait_time:.2f}s wait"
+                        "Claude API rate limit permit acquired after %.2fs wait",
+                        wait_time
                     )
                 return True
 
@@ -458,7 +464,7 @@ class ClaudeRateLimiter:
                         f"Claude API rate limit exceeded. "
                         f"Limit: {self._requests_per_minute}/min, {self._requests_per_hour}/hr"
                     )
-                logger.warning(f"Claude API rate limit timeout after {timeout:.1f}s wait")
+                logger.warning("Claude API rate limit timeout after %ss wait", f"{timeout:.1f}")
                 return False
 
             # Wait before retrying (async)

@@ -507,7 +507,7 @@ class JiraPoller:
             logger.warning("Empty JQL query generated from trigger config")
             return []
 
-        logger.info(f"Polling Jira with JQL: {jql}")
+        logger.info("Polling Jira with JQL: %s", jql)
 
         last_error: Exception | None = None
         for attempt in range(self.max_retries):
@@ -517,7 +517,7 @@ class JiraPoller:
                     JiraIssue.from_api_response(issue, self.epic_link_field)
                     for issue in raw_issues
                 ]
-                logger.info(f"Found {len(issues)} matching issues")
+                logger.info("Found %s matching issues", len(issues))
 
                 # Warn if epic_link_field is configured but not found on any issues
                 if (
@@ -532,10 +532,12 @@ class JiraPoller:
                     )
                     if not field_found:
                         logger.warning(
-                            f"Configured epic_link_field '{self.epic_link_field}' was not "
-                            f"found on any of the {len(issues)} polled issues. "
-                            f"Verify JIRA_EPIC_LINK_FIELD is set to the correct custom "
-                            f"field ID for your Jira instance."
+                            "Configured epic_link_field '%s' was not "
+                            "found on any of the %s polled issues. "
+                            "Verify JIRA_EPIC_LINK_FIELD is set to the correct custom "
+                            "field ID for your Jira instance.",
+                            self.epic_link_field,
+                            len(issues),
                         )
 
                 return issues
@@ -544,12 +546,15 @@ class JiraPoller:
                 if attempt < self.max_retries - 1:
                     delay = self._calculate_retry_delay(attempt)
                     logger.warning(
-                        f"Jira API error (attempt {attempt + 1}/{self.max_retries}): {e}. "
-                        f"Retrying in {delay:.1f}s..."
+                        "Jira API error (attempt %s/%s): %s. Retrying in %.1fs...",
+                        attempt + 1,
+                        self.max_retries,
+                        e,
+                        delay,
                     )
                     time.sleep(delay)
                 else:
-                    logger.error(f"Jira API error after {self.max_retries} attempts: {e}")
+                    logger.error("Jira API error after %s attempts: %s", self.max_retries, e)
 
         raise JiraClientError(
             f"Failed to poll Jira after {self.max_retries} attempts"

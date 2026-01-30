@@ -86,7 +86,7 @@ Do not include any explanation, just the JSON array."""
             if not isinstance(issues, list):
                 issues = [issues] if issues else []
 
-            logger.info(f"JQL search returned {len(issues)} issues")
+            logger.info("JQL search returned %s issues", len(issues))
             return issues
 
         except ClaudeProcessInterruptedError:
@@ -123,7 +123,8 @@ If there's an error, respond with: ERROR: <description>"""
                 raise JiraTagClientError(f"Failed to {action} label: {response}")
 
             logger.info(
-                f"{action.capitalize()}ed label '{label}' {preposition} {issue_key}"
+                "%sed label '%s' %s %s",
+                action.capitalize(), label, preposition, issue_key
             )
 
         except ClaudeProcessInterruptedError:

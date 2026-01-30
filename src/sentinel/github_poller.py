@@ -108,8 +108,10 @@ class GitHubIssue:
                 return number
             # Log warning for unexpected type and treat as None
             logger.warning(
-                f"Unexpected type for parent.number: {type(number).__name__} "
-                f"(value: {number!r}), expected int. Treating as None."
+                "Unexpected type for parent.number: %s "
+                "(value: %r), expected int. Treating as None.",
+                type(number).__name__,
+                number,
             )
             return None
         return None
@@ -380,18 +382,18 @@ class GitHubPoller:
         """
         cache_key = f"{owner}/{project_number}"
         if cache_key in self._project_id_cache:
-            logger.debug(f"Using cached project ID for {cache_key}")
+            logger.debug("Using cached project ID for %s", cache_key)
             return self._project_id_cache[cache_key]
 
         # Map scope from config format to API format
         api_scope = "organization" if scope == "org" else "user"
 
-        logger.debug(f"Fetching project ID for {cache_key} (scope={api_scope})")
+        logger.debug("Fetching project ID for %s (scope=%s)", cache_key, api_scope)
         project = self.client.get_project(owner, project_number, api_scope)
         project_id: str = project["id"]
 
         self._project_id_cache[cache_key] = project_id
-        logger.info(f"Cached project ID for {cache_key}: {project_id[:20]}...")
+        logger.info("Cached project ID for %s: %s...", cache_key, project_id[:20])
         return project_id
 
     def clear_project_id_cache(self) -> None:
@@ -450,7 +452,7 @@ class GitHubPoller:
         try:
             parsed_filter = self._filter_parser.parse(filter_expr)
         except ValueError as e:
-            logger.error(f"Invalid project_filter expression: {e}")
+            logger.error("Invalid project_filter expression: %s", e)
             raise GitHubClientError(f"Invalid project_filter: {e}") from e
 
         filtered: list[dict[str, Any]] = []
@@ -459,7 +461,7 @@ class GitHubPoller:
             if self._filter_parser.evaluate(parsed_filter, fields):
                 filtered.append(item)
 
-        logger.debug(f"Filter '{filter_expr}' matched {len(filtered)}/{len(items)} items")
+        logger.debug("Filter '%s' matched %s/%s items", filter_expr, len(filtered), len(items))
         return filtered
 
     def build_query(self, trigger: TriggerConfig) -> str:
@@ -531,7 +533,7 @@ class GitHubPoller:
             raise GitHubClientError("GitHub trigger requires project_owner to be configured")
 
         logger.info(
-            f"Polling GitHub project: {trigger.project_owner}/project/{trigger.project_number}"
+            "Polling GitHub project: %s/project/%s", trigger.project_owner, trigger.project_number
         )
 
         last_error: Exception | None = None
@@ -546,7 +548,7 @@ class GitHubPoller:
 
                 # Fetch project items
                 raw_items = self.client.list_project_items(project_id, max_results)
-                logger.debug(f"Fetched {len(raw_items)} items from project")
+                logger.debug("Fetched %s items from project", len(raw_items))
 
                 # Apply filter if configured
                 filtered_items = self._apply_filter(raw_items, trigger.project_filter)
@@ -561,8 +563,9 @@ class GitHubPoller:
                         issues.append(issue)
 
                 logger.info(
-                    f"Found {len(issues)} matching issues/PRs "
-                    f"(filtered from {len(raw_items)} project items)"
+                    "Found %s matching issues/PRs (filtered from %s project items)",
+                    len(issues),
+                    len(raw_items),
                 )
                 return issues
 
@@ -571,12 +574,15 @@ class GitHubPoller:
                 if attempt < self.max_retries - 1:
                     delay = self.retry_delay * (2**attempt)
                     logger.warning(
-                        f"GitHub API error (attempt {attempt + 1}/{self.max_retries}): {e}. "
-                        f"Retrying in {delay:.1f}s..."
+                        "GitHub API error (attempt %s/%s): %s. Retrying in %.1fs...",
+                        attempt + 1,
+                        self.max_retries,
+                        e,
+                        delay,
                     )
                     time.sleep(delay)
                 else:
-                    logger.error(f"GitHub API error after {self.max_retries} attempts: {e}")
+                    logger.error("GitHub API error after %s attempts: %s", self.max_retries, e)
 
         raise GitHubClientError(
             f"Failed to poll GitHub after {self.max_retries} attempts"

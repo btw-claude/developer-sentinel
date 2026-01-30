@@ -310,13 +310,13 @@ def cleanup_workdir(
         try:
             if workdir.exists():
                 shutil.rmtree(workdir)
-                logger.debug(f"Cleaned up working directory: {workdir}")
+                logger.debug("Cleaned up working directory: %s", workdir)
             return True
         except PermissionError as e:
-            logger.warning(f"Permission denied while cleaning up workdir {workdir}: {e}")
+            logger.warning("Permission denied while cleaning up workdir %s: %s", workdir, e)
             return False
         except OSError as e:
-            logger.warning(f"OS error while cleaning up workdir {workdir}: {e}")
+            logger.warning("OS error while cleaning up workdir %s: %s", workdir, e)
             return False
         except (TypeError, ValueError, AttributeError, RuntimeError) as e:
             # Handle unexpected argument/runtime errors that shouldn't occur in normal operation
@@ -343,29 +343,41 @@ def cleanup_workdir(
                 shutil.rmtree(workdir, ignore_errors=True)
                 if workdir.exists():
                     logger.warning(
-                        f"Force cleanup could not fully remove workdir {workdir} "
-                        f"after {max_retries} attempts (some files may remain)"
+                        "Force cleanup could not fully remove workdir %s "
+                        "after %s attempts (some files may remain)",
+                        workdir,
+                        max_retries,
                     )
                     return False
             else:
                 shutil.rmtree(workdir)
 
-            logger.debug(f"Cleaned up working directory: {workdir} (force mode, attempt {attempt})")
+            logger.debug(
+                "Cleaned up working directory: %s (force mode, attempt %s)", workdir, attempt
+            )
             return True
 
         except (PermissionError, OSError) as e:
             if attempt < max_retries:
                 logger.debug(
-                    f"Recoverable error on cleanup attempt {attempt}/{max_retries} "
-                    f"for {workdir}: {e}. Retrying in {retry_delay}s..."
+                    "Recoverable error on cleanup attempt %s/%s "
+                    "for %s: %s. Retrying in %ss...",
+                    attempt,
+                    max_retries,
+                    workdir,
+                    e,
+                    retry_delay,
                 )
                 time.sleep(retry_delay)
             else:
                 # Final attempt already uses ignore_errors, so this shouldn't happen
                 # but handle it just in case
                 logger.warning(
-                    f"Force cleanup failed for workdir {workdir} after {max_retries} "
-                    f"attempts: {e}"
+                    "Force cleanup failed for workdir %s after %s "
+                    "attempts: %s",
+                    workdir,
+                    max_retries,
+                    e,
                 )
                 return False
         except (TypeError, ValueError, AttributeError, RuntimeError) as e:
@@ -761,10 +773,10 @@ class AgentExecutor:
             )
         except OSError as e:
             # Log but don't fail the execution due to file I/O errors
-            logger.error(f"Failed to write agent execution log due to I/O error: {e}")
+            logger.error("Failed to write agent execution log due to I/O error: %s", e)
         except (TypeError, ValueError) as e:
             # Log but don't fail the execution due to serialization errors
-            logger.error(f"Failed to write agent execution log due to data error: {e}")
+            logger.error("Failed to write agent execution log due to data error: %s", e)
 
     def _determine_outcome(self, response: str, outcomes: list[Outcome]) -> Outcome | None:
         """Determine which outcome matches the response.
@@ -911,8 +923,12 @@ class AgentExecutor:
 
         for attempt in range(1, max_attempts + 1):
             logger.info(
-                f"Executing agent for {issue.key} with orchestration "
-                f"'{orchestration.name}' (attempt {attempt}/{max_attempts})",
+                "Executing agent for %s with orchestration "
+                "'%s' (attempt %s/%s)",
+                issue.key,
+                orchestration.name,
+                attempt,
+                max_attempts,
                 extra={
                     "issue_key": issue.key,
                     "orchestration": orchestration.name,
@@ -988,19 +1004,21 @@ class AgentExecutor:
                     # Cleanup workdir on success if enabled
                     if self.cleanup_workdir_on_success and last_workdir:
                         logger.debug(
-                            f"Cleaning up workdir after successful execution: {last_workdir}"
+                            "Cleaning up workdir after successful execution: %s", last_workdir
                         )
                         cleanup_workdir(last_workdir)
                     elif not self.cleanup_workdir_on_success and last_workdir:
                         logger.debug(
-                            f"Workdir preserved at {last_workdir} "
-                            "(cleanup_workdir_on_success=False)"
+                            "Workdir preserved at %s (cleanup_workdir_on_success=False)",
+                            last_workdir,
                         )
                     return result
 
                 if status == ExecutionStatus.FAILURE and attempt < max_attempts:
                     logger.warning(
-                        f"Agent execution failed for {issue.key} on attempt {attempt}, retrying...",
+                        "Agent execution failed for %s on attempt %s, retrying...",
+                        issue.key,
+                        attempt,
                         extra={
                             "issue_key": issue.key,
                             "orchestration": orchestration.name,
@@ -1022,7 +1040,9 @@ class AgentExecutor:
                 )
                 if attempt < max_attempts:
                     logger.warning(
-                        f"Agent timed out for {issue.key} on attempt {attempt}, retrying...",
+                        "Agent timed out for %s on attempt %s, retrying...",
+                        issue.key,
+                        attempt,
                         extra={
                             "issue_key": issue.key,
                             "orchestration": orchestration.name,
@@ -1044,8 +1064,11 @@ class AgentExecutor:
                 )
                 if attempt < max_attempts:
                     logger.warning(
-                        f"Agent client error for {issue.key} on attempt {attempt}: {e}, "
-                        f"retrying...",
+                        "Agent client error for %s on attempt %s: %s, "
+                        "retrying...",
+                        issue.key,
+                        attempt,
+                        e,
                         extra={
                             "issue_key": issue.key,
                             "orchestration": orchestration.name,

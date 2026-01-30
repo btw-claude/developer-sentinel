@@ -43,7 +43,7 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
         from sentinel.dashboard import create_app
 
         logger.info(
-            f"Starting dashboard server on {config.dashboard_host}:{config.dashboard_port}"
+            "Starting dashboard server on %s:%s", config.dashboard_host, config.dashboard_port
         )
         dashboard_app = create_app(sentinel)
         dashboard_server = DashboardServer(
@@ -53,17 +53,17 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
         dashboard_server.start(dashboard_app)
         return dashboard_server
     except ImportError as e:
-        logger.warning(f"Dashboard dependencies not available, skipping dashboard: {e}")
+        logger.warning("Dashboard dependencies not available, skipping dashboard: %s", e)
         return None
     except OSError as e:
         logger.error(
-            f"Failed to start dashboard server due to network/OS error: {e}",
+            "Failed to start dashboard server due to network/OS error: %s", e,
             extra={"host": config.dashboard_host, "port": config.dashboard_port},
         )
         return None
     except RuntimeError as e:
         logger.error(
-            f"Failed to start dashboard server due to runtime error: {e}",
+            "Failed to start dashboard server due to runtime error: %s", e,
             extra={"host": config.dashboard_host, "port": config.dashboard_port},
         )
         return None
@@ -81,7 +81,7 @@ def run_once_mode(sentinel: Sentinel) -> int:
     logger.info("Running single polling cycle (--once mode)")
     results = sentinel.run_once_and_wait()
     success_count = sum(1 for r in results if r.succeeded)
-    logger.info(f"Completed: {success_count}/{len(results)} successful")
+    logger.info("Completed: %s/%s successful", success_count, len(results))
     return 0 if success_count == len(results) or not results else 1
 
 

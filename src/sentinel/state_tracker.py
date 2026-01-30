@@ -289,12 +289,13 @@ class StateTracker:
 
         if cleaned_count > 0:
             logger.info(
-                f"Cleaned up {cleaned_count} stale attempt count entries "
-                f"(TTL: {self._attempt_counts_ttl}s)"
+                "Cleaned up %s stale attempt count entries (TTL: %ss)",
+                cleaned_count, self._attempt_counts_ttl
             )
         else:
             logger.debug(
-                f"Attempt counts cleanup: no stale entries found (TTL: {self._attempt_counts_ttl}s)"
+                "Attempt counts cleanup: no stale entries found (TTL: %ss)",
+                self._attempt_counts_ttl
             )
 
         return cleaned_count
@@ -400,10 +401,9 @@ class StateTracker:
 
             if evicted_item is not None:
                 logger.debug(
-                    f"Issue queue at capacity ({self._issue_queue.maxlen}), "
-                    f"evicted '{evicted_item.issue_key}' "
-                    f"(orch: '{evicted_item.orchestration_name}') "
-                    f"to add {issue_key} for '{orchestration_name}'"
+                    "Issue queue at capacity (%s), evicted '%s' (orch: '%s') to add %s for '%s'",
+                    self._issue_queue.maxlen, evicted_item.issue_key,
+                    evicted_item.orchestration_name, issue_key, orchestration_name
                 )
 
     def get_issue_queue(self) -> list[QueuedIssueInfo]:
@@ -432,8 +432,8 @@ class StateTracker:
             self._per_orch_active_counts[orchestration_name] += 1
             new_count = self._per_orch_active_counts[orchestration_name]
             logger.debug(
-                f"Incremented per-orch count for '{orchestration_name}': "
-                f"{new_count - 1} -> {new_count}"
+                "Incremented per-orch count for '%s': %s -> %s",
+                orchestration_name, new_count - 1, new_count
             )
             return new_count
 
@@ -450,8 +450,8 @@ class StateTracker:
             current_count = self._per_orch_active_counts[orchestration_name]
             if current_count == 0:
                 logger.warning(
-                    f"Attempted to decrement per-orch count for '{orchestration_name}' "
-                    f"but count was already 0"
+                    "Attempted to decrement per-orch count for '%s' but count was already 0",
+                    orchestration_name
                 )
                 return 0
             new_count = current_count - 1
@@ -461,8 +461,8 @@ class StateTracker:
             else:
                 self._per_orch_active_counts[orchestration_name] = new_count
             logger.debug(
-                f"Decremented per-orch count for '{orchestration_name}': "
-                f"{current_count} -> {new_count}"
+                "Decremented per-orch count for '%s': %s -> %s",
+                orchestration_name, current_count, new_count
             )
             return new_count
 
@@ -514,9 +514,9 @@ class StateTracker:
         available = min(global_available, per_orch_available)
 
         logger.debug(
-            f"Available slots for '{orchestration.name}': {available} "
-            f"(global: {global_available}, per-orch: {per_orch_available}, "
-            f"max_concurrent: {orchestration.max_concurrent})"
+            "Available slots for '%s': %s (global: %s, per-orch: %s, max_concurrent: %s)",
+            orchestration.name, available, global_available, per_orch_available,
+            orchestration.max_concurrent
         )
 
         return max(0, available)
@@ -538,8 +538,8 @@ class StateTracker:
         with self._completed_executions_lock:
             self._completed_executions.appendleft(info)
             logger.debug(
-                f"Recorded completed execution for '{info.issue_key}' "
-                f"(orchestration: '{info.orchestration_name}', status: {info.status})"
+                "Recorded completed execution for '%s' (orchestration: '%s', status: %s)",
+                info.issue_key, info.orchestration_name, info.status
             )
 
     def get_completed_executions(self) -> list[CompletedExecutionInfo]:

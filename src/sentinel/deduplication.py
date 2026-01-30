@@ -146,8 +146,8 @@ class DeduplicationManager:
         pair = (issue_key, orchestration_name)
         if pair in submitted_pairs:
             logger.debug(
-                f"Skipping duplicate submission of '{orchestration_name}' "
-                f"for {issue_key} (already submitted this cycle)"
+                "Skipping duplicate submission of '%s' for %s (already submitted this cycle)",
+                orchestration_name, issue_key
             )
             return False
         submitted_pairs.add(pair)

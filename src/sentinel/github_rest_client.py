@@ -309,7 +309,9 @@ def _check_rate_limit_warning(response: httpx.Response) -> None:
                 reset_time = response.headers.get("X-RateLimit-Reset", "unknown")
                 logger.warning(
                     "GitHub rate limit near exhaustion. "
-                    f"Remaining: {remaining}, Reset: {reset_time}"
+                    "Remaining: %s, Reset: %s",
+                    remaining,
+                    reset_time,
                 )
         except ValueError:
             pass
@@ -332,7 +334,7 @@ def _get_retry_after(response: httpx.Response) -> float | None:
         try:
             return float(retry_after)
         except ValueError:
-            logger.warning(f"Invalid Retry-After header value: {retry_after}")
+            logger.warning("Invalid Retry-After header value: %s", retry_after)
 
     # Check GitHub-specific x-ratelimit-reset (Unix timestamp)
     reset_time = response.headers.get("X-RateLimit-Reset")
@@ -343,7 +345,7 @@ def _get_retry_after(response: httpx.Response) -> float | None:
             if delay > 0:
                 return float(delay)
         except ValueError:
-            logger.warning(f"Invalid X-RateLimit-Reset header value: {reset_time}")
+            logger.warning("Invalid X-RateLimit-Reset header value: %s", reset_time)
 
     return None
 
@@ -405,8 +407,11 @@ def _execute_with_retry(
             delay = _calculate_backoff_delay(attempt, config, retry_after)
 
             logger.warning(
-                f"Rate limited (attempt {attempt + 1}/{config.max_retries + 1}). "
-                f"Retrying in {delay:.2f}s"
+                "Rate limited (attempt %s/%s). "
+                "Retrying in %.2fs",
+                attempt + 1,
+                config.max_retries + 1,
+                delay,
             )
 
             time.sleep(delay)
@@ -597,7 +602,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             "per_page": min(max_results, 100),  # GitHub max is 100 per page
         }
 
-        logger.debug(f"Searching GitHub: {query}")
+        logger.debug("Searching GitHub: %s", query)
 
         def do_search() -> list[dict[str, Any]]:
             client = self._get_client()
@@ -607,7 +612,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             data: dict[str, Any] = response.json()
             items: list[dict[str, Any]] = data.get("items", [])
             total_count = data.get("total_count", 0)
-            logger.info(f"GitHub search returned {len(items)} items (total: {total_count})")
+            logger.info("GitHub search returned %s items (total: %s)", len(items), total_count)
             return items
 
         try:
@@ -728,7 +733,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
 
         variables = {"owner": owner, "number": project_number}
 
-        logger.debug(f"Fetching {scope} project: {owner}/project/{project_number}")
+        logger.debug("Fetching %s project: %s/project/%s", scope, owner, project_number)
 
         data = self._execute_graphql(query, variables)
 
@@ -762,7 +767,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
             "fields": fields,
         }
 
-        logger.info(f"Retrieved project '{result['title']}' with {len(fields)} fields")
+        logger.info("Retrieved project '%s' with %s fields", result['title'], len(fields))
         return result
 
     def list_project_items(
@@ -791,7 +796,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
         all_items: list[dict[str, Any]] = []
         cursor: str | None = None
 
-        logger.debug(f"Fetching project items for project ID: {project_id}")
+        logger.debug("Fetching project items for project ID: %s", project_id)
 
         while len(all_items) < max_results:
             variables: dict[str, Any] = {"projectId": project_id}
@@ -820,7 +825,7 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
 
             cursor = page_info.get("endCursor")
 
-        logger.info(f"Retrieved {len(all_items)} project items")
+        logger.info("Retrieved %s project items", len(all_items))
         return all_items
 
     def _normalize_project_item(self, item_node: dict[str, Any]) -> dict[str, Any]:
@@ -1022,7 +1027,7 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
         try:
             _execute_with_retry(do_add, self.retry_config, GitHubTagClientError)
             self._circuit_breaker.record_success()
-            logger.info(f"Added label '{label}' to {owner}/{repo}#{issue_number}")
+            logger.info("Added label '%s' to %s/%s#%s", label, owner, repo, issue_number)
         except httpx.TimeoutException as e:
             self._circuit_breaker.record_failure(e)
             raise GitHubTagClientError(f"Add label timed out: {e}") from e
@@ -1073,14 +1078,14 @@ class GitHubRestTagClient(BaseGitHubHttpClient, GitHubTagClient):
             _check_rate_limit_warning(response)
             # 404 is acceptable - label might already be removed
             if response.status_code == 404:
-                logger.debug(f"Label '{label}' not found on {owner}/{repo}#{issue_number}")
+                logger.debug("Label '%s' not found on %s/%s#%s", label, owner, repo, issue_number)
                 return
             response.raise_for_status()
 
         try:
             _execute_with_retry(do_remove, self.retry_config, GitHubTagClientError)
             self._circuit_breaker.record_success()
-            logger.info(f"Removed label '{label}' from {owner}/{repo}#{issue_number}")
+            logger.info("Removed label '%s' from %s/%s#%s", label, owner, repo, issue_number)
         except httpx.TimeoutException as e:
             self._circuit_breaker.record_failure(e)
             raise GitHubTagClientError(f"Remove label timed out: {e}") from e

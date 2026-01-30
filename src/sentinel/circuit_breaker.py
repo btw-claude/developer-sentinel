@@ -313,8 +313,10 @@ class CircuitBreaker:
             self._failure_count = 0
 
         logger.info(
-            f"[CIRCUIT_BREAKER] {self.service_name}: "
-            f"State changed from {old_state.value} to {new_state.value}"
+            "[CIRCUIT_BREAKER] %s: State changed from %s to %s",
+            self.service_name,
+            old_state.value,
+            new_state.value,
         )
 
     def allow_request(self) -> bool:
@@ -336,7 +338,8 @@ class CircuitBreaker:
             if self._state == CircuitState.OPEN:
                 self._metrics.rejected_calls += 1
                 logger.warning(
-                    f"[CIRCUIT_BREAKER] {self.service_name}: Request rejected, circuit is OPEN"
+                    "[CIRCUIT_BREAKER] %s: Request rejected, circuit is OPEN",
+                    self.service_name,
                 )
                 return False
 
@@ -344,14 +347,17 @@ class CircuitBreaker:
             if self._half_open_calls < self.config.half_open_max_calls:
                 self._half_open_calls += 1
                 logger.debug(
-                    f"[CIRCUIT_BREAKER] {self.service_name}: "
-                    f"HALF_OPEN call {self._half_open_calls}/{self.config.half_open_max_calls}"
+                    "[CIRCUIT_BREAKER] %s: HALF_OPEN call %s/%s",
+                    self.service_name,
+                    self._half_open_calls,
+                    self.config.half_open_max_calls,
                 )
                 return True
 
             self._metrics.rejected_calls += 1
             logger.warning(
-                f"[CIRCUIT_BREAKER] {self.service_name}: Request rejected, HALF_OPEN limit reached"
+                "[CIRCUIT_BREAKER] %s: Request rejected, HALF_OPEN limit reached",
+                self.service_name,
             )
             return False
 
@@ -369,8 +375,8 @@ class CircuitBreaker:
                 if self._success_count >= self.config.half_open_max_calls:
                     self._transition_to(CircuitState.CLOSED)
                     logger.info(
-                        f"[CIRCUIT_BREAKER] {self.service_name}: "
-                        "Recovery successful, circuit CLOSED"
+                        "[CIRCUIT_BREAKER] %s: Recovery successful, circuit CLOSED",
+                        self.service_name,
                     )
             elif self._state == CircuitState.CLOSED:
                 # Reset failure count on success in closed state
@@ -391,8 +397,9 @@ class CircuitBreaker:
         # Skip recording if this exception type is excluded
         if self._is_excluded_exception(exception):
             logger.debug(
-                f"[CIRCUIT_BREAKER] {self.service_name}: Exception {type(exception).__name__} "
-                "is excluded, not recording as failure"
+                "[CIRCUIT_BREAKER] %s: Exception %s is excluded, not recording as failure",
+                self.service_name,
+                type(exception).__name__,
             )
             return
 
@@ -402,21 +409,26 @@ class CircuitBreaker:
             self._last_failure_time = time.time()
 
             error_info = f": {type(exception).__name__}: {exception}" if exception else ""
-            logger.warning(f"[CIRCUIT_BREAKER] {self.service_name}: Failure recorded{error_info}")
+            logger.warning(
+                "[CIRCUIT_BREAKER] %s: Failure recorded%s", self.service_name, error_info
+            )
 
             if self._state == CircuitState.HALF_OPEN:
                 # Any failure in half-open immediately opens the circuit
                 self._transition_to(CircuitState.OPEN)
                 logger.warning(
-                    f"[CIRCUIT_BREAKER] {self.service_name}: Recovery failed, circuit OPEN"
+                    "[CIRCUIT_BREAKER] %s: Recovery failed, circuit OPEN",
+                    self.service_name,
                 )
             elif self._state == CircuitState.CLOSED:
                 self._failure_count += 1
                 if self._failure_count >= self.config.failure_threshold:
                     self._transition_to(CircuitState.OPEN)
                     logger.warning(
-                        f"[CIRCUIT_BREAKER] {self.service_name}: Failure threshold reached "
-                        f"({self._failure_count}/{self.config.failure_threshold}), circuit OPEN"
+                        "[CIRCUIT_BREAKER] %s: Failure threshold reached (%s/%s), circuit OPEN",
+                        self.service_name,
+                        self._failure_count,
+                        self.config.failure_threshold,
                     )
 
     def reset(self) -> None:
@@ -430,7 +442,7 @@ class CircuitBreaker:
             self._success_count = 0
             self._half_open_calls = 0
             self._last_failure_time = 0.0
-            logger.info(f"[CIRCUIT_BREAKER] {self.service_name}: Circuit manually reset to CLOSED")
+            logger.info("[CIRCUIT_BREAKER] %s: Circuit manually reset to CLOSED", self.service_name)
 
     def get_status(self) -> dict[str, Any]:
         """Get current circuit breaker status.
@@ -553,8 +565,10 @@ class CircuitBreakerRegistry:
                     excluded_exceptions=excluded_exceptions or (),
                 )
                 logger.info(
-                    f"[CIRCUIT_BREAKER] Created circuit breaker for {service_name}: "
-                    f"threshold={config.failure_threshold}, timeout={config.recovery_timeout}s"
+                    "[CIRCUIT_BREAKER] Created circuit breaker for %s: threshold=%s, timeout=%ss",
+                    service_name,
+                    config.failure_threshold,
+                    config.recovery_timeout,
                 )
             return self._breakers[service_name]
 

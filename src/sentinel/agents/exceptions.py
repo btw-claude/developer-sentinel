@@ -104,7 +104,7 @@ def handle_tool_exceptions(
         @functools.wraps(func)
         def wrapper(self: Any, **kwargs: Any) -> ToolResult:
             tool_name = getattr(self, "name", "unknown_tool")
-            logger.debug(f"Executing {tool_name}", extra={"tool": tool_name, "params": kwargs})
+            logger.debug("Executing %s", tool_name, extra={"tool": tool_name, "params": kwargs})
 
             # Validate params if the method exists
             if hasattr(self, "validate_params"):
@@ -118,16 +118,18 @@ def handle_tool_exceptions(
                 if isinstance(result, tuple) and len(result) == 2:
                     tool_result: ToolResult = result[0]
                     if tool_result.success:
-                        logger.info(f"Tool {tool_name} succeeded", extra={"tool": tool_name})
+                        logger.info("Tool %s succeeded", tool_name, extra={"tool": tool_name})
                     return tool_result
                 # Handle case where function returns just the result
                 if result.success:
-                    logger.info(f"Tool {tool_name} succeeded", extra={"tool": tool_name})
+                    logger.info("Tool %s succeeded", tool_name, extra={"tool": tool_name})
                 return result
             except (OSError, TimeoutError) as e:
                 context = _extract_context(kwargs)
                 logger.error(
-                    f"Tool {tool_name} failed due to I/O or timeout: {e}",
+                    "Tool %s failed due to I/O or timeout: %s",
+                    tool_name,
+                    e,
                     extra={"tool": tool_name, "error": str(e), "error_type": type(e).__name__},
                 )
                 return ToolResult.fail(
@@ -137,7 +139,9 @@ def handle_tool_exceptions(
             except ConfigurationError as e:
                 context = _extract_context(kwargs)
                 logger.error(
-                    f"Tool {tool_name} failed due to configuration error: {e}",
+                    "Tool %s failed due to configuration error: %s",
+                    tool_name,
+                    e,
                     extra={"tool": tool_name, "error": str(e), "error_type": type(e).__name__},
                 )
                 return ToolResult.fail(
@@ -147,7 +151,9 @@ def handle_tool_exceptions(
             except ValidationError as e:
                 context = _extract_context(kwargs)
                 logger.error(
-                    f"Tool {tool_name} failed due to validation error: {e}",
+                    "Tool %s failed due to validation error: %s",
+                    tool_name,
+                    e,
                     extra={"tool": tool_name, "error": str(e), "error_type": type(e).__name__},
                 )
                 return ToolResult.fail(
@@ -157,7 +163,9 @@ def handle_tool_exceptions(
             except (KeyError, ValueError) as e:
                 context = _extract_context(kwargs)
                 logger.error(
-                    f"Tool {tool_name} failed due to data error: {e}",
+                    "Tool %s failed due to data error: %s",
+                    tool_name,
+                    e,
                     extra={"tool": tool_name, "error": str(e), "error_type": type(e).__name__},
                 )
                 return ToolResult.fail(
@@ -167,7 +175,9 @@ def handle_tool_exceptions(
             except RuntimeError as e:
                 context = _extract_context(kwargs)
                 logger.error(
-                    f"Tool {tool_name} failed due to runtime error: {e}",
+                    "Tool %s failed due to runtime error: %s",
+                    tool_name,
+                    e,
                     extra={"tool": tool_name, "error": str(e), "error_type": type(e).__name__},
                 )
                 return ToolResult.fail(

@@ -191,7 +191,7 @@ class ExecutionManager:
             max_workers=self._max_concurrent_executions,
             thread_name_prefix="sentinel-exec-",
         )
-        logger.info(f"Started thread pool with max {self._max_concurrent_executions} workers")
+        logger.info("Started thread pool with max %s workers", self._max_concurrent_executions)
 
     def shutdown(self, block: bool = True, cancel_futures: bool = False) -> None:
         """Shutdown the thread pool.
@@ -332,14 +332,18 @@ class ExecutionManager:
                 ]
                 self._stale_futures_cleaned += removed_count
                 logger.warning(
-                    f"Max futures limit ({self._max_futures}) reached. "
-                    f"Removed {removed_count} stale futures "
-                    f"({self._stale_removal_fraction:.0%} of {len(stale)} stale)."
+                    "Max futures limit (%s) reached. "
+                    "Removed %s stale futures "
+                    "(%s of %s stale).",
+                    self._max_futures,
+                    removed_count,
+                    f"{self._stale_removal_fraction:.0%}",
+                    len(stale),
                 )
 
         removed = original_count - len(self._active_futures)
         if removed > 0:
-            logger.debug(f"Cleaned up {removed} futures to enforce limit")
+            logger.debug("Cleaned up %s futures to enforce limit", removed)
 
     def collect_completed_results(self) -> list[ExecutionResult]:
         """Collect results from completed futures and clean up stale ones.
@@ -362,17 +366,20 @@ class ExecutionManager:
                         results.append(result)
                 except (OSError, TimeoutError) as e:
                     logger.error(
-                        f"Error collecting result from future due to I/O or timeout: {e}",
+                        "Error collecting result from future due to I/O or timeout: %s",
+                        e,
                         extra={"description": tracked.description, "error_type": type(e).__name__},
                     )
                 except RuntimeError as e:
                     logger.error(
-                        f"Error collecting result from future due to runtime error: {e}",
+                        "Error collecting result from future due to runtime error: %s",
+                        e,
                         extra={"description": tracked.description, "error_type": type(e).__name__},
                     )
                 except (KeyError, ValueError) as e:
                     logger.error(
-                        f"Error collecting result from future due to data error: {e}",
+                        "Error collecting result from future due to data error: %s",
+                        e,
                         extra={"description": tracked.description, "error_type": type(e).__name__},
                     )
 
@@ -383,8 +390,10 @@ class ExecutionManager:
             stale_count = self._cleanup_stale_futures()
             if stale_count > 0:
                 logger.warning(
-                    f"Cleaned up {stale_count} stale futures that exceeded "
-                    f"TTL of {self._future_ttl_seconds}s"
+                    "Cleaned up %s stale futures that exceeded "
+                    "TTL of %ss",
+                    stale_count,
+                    self._future_ttl_seconds,
                 )
 
             # Remove completed futures
@@ -450,8 +459,11 @@ class ExecutionManager:
             desc = tracked.description or "unnamed task"
             age = tracked.age_seconds()
             logger.error(
-                f"Future exceeded TTL: {desc} (age: {age:.1f}s, TTL: {self._future_ttl_seconds}s). "
-                "This may indicate a hung task or network issue."
+                "Future exceeded TTL: %s (age: %.1fs, TTL: %ss). "
+                "This may indicate a hung task or network issue.",
+                desc,
+                age,
+                self._future_ttl_seconds,
             )
             # Attempt to cancel the future (may not work if already running)
             tracked.future.cancel()
@@ -550,19 +562,22 @@ class ExecutionManager:
             return fn(*args, **kwargs)
         except (OSError, TimeoutError) as e:
             logger.error(
-                f"Error in synchronous execution due to I/O or timeout: {e}",
+                "Error in synchronous execution due to I/O or timeout: %s",
+                e,
                 extra={"error_type": type(e).__name__},
             )
             return None
         except RuntimeError as e:
             logger.error(
-                f"Error in synchronous execution due to runtime error: {e}",
+                "Error in synchronous execution due to runtime error: %s",
+                e,
                 extra={"error_type": type(e).__name__},
             )
             return None
         except (KeyError, ValueError) as e:
             logger.error(
-                f"Error in synchronous execution due to data error: {e}",
+                "Error in synchronous execution due to data error: %s",
+                e,
                 extra={"error_type": type(e).__name__},
             )
             return None
@@ -587,7 +602,8 @@ class ExecutionManager:
                         on_future_done(tracked.future)
                     except (OSError, RuntimeError) as e:
                         logger.error(
-                            f"Error in future done callback due to runtime/I/O error: {e}",
+                            "Error in future done callback due to runtime/I/O error: %s",
+                            e,
                             extra={
                                 "description": tracked.description,
                                 "error_type": type(e).__name__,
@@ -595,7 +611,8 @@ class ExecutionManager:
                         )
                     except (KeyError, ValueError) as e:
                         logger.error(
-                            f"Error in future done callback due to data error: {e}",
+                            "Error in future done callback due to data error: %s",
+                            e,
                             extra={
                                 "description": tracked.description,
                                 "error_type": type(e).__name__,

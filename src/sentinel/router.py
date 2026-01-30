@@ -53,7 +53,7 @@ class Router:
             orchestrations: List of orchestration configurations to route to.
         """
         self.orchestrations = orchestrations
-        logger.info(f"Router initialized with {len(orchestrations)} orchestrations")
+        logger.info("Router initialized with %s orchestrations", len(orchestrations))
 
     def _matches_trigger(self, issue: AnyIssue, orchestration: Orchestration) -> bool:
         """Check if an issue matches an orchestration's trigger.
@@ -127,15 +127,15 @@ class Router:
         for orchestration in self.orchestrations:
             if self._matches_trigger(issue, orchestration):
                 matching.append(orchestration)
-                logger.debug(f"Issue {issue.key} matched orchestration '{orchestration.name}'")
+                logger.debug("Issue %s matched orchestration '%s'", issue.key, orchestration.name)
 
         if matching:
             logger.info(
-                f"Issue {issue.key} routed to {len(matching)} orchestration(s): "
-                f"{[o.name for o in matching]}"
+                "Issue %s routed to %s orchestration(s): %s",
+                issue.key, len(matching), [o.name for o in matching]
             )
         else:
-            logger.debug(f"Issue {issue.key} did not match any orchestrations")
+            logger.debug("Issue %s did not match any orchestrations", issue.key)
 
         return RoutingResult(issue=issue, orchestrations=matching)
 
@@ -152,8 +152,8 @@ class Router:
 
         matched_count = sum(1 for r in results if r.matched)
         logger.info(
-            f"Routed {len(issues)} issues: {matched_count} matched, "
-            f"{len(issues) - matched_count} unmatched"
+            "Routed %s issues: %s matched, %s unmatched",
+            len(issues), matched_count, len(issues) - matched_count
         )
 
         return results

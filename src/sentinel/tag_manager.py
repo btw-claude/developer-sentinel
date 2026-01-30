@@ -136,8 +136,9 @@ class TagManager:
 
         # Default to Jira for backwards compatibility
         logger.warning(
-            f"Issue key '{issue_key}' doesn't match known formats. "
-            "Assuming Jira format for backwards compatibility."
+            "Issue key '%s' doesn't match known formats. "
+            "Assuming Jira format for backwards compatibility.",
+            issue_key
         )
         return ("jira", self.client, None)
 
@@ -232,7 +233,7 @@ class TagManager:
             try:
                 self._remove_label(issue_key, tag)
                 removed_tags.append(tag)
-                logger.info(f"Removed trigger tag '{tag}' from {issue_key}")
+                logger.info("Removed trigger tag '%s' from %s", tag, issue_key)
             except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = f"Failed to remove trigger tag '{tag}' from {issue_key}: {e}"
                 errors.append(error_msg)
@@ -244,7 +245,7 @@ class TagManager:
             try:
                 self._add_label(issue_key, on_start.add_tag)
                 added_tags.append(on_start.add_tag)
-                logger.info(f"Added in-progress tag '{on_start.add_tag}' to {issue_key}")
+                logger.info("Added in-progress tag '%s' to %s", on_start.add_tag, issue_key)
             except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = (
                     f"Failed to add in-progress tag '{on_start.add_tag}' to {issue_key}: {e}"
@@ -261,11 +262,11 @@ class TagManager:
 
         if result.success:
             logger.info(
-                f"Start processing tags updated for {issue_key}: "
-                f"added={added_tags}, removed={removed_tags}"
+                "Start processing tags updated for %s: added=%s, removed=%s",
+                issue_key, added_tags, removed_tags
             )
         else:
-            logger.warning(f"Start processing tag update had errors for {issue_key}: {errors}")
+            logger.warning("Start processing tag update had errors for %s: %s", issue_key, errors)
 
         return result
 
@@ -295,7 +296,9 @@ class TagManager:
             try:
                 self._remove_label(result.issue_key, on_start.add_tag)
                 removed_tags.append(on_start.add_tag)
-                logger.info(f"Removed in-progress tag '{on_start.add_tag}' from {result.issue_key}")
+                logger.info(
+                    "Removed in-progress tag '%s' from %s", on_start.add_tag, result.issue_key
+                )
             except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = (
                     f"Failed to remove in-progress tag '{on_start.add_tag}' "
@@ -325,7 +328,8 @@ class TagManager:
                         self._remove_label(result.issue_key, on_complete.remove_tag)
                         removed_tags.append(on_complete.remove_tag)
                         logger.info(
-                            f"Removed tag '{on_complete.remove_tag}' from {result.issue_key}"
+                            "Removed tag '%s' from %s",
+                            on_complete.remove_tag, result.issue_key
                         )
                     except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                         error_msg = (
@@ -342,7 +346,7 @@ class TagManager:
                 try:
                     self._add_label(result.issue_key, tag_to_add)
                     added_tags.append(tag_to_add)
-                    logger.info(f"Added tag '{tag_to_add}' to {result.issue_key}")
+                    logger.info("Added tag '%s' to %s", tag_to_add, result.issue_key)
                 except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                     error_msg = f"Failed to add tag '{tag_to_add}' to {result.issue_key}: {e}"
                     errors.append(error_msg)
@@ -356,7 +360,9 @@ class TagManager:
                 try:
                     self._add_label(result.issue_key, on_failure.add_tag)
                     added_tags.append(on_failure.add_tag)
-                    logger.info(f"Added failure tag '{on_failure.add_tag}' to {result.issue_key}")
+                    logger.info(
+                        "Added failure tag '%s' to %s", on_failure.add_tag, result.issue_key
+                    )
                 except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                     error_msg = (
                         f"Failed to add failure tag '{on_failure.add_tag}' "
@@ -374,11 +380,11 @@ class TagManager:
 
         if update_result.success:
             logger.info(
-                f"Tag update completed for {result.issue_key}: "
-                f"added={added_tags}, removed={removed_tags}"
+                "Tag update completed for %s: added=%s, removed=%s",
+                result.issue_key, added_tags, removed_tags
             )
         else:
-            logger.warning(f"Tag update had errors for {result.issue_key}: {errors}")
+            logger.warning("Tag update had errors for %s: %s", result.issue_key, errors)
 
         return update_result
 
@@ -409,7 +415,7 @@ class TagManager:
             try:
                 self._remove_label(issue_key, on_start.add_tag)
                 removed_tags.append(on_start.add_tag)
-                logger.info(f"Removed in-progress tag '{on_start.add_tag}' from {issue_key}")
+                logger.info("Removed in-progress tag '%s' from %s", on_start.add_tag, issue_key)
             except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = (
                     f"Failed to remove in-progress tag '{on_start.add_tag}' from {issue_key}: {e}"
@@ -423,7 +429,7 @@ class TagManager:
             try:
                 self._add_label(issue_key, on_failure.add_tag)
                 added_tags.append(on_failure.add_tag)
-                logger.info(f"Added failure tag '{on_failure.add_tag}' to {issue_key}")
+                logger.info("Added failure tag '%s' to %s", on_failure.add_tag, issue_key)
             except (JiraTagClientError, GitHubTagClientError, ValueError) as e:
                 error_msg = f"Failed to add failure tag '{on_failure.add_tag}' to {issue_key}: {e}"
                 errors.append(error_msg)
@@ -438,10 +444,11 @@ class TagManager:
 
         if result.success:
             logger.info(
-                f"Failure tags applied for {issue_key}: added={added_tags}, removed={removed_tags}"
+                "Failure tags applied for %s: added=%s, removed=%s",
+                issue_key, added_tags, removed_tags
             )
         else:
-            logger.warning(f"Failure tag update had errors for {issue_key}: {errors}")
+            logger.warning("Failure tag update had errors for %s: %s", issue_key, errors)
 
         return result
 
@@ -463,6 +470,6 @@ class TagManager:
             update_results.append(update_result)
 
         success_count = sum(1 for r in update_results if r.success)
-        logger.info(f"Batch tag update completed: {success_count}/{len(results)} successful")
+        logger.info("Batch tag update completed: %s/%s successful", success_count, len(results))
 
         return update_results
