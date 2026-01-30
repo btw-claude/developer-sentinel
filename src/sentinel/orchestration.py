@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -351,6 +352,10 @@ class OrchestrationVersion:
         mtime: Modification time of the source file when loaded.
         loaded_at: Datetime when this version was loaded.
         active_executions: Count of currently running executions using this version.
+
+    Thread Safety:
+        The increment_executions() and decrement_executions() methods are internally
+        thread-safe and can be called from multiple threads without external locking.
     """
 
     version_id: str
@@ -359,6 +364,7 @@ class OrchestrationVersion:
     mtime: float
     loaded_at: datetime
     active_executions: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     @classmethod
     def create(
@@ -393,27 +399,30 @@ class OrchestrationVersion:
     def increment_executions(self) -> None:
         """Increment the active execution count.
 
-        Thread Safety Note:
-            This method modifies active_executions without internal synchronization.
-            Callers must hold the appropriate lock (e.g., _versions_lock in main.py)
-            when calling this method to ensure thread safety.
+        This method is thread-safe and can be called from multiple threads
+        without external locking.
         """
-        self.active_executions += 1
+        with self._lock:
+            self.active_executions += 1
 
     def decrement_executions(self) -> None:
         """Decrement the active execution count.
 
-        Thread Safety Note:
-            This method modifies active_executions without internal synchronization.
-            Callers must hold the appropriate lock (e.g., _versions_lock in main.py)
-            when calling this method to ensure thread safety.
+        This method is thread-safe and can be called from multiple threads
+        without external locking. The count will not go below zero.
         """
-        self.active_executions = max(0, self.active_executions - 1)
+        with self._lock:
+            self.active_executions = max(0, self.active_executions - 1)
 
     @property
     def has_active_executions(self) -> bool:
-        """Return True if there are active executions using this version."""
-        return self.active_executions > 0
+        """Return True if there are active executions using this version.
+
+        This is a point-in-time snapshot; the value may change immediately
+        after reading if other threads are modifying the execution count.
+        """
+        with self._lock:
+            return self.active_executions > 0
 
 
 def _validate_string_list(value: Any, field_name: str) -> None:
