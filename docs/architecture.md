@@ -525,6 +525,518 @@ handler = create_shutdown_handler(on_shutdown=sentinel.request_shutdown)
 
 ---
 
+### Metrics and Observability
+
+This section describes how to monitor the health and performance of error handling mechanisms in production.
+
+#### Circuit Breaker Metrics
+
+**Monitoring Circuit Breaker States:**
+
+Each circuit breaker instance exposes the following observable properties:
+
+| Metric | Description | How to Access |
+|--------|-------------|---------------|
+| `state` | Current state (CLOSED, OPEN, HALF_OPEN) | `cb.state` |
+| `failure_count` | Number of consecutive failures | `cb.failure_count` |
+| `success_count` | Successes in half-open state | `cb.success_count` |
+| `last_failure_time` | Timestamp of most recent failure | `cb.last_failure_time` |
+| `last_state_change` | Timestamp of last state transition | `cb.last_state_change` |
+
+**Logging Integration:**
+
+Circuit breaker state changes are logged at INFO level:
+```
+INFO  circuit_breaker.jira: State changed from CLOSED to OPEN (failures: 5)
+INFO  circuit_breaker.jira: State changed from OPEN to HALF_OPEN (recovery timeout elapsed)
+INFO  circuit_breaker.jira: State changed from HALF_OPEN to CLOSED (recovery successful)
+```
+
+**Prometheus-Style Metrics (Optional):**
+
+For production deployments, expose metrics via a `/metrics` endpoint:
+```python
+# Example metrics to track
+sentinel_circuit_breaker_state{service="jira"} 0  # 0=CLOSED, 1=OPEN, 2=HALF_OPEN
+sentinel_circuit_breaker_failures_total{service="jira"} 15
+sentinel_circuit_breaker_state_transitions_total{service="jira", from="closed", to="open"} 3
+```
+
+#### Retry Metrics
+
+**REST Client Retry Metrics:**
+
+| Metric | Description | Log Pattern |
+|--------|-------------|-------------|
+| Retry attempts | Number of retries per request | `WARNING rest_client: Retry attempt 2/4 for GET /rest/api/3/issue/...` |
+| Rate limit hits | 429 responses received | `WARNING rest_client: Rate limited, waiting 5.2s before retry` |
+| Backoff delays | Actual delay times applied | Included in retry log messages |
+
+**Agent Execution Retry Metrics:**
+
+| Metric | Description | Log Pattern |
+|--------|-------------|-------------|
+| Execution attempts | Attempts per issue/orchestration | `INFO executor: Attempt 2/3 for PROJ-123 (orch: code-review)` |
+| Failure patterns matched | Which patterns triggered retry | `INFO executor: Matched failure pattern 'ERROR:' - retrying` |
+| Final execution status | SUCCESS, FAILURE, ERROR | `INFO executor: Execution completed with status: SUCCESS` |
+
+#### Failure Rate Tracking
+
+**Calculating Failure Rates:**
+
+Track failure rates over time windows for trending and alerting:
+
+```python
+# Example: Track failures per 5-minute window
+from collections import deque
+from time import time
+
+class FailureRateTracker:
+    def __init__(self, window_seconds: int = 300):
+        self.window = window_seconds
+        self.failures: deque[float] = deque()
+        self.successes: deque[float] = deque()
+
+    def record_failure(self) -> None:
+        self._cleanup()
+        self.failures.append(time())
+
+    def record_success(self) -> None:
+        self._cleanup()
+        self.successes.append(time())
+
+    def get_failure_rate(self) -> float:
+        self._cleanup()
+        total = len(self.failures) + len(self.successes)
+        return len(self.failures) / total if total > 0 else 0.0
+
+    def _cleanup(self) -> None:
+        cutoff = time() - self.window
+        while self.failures and self.failures[0] < cutoff:
+            self.failures.popleft()
+        while self.successes and self.successes[0] < cutoff:
+            self.successes.popleft()
+```
+
+**Key Failure Rate Metrics:**
+
+| Metric | Scope | Calculation |
+|--------|-------|-------------|
+| Service failure rate | Per external service (Jira, GitHub, Claude) | failures / (failures + successes) per window |
+| Orchestration failure rate | Per orchestration | failed executions / total executions |
+| Polling failure rate | Per polling cycle | failed polls / total poll attempts |
+
+#### Dashboard Integration
+
+The Sentinel dashboard displays real-time execution status. Key observability data points:
+
+| Dashboard Element | Data Source | Update Frequency |
+|-------------------|-------------|------------------|
+| Running executions | `StateTracker.get_running_steps()` | Real-time |
+| Queued issues | `StateTracker.get_issue_queue()` | Per poll cycle |
+| Per-orchestration counts | `StateTracker.get_all_per_orch_counts()` | Real-time |
+| Hot-reload events | `OrchestrationRegistry` metrics | On file change |
+
+---
+
+### Testing Strategies
+
+This section describes how to test error handling scenarios in unit and integration tests.
+
+#### Unit Testing Circuit Breakers
+
+**Testing State Transitions:**
+
+```python
+import pytest
+from unittest.mock import patch
+from sentinel.circuit_breaker import CircuitBreaker, CircuitState
+
+class TestCircuitBreaker:
+    def test_opens_after_failure_threshold(self):
+        cb = CircuitBreaker(failure_threshold=3)
+
+        # Record failures up to threshold
+        for _ in range(3):
+            cb.record_failure(Exception("test"))
+
+        assert cb.state == CircuitState.OPEN
+        assert not cb.allow_request()
+
+    def test_transitions_to_half_open_after_timeout(self):
+        cb = CircuitBreaker(failure_threshold=1, recovery_timeout=1.0)
+        cb.record_failure(Exception("test"))
+
+        assert cb.state == CircuitState.OPEN
+
+        # Fast-forward time
+        with patch('time.time', return_value=time.time() + 2.0):
+            assert cb.allow_request()
+            assert cb.state == CircuitState.HALF_OPEN
+
+    def test_closes_after_successful_half_open_calls(self):
+        cb = CircuitBreaker(
+            failure_threshold=1,
+            recovery_timeout=0,
+            half_open_max_calls=2
+        )
+        cb.record_failure(Exception("test"))
+
+        # Transition to half-open
+        cb.allow_request()
+
+        # Record successes
+        cb.record_success()
+        cb.record_success()
+
+        assert cb.state == CircuitState.CLOSED
+```
+
+**Mocking External Services:**
+
+```python
+from unittest.mock import Mock, patch
+
+def test_circuit_breaker_protects_jira_calls():
+    mock_client = Mock()
+    mock_client.get_issue.side_effect = ConnectionError("Service unavailable")
+
+    with patch('sentinel.rest_clients.JiraRestClient', return_value=mock_client):
+        # After failures exceed threshold, circuit opens
+        # Subsequent calls should fail fast without calling the service
+        ...
+```
+
+#### Unit Testing Retry Logic
+
+**Testing Exponential Backoff:**
+
+```python
+from sentinel.rest_clients import calculate_backoff_delay
+
+def test_exponential_backoff_calculation():
+    config = RetryConfig(initial_delay=1.0, max_delay=30.0)
+
+    # Attempt 0: 1.0s base
+    # Attempt 1: 2.0s base
+    # Attempt 2: 4.0s base
+    # Attempt 3: 8.0s base (capped at max_delay)
+
+    delay_0 = calculate_backoff_delay(attempt=0, config=config)
+    delay_1 = calculate_backoff_delay(attempt=1, config=config)
+
+    assert 0.7 <= delay_0 <= 1.3  # With jitter
+    assert 1.4 <= delay_1 <= 2.6  # With jitter
+
+def test_respects_retry_after_header():
+    response = Mock()
+    response.headers = {'Retry-After': '10'}
+
+    delay = calculate_backoff_delay(attempt=0, config=config, response=response)
+
+    assert 7.0 <= delay <= 13.0  # 10s base with jitter
+```
+
+**Testing Agent Retry Behavior:**
+
+```python
+from sentinel.executor import AgentExecutor
+
+def test_retries_on_failure_pattern_match():
+    executor = AgentExecutor(
+        retry_config={
+            'max_attempts': 3,
+            'failure_patterns': ['ERROR:', 'FAILED']
+        }
+    )
+
+    mock_client = Mock()
+    mock_client.run_agent.side_effect = [
+        "ERROR: Connection timeout",
+        "ERROR: Rate limited",
+        "SUCCESS: Task completed"
+    ]
+
+    result = executor.execute(mock_client, "test prompt")
+
+    assert mock_client.run_agent.call_count == 3
+    assert result.status == ExecutionStatus.SUCCESS
+```
+
+#### Integration Testing Error Scenarios
+
+**Testing with Simulated Failures:**
+
+```python
+import pytest
+from unittest.mock import patch
+
+@pytest.mark.integration
+class TestErrorRecovery:
+    def test_recovers_from_temporary_jira_outage(self, sentinel_instance):
+        """Verify Sentinel continues after Jira becomes unavailable then recovers."""
+
+        call_count = 0
+        def flaky_jira_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 3:
+                raise ConnectionError("Jira unavailable")
+            return {"issues": []}
+
+        with patch.object(
+            sentinel_instance.jira_client,
+            'search_issues',
+            side_effect=flaky_jira_call
+        ):
+            # Run multiple polling cycles
+            for _ in range(5):
+                sentinel_instance.run_once()
+
+            # Verify circuit breaker opened then closed
+            cb = get_circuit_breaker("jira")
+            assert cb.state == CircuitState.CLOSED
+
+    def test_graceful_degradation_with_one_service_down(self, sentinel_instance):
+        """Verify GitHub polling continues when Jira is down."""
+
+        with patch.object(
+            sentinel_instance.jira_client,
+            'search_issues',
+            side_effect=ConnectionError("Jira down")
+        ):
+            # GitHub polling should still work
+            result = sentinel_instance.run_once()
+
+            assert result.github_polls_completed > 0
+            assert result.jira_polls_completed == 0
+```
+
+**Testing Thread Pool Error Handling:**
+
+```python
+def test_handles_executor_thread_failure():
+    """Verify ExecutionManager handles thread exceptions gracefully."""
+
+    manager = ExecutionManager(max_concurrent=2)
+    manager.start()
+
+    def failing_task():
+        raise RuntimeError("Simulated thread failure")
+
+    future = manager.submit(failing_task)
+    results = manager.collect_completed_results()
+
+    # Error should be captured, not propagate
+    assert len(results) == 1
+    assert results[0].status == ExecutionStatus.ERROR
+
+    manager.shutdown()
+```
+
+#### Test Fixtures and Utilities
+
+**Circuit Breaker Test Helper:**
+
+```python
+@pytest.fixture
+def reset_circuit_breakers():
+    """Reset all circuit breakers before each test."""
+    from sentinel.circuit_breaker import _circuit_breakers
+    _circuit_breakers.clear()
+    yield
+    _circuit_breakers.clear()
+
+@pytest.fixture
+def fast_circuit_breaker():
+    """Circuit breaker with short timeouts for testing."""
+    return CircuitBreaker(
+        failure_threshold=2,
+        recovery_timeout=0.1,
+        half_open_max_calls=1
+    )
+```
+
+**Mock Service Responses:**
+
+```python
+@pytest.fixture
+def mock_jira_rate_limit():
+    """Simulate Jira rate limiting response."""
+    response = Mock()
+    response.status_code = 429
+    response.headers = {'Retry-After': '1'}
+    return response
+
+@pytest.fixture
+def mock_github_server_error():
+    """Simulate GitHub 500 error."""
+    response = Mock()
+    response.status_code = 500
+    response.json.return_value = {'message': 'Internal Server Error'}
+    return response
+```
+
+---
+
+### Alerting Recommendations
+
+This section provides recommended thresholds and alerting strategies for error handling patterns.
+
+#### Circuit Breaker Alerts
+
+| Alert | Condition | Severity | Response |
+|-------|-----------|----------|----------|
+| Circuit Open | Any circuit breaker enters OPEN state | Warning | Investigate external service health |
+| Prolonged Open | Circuit remains OPEN > 5 minutes | Critical | Check service status, consider manual intervention |
+| Flapping | Circuit transitions > 3 times in 10 minutes | Warning | Service instability, review failure patterns |
+| All Circuits Open | All external service circuits are OPEN | Critical | Major incident, likely network or infrastructure issue |
+
+**Alerting Rules (Prometheus/AlertManager Style):**
+
+```yaml
+groups:
+  - name: sentinel_circuit_breaker
+    rules:
+      - alert: CircuitBreakerOpen
+        expr: sentinel_circuit_breaker_state == 1
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breaker open for {{ $labels.service }}"
+          description: "The circuit breaker for {{ $labels.service }} has been open for more than 30 seconds."
+
+      - alert: CircuitBreakerProlongedOpen
+        expr: sentinel_circuit_breaker_state == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker stuck open for {{ $labels.service }}"
+          description: "The circuit breaker for {{ $labels.service }} has been open for more than 5 minutes. Manual investigation required."
+```
+
+#### Retry Threshold Alerts
+
+| Alert | Condition | Severity | Response |
+|-------|-----------|----------|----------|
+| High Retry Rate | > 20% of requests require retries | Warning | Check for rate limiting or service degradation |
+| Max Retries Exhausted | > 5 requests exhaust all retries in 5 min | Warning | Service likely degraded, check circuit breaker |
+| Consistent Rate Limiting | > 10 rate limit (429) responses in 5 min | Warning | Review request patterns, consider backoff tuning |
+
+**Recommended Thresholds:**
+
+```yaml
+# Retry-related alerts
+- alert: HighRetryRate
+  expr: |
+    rate(sentinel_retry_attempts_total[5m]) /
+    rate(sentinel_requests_total[5m]) > 0.2
+  for: 5m
+  labels:
+    severity: warning
+
+- alert: RetriesExhausted
+  expr: increase(sentinel_retries_exhausted_total[5m]) > 5
+  for: 0m
+  labels:
+    severity: warning
+```
+
+#### Failure Rate Alerts
+
+| Alert | Condition | Severity | Response |
+|-------|-----------|----------|----------|
+| Elevated Failure Rate | Service failure rate > 10% over 5 min | Warning | Monitor closely, may self-recover |
+| High Failure Rate | Service failure rate > 25% over 5 min | Critical | Active incident, investigate immediately |
+| Execution Failure Spike | > 3 orchestration failures in 10 min | Warning | Check agent health, review failure patterns |
+| Polling Failures | > 50% of polling cycles fail | Critical | External services likely unavailable |
+
+**Recommended Thresholds:**
+
+```yaml
+# Failure rate alerts
+- alert: ElevatedServiceFailureRate
+  expr: sentinel_service_failure_rate > 0.10
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Elevated failure rate for {{ $labels.service }}"
+
+- alert: HighServiceFailureRate
+  expr: sentinel_service_failure_rate > 0.25
+  for: 5m
+  labels:
+    severity: critical
+  annotations:
+    summary: "High failure rate for {{ $labels.service }} - immediate attention required"
+
+- alert: OrchestrationFailureSpike
+  expr: increase(sentinel_orchestration_failures_total[10m]) > 3
+  for: 0m
+  labels:
+    severity: warning
+```
+
+#### Thread Pool and Resource Alerts
+
+| Alert | Condition | Severity | Response |
+|-------|-----------|----------|----------|
+| Thread Pool Saturation | Active futures > 80% of max_futures | Warning | Executions backing up, may need to scale |
+| Stale Futures | > 5 futures exceed TTL in 10 min | Warning | Executions hanging, check agent health |
+| Queue Overflow | Issue queue at max capacity | Warning | Processing falling behind, check concurrency |
+| Memory Growth | StateTracker entries > 10000 | Warning | Check TTL cleanup, possible memory leak |
+
+**Recommended Thresholds:**
+
+```yaml
+# Resource alerts
+- alert: ThreadPoolSaturation
+  expr: sentinel_active_futures / sentinel_max_futures > 0.8
+  for: 5m
+  labels:
+    severity: warning
+
+- alert: StaleFutures
+  expr: increase(sentinel_stale_futures_total[10m]) > 5
+  for: 0m
+  labels:
+    severity: warning
+
+- alert: IssueQueueOverflow
+  expr: sentinel_issue_queue_size >= sentinel_max_queue_size
+  for: 1m
+  labels:
+    severity: warning
+```
+
+#### Alert Response Playbook
+
+**Circuit Breaker Open:**
+1. Check external service status (Jira, GitHub, Claude API status pages)
+2. Review recent error logs for specific failure messages
+3. Verify network connectivity from Sentinel host
+4. If service is healthy, check for configuration issues (credentials, URLs)
+5. Consider temporary increase of `failure_threshold` if experiencing transient issues
+
+**High Retry/Failure Rate:**
+1. Check for rate limiting (look for 429 responses in logs)
+2. Review request patterns for potential optimizations
+3. Verify external service SLAs and current performance
+4. Consider reducing polling frequency or batch sizes temporarily
+5. Check for recent changes that may have introduced bugs
+
+**Resource Alerts:**
+1. Check `max_concurrent_executions` vs current workload
+2. Review orchestration execution times for anomalies
+3. Look for hung or zombie processes
+4. Consider scaling horizontally if sustained high load
+5. Verify TTL-based cleanup is running (check cleanup logs)
+
+---
+
 ## Related Documentation
 
 - [Dependency Injection](dependency-injection.md) - Container and DI patterns
