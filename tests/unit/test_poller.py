@@ -996,3 +996,231 @@ class TestJiraPollerEpicLinkField:
 
         assert len(issues) == 0
         assert "was not found" not in caplog.text
+
+
+class TestCalculateRetryDelay:
+    """Tests for JiraPoller._calculate_retry_delay method.
+
+    These tests verify the retry delay calculation with:
+    - Jitter applied within bounds (0.5-1.5x by default)
+    - Maximum delay cap respected
+    - Edge cases for exponential backoff calculation
+    - Custom jitter_min, jitter_max, and max_delay parameters
+    """
+
+    def test_jitter_within_default_bounds(self) -> None:
+        """Test that jitter is applied within default bounds (0.5-1.5x)."""
+        client = MockJiraClient()
+        poller = JiraPoller(client, retry_delay=1.0)
+
+        # Run multiple trials to verify jitter stays within bounds
+        for _ in range(100):
+            delay = poller._calculate_retry_delay(attempt=0)
+            # Base delay at attempt 0 is 1.0 * (2^0) = 1.0
+            # With default jitter (0.5-1.5), delay should be between 0.5 and 1.5
+            assert 0.5 <= delay <= 1.5, f"Delay {delay} outside expected bounds [0.5, 1.5]"
+
+    def test_jitter_within_custom_bounds(self) -> None:
+        """Test that jitter is applied within custom bounds."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client, retry_delay=1.0, jitter_min=0.8, jitter_max=1.2
+        )
+
+        # Run multiple trials to verify jitter stays within custom bounds
+        for _ in range(100):
+            delay = poller._calculate_retry_delay(attempt=0)
+            # Base delay at attempt 0 is 1.0
+            # With custom jitter (0.8-1.2), delay should be between 0.8 and 1.2
+            assert 0.8 <= delay <= 1.2, f"Delay {delay} outside expected bounds [0.8, 1.2]"
+
+    def test_maximum_delay_cap_respected(self) -> None:
+        """Test that maximum delay cap is respected."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client,
+            retry_delay=1.0,
+            max_delay=10.0,
+            jitter_min=1.0,  # No jitter to simplify testing cap
+            jitter_max=1.0,
+        )
+
+        # At attempt 10, base delay would be 1.0 * (2^10) = 1024.0
+        # But max_delay caps it at 10.0
+        delay = poller._calculate_retry_delay(attempt=10)
+        assert delay == 10.0, f"Delay {delay} should be capped at 10.0"
+
+    def test_maximum_delay_cap_with_jitter(self) -> None:
+        """Test that maximum delay cap is respected even with jitter."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client,
+            retry_delay=1.0,
+            max_delay=10.0,
+            jitter_min=0.5,
+            jitter_max=1.5,
+        )
+
+        # At high attempt numbers, delay should still be within max_delay * jitter_max
+        for _ in range(100):
+            delay = poller._calculate_retry_delay(attempt=20)
+            # Capped at 10.0, then jitter (0.5-1.5) applied
+            assert delay <= 15.0, f"Delay {delay} exceeds max_delay * jitter_max"
+            assert delay >= 5.0, f"Delay {delay} below max_delay * jitter_min"
+
+    def test_exponential_backoff_calculation(self) -> None:
+        """Test edge cases for exponential backoff calculation."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client,
+            retry_delay=2.0,
+            max_delay=1000.0,  # High cap to not interfere
+            jitter_min=1.0,  # No jitter to test pure exponential
+            jitter_max=1.0,
+        )
+
+        # Verify exponential backoff: retry_delay * 2^attempt
+        assert poller._calculate_retry_delay(attempt=0) == 2.0  # 2.0 * 2^0 = 2.0
+        assert poller._calculate_retry_delay(attempt=1) == 4.0  # 2.0 * 2^1 = 4.0
+        assert poller._calculate_retry_delay(attempt=2) == 8.0  # 2.0 * 2^2 = 8.0
+        assert poller._calculate_retry_delay(attempt=3) == 16.0  # 2.0 * 2^3 = 16.0
+        assert poller._calculate_retry_delay(attempt=4) == 32.0  # 2.0 * 2^4 = 32.0
+
+    def test_exponential_backoff_with_default_max_delay(self) -> None:
+        """Test that exponential backoff is capped by default max delay (300s)."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client,
+            retry_delay=1.0,
+            jitter_min=1.0,  # No jitter
+            jitter_max=1.0,
+        )
+
+        # Default max_delay is 300.0 (5 minutes)
+        assert poller.max_delay == JiraPoller.DEFAULT_MAX_DELAY
+        assert poller.max_delay == 300.0
+
+        # At attempt 8, base delay would be 1.0 * (2^8) = 256.0 < 300
+        delay_8 = poller._calculate_retry_delay(attempt=8)
+        assert delay_8 == 256.0
+
+        # At attempt 9, base delay would be 1.0 * (2^9) = 512.0 > 300, capped to 300
+        delay_9 = poller._calculate_retry_delay(attempt=9)
+        assert delay_9 == 300.0
+
+    def test_custom_max_delay_parameter(self) -> None:
+        """Test custom max_delay parameter."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client,
+            retry_delay=1.0,
+            max_delay=5.0,
+            jitter_min=1.0,
+            jitter_max=1.0,
+        )
+
+        assert poller.max_delay == 5.0
+
+        # Attempt 2: 1.0 * 2^2 = 4.0 < 5.0, not capped
+        assert poller._calculate_retry_delay(attempt=2) == 4.0
+
+        # Attempt 3: 1.0 * 2^3 = 8.0 > 5.0, capped to 5.0
+        assert poller._calculate_retry_delay(attempt=3) == 5.0
+
+    def test_custom_jitter_min_parameter(self) -> None:
+        """Test custom jitter_min parameter."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client,
+            retry_delay=10.0,
+            jitter_min=0.9,
+            jitter_max=0.9,  # Same as min to get deterministic result
+        )
+
+        assert poller.jitter_min == 0.9
+
+        # At attempt 0: 10.0 * 2^0 * 0.9 = 9.0
+        delay = poller._calculate_retry_delay(attempt=0)
+        assert delay == 9.0
+
+    def test_custom_jitter_max_parameter(self) -> None:
+        """Test custom jitter_max parameter."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client,
+            retry_delay=10.0,
+            jitter_min=1.1,  # Same as max to get deterministic result
+            jitter_max=1.1,
+        )
+
+        assert poller.jitter_max == 1.1
+
+        # At attempt 0: 10.0 * 2^0 * 1.1 = 11.0
+        delay = poller._calculate_retry_delay(attempt=0)
+        assert delay == 11.0
+
+    def test_default_jitter_values(self) -> None:
+        """Test that default jitter values are applied correctly."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+
+        assert poller.jitter_min == JiraPoller.DEFAULT_JITTER_MIN
+        assert poller.jitter_max == JiraPoller.DEFAULT_JITTER_MAX
+        assert poller.jitter_min == 0.5
+        assert poller.jitter_max == 1.5
+
+    def test_zero_retry_delay_base(self) -> None:
+        """Test behavior with zero retry_delay."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client,
+            retry_delay=0.0,
+            jitter_min=1.0,
+            jitter_max=1.0,
+        )
+
+        # Any attempt with 0 base delay should return 0
+        assert poller._calculate_retry_delay(attempt=0) == 0.0
+        assert poller._calculate_retry_delay(attempt=5) == 0.0
+
+    def test_first_attempt_zero_indexed(self) -> None:
+        """Test that attempt is 0-indexed (first attempt = 0)."""
+        client = MockJiraClient()
+        poller = JiraPoller(
+            client,
+            retry_delay=5.0,
+            jitter_min=1.0,
+            jitter_max=1.0,
+        )
+
+        # At attempt 0: delay = 5.0 * 2^0 = 5.0
+        delay = poller._calculate_retry_delay(attempt=0)
+        assert delay == 5.0
+
+    def test_jitter_randomness(self) -> None:
+        """Test that jitter produces varied results (not deterministic)."""
+        client = MockJiraClient()
+        poller = JiraPoller(client, retry_delay=1.0)
+
+        # Collect multiple delay values
+        delays = [poller._calculate_retry_delay(attempt=0) for _ in range(50)]
+
+        # Verify we get more than one unique value (randomness is working)
+        unique_delays = set(delays)
+        assert len(unique_delays) > 1, "Jitter should produce varied results"
+
+    def test_jitter_distribution(self) -> None:
+        """Test that jitter distribution covers the expected range."""
+        client = MockJiraClient()
+        poller = JiraPoller(client, retry_delay=1.0)
+
+        # Collect many delay values
+        delays = [poller._calculate_retry_delay(attempt=0) for _ in range(1000)]
+
+        # With default jitter (0.5-1.5), check that we have values across the range
+        min_delay = min(delays)
+        max_delay = max(delays)
+
+        # Should have values near both ends of the range (0.5-1.5)
+        assert min_delay < 0.7, f"Min delay {min_delay} should be closer to 0.5"
+        assert max_delay > 1.3, f"Max delay {max_delay} should be closer to 1.5"
