@@ -59,9 +59,9 @@ ENV SENTINEL_ORCHESTRATIONS_DIR=/app/orchestrations \
     SENTINEL_LOG_LEVEL=INFO \
     SENTINEL_POLL_INTERVAL=60
 
-# Health check
+# Health check - verify sentinel module imports and liveness check passes
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import sentinel; print('healthy')" || exit 1
+    CMD python -c "from sentinel.health import HealthChecker; checker = HealthChecker(); result = checker.check_liveness(); exit(0 if result.status == 'healthy' else 1)" || exit 1
 
 # Run the sentinel
 ENTRYPOINT ["sentinel"]
