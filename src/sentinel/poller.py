@@ -480,6 +480,26 @@ class JiraPoller:
                     for issue in raw_issues
                 ]
                 logger.info(f"Found {len(issues)} matching issues")
+
+                # Warn if epic_link_field is configured but not found on any issues
+                if (
+                    issues
+                    and self.epic_link_field
+                    and all(issue.epic_key is None for issue in issues)
+                ):
+                    # Check if the field exists on any raw issue
+                    field_found = any(
+                        self.epic_link_field in raw_issue.get("fields", {})
+                        for raw_issue in raw_issues
+                    )
+                    if not field_found:
+                        logger.warning(
+                            f"Configured epic_link_field '{self.epic_link_field}' was not "
+                            f"found on any of the {len(issues)} polled issues. "
+                            f"Verify JIRA_EPIC_LINK_FIELD is set to the correct custom "
+                            f"field ID for your Jira instance."
+                        )
+
                 return issues
             except JiraClientError as e:
                 last_error = e
