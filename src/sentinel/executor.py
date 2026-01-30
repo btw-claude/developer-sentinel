@@ -335,6 +335,10 @@ def cleanup_workdir(
             # Handle unexpected argument errors that shouldn't occur in normal operation
             logger.error(f"Unexpected argument error while cleaning up workdir {workdir}: {e}")
             return False
+        except Exception as e:
+            # Catch-all for unexpected errors
+            logger.error(f"Unexpected error while cleaning up workdir {workdir}: {e}")
+            return False
 
     # Force mode: retry on recoverable errors, use ignore_errors on final attempt
     for attempt in range(1, max_retries + 1):
@@ -376,6 +380,10 @@ def cleanup_workdir(
         except (TypeError, ValueError) as e:
             # Non-recoverable argument error, don't retry
             logger.error(f"Unexpected argument error while cleaning up workdir {workdir}: {e}")
+            return False
+        except Exception as e:
+            # Catch-all for unexpected errors, don't retry
+            logger.error(f"Unexpected error while cleaning up workdir {workdir}: {e}")
             return False
 
     return False

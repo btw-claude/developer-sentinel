@@ -100,7 +100,7 @@ class TestStatusBadgeMacro:
     def jinja_env(self) -> Environment:
         """Create a Jinja2 environment with the templates directory."""
         templates_dir = (
-            Path(__file__).parent.parent / "src" / "sentinel" / "dashboard" / "templates"
+            Path(__file__).parent.parent.parent / "src" / "sentinel" / "dashboard" / "templates"
         )
         env = Environment(loader=FileSystemLoader(str(templates_dir)))
         return env

@@ -30,6 +30,24 @@ from tests.conftest import create_test_app
 from tests.helpers import assert_call_args_length
 
 
+@pytest.fixture(autouse=True)
+def reset_sse_app_status() -> Generator[None, None, None]:
+    """Reset sse_starlette AppStatus to avoid event loop pollution between tests.
+
+    The sse_starlette library uses a singleton AppStatus with an asyncio.Event
+    that can get bound to one event loop. When tests run with different event
+    loops, this causes RuntimeError. This fixture resets the AppStatus before
+    each test.
+    """
+    from sse_starlette.sse import AppStatus
+    import asyncio
+
+    # Reset the should_exit_event to a new Event
+    AppStatus.should_exit_event = asyncio.Event()
+    AppStatus.should_exit = False
+    yield
+
+
 @pytest.fixture
 def temp_logs_dir() -> Generator[Path, None, None]:
     """Fixture that provides a temporary directory for logs.

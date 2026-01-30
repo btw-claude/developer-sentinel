@@ -5,6 +5,7 @@ import threading
 import time
 from concurrent.futures import Future
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from sentinel.main import Sentinel, parse_args, setup_logging

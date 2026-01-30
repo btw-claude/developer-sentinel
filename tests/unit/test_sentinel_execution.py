@@ -4,6 +4,7 @@ import signal
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.main import Sentinel

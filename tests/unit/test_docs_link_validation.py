@@ -33,9 +33,8 @@ RELATIVE_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 
 def get_project_root() -> Path:
     """Get the project root directory."""
-    # Navigate from tests/ to project root
-    tests_dir = Path(__file__).parent
-    return tests_dir.parent
+    # Navigate from tests/unit/ to project root
+    return Path(__file__).parent.parent.parent
 
 
 def find_markdown_files(root: Path) -> list[Path]:

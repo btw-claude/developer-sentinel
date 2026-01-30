@@ -71,3 +71,9 @@ orchestrations/*.yml
 # Agent runtime directories
 logs/
 workdir/
+
+# Run configuration
+developer-sentinel.yaml
+
+# Coverage report
+coverage.xml

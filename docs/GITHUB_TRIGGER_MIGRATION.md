@@ -330,4 +330,4 @@ Check your filter syntax:
 
 - [GitHub Projects (v2) documentation](https://docs.github.com/en/issues/planning-and-tracking-with-projects)
 - [Example orchestration configuration](../orchestrations/example.yaml.example)
-- [Integration tests](../tests/test_github_project_integration.py)
+- [Integration tests](../tests/unit/test_github_project_integration.py)

@@ -1315,7 +1315,7 @@ class TestLoggingEnhancements:
         """toggle_by_repo should log debug message at start."""
         import logging
 
-        caplog.set_level(logging.DEBUG)
+        caplog.set_level(logging.DEBUG, logger="sentinel.yaml_writer")
 
         yaml_content = """
 orchestrations:
@@ -1346,7 +1346,7 @@ orchestrations:
         """toggle_by_project should log debug message at start."""
         import logging
 
-        caplog.set_level(logging.DEBUG)
+        caplog.set_level(logging.DEBUG, logger="sentinel.yaml_writer")
 
         yaml_content = """
 orchestrations:
