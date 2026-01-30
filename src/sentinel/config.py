@@ -20,7 +20,6 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
@@ -33,9 +32,6 @@ from sentinel.types import (
     CursorMode,
     RateLimitStrategy,
 )
-
-if TYPE_CHECKING:
-    pass
 
 # Valid log levels
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
