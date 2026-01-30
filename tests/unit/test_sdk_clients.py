@@ -1276,7 +1276,6 @@ class TestUsageInfo:
         usage = UsageInfo(
             input_tokens=1000,
             output_tokens=500,
-            total_tokens=1500,
             total_cost_usd=0.05,
             duration_ms=1500.0,
             duration_api_ms=1200.0,
@@ -1286,7 +1285,7 @@ class TestUsageInfo:
 
         assert result["input_tokens"] == 1000
         assert result["output_tokens"] == 500
-        assert result["total_tokens"] == 1500
+        assert result["total_tokens"] == 1500  # Computed property
         assert result["total_cost_usd"] == 0.05
         assert result["duration_ms"] == 1500.0
         assert result["duration_api_ms"] == 1200.0
@@ -1301,6 +1300,64 @@ class TestUsageInfo:
         assert result["output_tokens"] == 0
         assert result["total_tokens"] == 0
         assert result["total_cost_usd"] == 0.0
+
+    def test_total_tokens_computed_property(self) -> None:
+        """Should compute total_tokens from input_tokens + output_tokens."""
+        usage = UsageInfo(input_tokens=1500, output_tokens=750)
+        assert usage.total_tokens == 2250
+
+    def test_total_tokens_updates_when_tokens_change(self) -> None:
+        """Should reflect changes in input/output tokens immediately."""
+        usage = UsageInfo(input_tokens=100, output_tokens=50)
+        assert usage.total_tokens == 150
+
+        usage.input_tokens = 200
+        assert usage.total_tokens == 250
+
+        usage.output_tokens = 100
+        assert usage.total_tokens == 300
+
+    def test_repr_includes_all_fields(self) -> None:
+        """Should return a readable string representation."""
+        usage = UsageInfo(
+            input_tokens=1000,
+            output_tokens=500,
+            total_cost_usd=0.05,
+            duration_ms=1500.0,
+            duration_api_ms=1200.0,
+            num_turns=3,
+        )
+        repr_str = repr(usage)
+
+        assert "UsageInfo(" in repr_str
+        assert "input_tokens=1000" in repr_str
+        assert "output_tokens=500" in repr_str
+        assert "total_tokens=1500" in repr_str
+        assert "total_cost_usd=0.05" in repr_str
+        assert "duration_ms=1500.0" in repr_str
+        assert "duration_api_ms=1200.0" in repr_str
+        assert "num_turns=3" in repr_str
+
+    def test_validation_with_matching_total_tokens(self) -> None:
+        """Should accept matching total_tokens override for backward compatibility."""
+        # When _total_tokens_override matches computed value, no error
+        usage = UsageInfo(
+            input_tokens=1000,
+            output_tokens=500,
+            _total_tokens_override=1500,
+        )
+        assert usage.total_tokens == 1500
+
+    def test_validation_with_mismatched_total_tokens(self) -> None:
+        """Should raise ValueError when total_tokens override doesn't match computed value."""
+        import pytest
+
+        with pytest.raises(ValueError, match="total_tokens mismatch"):
+            UsageInfo(
+                input_tokens=1000,
+                output_tokens=500,
+                _total_tokens_override=2000,  # Should be 1500
+            )
 
 
 class TestExtractUsageFromMessage:
