@@ -3,12 +3,18 @@
 This module tests the extracted helper method that encapsulates the common failure
 handling logic for execution errors. The helper method reduces code duplication by
 centralizing logging and tag application error handling.
+
+Tests use pytest.mark.parametrize for cleaner test organization and reduced
+code duplication where appropriate.
 """
 
 import logging
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from sentinel.main import Sentinel
+from sentinel.types import ErrorType
 from tests.conftest import (
     MockAgentClient,
     MockJiraPoller,
@@ -49,7 +55,7 @@ class TestHandleExecutionFailure:
 
         with patch.object(sentinel, "_log_for_orchestration") as mock_log:
             sentinel._handle_execution_failure(
-                "TEST-123", orchestration, exception, "I/O error"
+                "TEST-123", orchestration, exception, ErrorType.IO_ERROR
             )
 
         mock_log.assert_called_once_with(
@@ -66,134 +72,125 @@ class TestHandleExecutionFailure:
 
         with patch.object(sentinel.tag_manager, "apply_failure_tags") as mock_apply:
             sentinel._handle_execution_failure(
-                "TEST-123", orchestration, exception, "runtime error"
+                "TEST-123", orchestration, exception, ErrorType.RUNTIME_ERROR
             )
 
             # Verify apply_failure_tags was called with correct arguments
             mock_apply.assert_called_once_with("TEST-123", orchestration)
 
-    def test_handles_oserror_during_tag_application(self) -> None:
-        """Test that OSError during tag application is caught and logged."""
-        sentinel, tag_client = self._create_sentinel()
-        orchestration = make_orchestration(name="test-orch")
-        exception = ValueError("Invalid data")
+    @pytest.mark.parametrize(
+        "tag_exception,expected_log_category",
+        [
+            pytest.param(
+                OSError("Network error"),
+                "I/O error",
+                id="oserror",
+            ),
+            pytest.param(
+                TimeoutError("Request timed out"),
+                "I/O error",
+                id="timeout_error",
+            ),
+            pytest.param(
+                KeyError("issue_key"),
+                "data error",
+                id="keyerror",
+            ),
+            pytest.param(
+                ValueError("Invalid value"),
+                "data error",
+                id="valueerror",
+            ),
+        ],
+    )
+    def test_handles_tag_application_errors(
+        self, tag_exception: Exception, expected_log_category: str
+    ) -> None:
+        """Test that various exceptions during tag application are caught and logged.
 
-        # Make tag_manager.apply_failure_tags raise OSError
+        This parametrized test verifies that OSError, TimeoutError, KeyError, and
+        ValueError exceptions raised during apply_failure_tags are properly caught,
+        don't propagate, and are logged with the appropriate error category.
+        """
+        sentinel, _ = self._create_sentinel()
+        orchestration = make_orchestration(name="test-orch")
+        exception = RuntimeError("Original error")
+
         with patch.object(
             sentinel.tag_manager,
             "apply_failure_tags",
-            side_effect=OSError("Network error"),
+            side_effect=tag_exception,
         ):
             with patch("sentinel.main.logger") as mock_logger:
                 # Should not raise
                 sentinel._handle_execution_failure(
-                    "TEST-456", orchestration, exception, "data error"
+                    "TEST-123", orchestration, exception, ErrorType.RUNTIME_ERROR
                 )
 
-                # Verify the tag error was logged
+                # Verify the tag error was logged with correct category
                 mock_logger.error.assert_called_once()
                 call_args = mock_logger.error.call_args
-                assert "Failed to apply failure tags due to I/O error" in call_args[0][0]
+                assert f"Failed to apply failure tags due to {expected_log_category}" in call_args[0][0]
                 # With lazy % formatting, the error is passed as an argument
-                assert "Network error" in str(call_args[0][1])
+                assert str(tag_exception) in str(call_args[0][1]) or str(tag_exception.args[0]) in str(call_args[0][1])
 
-    def test_handles_timeout_error_during_tag_application(self) -> None:
-        """Test that TimeoutError during tag application is caught and logged."""
-        sentinel, _ = self._create_sentinel()
-        orchestration = make_orchestration(name="test-orch")
-        exception = KeyError("missing_key")
+    @pytest.mark.parametrize(
+        "exception,error_type,expected_substring",
+        [
+            pytest.param(
+                OSError("File not found"),
+                ErrorType.IO_ERROR,
+                "I/O error: File not found",
+                id="oserror",
+            ),
+            pytest.param(
+                TimeoutError("Timed out"),
+                ErrorType.IO_ERROR,
+                "I/O error: Timed out",
+                id="timeout_error",
+            ),
+            pytest.param(
+                RuntimeError("Bad state"),
+                ErrorType.RUNTIME_ERROR,
+                "runtime error: Bad state",
+                id="runtime_error",
+            ),
+            pytest.param(
+                KeyError("missing"),
+                ErrorType.DATA_ERROR,
+                "data error: 'missing'",
+                id="keyerror",
+            ),
+            pytest.param(
+                ValueError("invalid"),
+                ErrorType.DATA_ERROR,
+                "data error: invalid",
+                id="valueerror",
+            ),
+        ],
+    )
+    def test_different_error_types_logged_correctly(
+        self, exception: Exception, error_type: ErrorType, expected_substring: str
+    ) -> None:
+        """Test that different error types are logged with correct descriptors.
 
-        # Make tag_manager.apply_failure_tags raise TimeoutError
-        with patch.object(
-            sentinel.tag_manager,
-            "apply_failure_tags",
-            side_effect=TimeoutError("Request timed out"),
-        ):
-            with patch("sentinel.main.logger") as mock_logger:
-                # Should not raise
-                sentinel._handle_execution_failure(
-                    "TEST-789", orchestration, exception, "data error"
-                )
-
-                # Verify the tag error was logged
-                mock_logger.error.assert_called_once()
-                call_args = mock_logger.error.call_args
-                assert "Failed to apply failure tags due to I/O error" in call_args[0][0]
-                # With lazy % formatting, the error is passed as an argument
-                assert "Request timed out" in str(call_args[0][1])
-
-    def test_handles_keyerror_during_tag_application(self) -> None:
-        """Test that KeyError during tag application is caught and logged."""
-        sentinel, _ = self._create_sentinel()
-        orchestration = make_orchestration(name="test-orch")
-        exception = OSError("Disk full")
-
-        # Make tag_manager.apply_failure_tags raise KeyError
-        with patch.object(
-            sentinel.tag_manager,
-            "apply_failure_tags",
-            side_effect=KeyError("issue_key"),
-        ):
-            with patch("sentinel.main.logger") as mock_logger:
-                # Should not raise
-                sentinel._handle_execution_failure(
-                    "TEST-111", orchestration, exception, "I/O error"
-                )
-
-                # Verify the tag error was logged
-                mock_logger.error.assert_called_once()
-                call_args = mock_logger.error.call_args
-                assert "Failed to apply failure tags due to data error" in call_args[0][0]
-
-    def test_handles_valueerror_during_tag_application(self) -> None:
-        """Test that ValueError during tag application is caught and logged."""
-        sentinel, _ = self._create_sentinel()
-        orchestration = make_orchestration(name="test-orch")
-        exception = RuntimeError("Runtime issue")
-
-        # Make tag_manager.apply_failure_tags raise ValueError
-        with patch.object(
-            sentinel.tag_manager,
-            "apply_failure_tags",
-            side_effect=ValueError("Invalid value"),
-        ):
-            with patch("sentinel.main.logger") as mock_logger:
-                # Should not raise
-                sentinel._handle_execution_failure(
-                    "TEST-222", orchestration, exception, "runtime error"
-                )
-
-                # Verify the tag error was logged
-                mock_logger.error.assert_called_once()
-                call_args = mock_logger.error.call_args
-                assert "Failed to apply failure tags due to data error" in call_args[0][0]
-                # With lazy % formatting, the error is passed as an argument
-                assert "Invalid value" in str(call_args[0][1])
-
-    def test_different_error_types_logged_correctly(self) -> None:
-        """Test that different error types are logged with correct descriptors."""
+        This parametrized test verifies that various exception types are logged
+        with the appropriate ErrorType enum values, ensuring the log message
+        contains the correct error type descriptor.
+        """
         sentinel, _ = self._create_sentinel()
         orchestration = make_orchestration(name="test-orch")
 
-        test_cases = [
-            (OSError("File not found"), "I/O error", "I/O error: File not found"),
-            (TimeoutError("Timed out"), "I/O error", "I/O error: Timed out"),
-            (RuntimeError("Bad state"), "runtime error", "runtime error: Bad state"),
-            (KeyError("missing"), "data error", "data error: 'missing'"),
-            (ValueError("invalid"), "data error", "data error: invalid"),
-        ]
+        with patch.object(sentinel, "_log_for_orchestration") as mock_log:
+            sentinel._handle_execution_failure(
+                "TEST-333", orchestration, exception, error_type
+            )
 
-        for exception, error_type, expected_substring in test_cases:
-            with patch.object(sentinel, "_log_for_orchestration") as mock_log:
-                sentinel._handle_execution_failure(
-                    "TEST-333", orchestration, exception, error_type
-                )
-
-                # Check that the logged message contains the expected substring
-                call_args = mock_log.call_args
-                assert expected_substring in call_args[0][2], (
-                    f"Expected '{expected_substring}' in log message for {type(exception).__name__}"
-                )
+            # Check that the logged message contains the expected substring
+            call_args = mock_log.call_args
+            assert expected_substring in call_args[0][2], (
+                f"Expected '{expected_substring}' in log message for {type(exception).__name__}"
+            )
 
     def test_extra_context_included_in_tag_error_logs(self) -> None:
         """Test that extra context (issue_key, orchestration) is included in tag error logs."""
@@ -208,7 +205,7 @@ class TestHandleExecutionFailure:
         ):
             with patch("sentinel.main.logger") as mock_logger:
                 sentinel._handle_execution_failure(
-                    "PROJ-999", orchestration, exception, "I/O error"
+                    "PROJ-999", orchestration, exception, ErrorType.IO_ERROR
                 )
 
                 # Verify extra context was passed
@@ -238,86 +235,64 @@ class TestExecuteOrchestrationTaskUsesHelper:
         )
         return sentinel, tag_client
 
-    def test_oserror_calls_helper(self) -> None:
-        """Test that OSError in _execute_orchestration_task calls _handle_execution_failure."""
+    @pytest.mark.parametrize(
+        "exception,expected_error_type,issue_key",
+        [
+            pytest.param(
+                OSError("Connection refused"),
+                ErrorType.IO_ERROR,
+                "TEST-123",
+                id="oserror",
+            ),
+            pytest.param(
+                TimeoutError("Timed out"),
+                ErrorType.IO_ERROR,
+                "TEST-234",
+                id="timeout_error",
+            ),
+            pytest.param(
+                RuntimeError("Bad state"),
+                ErrorType.RUNTIME_ERROR,
+                "TEST-456",
+                id="runtime_error",
+            ),
+            pytest.param(
+                KeyError("missing_key"),
+                ErrorType.DATA_ERROR,
+                "TEST-789",
+                id="keyerror",
+            ),
+            pytest.param(
+                ValueError("Invalid value"),
+                ErrorType.DATA_ERROR,
+                "TEST-111",
+                id="valueerror",
+            ),
+        ],
+    )
+    def test_exception_calls_helper_with_correct_error_type(
+        self, exception: Exception, expected_error_type: ErrorType, issue_key: str
+    ) -> None:
+        """Test that exceptions in _execute_orchestration_task call _handle_execution_failure.
+
+        This parametrized test verifies that various exception types (OSError,
+        TimeoutError, RuntimeError, KeyError, ValueError) raised during execution
+        properly trigger _handle_execution_failure with the correct ErrorType enum value.
+        """
         sentinel, _ = self._create_sentinel()
         orchestration = make_orchestration(name="test-orch")
 
-        # Create a mock issue
         mock_issue = MagicMock()
-        mock_issue.key = "TEST-123"
+        mock_issue.key = issue_key
 
-        # Make executor.execute raise OSError
-        with patch.object(
-            sentinel.executor, "execute", side_effect=OSError("Connection refused")
-        ):
+        with patch.object(sentinel.executor, "execute", side_effect=exception):
             with patch.object(sentinel, "_handle_execution_failure") as mock_handler:
                 result = sentinel._execute_orchestration_task(mock_issue, orchestration)
 
                 assert result is None
                 mock_handler.assert_called_once()
                 call_args = mock_handler.call_args
-                assert call_args[0][0] == "TEST-123"
+                assert call_args[0][0] == issue_key
                 assert call_args[0][1] == orchestration
-                assert isinstance(call_args[0][2], OSError)
-                assert call_args[0][3] == "I/O error"
-
-    def test_runtimeerror_calls_helper(self) -> None:
-        """Test that RuntimeError in _execute_orchestration_task calls _handle_execution_failure."""
-        sentinel, _ = self._create_sentinel()
-        orchestration = make_orchestration(name="test-orch")
-
-        mock_issue = MagicMock()
-        mock_issue.key = "TEST-456"
-
-        with patch.object(
-            sentinel.executor, "execute", side_effect=RuntimeError("Bad state")
-        ):
-            with patch.object(sentinel, "_handle_execution_failure") as mock_handler:
-                result = sentinel._execute_orchestration_task(mock_issue, orchestration)
-
-                assert result is None
-                mock_handler.assert_called_once()
-                call_args = mock_handler.call_args
-                assert call_args[0][0] == "TEST-456"
-                assert call_args[0][3] == "runtime error"
-
-    def test_keyerror_calls_helper(self) -> None:
-        """Test that KeyError in _execute_orchestration_task calls _handle_execution_failure."""
-        sentinel, _ = self._create_sentinel()
-        orchestration = make_orchestration(name="test-orch")
-
-        mock_issue = MagicMock()
-        mock_issue.key = "TEST-789"
-
-        with patch.object(
-            sentinel.executor, "execute", side_effect=KeyError("missing_key")
-        ):
-            with patch.object(sentinel, "_handle_execution_failure") as mock_handler:
-                result = sentinel._execute_orchestration_task(mock_issue, orchestration)
-
-                assert result is None
-                mock_handler.assert_called_once()
-                call_args = mock_handler.call_args
-                assert call_args[0][0] == "TEST-789"
-                assert call_args[0][3] == "data error"
-
-    def test_valueerror_calls_helper(self) -> None:
-        """Test that ValueError in _execute_orchestration_task calls _handle_execution_failure."""
-        sentinel, _ = self._create_sentinel()
-        orchestration = make_orchestration(name="test-orch")
-
-        mock_issue = MagicMock()
-        mock_issue.key = "TEST-111"
-
-        with patch.object(
-            sentinel.executor, "execute", side_effect=ValueError("Invalid value")
-        ):
-            with patch.object(sentinel, "_handle_execution_failure") as mock_handler:
-                result = sentinel._execute_orchestration_task(mock_issue, orchestration)
-
-                assert result is None
-                mock_handler.assert_called_once()
-                call_args = mock_handler.call_args
-                assert call_args[0][0] == "TEST-111"
-                assert call_args[0][3] == "data error"
+                assert isinstance(call_args[0][2], type(exception))
+                assert call_args[0][3] == expected_error_type
