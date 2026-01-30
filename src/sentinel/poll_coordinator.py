@@ -44,6 +44,7 @@ from sentinel.github_poller import GitHubIssue, GitHubIssueProtocol
 from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration, TriggerConfig
 from sentinel.poller import JiraIssue
+from sentinel.types import TriggerSource
 
 if TYPE_CHECKING:
     from sentinel.config import Config
@@ -391,16 +392,16 @@ class PollCoordinator:
         Returns:
             The URL to the issue, or empty string if URL cannot be constructed.
         """
-        trigger_source = getattr(orchestration.trigger, "source", "jira")
+        trigger_source = getattr(orchestration.trigger, "source", TriggerSource.JIRA.value)
 
-        if trigger_source == "jira":
+        if trigger_source == TriggerSource.JIRA.value:
             # Construct Jira URL from config base URL and issue key
             if self._config.jira_base_url:
                 base_url = self._config.jira_base_url.rstrip("/")
                 return f"{base_url}/browse/{issue.key}"
             return ""
 
-        elif trigger_source == "github":
+        elif trigger_source == TriggerSource.GITHUB.value:
             # For GitHub, use the repo_url from the issue which contains the full URL
             if hasattr(issue, "repo_url") and issue.repo_url:
                 return issue.repo_url
@@ -431,7 +432,7 @@ class PollCoordinator:
         github_orchestrations: list[Orchestration] = []
 
         for orch in orchestrations:
-            if orch.trigger.source == "github":
+            if orch.trigger.source == TriggerSource.GITHUB.value:
                 github_orchestrations.append(orch)
             else:
                 jira_orchestrations.append(orch)

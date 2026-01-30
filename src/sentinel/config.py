@@ -10,18 +10,17 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from sentinel.branch_validation import validate_branch_name_core
+from sentinel.types import (
+    VALID_AGENT_TYPES,
+    VALID_CURSOR_MODES,
+    VALID_RATE_LIMIT_STRATEGIES,
+    AgentType,
+    CursorMode,
+    RateLimitStrategy,
+)
 
 # Valid log levels
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
-
-# Valid Cursor modes
-VALID_CURSOR_MODES = frozenset({"agent", "plan", "ask"})
-
-# Valid agent types
-VALID_AGENT_TYPES = frozenset({"claude", "cursor"})
-
-# Valid rate limit strategies
-VALID_RATE_LIMIT_STRATEGIES = frozenset({"queue", "reject"})
 
 # Port validation bounds
 MIN_PORT = 1
@@ -295,7 +294,7 @@ def _parse_non_negative_float(value: str, name: str, default: float) -> float:
         return default
 
 
-def _validate_cursor_mode(value: str, default: str = "agent") -> str:
+def _validate_cursor_mode(value: str, default: str = CursorMode.AGENT.value) -> str:
     """Validate and normalize a Cursor mode string.
 
     Args:
@@ -308,7 +307,7 @@ def _validate_cursor_mode(value: str, default: str = "agent") -> str:
     Logs a warning if the value is invalid.
     """
     normalized = value.lower()
-    if normalized not in VALID_CURSOR_MODES:
+    if not CursorMode.is_valid(normalized):
         logging.warning(
             "Invalid SENTINEL_CURSOR_DEFAULT_MODE: '%s' is not valid, "
             "using default '%s'. Valid values: %s",
@@ -331,9 +330,9 @@ def _validate_agent_type(value: str) -> str:
 
     Logs a warning if the value is invalid.
     """
-    default = "claude"
+    default = AgentType.CLAUDE.value
     normalized = value.lower()
-    if normalized not in VALID_AGENT_TYPES:
+    if not AgentType.is_valid(normalized):
         logging.warning(
             "Invalid SENTINEL_DEFAULT_AGENT_TYPE: '%s' is not valid, "
             "using default '%s'. Valid values: %s",
@@ -345,7 +344,7 @@ def _validate_agent_type(value: str) -> str:
     return normalized
 
 
-def _validate_rate_limit_strategy(value: str, default: str = "queue") -> str:
+def _validate_rate_limit_strategy(value: str, default: str = RateLimitStrategy.QUEUE.value) -> str:
     """Validate and normalize a rate limit strategy string.
 
     Args:
@@ -358,7 +357,7 @@ def _validate_rate_limit_strategy(value: str, default: str = "queue") -> str:
     Logs a warning if the value is invalid.
     """
     normalized = value.lower()
-    if normalized not in VALID_RATE_LIMIT_STRATEGIES:
+    if not RateLimitStrategy.is_valid(normalized):
         logging.warning(
             "Invalid SENTINEL_CLAUDE_RATE_LIMIT_STRATEGY: '%s' is not valid, "
             "using default '%s'. Valid values: %s",

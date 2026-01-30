@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from sentinel.logging import generate_log_filename, parse_log_filename
+from sentinel.types import TriggerSource
 
 if TYPE_CHECKING:
     from sentinel.config import Config
@@ -481,9 +482,9 @@ class SentinelStateAccessor:
         active_github_repos: set[str] = set()
         for orch in orchestration_infos:
             if orch.name in active_orchestration_names:
-                if orch.trigger_source == "jira" and orch.trigger_project:
+                if orch.trigger_source == TriggerSource.JIRA.value and orch.trigger_project:
                     active_jira_projects.add(orch.trigger_project)
-                elif orch.trigger_source == "github" and orch.trigger_repo:
+                elif orch.trigger_source == TriggerSource.GITHUB.value and orch.trigger_repo:
                     active_github_repos.add(orch.trigger_repo)
 
         return DashboardState(
@@ -519,7 +520,7 @@ class SentinelStateAccessor:
             An OrchestrationInfo object with read-only data.
         """
         trigger = orch.trigger
-        trigger_source = getattr(trigger, "source", "jira")
+        trigger_source = getattr(trigger, "source", TriggerSource.JIRA.value)
         trigger_project = getattr(trigger, "project", None)
         trigger_repo = getattr(trigger, "repo", None)
         trigger_tags = list(trigger.tags) if trigger.tags else []
@@ -575,9 +576,9 @@ class SentinelStateAccessor:
         github_groups: dict[str, list[OrchestrationInfo]] = defaultdict(list)
 
         for orch in orchestrations:
-            if orch.trigger_source == "jira" and orch.trigger_project:
+            if orch.trigger_source == TriggerSource.JIRA.value and orch.trigger_project:
                 jira_groups[orch.trigger_project].append(orch)
-            elif orch.trigger_source == "github" and orch.trigger_repo:
+            elif orch.trigger_source == TriggerSource.GITHUB.value and orch.trigger_repo:
                 github_groups[orch.trigger_repo].append(orch)
 
         # Convert to sorted lists of ProjectOrchestrations

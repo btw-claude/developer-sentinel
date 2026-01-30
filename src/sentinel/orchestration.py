@@ -14,6 +14,7 @@ import yaml
 
 from sentinel.branch_validation import validate_branch_name_core
 from sentinel.logging import get_logger
+from sentinel.types import AgentType, CursorMode, TriggerSource
 
 logger = get_logger(__name__)
 
@@ -61,14 +62,14 @@ class ValidationResult(NamedTuple):
 class TriggerConfig:
     """Configuration for what triggers an orchestration.
 
-    Supports Jira triggers (source="jira") with project, jql_filter, tags fields,
-    and GitHub triggers (source="github") with project_number, project_scope,
-    project_owner, project_filter, and labels fields.
+    Supports Jira triggers (source=TriggerSource.JIRA) with project, jql_filter,
+    tags fields, and GitHub triggers (source=TriggerSource.GITHUB) with
+    project_number, project_scope, project_owner, project_filter, and labels fields.
 
     Multiple tags/labels use AND logic (issue must have all specified).
 
     Attributes:
-        source: Trigger source type ("jira" or "github").
+        source: Trigger source type (TriggerSource.JIRA or TriggerSource.GITHUB).
         project: Jira project key (validated for safe characters: alphanumeric,
             underscores, hyphens, must start with letter).
         jql_filter: Custom JQL fragment for advanced filtering. Security validated
@@ -85,7 +86,7 @@ class TriggerConfig:
     Note: repo, query_filter, and tags are DEPRECATED for GitHub triggers.
     """
 
-    source: Literal["jira", "github"] = "jira"
+    source: Literal["jira", "github"] = TriggerSource.JIRA.value
     project: str = ""
     jql_filter: str = ""
     tags: list[str] = field(default_factory=list)
@@ -560,9 +561,10 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     Raises:
         OrchestrationError: If trigger configuration is invalid.
     """
-    source = data.get("source", "jira")
-    if source not in ("jira", "github"):
-        raise OrchestrationError(f"Invalid trigger source '{source}': must be 'jira' or 'github'")
+    source = data.get("source", TriggerSource.JIRA.value)
+    if not TriggerSource.is_valid(source):
+        valid_sources = ", ".join(f"'{s}'" for s in sorted(TriggerSource.values()))
+        raise OrchestrationError(f"Invalid trigger source '{source}': must be {valid_sources}")
 
     repo = data.get("repo", "")
     query_filter = data.get("query_filter", "")
@@ -582,7 +584,7 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     _validate_string_list(tags, "tags")
 
     # Validation for GitHub triggers
-    if source == "github":
+    if source == TriggerSource.GITHUB.value:
         # Validate project_number is set for GitHub triggers
         if project_number is None:
             raise OrchestrationError(
@@ -683,19 +685,20 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
         raise OrchestrationError(f"Invalid model '{model}': must be a string")
 
     agent_type = data.get("agent_type")
-    if agent_type is not None and agent_type not in ("claude", "cursor"):
-        raise OrchestrationError(f"Invalid agent_type '{agent_type}': must be 'claude' or 'cursor'")
+    if agent_type is not None and not AgentType.is_valid(agent_type):
+        valid_types = ", ".join(f"'{t}'" for t in sorted(AgentType.values()))
+        raise OrchestrationError(f"Invalid agent_type '{agent_type}': must be {valid_types}")
 
     cursor_mode = data.get("cursor_mode")
     if cursor_mode is not None:
-        if cursor_mode not in ("agent", "plan", "ask"):
-            raise OrchestrationError(
-                f"Invalid cursor_mode '{cursor_mode}': must be 'agent', 'plan', or 'ask'"
-            )
+        if not CursorMode.is_valid(cursor_mode):
+            valid_modes = ", ".join(f"'{m}'" for m in sorted(CursorMode.values()))
+            raise OrchestrationError(f"Invalid cursor_mode '{cursor_mode}': must be {valid_modes}")
         # cursor_mode is only valid when agent_type is 'cursor'
-        if agent_type is not None and agent_type != "cursor":
+        if agent_type is not None and agent_type != AgentType.CURSOR.value:
             raise OrchestrationError(
-                f"cursor_mode '{cursor_mode}' is only valid when agent_type is 'cursor'"
+                f"cursor_mode '{cursor_mode}' is only valid when agent_type is "
+                f"'{AgentType.CURSOR.value}'"
             )
 
     return AgentConfig(
