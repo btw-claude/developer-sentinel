@@ -7,6 +7,8 @@ This module contains core executor tests including:
 - matches_pattern tests
 """
 
+import pytest
+
 from sentinel.executor import AgentExecutor, ExecutionResult, ExecutionStatus
 from sentinel.orchestration import GitHubContext
 from tests.helpers import make_issue, make_orchestration
