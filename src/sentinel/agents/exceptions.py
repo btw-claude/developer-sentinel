@@ -137,6 +137,7 @@ def _extract_context(kwargs: dict[str, Any]) -> str:
     context_keys = [
         "issue_key",  # Jira
         "page_id",  # Confluence
+        "title",  # Confluence page title
         "pr_number",  # GitHub PR
         "issue_number",  # GitHub issue
         "path",  # File path
