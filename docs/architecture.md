@@ -258,6 +258,273 @@ The components receive configuration through the `Config` object:
 
 ---
 
+## Error Handling and Recovery Patterns
+
+This section documents how each component handles failures, how errors propagate between components, and the recovery patterns and retry strategies used throughout the system.
+
+### Circuit Breaker Pattern
+
+**Module:** `sentinel/circuit_breaker.py`
+
+The circuit breaker pattern protects against cascading failures when external services (Jira, GitHub, Claude APIs) are experiencing issues.
+
+**Circuit States:**
+- **CLOSED:** Normal operation, requests pass through
+- **OPEN:** Service is failing, requests fail immediately without calling the service
+- **HALF_OPEN:** Testing recovery, limited requests pass through to test service health
+
+**State Transitions:**
+```
+    ┌─────────────┐
+    │   CLOSED    │◄────────────────────────────────────┐
+    │  (Normal)   │                                     │
+    └──────┬──────┘                                     │
+           │                                            │
+           │ Failures exceed threshold                  │ Success count reaches
+           │ (default: 5 failures)                      │ half_open_max_calls
+           ▼                                            │
+    ┌─────────────┐     recovery_timeout      ┌────────┴────────┐
+    │    OPEN     │ ─────(default: 30s)─────► │   HALF_OPEN     │
+    │ (Fail-fast) │                           │ (Testing)       │
+    └─────────────┘                           └────────┬────────┘
+           ▲                                           │
+           │                                           │
+           └─────────Any failure in half-open──────────┘
+```
+
+**Configuration (Environment Variables):**
+```
+SENTINEL_CIRCUIT_BREAKER_ENABLED=true
+SENTINEL_CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+SENTINEL_CIRCUIT_BREAKER_RECOVERY_TIMEOUT=30
+SENTINEL_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS=3
+```
+
+**Per-Service Overrides:**
+```
+SENTINEL_JIRA_CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+SENTINEL_GITHUB_CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+SENTINEL_CLAUDE_CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+```
+
+**Usage:**
+```python
+from sentinel.circuit_breaker import get_circuit_breaker
+
+# Get or create a circuit breaker for a service
+cb = get_circuit_breaker("jira")
+
+# Check before making a call
+if cb.allow_request():
+    try:
+        result = call_jira_api()
+        cb.record_success()
+    except Exception as e:
+        cb.record_failure(e)
+        raise
+
+# Or use as a decorator
+@get_circuit_breaker("github")
+def call_github_api():
+    ...
+```
+
+---
+
+### Retry Strategies
+
+#### REST Client Retry (Rate Limiting)
+
+**Module:** `sentinel/rest_clients.py`
+
+Implements exponential backoff with jitter for handling rate limits from Jira and GitHub APIs.
+
+**Algorithm:**
+1. On HTTP 429 (rate limit), calculate delay: `min(initial_delay * 2^attempt, max_delay) * jitter`
+2. If `Retry-After` header is present, use that value as the base delay
+3. Apply jitter (`0.7` to `1.3` multiplier) to prevent thundering herd
+4. Retry up to `max_retries` times (default: 4)
+
+**Configuration:**
+```python
+@dataclass(frozen=True)
+class RetryConfig:
+    max_retries: int = 4
+    initial_delay: float = 1.0
+    max_delay: float = 30.0
+    jitter_min: float = 0.7
+    jitter_max: float = 1.3
+```
+
+#### Agent Execution Retry
+
+**Module:** `sentinel/executor.py`
+
+The `AgentExecutor` retries failed agent executions based on orchestration configuration.
+
+**Retry Logic:**
+1. Execute agent with prompt
+2. Match response against `success_patterns` and `failure_patterns`
+3. If failure pattern matches and attempts < `max_attempts`, retry
+4. On `AgentTimeoutError` or `AgentClientError`, retry if attempts remain
+
+**Retry Configuration (per orchestration):**
+```yaml
+retry:
+  max_attempts: 3
+  success_patterns:
+    - "SUCCESS"
+    - "TASK_COMPLETED"
+  failure_patterns:
+    - "FAILURE"
+    - "TASK_FAILED"
+    - "ERROR:"
+  default_status: "failure"  # When no patterns match
+```
+
+---
+
+### Error Propagation Between Components
+
+#### Polling Errors
+
+```
+JiraRestClient/GitHubRestClient
+         │
+         │ JiraClientError / GitHubClientError
+         ▼
+   PollCoordinator
+         │
+         │ Logs error, continues with other triggers
+         ▼
+      Sentinel
+         │
+         │ Logs summary, proceeds to next polling cycle
+         ▼
+   (Next poll cycle)
+```
+
+**Behavior:** Polling errors are logged but don't stop the orchestrator. The circuit breaker may open if errors persist, causing subsequent polls to fail fast.
+
+#### Execution Errors
+
+```
+AgentClient.run_agent()
+         │
+         │ AgentClientError / AgentTimeoutError
+         ▼
+   AgentExecutor.execute()
+         │
+         │ Retries if attempts remain
+         │ Returns ExecutionResult with ERROR status
+         ▼
+   Sentinel._execute_orchestration_task()
+         │
+         │ Cleans up resources (StateTracker, etc.)
+         ▼
+   ExecutionManager.collect_completed_results()
+         │
+         │ Logs errors, removes completed futures
+         ▼
+   (Dashboard shows execution status)
+```
+
+**Behavior:** Agent execution errors trigger retries. After all retries are exhausted, the execution is marked as ERROR and the orchestrator continues processing other issues.
+
+#### Thread Pool Errors
+
+```
+ExecutionManager.submit()
+         │
+         │ Task runs in thread pool
+         ▼
+   Future completes (success or exception)
+         │
+         │ collect_completed_results() catches exceptions
+         ▼
+   ExecutionResult or logged error
+```
+
+**Exception Handling in `collect_completed_results()`:**
+- `OSError`, `TimeoutError`: Logged as I/O or timeout errors
+- `RuntimeError`: Logged as runtime errors
+- `KeyError`, `TypeError`, `ValueError`: Logged as data errors
+
+---
+
+### Component-Specific Error Handling
+
+#### StateTracker
+
+**Lock Ordering Discipline:** Prevents deadlocks when multiple locks are needed.
+```
+1. _attempt_counts_lock (highest priority)
+2. _running_steps_lock
+3. _queue_lock
+4. _per_orch_counts_lock (lowest priority)
+```
+
+**Memory Safety:**
+- `cleanup_stale_attempt_counts()`: Removes entries older than TTL (default: 24 hours)
+- Issue queue uses `deque(maxlen=N)` for automatic FIFO eviction
+
+#### ExecutionManager
+
+**Future Cleanup:**
+- Tracks futures with creation timestamps
+- Stale futures (exceeding TTL, default: 5 minutes) are logged and cancelled
+- Maximum futures limit prevents unbounded memory growth
+- When limit is reached, removes completed futures first, then oldest stale futures
+
+**Long-Running Future Monitoring:**
+- Logs warnings for futures running longer than 60 seconds
+- Warning deduplication prevents log flooding (5-minute interval between repeated warnings)
+
+#### OrchestrationRegistry
+
+**Hot-Reload Error Handling:**
+- Invalid orchestration files are logged and skipped (don't crash the system)
+- Modified files trigger version replacement with pending removal tracking
+- Old versions are kept until their active executions complete
+
+---
+
+### Graceful Shutdown
+
+**Module:** `sentinel/shutdown.py`
+
+**Signal Handling:**
+- `SIGINT` (Ctrl+C): Triggers graceful shutdown
+- `SIGTERM`: Triggers graceful shutdown
+
+**Shutdown Sequence:**
+1. Signal handler sets `shutdown_requested` flag
+2. Main polling loop exits on next iteration check
+3. `ExecutionManager.shutdown()` waits for running tasks (or cancels them)
+4. Claude processes receive termination signal via `request_claude_shutdown()`
+
+**Usage:**
+```python
+handler = create_shutdown_handler(on_shutdown=sentinel.request_shutdown)
+# Signal handlers now installed for SIGINT and SIGTERM
+```
+
+---
+
+### Recovery Patterns Summary
+
+| Pattern | Use Case | Recovery Action |
+|---------|----------|-----------------|
+| Circuit Breaker | External service failures | Fail fast, auto-recover after timeout |
+| Exponential Backoff | Rate limiting | Retry with increasing delays |
+| Agent Retry | Agent execution failures | Retry up to max_attempts |
+| TTL-based Cleanup | Memory leaks from stale data | Automatic removal after TTL |
+| FIFO Queue Eviction | Queue overflow | Evict oldest items automatically |
+| Graceful Shutdown | Process termination | Complete running work, then exit |
+| Lock Ordering | Deadlock prevention | Consistent lock acquisition order |
+
+---
+
 ## Related Documentation
 
 - [Dependency Injection](dependency-injection.md) - Container and DI patterns
