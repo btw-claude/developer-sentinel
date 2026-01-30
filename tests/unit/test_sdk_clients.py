@@ -14,7 +14,7 @@ import pytest
 
 from sentinel.agent_clients.base import UsageInfo
 from sentinel.agent_clients.claude_sdk import _extract_usage_from_message
-from sentinel.config import Config
+from sentinel.config import Config, create_config
 from sentinel.executor import AgentClientError, AgentTimeoutError
 from sentinel.poller import JiraClientError
 from sentinel.sdk_clients import (
@@ -38,7 +38,7 @@ def reset_shutdown_state() -> None:
 @pytest.fixture
 def mock_config() -> Config:
     """Create a mock config for testing."""
-    return Config()
+    return create_config()
 
 
 class MockMessage:
@@ -694,7 +694,7 @@ class TestDisableStreamingLogs:
 
     def test_constructor_defaults_to_config_value(self) -> None:
         """Should default to config value when not explicitly provided."""
-        config = Config(disable_streaming_logs=True)
+        config = create_config(disable_streaming_logs=True)
         client = ClaudeSdkAgentClient(config)
         assert client._disable_streaming_logs is True
 
@@ -705,7 +705,7 @@ class TestDisableStreamingLogs:
 
     def test_explicit_param_overrides_config(self) -> None:
         """Should use explicit parameter over config value."""
-        config = Config(disable_streaming_logs=True)
+        config = create_config(disable_streaming_logs=True)
         client = ClaudeSdkAgentClient(config, disable_streaming_logs=False)
         assert client._disable_streaming_logs is False
 
@@ -1139,7 +1139,7 @@ class TestClaudeSdkAgentClientBranchSetup:
         workdir.mkdir()
 
         # Create config with a short timeout for testing
-        config = Config(subprocess_timeout=5.0)
+        config = create_config(subprocess_timeout=5.0)
         client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
 
         def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
@@ -1162,7 +1162,7 @@ class TestClaudeSdkAgentClientBranchSetup:
         workdir = tmp_path / "repo"
         workdir.mkdir()
 
-        config = Config(subprocess_timeout=5.0)
+        config = create_config(subprocess_timeout=5.0)
         client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
 
         def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
@@ -1201,7 +1201,7 @@ class TestClaudeSdkAgentClientBranchSetup:
         workdir = tmp_path / "repo"
         workdir.mkdir()
 
-        config = Config(subprocess_timeout=30.0)
+        config = create_config(subprocess_timeout=30.0)
         client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
 
         captured_timeouts: list[float | None] = []
@@ -1235,7 +1235,7 @@ class TestClaudeSdkAgentClientBranchSetup:
         workdir = tmp_path / "repo"
         workdir.mkdir()
 
-        config = Config(subprocess_timeout=0.0)
+        config = create_config(subprocess_timeout=0.0)
         client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
 
         captured_timeouts: list[float | None] = []

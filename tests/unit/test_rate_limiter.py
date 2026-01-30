@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from sentinel.config import Config
+from sentinel.config import create_config
 from sentinel.rate_limiter import (
     ClaudeRateLimiter,
     RateLimiterMetrics,
@@ -216,7 +216,7 @@ class TestClaudeRateLimiter:
 
     def test_from_config(self) -> None:
         """Can create limiter from Config."""
-        config = Config(
+        config = create_config(
             claude_rate_limit_enabled=True,
             claude_rate_limit_per_minute=30,
             claude_rate_limit_per_hour=500,

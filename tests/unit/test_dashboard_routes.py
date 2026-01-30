@@ -18,7 +18,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from sentinel.config import Config
+from sentinel.config import Config, create_config
 from sentinel.dashboard.routes import HEALTH_ENDPOINT_SUNSET_DATE, create_routes
 from sentinel.dashboard.state import (
     ExecutionStateSnapshot,
@@ -126,7 +126,7 @@ class TestHealthEndpoints:
 
     def test_legacy_health_endpoint_returns_deprecation_header(self, temp_logs_dir: Path) -> None:
         """Test that legacy /health endpoint returns Deprecation header per RFC 8594."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
         app = create_test_app(accessor)
@@ -142,7 +142,7 @@ class TestHealthEndpoints:
 
     def test_legacy_health_endpoint_returns_sunset_header(self, temp_logs_dir: Path) -> None:
         """Test that legacy /health endpoint returns Sunset header with removal date."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
         app = create_test_app(accessor)
@@ -157,7 +157,7 @@ class TestHealthEndpoints:
 
     def test_legacy_health_endpoint_returns_link_header(self, temp_logs_dir: Path) -> None:
         """Test that legacy /health endpoint returns Link header pointing to successors."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
         app = create_test_app(accessor)
@@ -177,7 +177,7 @@ class TestHealthEndpoints:
         self, temp_logs_dir: Path
     ) -> None:
         """Test that /health/live endpoint does not have Deprecation header."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
         app = create_test_app(accessor)
@@ -192,7 +192,7 @@ class TestHealthEndpoints:
         self, temp_logs_dir: Path
     ) -> None:
         """Test that /health/ready endpoint does not have Deprecation header."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
         app = create_test_app(accessor)
@@ -211,7 +211,7 @@ class TestApiLogsFilesEndpoint:
         """Test that endpoint returns empty list when logs directory doesn't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir) / "nonexistent_logs"
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -223,7 +223,7 @@ class TestApiLogsFilesEndpoint:
         """Test that endpoint returns empty list when logs directory is empty."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -246,7 +246,7 @@ class TestApiLogsFilesEndpoint:
             orch2_dir.mkdir()
             (orch2_dir / "20260114_120000.log").write_text("Log content 3")
 
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -286,7 +286,7 @@ class TestApiLogsFilesEndpoint:
             old_stat = old_file.stat()
             os.utime(old_file, (old_stat.st_atime, time.time() - 3600))  # 1 hour ago
 
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -310,7 +310,7 @@ class TestApiLogsFilesEndpoint:
             orch_dir.mkdir()
             (orch_dir / "20260114_153045.log").write_text("Test content")
 
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -345,7 +345,7 @@ class TestApiLogsFilesEndpoint:
             log_file = orch_dir / f"{timestamp}.log"
             log_file.write_text("Execution log content")
 
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -366,7 +366,7 @@ class TestApiLogsFilesEndpoint:
             (orch_dir / "readme.txt").write_text("Not a log file")
             (orch_dir / "config.json").write_text("{}")
 
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -391,7 +391,7 @@ class TestApiLogsFilesEndpoint:
             orch_dir.mkdir()
             (orch_dir / "20260114_100000.log").write_text("Orchestration log")
 
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -415,7 +415,7 @@ class TestApiLogsFilesEndpoint:
             with_logs_dir.mkdir()
             (with_logs_dir / "20260114_100000.log").write_text("Log content")
 
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -439,7 +439,7 @@ class TestSseLogStreamingEndpoint:
 
     def test_stream_returns_error_when_log_file_not_found(self, temp_logs_dir: Path) -> None:
         """Test that streaming returns error event when log file doesn't exist."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
         app = create_test_app(accessor)
@@ -459,7 +459,7 @@ class TestSseLogStreamingEndpoint:
 
     def test_stream_error_event_contains_json_data(self, temp_logs_dir: Path) -> None:
         """Test that error event data is valid JSON with error field."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
         app = create_test_app(accessor)
@@ -486,7 +486,7 @@ class TestSseLogStreamingEndpoint:
         secret_file = temp_logs_dir.parent / "secret.txt"
         secret_file.write_text("secret content")
 
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
         app = create_test_app(accessor)
@@ -516,7 +516,7 @@ class TestSseLogStreamingEndpoint:
             log_file = orch_dir / "20260114_100000.log"
             log_file.write_text("Log content")
 
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -530,7 +530,7 @@ class TestSseLogStreamingEndpoint:
         """Test that get_log_file_path returns None for non-existent file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -546,7 +546,7 @@ class TestSseLogStreamingEndpoint:
             # Test path traversal blocking - we can't create a file in parent,
             # but we can test the path check
 
-            config = Config(agent_logs_dir=logs_dir)
+            config = create_config(agent_logs_dir=logs_dir)
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -570,7 +570,7 @@ class TestSseLogStreamingEndpoint:
 
     def test_stream_endpoint_exists_with_correct_path(self, temp_logs_dir: Path) -> None:
         """Test that the stream endpoint exists at /api/logs/stream/{orchestration}/{filename}."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
         app = create_test_app(accessor)
@@ -631,7 +631,7 @@ orchestrations:
       prompt: "Test prompt"
 """)
 
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         # Create orchestration info pointing to the real file
@@ -678,7 +678,7 @@ orchestrations:
       prompt: "Test"
 """)
 
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         orch_info = OrchestrationInfo(
@@ -712,7 +712,7 @@ orchestrations:
 
     def test_toggle_orchestration_not_found(self, temp_logs_dir: Path) -> None:
         """Test 404 when orchestration doesn't exist."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         # No orchestrations configured
@@ -730,7 +730,7 @@ orchestrations:
 
     def test_toggle_orchestration_file_not_found(self, temp_logs_dir: Path) -> None:
         """Test 404 when orchestration file doesn't exist."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         # Orchestration info pointing to non-existent file
@@ -759,7 +759,7 @@ orchestrations:
 
     def test_toggle_endpoint_exists(self, temp_logs_dir: Path) -> None:
         """Test that the toggle endpoint exists at the correct path."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
         accessor = MockStateAccessorWithOrchestrations(sentinel, [])
         app = create_test_app(accessor)
@@ -800,7 +800,7 @@ orchestrations:
       prompt: "Other project"
 """)
 
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         orchestrations = [
@@ -879,7 +879,7 @@ orchestrations:
       prompt: "Second"
 """)
 
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         orchestrations = [
@@ -921,7 +921,7 @@ orchestrations:
 
     def test_bulk_toggle_no_matching_orchestrations(self, temp_logs_dir: Path) -> None:
         """Test 404 when no orchestrations match the identifier."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         # No matching orchestrations
@@ -939,7 +939,7 @@ orchestrations:
 
     def test_bulk_toggle_endpoint_exists(self, temp_logs_dir: Path) -> None:
         """Test that the bulk toggle endpoint exists at the correct path."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
         accessor = MockStateAccessorWithOrchestrations(sentinel, [])
         app = create_test_app(accessor)
@@ -949,7 +949,7 @@ orchestrations:
 
     def test_bulk_toggle_invalid_source(self, temp_logs_dir: Path) -> None:
         """Test validation error for invalid source type."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
         accessor = MockStateAccessorWithOrchestrations(sentinel, [])
         app = create_test_app(accessor)
@@ -986,7 +986,7 @@ orchestrations:
       prompt: "Test prompt"
 """)
 
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         orch_info = OrchestrationInfo(
@@ -1037,7 +1037,7 @@ orchestrations:
 """)
 
         # Use a very short cooldown for testing
-        config = Config(agent_logs_dir=temp_logs_dir, toggle_cooldown_seconds=0.1)
+        config = create_config(agent_logs_dir=temp_logs_dir, toggle_cooldown_seconds=0.1)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         orch_info = OrchestrationInfo(
@@ -1086,7 +1086,7 @@ orchestrations:
       prompt: "First"
 """)
 
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         orchestrations = [
@@ -1135,7 +1135,7 @@ class TestToggleRateLimitConfiguration:
         from sentinel.dashboard.routes import RateLimiter
 
         # Create config with custom cooldown
-        config = Config(toggle_cooldown_seconds=5.0)
+        config = create_config(toggle_cooldown_seconds=5.0)
         rate_limiter = RateLimiter(config)
 
         # The rate limiter should use the config value
@@ -1148,7 +1148,7 @@ class TestToggleRateLimitConfiguration:
         from sentinel.dashboard.routes import RateLimiter
 
         # Create config with custom cache settings
-        config = Config(rate_limit_cache_ttl=7200, rate_limit_cache_maxsize=5000)
+        config = create_config(rate_limit_cache_ttl=7200, rate_limit_cache_maxsize=5000)
         rate_limiter = RateLimiter(config)
 
         # The internal cache should use the config values
@@ -1161,7 +1161,7 @@ class TestToggleRateLimitConfiguration:
         from sentinel.dashboard.routes import RateLimiter
 
         # Create config with defaults
-        config = Config()
+        config = create_config()
         rate_limiter = RateLimiter(config)
 
         # Check defaults
@@ -1173,7 +1173,7 @@ class TestToggleRateLimitConfiguration:
         """Test that create_routes uses provided Config for rate limiting."""
         from sentinel.dashboard.state import SentinelStateAccessor
 
-        config = Config(toggle_cooldown_seconds=0.5)
+        config = create_config(toggle_cooldown_seconds=0.5)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -1185,7 +1185,7 @@ class TestToggleRateLimitConfiguration:
         """Test that create_routes creates default Config when not provided."""
         from sentinel.dashboard.state import SentinelStateAccessor
 
-        config = Config()
+        config = create_config()
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -1199,7 +1199,7 @@ class TestToggleOpenApiDocs:
 
     def test_toggle_endpoint_has_openapi_summary(self, temp_logs_dir: Path) -> None:
         """Test that single toggle endpoint has OpenAPI summary."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
         accessor = MockStateAccessorWithOrchestrations(sentinel, [])
         app = create_test_app(accessor)
@@ -1214,7 +1214,7 @@ class TestToggleOpenApiDocs:
 
     def test_toggle_endpoint_has_openapi_description(self, temp_logs_dir: Path) -> None:
         """Test that single toggle endpoint has OpenAPI description."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
         accessor = MockStateAccessorWithOrchestrations(sentinel, [])
         app = create_test_app(accessor)
@@ -1228,7 +1228,7 @@ class TestToggleOpenApiDocs:
 
     def test_bulk_toggle_endpoint_has_openapi_summary(self, temp_logs_dir: Path) -> None:
         """Test that bulk toggle endpoint has OpenAPI summary."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
         accessor = MockStateAccessorWithOrchestrations(sentinel, [])
         app = create_test_app(accessor)
@@ -1243,7 +1243,7 @@ class TestToggleOpenApiDocs:
 
     def test_bulk_toggle_endpoint_has_openapi_description(self, temp_logs_dir: Path) -> None:
         """Test that bulk toggle endpoint has OpenAPI description."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinelWithOrchestrations(config, [])
         accessor = MockStateAccessorWithOrchestrations(sentinel, [])
         app = create_test_app(accessor)
@@ -1346,7 +1346,7 @@ class TestCreateRoutesLogging:
 
     def test_create_routes_logs_debug_with_provided_config(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs debug message when Config is provided."""
-        config = Config(
+        config = create_config(
             agent_logs_dir=temp_logs_dir,
             toggle_cooldown_seconds=5.0,
             rate_limit_cache_ttl=7200,
@@ -1372,7 +1372,7 @@ class TestCreateRoutesLogging:
 
     def test_create_routes_logs_debug_with_default_config(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs debug message when using default Config."""
-        config = Config(agent_logs_dir=temp_logs_dir)
+        config = create_config(agent_logs_dir=temp_logs_dir)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -1393,7 +1393,7 @@ class TestCreateRoutesLogging:
 
     def test_create_routes_logs_toggle_cooldown_value(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs toggle_cooldown_seconds value."""
-        config = Config(agent_logs_dir=temp_logs_dir, toggle_cooldown_seconds=3.5)
+        config = create_config(agent_logs_dir=temp_logs_dir, toggle_cooldown_seconds=3.5)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -1407,7 +1407,7 @@ class TestCreateRoutesLogging:
 
     def test_create_routes_logs_cache_ttl_value(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs rate_limit_cache_ttl value."""
-        config = Config(agent_logs_dir=temp_logs_dir, rate_limit_cache_ttl=1800)
+        config = create_config(agent_logs_dir=temp_logs_dir, rate_limit_cache_ttl=1800)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -1421,7 +1421,7 @@ class TestCreateRoutesLogging:
 
     def test_create_routes_logs_cache_maxsize_value(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs rate_limit_cache_maxsize value."""
-        config = Config(agent_logs_dir=temp_logs_dir, rate_limit_cache_maxsize=20000)
+        config = create_config(agent_logs_dir=temp_logs_dir, rate_limit_cache_maxsize=20000)
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 

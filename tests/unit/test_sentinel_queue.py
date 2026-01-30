@@ -1,7 +1,6 @@
 """Tests for Sentinel queue eviction and orchestration logging."""
 
 import logging
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -316,7 +315,7 @@ class TestSentinelOrchestrationLogging:
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
-        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        config = make_config(orchestration_logs_dir=logs_dir)
         orchestrations = [make_orchestration()]
 
         sentinel = Sentinel(
@@ -357,7 +356,7 @@ class TestSentinelOrchestrationLogging:
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
-        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        config = make_config(orchestration_logs_dir=logs_dir)
         orchestrations = [make_orchestration(name="test-orchestration", tags=["review"])]
 
         sentinel = Sentinel(
@@ -381,7 +380,7 @@ class TestSentinelOrchestrationLogging:
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
-        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        config = make_config(orchestration_logs_dir=logs_dir)
         orchestrations = [make_orchestration(name="log-test-orch", tags=["review"])]
 
         sentinel = Sentinel(
@@ -415,7 +414,7 @@ class TestSentinelOrchestrationLogging:
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
-        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        config = make_config(orchestration_logs_dir=logs_dir)
         orchestrations = [
             make_orchestration(name="orch-alpha", tags=["alpha"]),
             make_orchestration(name="orch-beta", tags=["beta"]),
@@ -453,7 +452,7 @@ class TestSentinelOrchestrationLogging:
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
-        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        config = make_config(orchestration_logs_dir=logs_dir)
         orchestrations = [make_orchestration()]
 
         sentinel = Sentinel(
@@ -503,7 +502,7 @@ class TestSentinelOrchestrationLogging:
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
-        config = replace(make_config(), orchestration_logs_dir=logs_dir)
+        config = make_config(orchestration_logs_dir=logs_dir)
         orchestrations = [make_orchestration()]
 
         sentinel = Sentinel(

@@ -1,11 +1,26 @@
-"""Configuration loading from environment variables."""
+"""Configuration loading from environment variables.
+
+This module provides a hierarchical configuration system organized into focused
+sub-configs for each subsystem:
+
+- JiraConfig: Jira REST API settings
+- GitHubConfig: GitHub REST API settings
+- DashboardConfig: Dashboard server settings
+- RateLimitConfig: Claude API rate limiting settings
+- CircuitBreakerConfig: Circuit breaker settings for external services
+- ExecutionConfig: Agent execution settings (paths, concurrency, timeouts)
+
+The main Config class composes these sub-configs while maintaining backward
+compatibility by exposing all fields as top-level properties.
+"""
 
 from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
@@ -19,6 +34,9 @@ from sentinel.types import (
     RateLimitStrategy,
 )
 
+if TYPE_CHECKING:
+    pass
+
 # Valid log levels
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
@@ -28,130 +46,487 @@ MAX_PORT = 65535
 
 
 @dataclass(frozen=True)
+class JiraConfig:
+    """Jira REST API configuration.
+
+    Attributes:
+        base_url: Jira instance URL (e.g., "https://yoursite.atlassian.net").
+        email: User email for authentication.
+        api_token: API token for authentication.
+        epic_link_field: Custom field ID for epic links.
+    """
+
+    base_url: str = ""
+    email: str = ""
+    api_token: str = ""
+    epic_link_field: str = "customfield_10014"
+
+    @property
+    def configured(self) -> bool:
+        """Check if Jira REST API is configured."""
+        return bool(self.base_url and self.email and self.api_token)
+
+
+@dataclass(frozen=True)
+class GitHubConfig:
+    """GitHub REST API configuration.
+
+    Attributes:
+        token: Personal access token or app token.
+        api_url: Custom API URL for GitHub Enterprise (empty = github.com).
+    """
+
+    token: str = ""
+    api_url: str = ""
+
+    @property
+    def configured(self) -> bool:
+        """Check if GitHub REST API is configured."""
+        return bool(self.token)
+
+
+@dataclass(frozen=True)
+class DashboardConfig:
+    """Dashboard server configuration.
+
+    Attributes:
+        enabled: Whether to enable the web dashboard.
+        port: Port for the dashboard server.
+        host: Host to bind the dashboard server.
+        toggle_cooldown_seconds: Cooldown period between writes to the same file.
+        rate_limit_cache_ttl: TTL in seconds for rate limit cache entries.
+        rate_limit_cache_maxsize: Maximum number of entries in the rate limit cache.
+    """
+
+    enabled: bool = False
+    port: int = 8080
+    host: str = "127.0.0.1"
+    toggle_cooldown_seconds: float = 2.0
+    rate_limit_cache_ttl: int = 3600
+    rate_limit_cache_maxsize: int = 10000
+
+
+@dataclass(frozen=True)
+class RateLimitConfig:
+    """Claude API rate limiting configuration.
+
+    Attributes:
+        enabled: Enable/disable rate limiting for Claude API calls.
+        per_minute: Maximum requests per minute.
+        per_hour: Maximum requests per hour.
+        strategy: Strategy when limit reached ("queue" or "reject").
+        warning_threshold: Fraction of remaining capacity that triggers warning.
+    """
+
+    enabled: bool = True
+    per_minute: int = 60
+    per_hour: int = 1000
+    strategy: str = "queue"
+    warning_threshold: float = 0.2
+
+
+@dataclass(frozen=True)
+class CircuitBreakerConfig:
+    """Circuit breaker configuration for external service calls.
+
+    Attributes:
+        enabled: Enable/disable circuit breakers.
+        failure_threshold: Number of consecutive failures before opening circuit.
+        recovery_timeout: Seconds to wait before attempting recovery.
+        half_open_max_calls: Maximum calls to allow in half-open state.
+    """
+
+    enabled: bool = True
+    failure_threshold: int = 5
+    recovery_timeout: float = 30.0
+    half_open_max_calls: int = 3
+
+
+@dataclass(frozen=True)
+class HealthCheckConfig:
+    """Health check configuration.
+
+    Attributes:
+        enabled: Enable/disable health checks for external dependencies.
+        timeout: Timeout in seconds for individual health checks.
+    """
+
+    enabled: bool = True
+    timeout: float = 5.0
+
+
+@dataclass(frozen=True)
+class ExecutionConfig:
+    """Agent execution configuration.
+
+    Attributes:
+        orchestrations_dir: Directory containing orchestration files.
+        agent_workdir: Base directory for agent working directories.
+        agent_logs_dir: Base directory for agent execution logs.
+        orchestration_logs_dir: Per-orchestration log directory (optional).
+        max_concurrent_executions: Number of orchestrations to run in parallel.
+        cleanup_workdir_on_success: Whether to cleanup workdir after success.
+        disable_streaming_logs: Whether to disable streaming log writes.
+        subprocess_timeout: Default timeout for subprocess calls.
+        default_base_branch: Default base branch for new branch creation.
+        attempt_counts_ttl: TTL for attempt counts cache.
+        max_queue_size: Maximum number of issues in the queue.
+        inter_message_times_threshold: Threshold for summarizing timing metrics.
+    """
+
+    orchestrations_dir: Path = field(default_factory=lambda: Path("./orchestrations"))
+    agent_workdir: Path = field(default_factory=lambda: Path("./workdir"))
+    agent_logs_dir: Path = field(default_factory=lambda: Path("./logs"))
+    orchestration_logs_dir: Path | None = None
+    max_concurrent_executions: int = 1
+    cleanup_workdir_on_success: bool = True
+    disable_streaming_logs: bool = False
+    subprocess_timeout: float = 60.0
+    default_base_branch: str = "main"
+    attempt_counts_ttl: int = 3600
+    max_queue_size: int = 100
+    inter_message_times_threshold: int = 100
+
+
+@dataclass(frozen=True)
+class CursorConfig:
+    """Cursor CLI configuration.
+
+    Attributes:
+        default_agent_type: Default agent type (claude or cursor).
+        path: Path to Cursor CLI executable.
+        default_model: Default model for Cursor agent.
+        default_mode: Default mode (agent, plan, or ask).
+    """
+
+    default_agent_type: str = "claude"
+    path: str = ""
+    default_model: str = ""
+    default_mode: str = "agent"
+
+
+@dataclass(frozen=True)
+class LoggingConfig:
+    """Logging configuration.
+
+    Attributes:
+        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        json: Whether to output logs in JSON format.
+    """
+
+    level: str = "INFO"
+    json: bool = False
+
+
+@dataclass(frozen=True)
+class PollingConfig:
+    """Polling configuration.
+
+    Attributes:
+        interval: Seconds between polling cycles.
+        max_issues_per_poll: Maximum issues to fetch per poll.
+    """
+
+    interval: int = 60
+    max_issues_per_poll: int = 50
+
+
+@dataclass(frozen=True)
 class Config:
     """Application configuration loaded from environment.
 
-    This dataclass is frozen (immutable) to prevent accidental modification
-    after creation.
+    This dataclass composes focused sub-configs for each subsystem while
+    maintaining backward compatibility by exposing all fields as properties.
+
+    Sub-configs:
+        jira: Jira REST API settings
+        github: GitHub REST API settings
+        dashboard: Dashboard server settings
+        rate_limit: Claude API rate limiting settings
+        circuit_breaker: Circuit breaker settings
+        health_check: Health check settings
+        execution: Agent execution settings
+        cursor: Cursor CLI settings
+        logging: Logging settings
+        polling: Polling settings
     """
 
-    # Polling configuration
-    poll_interval: int = 60  # seconds
-    max_issues_per_poll: int = 50
+    # Sub-configs
+    jira: JiraConfig = field(default_factory=JiraConfig)
+    github: GitHubConfig = field(default_factory=GitHubConfig)
+    dashboard: DashboardConfig = field(default_factory=DashboardConfig)
+    rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
+    circuit_breaker: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
+    health_check: HealthCheckConfig = field(default_factory=HealthCheckConfig)
+    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    cursor: CursorConfig = field(default_factory=CursorConfig)
+    logging_config: LoggingConfig = field(default_factory=LoggingConfig)
+    polling: PollingConfig = field(default_factory=PollingConfig)
 
-    # Concurrent execution
-    max_concurrent_executions: int = 1  # Number of orchestrations to run in parallel
+    # ==========================================================================
+    # Backward compatibility properties - Polling
+    # ==========================================================================
 
-    # Logging
-    log_level: str = "INFO"
-    log_json: bool = False
+    @property
+    def poll_interval(self) -> int:
+        """Seconds between polling cycles."""
+        return self.polling.interval
 
-    # Paths
-    orchestrations_dir: Path = Path("./orchestrations")
-    agent_workdir: Path = Path("./workdir")  # Base directory for agent working directories
-    agent_logs_dir: Path = Path("./logs")  # Base directory for agent execution logs
-    orchestration_logs_dir: Path | None = None  # Per-orchestration log directory (optional)
+    @property
+    def max_issues_per_poll(self) -> int:
+        """Maximum issues to fetch per poll."""
+        return self.polling.max_issues_per_poll
 
-    # Jira REST API configuration
-    jira_base_url: str = ""  # e.g., "https://yoursite.atlassian.net"
-    jira_email: str = ""  # User email for authentication
-    jira_api_token: str = ""  # API token for authentication
-    jira_epic_link_field: str = "customfield_10014"  # Custom field ID for epic links
+    # ==========================================================================
+    # Backward compatibility properties - Logging
+    # ==========================================================================
 
-    # GitHub REST API configuration
-    github_token: str = ""  # Personal access token or app token
-    github_api_url: str = ""  # Custom API URL for GitHub Enterprise (empty = github.com)
+    @property
+    def log_level(self) -> str:
+        """Log level."""
+        return self.logging_config.level
 
-    # Workdir cleanup configuration
-    # Via SENTINEL_KEEP_WORKDIR (inverted)
-    cleanup_workdir_on_success: bool = True  # Whether to cleanup workdir after successful execution
+    @property
+    def log_json(self) -> bool:
+        """Whether to output logs in JSON format."""
+        return self.logging_config.json
 
-    # Dashboard configuration
-    dashboard_enabled: bool = False  # Whether to enable the web dashboard
-    dashboard_port: int = 8080  # Port for the dashboard server
-    dashboard_host: str = "127.0.0.1"  # Host to bind the dashboard server
+    # ==========================================================================
+    # Backward compatibility properties - Execution
+    # ==========================================================================
 
-    # Attempt counts cleanup configuration
-    # Time in seconds after which inactive attempt count entries are cleaned up
-    attempt_counts_ttl: int = 3600  # 1 hour default
+    @property
+    def max_concurrent_executions(self) -> int:
+        """Number of orchestrations to run in parallel."""
+        return self.execution.max_concurrent_executions
 
-    # Issue queue configuration
-    # Maximum number of issues that can be held in the queue
-    # When the queue is full, oldest items are evicted to make room for new ones
-    max_queue_size: int = 100
+    @property
+    def orchestrations_dir(self) -> Path:
+        """Directory containing orchestration files."""
+        return self.execution.orchestrations_dir
 
-    # Streaming logs configuration
-    # When True, disables streaming log writes during agent execution
-    # Uses _run_simple() path and writes full response after completion
-    disable_streaming_logs: bool = False
+    @property
+    def agent_workdir(self) -> Path:
+        """Base directory for agent working directories."""
+        return self.execution.agent_workdir
 
-    # Cursor CLI configuration
-    default_agent_type: str = "claude"  # Default agent type: claude or cursor
-    cursor_path: str = ""  # Path to Cursor CLI executable
-    cursor_default_model: str = ""  # Default model for Cursor agent
-    cursor_default_mode: str = "agent"  # Default mode: agent, plan, or ask
+    @property
+    def agent_logs_dir(self) -> Path:
+        """Base directory for agent execution logs."""
+        return self.execution.agent_logs_dir
 
-    # Timing metrics configuration
-    # Threshold for summarizing inter_message_times in TimingMetrics
-    # When message count exceeds this, store statistical summary instead of raw data
-    inter_message_times_threshold: int = 100
+    @property
+    def orchestration_logs_dir(self) -> Path | None:
+        """Per-orchestration log directory (optional)."""
+        return self.execution.orchestration_logs_dir
 
-    # Dashboard rate limiting configuration
-    # Cooldown period in seconds between writes to the same orchestration file
-    toggle_cooldown_seconds: float = 2.0
-    # TTL in seconds for rate limit cache entries
-    rate_limit_cache_ttl: int = 3600  # 1 hour
-    # Maximum number of entries in the rate limit cache
-    rate_limit_cache_maxsize: int = 10000  # 10k entries
+    @property
+    def cleanup_workdir_on_success(self) -> bool:
+        """Whether to cleanup workdir after successful execution."""
+        return self.execution.cleanup_workdir_on_success
 
-    # Claude API rate limiting configuration
-    # Enable/disable rate limiting for Claude API calls
-    claude_rate_limit_enabled: bool = True
-    # Maximum requests per minute (default: 60)
-    claude_rate_limit_per_minute: int = 60
-    # Maximum requests per hour (default: 1000)
-    claude_rate_limit_per_hour: int = 1000
-    # Strategy when rate limit is reached: "queue" (wait) or "reject" (fail immediately)
-    claude_rate_limit_strategy: str = "queue"
-    # Warning threshold as fraction of remaining capacity (0.0-1.0)
-    # When tokens fall below this fraction, warnings are logged
-    claude_rate_limit_warning_threshold: float = 0.2
+    @property
+    def disable_streaming_logs(self) -> bool:
+        """Whether to disable streaming log writes."""
+        return self.execution.disable_streaming_logs
 
-    # Circuit breaker configuration
-    # Enable/disable circuit breakers for external service calls (Jira, GitHub, Claude)
-    circuit_breaker_enabled: bool = True
-    # Number of consecutive failures before opening the circuit (default: 5)
-    circuit_breaker_failure_threshold: int = 5
-    # Seconds to wait before attempting recovery after circuit opens (default: 30)
-    circuit_breaker_recovery_timeout: float = 30.0
-    # Maximum calls to allow in half-open state for recovery testing (default: 3)
-    circuit_breaker_half_open_max_calls: int = 3
+    @property
+    def subprocess_timeout(self) -> float:
+        """Default timeout for subprocess calls."""
+        return self.execution.subprocess_timeout
 
-    # Health check configuration
-    # Enable/disable health checks for external service dependencies
-    health_check_enabled: bool = True
-    # Timeout in seconds for individual health checks (default: 5.0)
-    health_check_timeout: float = 5.0
+    @property
+    def default_base_branch(self) -> str:
+        """Default base branch for new branch creation."""
+        return self.execution.default_base_branch
 
-    # Base branch configuration
-    # Default base branch for new branch creation (default: "main")
-    # Can be overridden per-orchestration in GitHubContext.base_branch
-    default_base_branch: str = "main"
+    @property
+    def attempt_counts_ttl(self) -> int:
+        """TTL for attempt counts cache."""
+        return self.execution.attempt_counts_ttl
 
-    # Subprocess timeout configuration
-    # Default timeout in seconds for subprocess calls (git, shell commands)
-    # Prevents commands from hanging indefinitely against unresponsive servers
-    subprocess_timeout: float = 60.0
+    @property
+    def max_queue_size(self) -> int:
+        """Maximum number of issues in the queue."""
+        return self.execution.max_queue_size
+
+    @property
+    def inter_message_times_threshold(self) -> int:
+        """Threshold for summarizing timing metrics."""
+        return self.execution.inter_message_times_threshold
+
+    # ==========================================================================
+    # Backward compatibility properties - Jira
+    # ==========================================================================
+
+    @property
+    def jira_base_url(self) -> str:
+        """Jira instance URL."""
+        return self.jira.base_url
+
+    @property
+    def jira_email(self) -> str:
+        """User email for Jira authentication."""
+        return self.jira.email
+
+    @property
+    def jira_api_token(self) -> str:
+        """API token for Jira authentication."""
+        return self.jira.api_token
+
+    @property
+    def jira_epic_link_field(self) -> str:
+        """Custom field ID for epic links."""
+        return self.jira.epic_link_field
 
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
-        return bool(self.jira_base_url and self.jira_email and self.jira_api_token)
+        return self.jira.configured
+
+    # ==========================================================================
+    # Backward compatibility properties - GitHub
+    # ==========================================================================
+
+    @property
+    def github_token(self) -> str:
+        """GitHub personal access token or app token."""
+        return self.github.token
+
+    @property
+    def github_api_url(self) -> str:
+        """Custom API URL for GitHub Enterprise."""
+        return self.github.api_url
 
     @property
     def github_configured(self) -> bool:
         """Check if GitHub REST API is configured."""
-        return bool(self.github_token)
+        return self.github.configured
+
+    # ==========================================================================
+    # Backward compatibility properties - Dashboard
+    # ==========================================================================
+
+    @property
+    def dashboard_enabled(self) -> bool:
+        """Whether to enable the web dashboard."""
+        return self.dashboard.enabled
+
+    @property
+    def dashboard_port(self) -> int:
+        """Port for the dashboard server."""
+        return self.dashboard.port
+
+    @property
+    def dashboard_host(self) -> str:
+        """Host to bind the dashboard server."""
+        return self.dashboard.host
+
+    @property
+    def toggle_cooldown_seconds(self) -> float:
+        """Cooldown period between writes to the same file."""
+        return self.dashboard.toggle_cooldown_seconds
+
+    @property
+    def rate_limit_cache_ttl(self) -> int:
+        """TTL in seconds for rate limit cache entries."""
+        return self.dashboard.rate_limit_cache_ttl
+
+    @property
+    def rate_limit_cache_maxsize(self) -> int:
+        """Maximum number of entries in the rate limit cache."""
+        return self.dashboard.rate_limit_cache_maxsize
+
+    # ==========================================================================
+    # Backward compatibility properties - Rate Limiting
+    # ==========================================================================
+
+    @property
+    def claude_rate_limit_enabled(self) -> bool:
+        """Enable/disable rate limiting for Claude API calls."""
+        return self.rate_limit.enabled
+
+    @property
+    def claude_rate_limit_per_minute(self) -> int:
+        """Maximum requests per minute."""
+        return self.rate_limit.per_minute
+
+    @property
+    def claude_rate_limit_per_hour(self) -> int:
+        """Maximum requests per hour."""
+        return self.rate_limit.per_hour
+
+    @property
+    def claude_rate_limit_strategy(self) -> str:
+        """Strategy when rate limit is reached."""
+        return self.rate_limit.strategy
+
+    @property
+    def claude_rate_limit_warning_threshold(self) -> float:
+        """Fraction of remaining capacity that triggers warning."""
+        return self.rate_limit.warning_threshold
+
+    # ==========================================================================
+    # Backward compatibility properties - Circuit Breaker
+    # ==========================================================================
+
+    @property
+    def circuit_breaker_enabled(self) -> bool:
+        """Enable/disable circuit breakers."""
+        return self.circuit_breaker.enabled
+
+    @property
+    def circuit_breaker_failure_threshold(self) -> int:
+        """Number of consecutive failures before opening circuit."""
+        return self.circuit_breaker.failure_threshold
+
+    @property
+    def circuit_breaker_recovery_timeout(self) -> float:
+        """Seconds to wait before attempting recovery."""
+        return self.circuit_breaker.recovery_timeout
+
+    @property
+    def circuit_breaker_half_open_max_calls(self) -> int:
+        """Maximum calls to allow in half-open state."""
+        return self.circuit_breaker.half_open_max_calls
+
+    # ==========================================================================
+    # Backward compatibility properties - Health Check
+    # ==========================================================================
+
+    @property
+    def health_check_enabled(self) -> bool:
+        """Enable/disable health checks."""
+        return self.health_check.enabled
+
+    @property
+    def health_check_timeout(self) -> float:
+        """Timeout in seconds for individual health checks."""
+        return self.health_check.timeout
+
+    # ==========================================================================
+    # Backward compatibility properties - Cursor
+    # ==========================================================================
+
+    @property
+    def default_agent_type(self) -> str:
+        """Default agent type (claude or cursor)."""
+        return self.cursor.default_agent_type
+
+    @property
+    def cursor_path(self) -> str:
+        """Path to Cursor CLI executable."""
+        return self.cursor.path
+
+    @property
+    def cursor_default_model(self) -> str:
+        """Default model for Cursor agent."""
+        return self.cursor.default_model
+
+    @property
+    def cursor_default_mode(self) -> str:
+        """Default mode (agent, plan, or ask)."""
+        return self.cursor.default_mode
 
 
 def _parse_positive_int(value: str, name: str, default: int) -> int:
@@ -623,48 +998,266 @@ def load_config(env_file: Path | None = None) -> Config:
         60.0,
     )
 
-    return Config(
-        poll_interval=poll_interval,
-        max_issues_per_poll=max_issues,
-        max_concurrent_executions=max_concurrent,
-        log_level=log_level,
-        log_json=log_json,
+    # Create sub-configs
+    jira_config = JiraConfig(
+        base_url=os.getenv("JIRA_BASE_URL", ""),
+        email=os.getenv("JIRA_EMAIL", ""),
+        api_token=os.getenv("JIRA_API_TOKEN", ""),
+        epic_link_field=os.getenv("JIRA_EPIC_LINK_FIELD", "customfield_10014"),
+    )
+
+    github_config = GitHubConfig(
+        token=os.getenv("GITHUB_TOKEN", ""),
+        api_url=os.getenv("GITHUB_API_URL", ""),
+    )
+
+    dashboard_config = DashboardConfig(
+        enabled=dashboard_enabled,
+        port=dashboard_port,
+        host=dashboard_host,
+        toggle_cooldown_seconds=toggle_cooldown_seconds,
+        rate_limit_cache_ttl=rate_limit_cache_ttl,
+        rate_limit_cache_maxsize=rate_limit_cache_maxsize,
+    )
+
+    rate_limit_config = RateLimitConfig(
+        enabled=claude_rate_limit_enabled,
+        per_minute=claude_rate_limit_per_minute,
+        per_hour=claude_rate_limit_per_hour,
+        strategy=claude_rate_limit_strategy,
+        warning_threshold=claude_rate_limit_warning_threshold,
+    )
+
+    circuit_breaker_config = CircuitBreakerConfig(
+        enabled=circuit_breaker_enabled,
+        failure_threshold=circuit_breaker_failure_threshold,
+        recovery_timeout=circuit_breaker_recovery_timeout,
+        half_open_max_calls=circuit_breaker_half_open_max_calls,
+    )
+
+    health_check_config = HealthCheckConfig(
+        enabled=health_check_enabled,
+        timeout=health_check_timeout,
+    )
+
+    execution_config = ExecutionConfig(
         orchestrations_dir=Path(os.getenv("SENTINEL_ORCHESTRATIONS_DIR", "./orchestrations")),
         agent_workdir=Path(os.getenv("SENTINEL_AGENT_WORKDIR", "./workdir")),
         agent_logs_dir=Path(os.getenv("SENTINEL_AGENT_LOGS_DIR", "./logs")),
         orchestration_logs_dir=orchestration_logs_dir,
-        jira_base_url=os.getenv("JIRA_BASE_URL", ""),
-        jira_email=os.getenv("JIRA_EMAIL", ""),
-        jira_api_token=os.getenv("JIRA_API_TOKEN", ""),
-        jira_epic_link_field=os.getenv("JIRA_EPIC_LINK_FIELD", "customfield_10014"),
-        github_token=os.getenv("GITHUB_TOKEN", ""),
-        github_api_url=os.getenv("GITHUB_API_URL", ""),
+        max_concurrent_executions=max_concurrent,
         cleanup_workdir_on_success=cleanup_workdir_on_success,
-        dashboard_enabled=dashboard_enabled,
-        dashboard_port=dashboard_port,
-        dashboard_host=dashboard_host,
+        disable_streaming_logs=disable_streaming_logs,
+        subprocess_timeout=subprocess_timeout,
+        default_base_branch=default_base_branch,
         attempt_counts_ttl=attempt_counts_ttl,
         max_queue_size=max_queue_size,
-        disable_streaming_logs=disable_streaming_logs,
-        default_agent_type=default_agent_type,
-        cursor_path=cursor_path,
-        cursor_default_model=cursor_default_model,
-        cursor_default_mode=cursor_default_mode,
         inter_message_times_threshold=inter_message_times_threshold,
-        toggle_cooldown_seconds=toggle_cooldown_seconds,
-        rate_limit_cache_ttl=rate_limit_cache_ttl,
-        rate_limit_cache_maxsize=rate_limit_cache_maxsize,
-        claude_rate_limit_enabled=claude_rate_limit_enabled,
-        claude_rate_limit_per_minute=claude_rate_limit_per_minute,
-        claude_rate_limit_per_hour=claude_rate_limit_per_hour,
-        claude_rate_limit_strategy=claude_rate_limit_strategy,
-        claude_rate_limit_warning_threshold=claude_rate_limit_warning_threshold,
-        circuit_breaker_enabled=circuit_breaker_enabled,
-        circuit_breaker_failure_threshold=circuit_breaker_failure_threshold,
-        circuit_breaker_recovery_timeout=circuit_breaker_recovery_timeout,
-        circuit_breaker_half_open_max_calls=circuit_breaker_half_open_max_calls,
-        health_check_enabled=health_check_enabled,
-        health_check_timeout=health_check_timeout,
-        default_base_branch=default_base_branch,
-        subprocess_timeout=subprocess_timeout,
+    )
+
+    cursor_config = CursorConfig(
+        default_agent_type=default_agent_type,
+        path=cursor_path,
+        default_model=cursor_default_model,
+        default_mode=cursor_default_mode,
+    )
+
+    logging_cfg = LoggingConfig(
+        level=log_level,
+        json=log_json,
+    )
+
+    polling_config = PollingConfig(
+        interval=poll_interval,
+        max_issues_per_poll=max_issues,
+    )
+
+    return Config(
+        jira=jira_config,
+        github=github_config,
+        dashboard=dashboard_config,
+        rate_limit=rate_limit_config,
+        circuit_breaker=circuit_breaker_config,
+        health_check=health_check_config,
+        execution=execution_config,
+        cursor=cursor_config,
+        logging_config=logging_cfg,
+        polling=polling_config,
+    )
+
+
+def create_config(
+    # Polling settings (backward-compatible with flat params)
+    poll_interval: int = 60,
+    max_issues_per_poll: int = 50,
+    # Execution settings
+    max_concurrent_executions: int = 1,
+    orchestrations_dir: Path | None = None,
+    agent_workdir: Path | None = None,
+    agent_logs_dir: Path | None = None,
+    orchestration_logs_dir: Path | None = None,
+    attempt_counts_ttl: int = 3600,
+    max_queue_size: int = 100,
+    cleanup_workdir_on_success: bool = True,
+    disable_streaming_logs: bool = False,
+    subprocess_timeout: float = 60.0,
+    default_base_branch: str = "main",
+    inter_message_times_threshold: int = 100,
+    # Logging settings
+    log_level: str = "INFO",
+    log_json: bool = False,
+    # Dashboard settings
+    dashboard_enabled: bool = False,
+    dashboard_port: int = 8080,
+    dashboard_host: str = "127.0.0.1",
+    toggle_cooldown_seconds: float = 2.0,
+    rate_limit_cache_ttl: int = 3600,
+    rate_limit_cache_maxsize: int = 10000,
+    # Jira settings
+    jira_base_url: str = "",
+    jira_email: str = "",
+    jira_api_token: str = "",
+    jira_epic_link_field: str = "customfield_10014",
+    # GitHub settings
+    github_token: str = "",
+    github_api_url: str = "",
+    # Cursor settings
+    default_agent_type: str = "claude",
+    cursor_path: str = "",
+    cursor_default_model: str = "",
+    cursor_default_mode: str = "agent",
+    # Rate limit settings
+    claude_rate_limit_enabled: bool = True,
+    claude_rate_limit_per_minute: int = 60,
+    claude_rate_limit_per_hour: int = 1000,
+    claude_rate_limit_strategy: str = "queue",
+    claude_rate_limit_warning_threshold: float = 0.2,
+    # Circuit breaker settings
+    circuit_breaker_enabled: bool = True,
+    circuit_breaker_failure_threshold: int = 5,
+    circuit_breaker_recovery_timeout: float = 30.0,
+    circuit_breaker_half_open_max_calls: int = 3,
+    # Health check settings
+    health_check_enabled: bool = True,
+    health_check_timeout: float = 5.0,
+) -> Config:
+    """Create a Config instance from flat parameters (backward-compatible factory).
+
+    This function provides backward compatibility for code that used to create
+    Config instances with flat parameters before the sub-config refactoring.
+    It accepts the old-style flat parameters and creates the appropriate
+    sub-config objects internally.
+
+    Args:
+        poll_interval: Seconds between polling cycles.
+        max_issues_per_poll: Maximum issues to fetch per poll.
+        max_concurrent_executions: Number of orchestrations to run in parallel.
+        orchestrations_dir: Directory containing orchestration files.
+        agent_workdir: Base directory for agent working directories.
+        agent_logs_dir: Base directory for agent execution logs.
+        orchestration_logs_dir: Per-orchestration log directory (optional).
+        attempt_counts_ttl: TTL for attempt counts cache.
+        max_queue_size: Maximum number of issues in the queue.
+        cleanup_workdir_on_success: Whether to cleanup workdir after success.
+        disable_streaming_logs: Whether to disable streaming log writes.
+        subprocess_timeout: Default timeout for subprocess calls.
+        default_base_branch: Default base branch for new branch creation.
+        inter_message_times_threshold: Threshold for summarizing timing metrics.
+        log_level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        log_json: Whether to output logs in JSON format.
+        dashboard_enabled: Whether to enable the web dashboard.
+        dashboard_port: Port for the dashboard server.
+        dashboard_host: Host to bind the dashboard server.
+        toggle_cooldown_seconds: Cooldown period for dashboard toggles.
+        rate_limit_cache_ttl: TTL for rate limit cache entries.
+        rate_limit_cache_maxsize: Maximum rate limit cache entries.
+        jira_base_url: Jira instance URL.
+        jira_email: User email for Jira authentication.
+        jira_api_token: API token for Jira authentication.
+        jira_epic_link_field: Custom field ID for epic links.
+        github_token: GitHub personal access token.
+        github_api_url: Custom API URL for GitHub Enterprise.
+        default_agent_type: Default agent type (claude or cursor).
+        cursor_path: Path to Cursor CLI executable.
+        cursor_default_model: Default model for Cursor agent.
+        cursor_default_mode: Default mode (agent, plan, or ask).
+        claude_rate_limit_enabled: Enable/disable rate limiting.
+        claude_rate_limit_per_minute: Maximum requests per minute.
+        claude_rate_limit_per_hour: Maximum requests per hour.
+        claude_rate_limit_strategy: Strategy when limit reached.
+        claude_rate_limit_warning_threshold: Warning threshold fraction.
+        circuit_breaker_enabled: Enable/disable circuit breakers.
+        circuit_breaker_failure_threshold: Failures before opening circuit.
+        circuit_breaker_recovery_timeout: Recovery timeout in seconds.
+        circuit_breaker_half_open_max_calls: Max calls in half-open state.
+        health_check_enabled: Enable/disable health checks.
+        health_check_timeout: Health check timeout in seconds.
+
+    Returns:
+        A Config instance with the specified parameters organized into sub-configs.
+    """
+    return Config(
+        polling=PollingConfig(
+            interval=poll_interval,
+            max_issues_per_poll=max_issues_per_poll,
+        ),
+        execution=ExecutionConfig(
+            max_concurrent_executions=max_concurrent_executions,
+            orchestrations_dir=orchestrations_dir or Path("./orchestrations"),
+            agent_workdir=agent_workdir or Path("./workdir"),
+            agent_logs_dir=agent_logs_dir or Path("./logs"),
+            orchestration_logs_dir=orchestration_logs_dir,
+            attempt_counts_ttl=attempt_counts_ttl,
+            max_queue_size=max_queue_size,
+            cleanup_workdir_on_success=cleanup_workdir_on_success,
+            disable_streaming_logs=disable_streaming_logs,
+            subprocess_timeout=subprocess_timeout,
+            default_base_branch=default_base_branch,
+            inter_message_times_threshold=inter_message_times_threshold,
+        ),
+        logging_config=LoggingConfig(
+            level=log_level,
+            json=log_json,
+        ),
+        dashboard=DashboardConfig(
+            enabled=dashboard_enabled,
+            port=dashboard_port,
+            host=dashboard_host,
+            toggle_cooldown_seconds=toggle_cooldown_seconds,
+            rate_limit_cache_ttl=rate_limit_cache_ttl,
+            rate_limit_cache_maxsize=rate_limit_cache_maxsize,
+        ),
+        jira=JiraConfig(
+            base_url=jira_base_url,
+            email=jira_email,
+            api_token=jira_api_token,
+            epic_link_field=jira_epic_link_field,
+        ),
+        github=GitHubConfig(
+            token=github_token,
+            api_url=github_api_url,
+        ),
+        cursor=CursorConfig(
+            default_agent_type=default_agent_type,
+            path=cursor_path,
+            default_model=cursor_default_model,
+            default_mode=cursor_default_mode,
+        ),
+        rate_limit=RateLimitConfig(
+            enabled=claude_rate_limit_enabled,
+            per_minute=claude_rate_limit_per_minute,
+            per_hour=claude_rate_limit_per_hour,
+            strategy=claude_rate_limit_strategy,
+            warning_threshold=claude_rate_limit_warning_threshold,
+        ),
+        circuit_breaker=CircuitBreakerConfig(
+            enabled=circuit_breaker_enabled,
+            failure_threshold=circuit_breaker_failure_threshold,
+            recovery_timeout=circuit_breaker_recovery_timeout,
+            half_open_max_calls=circuit_breaker_half_open_max_calls,
+        ),
+        health_check=HealthCheckConfig(
+            enabled=health_check_enabled,
+            timeout=health_check_timeout,
+        ),
     )

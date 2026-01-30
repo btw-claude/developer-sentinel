@@ -22,13 +22,13 @@ from sentinel.agent_clients import (
     CursorMode,
     create_default_factory,
 )
-from sentinel.config import Config
+from sentinel.config import Config, create_config
 
 
 @pytest.fixture
 def test_config() -> Config:
     """Create a default test Config with standard cursor settings."""
-    return Config(
+    return create_config(
         agent_workdir=Path("/tmp/test-workdir"),
         agent_logs_dir=Path("/tmp/test-logs"),
         cursor_path="/usr/local/bin/cursor",
@@ -40,7 +40,7 @@ def test_config() -> Config:
 @pytest.fixture
 def test_config_plan_mode() -> Config:
     """Create a test Config with plan mode."""
-    return Config(
+    return create_config(
         agent_workdir=Path("/tmp/test-workdir"),
         agent_logs_dir=Path("/tmp/test-logs"),
         cursor_path="/usr/local/bin/cursor",
@@ -59,7 +59,7 @@ def make_test_config(
     Note: For simple test cases, prefer using the test_config fixture.
     This helper is useful when specific parameter overrides are needed.
     """
-    return Config(
+    return create_config(
         agent_workdir=Path("/tmp/test-workdir"),
         agent_logs_dir=Path("/tmp/test-logs"),
         cursor_path=cursor_path,
@@ -110,7 +110,7 @@ class TestCursorAgentClientInit:
 
     def test_init_with_defaults(self) -> None:
         """Test initialization with default config values."""
-        config = Config(cursor_default_mode="agent")
+        config = create_config(cursor_default_mode="agent")
         client = CursorAgentClient(config)
 
         assert client.config is config
@@ -148,7 +148,7 @@ class TestCursorAgentClientInit:
 
     def test_init_with_empty_cursor_mode_raises_error(self) -> None:
         """Test that initialization raises AgentClientError when cursor_default_mode is empty."""
-        config = Config(
+        config = create_config(
             cursor_path="/usr/local/bin/cursor",
             cursor_default_mode="",
         )
@@ -161,7 +161,7 @@ class TestCursorAgentClientInit:
 
     def test_init_with_whitespace_cursor_mode_raises_error(self) -> None:
         """Test that initialization raises AgentClientError when cursor_default_mode is whitespace."""
-        config = Config(
+        config = create_config(
             cursor_path="/usr/local/bin/cursor",
             cursor_default_mode="   ",
         )

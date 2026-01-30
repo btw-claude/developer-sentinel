@@ -19,7 +19,7 @@ from sentinel.agent_clients import (
     create_default_factory,
 )
 from sentinel.agent_clients.base import AgentType
-from sentinel.config import Config
+from sentinel.config import Config, create_config
 
 
 class MockAgentClient(AgentClient):
@@ -51,7 +51,7 @@ class MockAgentClient(AgentClient):
 
 def make_test_config() -> Config:
     """Create a Config for testing."""
-    return Config(
+    return create_config(
         agent_workdir=Path("/tmp/test-workdir"),
         agent_logs_dir=Path("/tmp/test-logs"),
     )
