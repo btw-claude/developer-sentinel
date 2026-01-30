@@ -6,8 +6,9 @@ in the environment.
 
 Environment Variables Required:
 - GITHUB_TOKEN: Personal access token or app token for authentication
-- GITHUB_TEST_REPO: Optional repository for testing (format: "owner/repo")
-  If not set, tests will use a public repository for read-only tests.
+- GITHUB_TEST_REPO: Repository for testing (format: "owner/repo")
+  Defaults to "microsoft/vscode" for read-only tests if not set.
+  Can be customized to use a different public repository.
 
 Run with: pytest tests/integration -m integration
 Skip with: pytest -m "not integration"
@@ -31,6 +32,13 @@ from sentinel.github_rest_client import (
     GitHubTagClientError,
 )
 
+# Default test repository for read-only integration tests
+# Can be overridden via GITHUB_TEST_REPO environment variable
+DEFAULT_TEST_REPO = "microsoft/vscode"
+
+# Reduced timeout for API response assertions (GitHub API typically responds in <5s)
+API_RESPONSE_TIMEOUT_SECONDS = 10.0
+
 
 def _get_github_token() -> str | None:
     """Get GitHub token from environment variables."""
@@ -42,17 +50,28 @@ def _github_token_available() -> bool:
     return _get_github_token() is not None
 
 
-def _get_test_repo() -> tuple[str, str] | None:
-    """Get test repository from environment.
+def _get_test_repo() -> tuple[str, str]:
+    """Get test repository from environment or default.
 
     Returns:
-        Tuple of (owner, repo) if GITHUB_TEST_REPO is set, None otherwise.
+        Tuple of (owner, repo) from GITHUB_TEST_REPO or default.
     """
-    repo = os.getenv("GITHUB_TEST_REPO")
-    if repo and "/" in repo:
+    repo = os.getenv("GITHUB_TEST_REPO", DEFAULT_TEST_REPO)
+    if "/" in repo:
         owner, name = repo.split("/", 1)
         return owner, name
-    return None
+    # Fallback to default if env var is malformed
+    return DEFAULT_TEST_REPO.split("/", 1)  # type: ignore[return-value]
+
+
+def _get_test_repo_query() -> str:
+    """Get the repo query string for GitHub search API.
+
+    Returns:
+        Query string in format "repo:owner/name".
+    """
+    owner, name = _get_test_repo()
+    return f"repo:{owner}/{name}"
 
 
 @pytest.fixture
@@ -116,17 +135,19 @@ class TestGitHubRestClientIntegration:
     ) -> None:
         """Should successfully search for issues using GitHub search syntax.
 
-        This test searches for open issues in a well-known public repository.
+        This test searches for open issues in the configured test repository.
+        Repository can be configured via GITHUB_TEST_REPO environment variable.
         """
-        # Search for issues in a popular public repository
+        # Search for issues in the configured test repository
+        repo_query = _get_test_repo_query()
         results = github_client.search_issues(
-            "repo:microsoft/vscode is:issue is:open",
+            f"{repo_query} is:issue is:open",
             max_results=10,
         )
 
         # Verify structure of results
         assert isinstance(results, list)
-        # VSCode repo should have issues
+        # Test repo should have issues
         assert len(results) > 0
 
         # Verify issue structure
@@ -141,9 +162,10 @@ class TestGitHubRestClientIntegration:
         self, github_client: GitHubRestClient
     ) -> None:
         """Should handle searches that return no results."""
-        # Search for something that won't exist
+        # Search for something that won't exist in the test repository
+        repo_query = _get_test_repo_query()
         results = github_client.search_issues(
-            "repo:microsoft/vscode nonexistent-random-string-xyz123",
+            f"{repo_query} nonexistent-random-string-xyz123",
             max_results=10,
         )
 
@@ -155,8 +177,9 @@ class TestGitHubRestClientIntegration:
         self, github_client: GitHubRestClient
     ) -> None:
         """Should respect max_results parameter."""
+        repo_query = _get_test_repo_query()
         results = github_client.search_issues(
-            "repo:microsoft/vscode is:issue",
+            f"{repo_query} is:issue",
             max_results=5,
         )
 
@@ -167,8 +190,9 @@ class TestGitHubRestClientIntegration:
         self, github_client: GitHubRestClient
     ) -> None:
         """Should search for pull requests using is:pr filter."""
+        repo_query = _get_test_repo_query()
         results = github_client.search_issues(
-            "repo:microsoft/vscode is:pr is:open",
+            f"{repo_query} is:pr is:open",
             max_results=5,
         )
 
@@ -182,7 +206,8 @@ class TestGitHubRestClientIntegration:
         self, github_client: GitHubRestClient
     ) -> None:
         """Circuit breaker should record successful calls."""
-        github_client.search_issues("repo:microsoft/vscode is:issue", max_results=1)
+        repo_query = _get_test_repo_query()
+        github_client.search_issues(f"{repo_query} is:issue", max_results=1)
 
         assert github_client.circuit_breaker.state == CircuitState.CLOSED
         assert github_client.circuit_breaker.metrics.successful_calls > 0
@@ -241,7 +266,8 @@ class TestGitHubApiConnectionHandling:
         )
 
         try:
-            results = client.search_issues("repo:microsoft/vscode is:issue", max_results=1)
+            repo_query = _get_test_repo_query()
+            results = client.search_issues(f"{repo_query} is:issue", max_results=1)
             assert isinstance(results, list)
         finally:
             client.close()
@@ -262,7 +288,8 @@ class TestGitHubApiConnectionHandling:
         )
 
         try:
-            results = client.search_issues("repo:microsoft/vscode is:issue", max_results=1)
+            repo_query = _get_test_repo_query()
+            results = client.search_issues(f"{repo_query} is:issue", max_results=1)
             assert isinstance(results, list)
         finally:
             client.close()
@@ -272,8 +299,9 @@ class TestGitHubApiConnectionHandling:
         self, github_token: str
     ) -> None:
         """Should work correctly as context manager."""
+        repo_query = _get_test_repo_query()
         with GitHubRestClient(token=github_token) as client:
-            results = client.search_issues("repo:microsoft/vscode is:issue", max_results=1)
+            results = client.search_issues(f"{repo_query} is:issue", max_results=1)
             assert isinstance(results, list)
 
         # After context exit, client should be closed
@@ -297,11 +325,12 @@ class TestGitHubRestTagClientIntegration:
         # Without write permission, these will fail with 403
         # But the circuit breaker should still track these attempts
         initial_failures = github_tag_client.circuit_breaker.metrics.failed_calls
+        owner, repo = _get_test_repo()
 
         with pytest.raises(GitHubTagClientError):
             github_tag_client.add_label(
-                owner="microsoft",
-                repo="vscode",
+                owner=owner,
+                repo=repo,
                 issue_number=1,
                 label="test-label-xyz123",
             )
@@ -317,10 +346,11 @@ class TestGitHubRestTagClientIntegration:
     ) -> None:
         """Should fail gracefully when lacking write permission."""
         # Attempt to add a label to a repo we don't have write access to
+        owner, repo = _get_test_repo()
         with pytest.raises(GitHubTagClientError) as exc_info:
             github_tag_client.add_label(
-                owner="microsoft",
-                repo="vscode",
+                owner=owner,
+                repo=repo,
                 issue_number=1,
                 label="test-label",
             )
@@ -339,13 +369,14 @@ class TestGitHubApiPerformance:
     ) -> None:
         """Search should complete within reasonable time frame."""
         start_time = time.perf_counter()
+        repo_query = _get_test_repo_query()
 
-        github_client.search_issues("repo:microsoft/vscode is:issue", max_results=10)
+        github_client.search_issues(f"{repo_query} is:issue", max_results=10)
 
         elapsed = time.perf_counter() - start_time
 
-        # Request should complete within 30 seconds under normal conditions
-        assert elapsed < 30.0, f"Search took too long: {elapsed:.2f}s"
+        # Request should complete within reduced timeout (GitHub API typically responds in <5s)
+        assert elapsed < API_RESPONSE_TIMEOUT_SECONDS, f"Search took too long: {elapsed:.2f}s"
 
     @pytest.mark.integration
     def test_multiple_sequential_requests(
@@ -353,10 +384,11 @@ class TestGitHubApiPerformance:
     ) -> None:
         """Should handle multiple sequential requests without issues."""
         successful_calls = 0
+        repo_query = _get_test_repo_query()
 
         for _ in range(3):
             try:
-                github_client.search_issues("repo:microsoft/vscode is:issue", max_results=1)
+                github_client.search_issues(f"{repo_query} is:issue", max_results=1)
                 successful_calls += 1
             except (httpx.HTTPError, GitHubClientError):
                 # Handle HTTP-related errors (network issues, status errors)
@@ -373,16 +405,17 @@ class TestGitHubApiPerformance:
         self, github_token: str
     ) -> None:
         """Connection pooling should improve performance of multiple requests."""
+        repo_query = _get_test_repo_query()
         with GitHubRestClient(token=github_token) as client:
             times: list[float] = []
 
             for _ in range(3):
                 start = time.perf_counter()
-                client.search_issues("repo:microsoft/vscode is:issue", max_results=1)
+                client.search_issues(f"{repo_query} is:issue", max_results=1)
                 times.append(time.perf_counter() - start)
 
             # Subsequent requests should benefit from connection reuse
             # (first request may be slower due to connection setup)
             # We don't assert specific times, just that all completed
             assert len(times) == 3
-            assert all(t < 30.0 for t in times)
+            assert all(t < API_RESPONSE_TIMEOUT_SECONDS for t in times)

@@ -63,6 +63,9 @@ dev = [
     "isort>=5.13.0,<6.0.0",
     # Pre-commit hooks for automated code quality checks
     "pre-commit>=3.6.0,<4.0.0",
+    # Time mocking for deterministic testing of time-dependent code
+    # See: tests/integration/test_fault_injection.py (circuit breaker recovery timeout tests)
+    "freezegun>=1.2.0,<2.0.0",
 ]
 
 [project.scripts]
