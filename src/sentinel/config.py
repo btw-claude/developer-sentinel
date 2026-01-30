@@ -934,11 +934,6 @@ def load_config(env_file: Path | None = None) -> Config:
         10000,
     )
 
-    # Parse MCP server args (comma-separated)
-    def parse_args(env_var: str) -> list[str]:
-        value = os.getenv(env_var, "")
-        return [arg.strip() for arg in value.split(",") if arg.strip()] if value else []
-
     # Parse Claude API rate limiting configuration
     claude_rate_limit_enabled = _parse_bool(os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_ENABLED", "true"))
     claude_rate_limit_per_minute = _parse_positive_int(
