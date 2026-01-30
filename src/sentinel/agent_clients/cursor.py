@@ -230,10 +230,16 @@ class CursorAgentClient(AgentClient):
         # Build the command
         cmd = self._build_command(full_prompt, model=model, mode=effective_mode)
 
+        # Use subprocess_timeout from config as fallback when timeout_seconds is not provided
+        # This ensures consistency with other subprocess.run() calls in the codebase
+        effective_timeout = timeout_seconds
+        if effective_timeout is None and self.config.subprocess_timeout > 0:
+            effective_timeout = int(self.config.subprocess_timeout)
+
         logger.info(
             f"Running Cursor CLI: mode={(effective_mode or self._default_mode).value}, "
             f"model={model or self._default_model or 'default'}, "
-            f"timeout={timeout_seconds}s"
+            f"timeout={effective_timeout}s"
         )
         logger.debug(f"Cursor command: {' '.join(cmd[:3])}...")
 
@@ -243,7 +249,7 @@ class CursorAgentClient(AgentClient):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=timeout_seconds,
+                timeout=effective_timeout,
                 cwd=str(workdir) if workdir else None,
             )
 
@@ -262,11 +268,11 @@ class CursorAgentClient(AgentClient):
 
         except subprocess.TimeoutExpired:
             logger.debug(
-                f"Cursor subprocess timeout: timeout={timeout_seconds}s, "
+                f"Cursor subprocess timeout: timeout={effective_timeout}s, "
                 f"workdir={workdir}, mode={(effective_mode or self._default_mode).value}"
             )
-            logger.error(f"Cursor CLI timed out after {timeout_seconds}s")
-            msg = f"Cursor agent execution timed out after {timeout_seconds}s"
+            logger.error(f"Cursor CLI timed out after {effective_timeout}s")
+            msg = f"Cursor agent execution timed out after {effective_timeout}s"
             raise AgentTimeoutError(msg) from None
         except FileNotFoundError:
             logger.error(f"Cursor CLI not found at path: {self._cursor_path}")
