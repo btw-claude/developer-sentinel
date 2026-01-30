@@ -182,6 +182,10 @@ class TestAttemptCountTracking:
 
     def test_running_step_info_contains_attempt_number(self) -> None:
         """Test that RunningStepInfo is created with correct attempt_number."""
+        # Polling configuration constants for test coordination
+        polling_interval = 0.05  # seconds between polls
+        polling_max_wait = 10  # seconds total max wait time
+        polling_iterations = int(polling_max_wait / polling_interval)
 
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
@@ -208,7 +212,7 @@ class TestAttemptCountTracking:
                 # Start the polling task and wait for the blocking event
                 unblock_task = asyncio.create_task(wait_for_unblock())
                 try:
-                    await asyncio.wait_for(blocking_event.wait(), timeout=10)
+                    await asyncio.wait_for(blocking_event.wait(), timeout=polling_max_wait)
                 except TimeoutError:
                     pass
                 finally:
@@ -240,13 +244,13 @@ class TestAttemptCountTracking:
             # The running step is added in _submit_execution_tasks after the future
             # is created, which happens very quickly after run_once starts. We poll
             # with sufficient timeout to handle CI environments with high load.
-            # Using 200 iterations * 0.05s = 10s max wait provides ample margin.
+            # Using polling_iterations * polling_interval = polling_max_wait provides ample margin.
             running_steps = []
-            for _ in range(200):
+            for _ in range(polling_iterations):
                 running_steps = sentinel.get_running_steps()
                 if len(running_steps) == 1:
                     break
-                time.sleep(0.05)
+                time.sleep(polling_interval)
 
             assert len(running_steps) == 1, (
                 f"Should have one running step, got {len(running_steps)}. "
@@ -258,7 +262,7 @@ class TestAttemptCountTracking:
             assert step.orchestration_name == "test-orch"
         finally:
             should_unblock.set()
-            run_thread.join(timeout=10)
+            run_thread.join(timeout=polling_max_wait)
             sentinel._execution_manager._thread_pool.shutdown(wait=True)
             sentinel._execution_manager._thread_pool = None
 
