@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from sentinel.agents.base import ParameterType, Tool, ToolParameter, ToolResult, ToolSchema
+from sentinel.agents.exceptions import handle_tool_exceptions
 from sentinel.logging import get_logger
 
 logger = get_logger(__name__)
@@ -96,35 +97,14 @@ class GetPageTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="CONFLUENCE_ERROR",
+        error_message_template="Failed to get page {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         page_id = kwargs["page_id"]
-        try:
-            result = self.client.get_page(page_id)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get page {page_id}: {e}", "CONFLUENCE_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get page {page_id}: {e}", "CONFLUENCE_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get page {page_id}: {e}", "CONFLUENCE_ERROR")
+        result = self.client.get_page(page_id)
+        return ToolResult.ok(result)
 
 
 class GetPageByTitleTool(Tool):
@@ -159,47 +139,17 @@ class GetPageByTitleTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="CONFLUENCE_ERROR",
+        error_message_template="Failed to find page '{context}': {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         space_key = kwargs["space_key"]
         title = kwargs["title"]
-        try:
-            result = self.client.get_page_by_title(space_key, title)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            if result is None:
-                return ToolResult.ok({"found": False, "page": None})
-            return ToolResult.ok({"found": True, "page": result})
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to find page '{title}' in space {space_key}: {e}",
-                "CONFLUENCE_ERROR",
-            )
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to find page '{title}' in space {space_key}: {e}",
-                "CONFLUENCE_ERROR",
-            )
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to find page '{title}' in space {space_key}: {e}",
-                "CONFLUENCE_ERROR",
-            )
+        result = self.client.get_page_by_title(space_key, title)
+        if result is None:
+            return ToolResult.ok({"found": False, "page": None})
+        return ToolResult.ok({"found": True, "page": result})
 
 
 class CreatePageTool(Tool):
@@ -246,39 +196,18 @@ class CreatePageTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="CONFLUENCE_ERROR",
+        error_message_template="Failed to create page: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
-        try:
-            result = self.client.create_page(
-                space_key=kwargs["space_key"],
-                title=kwargs["title"],
-                body=kwargs["body"],
-                parent_id=kwargs.get("parent_id"),
-            )
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to create page: {e}", "CONFLUENCE_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to create page: {e}", "CONFLUENCE_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to create page: {e}", "CONFLUENCE_ERROR")
+        result = self.client.create_page(
+            space_key=kwargs["space_key"],
+            title=kwargs["title"],
+            body=kwargs["body"],
+            parent_id=kwargs.get("parent_id"),
+        )
+        return ToolResult.ok(result)
 
 
 class UpdatePageTool(Tool):
@@ -325,40 +254,19 @@ class UpdatePageTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="CONFLUENCE_ERROR",
+        error_message_template="Failed to update page {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         page_id = kwargs["page_id"]
-        try:
-            result = self.client.update_page(
-                page_id=page_id,
-                title=kwargs["title"],
-                body=kwargs["body"],
-                version=kwargs["version"],
-            )
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to update page {page_id}: {e}", "CONFLUENCE_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to update page {page_id}: {e}", "CONFLUENCE_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to update page {page_id}: {e}", "CONFLUENCE_ERROR")
+        result = self.client.update_page(
+            page_id=page_id,
+            title=kwargs["title"],
+            body=kwargs["body"],
+            version=kwargs["version"],
+        )
+        return ToolResult.ok(result)
 
 
 class SearchContentTool(Tool):
@@ -394,36 +302,15 @@ class SearchContentTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="CONFLUENCE_ERROR",
+        error_message_template="Failed to search content: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         cql = kwargs["cql"]
         limit = kwargs.get("limit", 25)
-        try:
-            results = self.client.search_content(cql, limit)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok({"results": results, "count": len(results)})
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to search content: {e}", "CONFLUENCE_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to search content: {e}", "CONFLUENCE_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to search content: {e}", "CONFLUENCE_ERROR")
+        results = self.client.search_content(cql, limit)
+        return ToolResult.ok({"results": results, "count": len(results)})
 
 
 class AddCommentTool(Tool):
@@ -455,42 +342,15 @@ class AddCommentTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="CONFLUENCE_ERROR",
+        error_message_template="Failed to add comment to page {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         page_id = kwargs["page_id"]
         body = kwargs["body"]
-        try:
-            result = self.client.add_comment(page_id, body)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to add comment to page {page_id}: {e}", "CONFLUENCE_ERROR"
-            )
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to add comment to page {page_id}: {e}", "CONFLUENCE_ERROR"
-            )
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to add comment to page {page_id}: {e}", "CONFLUENCE_ERROR"
-            )
+        result = self.client.add_comment(page_id, body)
+        return ToolResult.ok(result)
 
 
 def get_confluence_tools(client: ConfluenceToolClient) -> list[Tool]:

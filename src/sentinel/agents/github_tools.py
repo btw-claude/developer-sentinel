@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from sentinel.agents.base import ParameterType, Tool, ToolParameter, ToolResult, ToolSchema
+from sentinel.agents.exceptions import handle_tool_exceptions
 from sentinel.logging import get_logger
 
 logger = get_logger(__name__)
@@ -96,35 +97,14 @@ class GetIssueTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="GITHUB_ERROR",
+        error_message_template="Failed to get issue {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         issue_number = kwargs["issue_number"]
-        try:
-            result = self.client.get_issue(issue_number)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get issue #{issue_number}: {e}", "GITHUB_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get issue #{issue_number}: {e}", "GITHUB_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get issue #{issue_number}: {e}", "GITHUB_ERROR")
+        result = self.client.get_issue(issue_number)
+        return ToolResult.ok(result)
 
 
 class GetPullRequestTool(Tool):
@@ -153,35 +133,14 @@ class GetPullRequestTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="GITHUB_ERROR",
+        error_message_template="Failed to get PR {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         pr_number = kwargs["pr_number"]
-        try:
-            result = self.client.get_pull_request(pr_number)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get PR #{pr_number}: {e}", "GITHUB_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get PR #{pr_number}: {e}", "GITHUB_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get PR #{pr_number}: {e}", "GITHUB_ERROR")
+        result = self.client.get_pull_request(pr_number)
+        return ToolResult.ok(result)
 
 
 class ListPRFilesTool(Tool):
@@ -210,35 +169,14 @@ class ListPRFilesTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="GITHUB_ERROR",
+        error_message_template="Failed to list files for PR {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         pr_number = kwargs["pr_number"]
-        try:
-            files = self.client.list_pr_files(pr_number)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok({"files": files, "count": len(files)})
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to list files for PR #{pr_number}: {e}", "GITHUB_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to list files for PR #{pr_number}: {e}", "GITHUB_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to list files for PR #{pr_number}: {e}", "GITHUB_ERROR")
+        files = self.client.list_pr_files(pr_number)
+        return ToolResult.ok({"files": files, "count": len(files)})
 
 
 class GetFileContentsTool(Tool):
@@ -273,36 +211,15 @@ class GetFileContentsTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="GITHUB_ERROR",
+        error_message_template="Failed to get file contents for {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         path = kwargs["path"]
         ref = kwargs.get("ref")
-        try:
-            result = self.client.get_file_contents(path, ref)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get file contents for {path}: {e}", "GITHUB_ERROR")
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get file contents for {path}: {e}", "GITHUB_ERROR")
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(f"Failed to get file contents for {path}: {e}", "GITHUB_ERROR")
+        result = self.client.get_file_contents(path, ref)
+        return ToolResult.ok(result)
 
 
 class CreateCommentTool(Tool):
@@ -337,42 +254,15 @@ class CreateCommentTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="GITHUB_ERROR",
+        error_message_template="Failed to create comment on {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         issue_number = kwargs["issue_number"]
         body = kwargs["body"]
-        try:
-            result = self.client.create_issue_comment(issue_number, body)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to create comment on #{issue_number}: {e}", "GITHUB_ERROR"
-            )
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to create comment on #{issue_number}: {e}", "GITHUB_ERROR"
-            )
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to create comment on #{issue_number}: {e}", "GITHUB_ERROR"
-            )
+        result = self.client.create_issue_comment(issue_number, body)
+        return ToolResult.ok(result)
 
 
 class CreatePRReviewTool(Tool):
@@ -414,43 +304,16 @@ class CreatePRReviewTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="GITHUB_ERROR",
+        error_message_template="Failed to create review on PR {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         pr_number = kwargs["pr_number"]
         body = kwargs["body"]
         event = kwargs["event"]
-        try:
-            result = self.client.create_pr_review(pr_number, body, event)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok(result)
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to create review on PR #{pr_number}: {e}", "GITHUB_ERROR"
-            )
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to create review on PR #{pr_number}: {e}", "GITHUB_ERROR"
-            )
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to create review on PR #{pr_number}: {e}", "GITHUB_ERROR"
-            )
+        result = self.client.create_pr_review(pr_number, body, event)
+        return ToolResult.ok(result)
 
 
 class ListPRCommentsTool(Tool):
@@ -479,41 +342,14 @@ class ListPRCommentsTool(Tool):
     def schema(self) -> ToolSchema:
         return self._schema
 
+    @handle_tool_exceptions(
+        error_code="GITHUB_ERROR",
+        error_message_template="Failed to list comments for PR {context}: {error}",
+    )
     def execute(self, **kwargs: Any) -> ToolResult:
-        logger.debug(f"Executing {self.name}", extra={"tool": self.name, "params": kwargs})
-        validation_error = self.validate_params(**kwargs)
-        if validation_error:
-            return validation_error
-
         pr_number = kwargs["pr_number"]
-        try:
-            comments = self.client.list_pr_comments(pr_number)
-            logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
-            return ToolResult.ok({"comments": comments, "count": len(comments)})
-        except (OSError, TimeoutError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to I/O or timeout: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to list comments for PR #{pr_number}: {e}", "GITHUB_ERROR"
-            )
-        except (KeyError, TypeError, ValueError) as e:
-            logger.error(
-                f"Tool {self.name} failed due to data error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to list comments for PR #{pr_number}: {e}", "GITHUB_ERROR"
-            )
-        except RuntimeError as e:
-            logger.error(
-                f"Tool {self.name} failed due to runtime error: {e}",
-                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
-            )
-            return ToolResult.fail(
-                f"Failed to list comments for PR #{pr_number}: {e}", "GITHUB_ERROR"
-            )
+        comments = self.client.list_pr_comments(pr_number)
+        return ToolResult.ok({"comments": comments, "count": len(comments)})
 
 
 def get_github_tools(client: GitHubToolClient) -> list[Tool]:
