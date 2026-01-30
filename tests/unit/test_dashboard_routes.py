@@ -140,6 +140,36 @@ class TestHealthEndpoints:
             assert "Deprecation" in response.headers
             assert response.headers["Deprecation"] == HEALTH_ENDPOINT_SUNSET_DATE
 
+    def test_health_dashboard_endpoint_returns_status(self, temp_logs_dir: Path) -> None:
+        """Test that /health/dashboard endpoint returns dashboard status."""
+        config = create_config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/health/dashboard")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "up"
+            assert data["component"] == "dashboard"
+            assert "timestamp" in data
+            assert data["message"] == "Dashboard is operational"
+
+    def test_health_dashboard_endpoint_no_deprecation_header(self, temp_logs_dir: Path) -> None:
+        """Test that /health/dashboard endpoint does not have Deprecation header."""
+        config = create_config(agent_logs_dir=temp_logs_dir)
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/health/dashboard")
+
+            assert response.status_code == 200
+            assert "Deprecation" not in response.headers
+
     def test_legacy_health_endpoint_returns_sunset_header(self, temp_logs_dir: Path) -> None:
         """Test that legacy /health endpoint returns Sunset header with removal date."""
         config = create_config(agent_logs_dir=temp_logs_dir)
