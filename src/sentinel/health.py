@@ -207,15 +207,14 @@ class HealthCheckContext:
         """Context manager that handles common health check exceptions.
 
         This method catches and handles:
+        - httpx.TimeoutException: Connection timeout errors
+        - httpx.HTTPStatusError: HTTP response status errors (4xx, 5xx)
+        - httpx.RequestError: General HTTP request errors
         - AttributeError: Configuration/None access issues
         - TypeError, ValueError, KeyError: Data processing errors
         - OSError: OS-level errors (DNS, sockets, filesystem)
         - RuntimeError: Event loop and threading issues
         - Exception: Unexpected errors (logged with full context)
-
-        Note: HTTP-specific exceptions (httpx.TimeoutException, httpx.HTTPStatusError,
-        httpx.RequestError) should be handled separately in the calling code as they
-        require service-specific error messages.
 
         Yields:
             None - the context for health check operations.
@@ -227,6 +226,31 @@ class HealthCheckContext:
         self.start_time = time.perf_counter()
         try:
             yield
+        except httpx.TimeoutException:
+            latency_ms = self.elapsed_ms()
+            logger.warning(f"{self.service_name} health check timed out after {latency_ms:.2f}ms")
+            self.result = ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error="Connection timed out",
+            )
+        except httpx.HTTPStatusError as e:
+            latency_ms = self.elapsed_ms()
+            error_msg = f"HTTP {e.response.status_code}"
+            logger.warning(f"{self.service_name} health check failed: {error_msg}")
+            self.result = ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=error_msg,
+            )
+        except httpx.RequestError as e:
+            latency_ms = self.elapsed_ms()
+            logger.warning(f"{self.service_name} health check failed due to request error: {e}")
+            self.result = ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=str(e),
+            )
         except AttributeError as e:
             latency_ms = self.elapsed_ms()
             logger.error(f"{self.service_name} health check failed due to None access: {e}")
@@ -495,45 +519,18 @@ class HealthChecker:
 
         ctx = HealthCheckContext("Jira")
         with ctx.handle_exceptions():
-            try:
-                # Use the Jira REST API to get server info (lightweight call)
-                url = f"{self.jira_client.base_url}/rest/api/3/serverInfo"
-                async with httpx.AsyncClient(
-                    auth=self.jira_client.auth,
-                    timeout=httpx.Timeout(self.config.timeout),
-                ) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
+            # Use the Jira REST API to get server info (lightweight call)
+            url = f"{self.jira_client.base_url}/rest/api/3/serverInfo"
+            async with httpx.AsyncClient(
+                auth=self.jira_client.auth,
+                timeout=httpx.Timeout(self.config.timeout),
+            ) as client:
+                response = await client.get(url)
+                response.raise_for_status()
 
-                latency_ms = ctx.elapsed_ms()
-                logger.debug(f"Jira health check succeeded in {latency_ms:.2f}ms")
-                return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
-
-            except httpx.TimeoutException:
-                latency_ms = ctx.elapsed_ms()
-                logger.warning(f"Jira health check timed out after {latency_ms:.2f}ms")
-                return ServiceHealth(
-                    status=HealthStatus.DOWN,
-                    latency_ms=latency_ms,
-                    error="Connection timed out",
-                )
-            except httpx.HTTPStatusError as e:
-                latency_ms = ctx.elapsed_ms()
-                error_msg = f"HTTP {e.response.status_code}"
-                logger.warning(f"Jira health check failed: {error_msg}")
-                return ServiceHealth(
-                    status=HealthStatus.DOWN,
-                    latency_ms=latency_ms,
-                    error=error_msg,
-                )
-            except httpx.RequestError as e:
-                latency_ms = ctx.elapsed_ms()
-                logger.warning(f"Jira health check failed due to request error: {e}")
-                return ServiceHealth(
-                    status=HealthStatus.DOWN,
-                    latency_ms=latency_ms,
-                    error=str(e),
-                )
+            latency_ms = ctx.elapsed_ms()
+            logger.debug(f"Jira health check succeeded in {latency_ms:.2f}ms")
+            return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
 
         # If ctx.result is set, an exception was caught by the context manager
         assert ctx.result is not None  # Type narrowing for mypy
@@ -556,49 +553,22 @@ class HealthChecker:
 
         ctx = HealthCheckContext("GitHub")
         with ctx.handle_exceptions():
-            try:
-                # Use GitHub API rate_limit endpoint (lightweight, doesn't count)
-                url = f"{self.github_client.base_url}/rate_limit"
-                headers = {
-                    "Accept": "application/vnd.github+json",
-                    "Authorization": f"Bearer {self.github_client.token}",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                }
-                async with httpx.AsyncClient(
-                    timeout=httpx.Timeout(self.config.timeout),
-                ) as client:
-                    response = await client.get(url, headers=headers)
-                    response.raise_for_status()
+            # Use GitHub API rate_limit endpoint (lightweight, doesn't count)
+            url = f"{self.github_client.base_url}/rate_limit"
+            headers = {
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self.github_client.token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(self.config.timeout),
+            ) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
 
-                latency_ms = ctx.elapsed_ms()
-                logger.debug(f"GitHub health check succeeded in {latency_ms:.2f}ms")
-                return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
-
-            except httpx.TimeoutException:
-                latency_ms = ctx.elapsed_ms()
-                logger.warning(f"GitHub health check timed out after {latency_ms:.2f}ms")
-                return ServiceHealth(
-                    status=HealthStatus.DOWN,
-                    latency_ms=latency_ms,
-                    error="Connection timed out",
-                )
-            except httpx.HTTPStatusError as e:
-                latency_ms = ctx.elapsed_ms()
-                error_msg = f"HTTP {e.response.status_code}"
-                logger.warning(f"GitHub health check failed: {error_msg}")
-                return ServiceHealth(
-                    status=HealthStatus.DOWN,
-                    latency_ms=latency_ms,
-                    error=error_msg,
-                )
-            except httpx.RequestError as e:
-                latency_ms = ctx.elapsed_ms()
-                logger.warning(f"GitHub health check failed due to request error: {e}")
-                return ServiceHealth(
-                    status=HealthStatus.DOWN,
-                    latency_ms=latency_ms,
-                    error=str(e),
-                )
+            latency_ms = ctx.elapsed_ms()
+            logger.debug(f"GitHub health check succeeded in {latency_ms:.2f}ms")
+            return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
 
         # If ctx.result is set, an exception was caught by the context manager
         assert ctx.result is not None  # Type narrowing for mypy
@@ -622,47 +592,20 @@ class HealthChecker:
 
         ctx = HealthCheckContext("Claude")
         with ctx.handle_exceptions():
-            try:
-                # Use the Claude models list endpoint (lightweight ping)
-                headers = {
-                    "x-api-key": self.claude_api_key,
-                    "anthropic-version": "2023-06-01",
-                }
-                async with httpx.AsyncClient(
-                    timeout=httpx.Timeout(self.config.timeout),
-                ) as client:
-                    response = await client.get(self.CLAUDE_API_URL, headers=headers)
-                    response.raise_for_status()
+            # Use the Claude models list endpoint (lightweight ping)
+            headers = {
+                "x-api-key": self.claude_api_key,
+                "anthropic-version": "2023-06-01",
+            }
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(self.config.timeout),
+            ) as client:
+                response = await client.get(self.CLAUDE_API_URL, headers=headers)
+                response.raise_for_status()
 
-                latency_ms = ctx.elapsed_ms()
-                logger.debug(f"Claude health check succeeded in {latency_ms:.2f}ms")
-                return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
-
-            except httpx.TimeoutException:
-                latency_ms = ctx.elapsed_ms()
-                logger.warning(f"Claude health check timed out after {latency_ms:.2f}ms")
-                return ServiceHealth(
-                    status=HealthStatus.DOWN,
-                    latency_ms=latency_ms,
-                    error="Connection timed out",
-                )
-            except httpx.HTTPStatusError as e:
-                latency_ms = ctx.elapsed_ms()
-                error_msg = f"HTTP {e.response.status_code}"
-                logger.warning(f"Claude health check failed: {error_msg}")
-                return ServiceHealth(
-                    status=HealthStatus.DOWN,
-                    latency_ms=latency_ms,
-                    error=error_msg,
-                )
-            except httpx.RequestError as e:
-                latency_ms = ctx.elapsed_ms()
-                logger.warning(f"Claude health check failed due to request error: {e}")
-                return ServiceHealth(
-                    status=HealthStatus.DOWN,
-                    latency_ms=latency_ms,
-                    error=str(e),
-                )
+            latency_ms = ctx.elapsed_ms()
+            logger.debug(f"Claude health check succeeded in {latency_ms:.2f}ms")
+            return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
 
         # If ctx.result is set, an exception was caught by the context manager
         assert ctx.result is not None  # Type narrowing for mypy

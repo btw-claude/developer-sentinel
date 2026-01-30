@@ -221,6 +221,43 @@ class TestHealthCheckContext:
         # Latency should be at least 10ms (we slept for 10ms)
         assert ctx.result.latency_ms >= 10.0
 
+    def test_handle_exceptions_httpx_timeout(self) -> None:
+        """Test context manager handles httpx.TimeoutException."""
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            raise httpx.TimeoutException("Connection timed out")
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert ctx.result.error == "Connection timed out"
+
+    def test_handle_exceptions_httpx_status_error(self) -> None:
+        """Test context manager handles httpx.HTTPStatusError."""
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            raise httpx.HTTPStatusError(
+                "Service Unavailable",
+                request=MagicMock(),
+                response=mock_response,
+            )
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert ctx.result.error == "HTTP 503"
+
+    def test_handle_exceptions_httpx_request_error(self) -> None:
+        """Test context manager handles httpx.RequestError."""
+        ctx = HealthCheckContext("TestService")
+        with ctx.handle_exceptions():
+            raise httpx.RequestError("Connection refused")
+
+        assert ctx.result is not None
+        assert ctx.result.status == HealthStatus.DOWN
+        assert "Connection refused" in ctx.result.error
+
 
 class TestHealthCheckResult:
     """Tests for HealthCheckResult."""
