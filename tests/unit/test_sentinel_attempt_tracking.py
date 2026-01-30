@@ -23,6 +23,11 @@ from tests.conftest import (
     make_orchestration,
 )
 
+# Polling configuration constants for test coordination
+POLLING_INTERVAL = 0.05  # seconds between polls
+POLLING_MAX_WAIT = 10  # seconds total max wait time
+POLLING_ITERATIONS = int(POLLING_MAX_WAIT / POLLING_INTERVAL)
+
 
 class TestAttemptCountTracking:
     """Tests for retry attempt number tracking in Running Steps dashboard."""
@@ -182,11 +187,6 @@ class TestAttemptCountTracking:
 
     def test_running_step_info_contains_attempt_number(self) -> None:
         """Test that RunningStepInfo is created with correct attempt_number."""
-        # Polling configuration constants for test coordination
-        polling_interval = 0.05  # seconds between polls
-        polling_max_wait = 10  # seconds total max wait time
-        polling_iterations = int(polling_max_wait / polling_interval)
-
         tag_client = MockTagClient()
         jira_client = MockJiraClient(
             issues=[
@@ -212,7 +212,7 @@ class TestAttemptCountTracking:
                 # Start the polling task and wait for the blocking event
                 unblock_task = asyncio.create_task(wait_for_unblock())
                 try:
-                    await asyncio.wait_for(blocking_event.wait(), timeout=polling_max_wait)
+                    await asyncio.wait_for(blocking_event.wait(), timeout=POLLING_MAX_WAIT)
                 except TimeoutError:
                     pass
                 finally:
@@ -244,13 +244,13 @@ class TestAttemptCountTracking:
             # The running step is added in _submit_execution_tasks after the future
             # is created, which happens very quickly after run_once starts. We poll
             # with sufficient timeout to handle CI environments with high load.
-            # Using polling_iterations * polling_interval = polling_max_wait provides ample margin.
+            # Using POLLING_ITERATIONS * POLLING_INTERVAL = POLLING_MAX_WAIT provides ample margin.
             running_steps = []
-            for _ in range(polling_iterations):
+            for _ in range(POLLING_ITERATIONS):
                 running_steps = sentinel.get_running_steps()
                 if len(running_steps) == 1:
                     break
-                time.sleep(polling_interval)
+                time.sleep(POLLING_INTERVAL)
 
             assert len(running_steps) == 1, (
                 f"Should have one running step, got {len(running_steps)}. "
@@ -262,7 +262,7 @@ class TestAttemptCountTracking:
             assert step.orchestration_name == "test-orch"
         finally:
             should_unblock.set()
-            run_thread.join(timeout=polling_max_wait)
+            run_thread.join(timeout=POLLING_MAX_WAIT)
             sentinel._execution_manager._thread_pool.shutdown(wait=True)
             sentinel._execution_manager._thread_pool = None
 
