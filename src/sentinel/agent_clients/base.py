@@ -13,10 +13,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-# Type alias for supported agent types
-AgentType = Literal["claude", "cursor"]
+from sentinel.types import AgentTypeLiteral
+
+# Type alias for supported agent types (re-exported for backward compatibility)
+AgentType = AgentTypeLiteral
 
 
 @dataclass

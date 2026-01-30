@@ -13,6 +13,7 @@ from sentinel.github_poller import GitHubIssueProtocol
 from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraIssue
+from sentinel.types import TriggerSource
 
 logger = get_logger(__name__)
 
@@ -79,7 +80,7 @@ class Router:
 
         # Check source type matches
         if isinstance(issue, JiraIssue):
-            if trigger.source != "jira":
+            if trigger.source != TriggerSource.JIRA.value:
                 return False
 
             # Check project filter for Jira
@@ -89,7 +90,7 @@ class Router:
                 if issue_project.upper() != trigger.project.upper():
                     return False
         elif isinstance(issue, GitHubIssueProtocol):
-            if trigger.source != "github":
+            if trigger.source != TriggerSource.GITHUB.value:
                 return False
 
             # Check repo filter for GitHub

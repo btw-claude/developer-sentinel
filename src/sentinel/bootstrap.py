@@ -29,6 +29,7 @@ from sentinel.poller import JiraClient
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.sdk_clients import JiraSdkClient, JiraSdkTagClient
 from sentinel.tag_manager import JiraTagClient
+from sentinel.types import TriggerSource
 
 if TYPE_CHECKING:
     from sentinel.agent_clients.factory import AgentClientFactory
@@ -166,7 +167,9 @@ def create_github_clients(
         github_tag_client = None
 
         # Warn if there are GitHub-triggered orchestrations but no GitHub config
-        github_orchestrations = [o for o in orchestrations if o.trigger.source == "github"]
+        github_orchestrations = [
+            o for o in orchestrations if o.trigger.source == TriggerSource.GITHUB.value
+        ]
         if github_orchestrations:
             logger.warning(
                 f"Found {len(github_orchestrations)} GitHub-triggered orchestrations "

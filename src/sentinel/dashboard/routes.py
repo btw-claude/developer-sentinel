@@ -34,6 +34,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from sentinel.types import TriggerSource
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
 if TYPE_CHECKING:
@@ -343,7 +344,9 @@ def create_routes(
         )
 
     @dashboard_router.get("/partials/orchestrations", response_class=HTMLResponse)
-    async def partial_orchestrations(request: Request, source: str = "jira") -> HTMLResponse:
+    async def partial_orchestrations(
+        request: Request, source: str = TriggerSource.JIRA.value
+    ) -> HTMLResponse:
         """Render the orchestrations partial for HTMX updates.
 
         Args:
@@ -357,12 +360,12 @@ def create_routes(
         templates = request.app.state.templates
 
         # Select the appropriate grouped data based on source
-        if source == "github":
+        if source == TriggerSource.GITHUB.value:
             projects = state.github_repos
-            source_type = "github"
+            source_type = TriggerSource.GITHUB.value
         else:
             projects = state.jira_projects
-            source_type = "jira"
+            source_type = TriggerSource.JIRA.value
 
         return cast(
             HTMLResponse,
@@ -834,15 +837,15 @@ def create_routes(
                 continue
 
             # Filter by source type and identifier
-            if request_body.source == "jira":
+            if request_body.source == TriggerSource.JIRA.value:
                 if (
-                    orch.trigger_source == "jira"
+                    orch.trigger_source == TriggerSource.JIRA.value
                     and orch.trigger_project == request_body.identifier
                 ):
                     orch_files[orch.name] = source_file
             elif (
-                request_body.source == "github"
-                and orch.trigger_source == "github"
+                request_body.source == TriggerSource.GITHUB.value
+                and orch.trigger_source == TriggerSource.GITHUB.value
                 and orch.trigger_repo == request_body.identifier
             ):
                 orch_files[orch.name] = source_file
