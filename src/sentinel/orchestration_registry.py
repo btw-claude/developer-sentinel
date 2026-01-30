@@ -8,6 +8,27 @@ This module provides the OrchestrationRegistry class which manages:
 
 This is part of the Sentinel refactoring to split the God Object into focused,
 composable components (DS-384).
+
+Component Boundaries
+--------------------
+OrchestrationRegistry is responsible for all orchestration file management
+and hot-reload logic. It is the only component that reads orchestration YAML
+files and tracks file modification times.
+
+The Sentinel class delegates to OrchestrationRegistry for:
+- ``detect_and_load_orchestration_changes()`` : Hot-reload new/modified files
+- ``detect_and_unload_removed_files()`` : Handle deleted orchestration files
+- ``cleanup_pending_removal_versions()`` : Clean up completed old versions
+- ``get_version_for_orchestration()`` : Get version info for execution tracking
+- ``get_hot_reload_metrics()`` : Observability counters for hot-reload operations
+
+See Also
+--------
+- docs/architecture.md : Full architecture documentation
+- sentinel.orchestration : Orchestration dataclass and loading functions
+- sentinel.state_tracker : State and metrics management
+- sentinel.execution_manager : Thread pool and future management
+- sentinel.poll_coordinator : Polling coordination
 """
 
 from __future__ import annotations
