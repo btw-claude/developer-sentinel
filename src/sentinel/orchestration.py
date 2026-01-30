@@ -357,6 +357,12 @@ class OrchestrationVersion:
     Thread Safety:
         The increment_executions() and decrement_executions() methods are internally
         thread-safe and can be called from multiple threads without external locking.
+
+    Usage Note:
+        Do not directly assign to ``active_executions`` in production code as this
+        bypasses the internal thread-safety lock. Always use increment_executions()
+        and decrement_executions() methods instead. Direct assignment is acceptable
+        only in test setup where thread safety is not a concern.
     """
 
     version_id: str

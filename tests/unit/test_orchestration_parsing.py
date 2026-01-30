@@ -5,6 +5,7 @@ configurations from YAML files. It tests dataclasses, orchestration versions, fi
 and directory loading functionality.
 """
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -398,8 +399,6 @@ class TestOrchestrationVersion:
 
     def test_concurrent_increment_executions(self) -> None:
         """increment_executions should be thread-safe under concurrent access."""
-        import threading
-
         orch = Orchestration(
             name="test",
             trigger=TriggerConfig(),
@@ -428,8 +427,6 @@ class TestOrchestrationVersion:
 
     def test_concurrent_decrement_executions(self) -> None:
         """decrement_executions should be thread-safe under concurrent access."""
-        import threading
-
         orch = Orchestration(
             name="test",
             trigger=TriggerConfig(),
@@ -458,8 +455,6 @@ class TestOrchestrationVersion:
 
     def test_concurrent_mixed_increment_decrement(self) -> None:
         """Mixed increment/decrement operations should be thread-safe."""
-        import threading
-
         orch = Orchestration(
             name="test",
             trigger=TriggerConfig(),
