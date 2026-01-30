@@ -319,7 +319,7 @@ class ProjectFilterParser:
             The parsed identifier string (with trailing whitespace stripped).
         """
         i = start
-        result = []
+        result: list[str] = []
 
         while i < len(query):
             char = query[i]

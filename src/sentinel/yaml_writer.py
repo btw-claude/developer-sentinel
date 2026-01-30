@@ -16,8 +16,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ruamel.yaml import YAML, YAMLError
+from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.error import YAMLError
 
 from sentinel.logging import get_logger
 

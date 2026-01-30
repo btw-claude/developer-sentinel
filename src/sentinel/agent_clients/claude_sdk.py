@@ -702,9 +702,13 @@ class ClaudeSdkAgentClient(AgentClient):
         use_streaming = can_stream and not self._disable_streaming_logs
 
         if use_streaming:
+            # issue_key and orchestration_name are guaranteed to be str when use_streaming is True
+            # (via can_stream check above), but mypy can't infer this
+            assert issue_key is not None
+            assert orchestration_name is not None
             response = await self._run_with_log(
                 full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name
-            )  # type: ignore
+            )
         else:
             response = await self._run_simple(full_prompt, tools, timeout_seconds, workdir, model)
             # When streaming is disabled but we have logging params, write full

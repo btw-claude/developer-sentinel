@@ -388,7 +388,7 @@ class GitHubPoller:
 
         logger.debug(f"Fetching project ID for {cache_key} (scope={api_scope})")
         project = self.client.get_project(owner, project_number, api_scope)
-        project_id = project["id"]
+        project_id: str = project["id"]
 
         self._project_id_cache[cache_key] = project_id
         logger.info(f"Cached project ID for {cache_key}: {project_id[:20]}...")

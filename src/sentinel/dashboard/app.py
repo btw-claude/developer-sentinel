@@ -8,7 +8,7 @@ and routes for displaying Sentinel state.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -42,7 +42,7 @@ class TemplateEnvironmentWrapper:
         *,
         request: object,
         name: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> HTMLResponse:
         """Asynchronously render a template and return an HTML response.
 
@@ -155,7 +155,9 @@ def create_app(
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     # Create state accessor for read-only access to Sentinel state
-    state_accessor = SentinelStateAccessor(sentinel)
+    # Type ignore: Sentinel returns dict[str, Any] instead of DTO types for version methods
+    # This is an architectural mismatch between runtime behavior and protocol definition
+    state_accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
     # Create and include routes with config for rate limiting
     dashboard_routes = create_routes(state_accessor, config=sentinel.config)

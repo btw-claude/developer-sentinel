@@ -671,7 +671,8 @@ class GitHubRestClient(BaseGitHubHttpClient, GitHubClient):
                 error_messages = [e.get("message", str(e)) for e in errors]
                 raise GitHubClientError(f"GraphQL errors: {'; '.join(error_messages)}")
 
-            return result.get("data", {})
+            data: dict[str, Any] = result.get("data", {})
+            return data
 
         try:
             result = _execute_with_retry(do_graphql, self.retry_config, GitHubClientError)

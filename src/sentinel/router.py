@@ -6,6 +6,7 @@ based on tags/labels and source-specific filters.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sentinel.github_poller import GitHubIssueProtocol
@@ -137,7 +138,7 @@ class Router:
 
         return RoutingResult(issue=issue, orchestrations=matching)
 
-    def route_all(self, issues: list[AnyIssue]) -> list[RoutingResult]:
+    def route_all(self, issues: Sequence[AnyIssue]) -> list[RoutingResult]:
         """Route multiple issues to matching orchestrations.
 
         Args:
@@ -156,7 +157,7 @@ class Router:
 
         return results
 
-    def route_matched_only(self, issues: list[AnyIssue]) -> list[RoutingResult]:
+    def route_matched_only(self, issues: Sequence[AnyIssue]) -> list[RoutingResult]:
         """Route multiple issues and return only those that matched.
 
         Args:

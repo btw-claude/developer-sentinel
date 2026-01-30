@@ -16,7 +16,8 @@ from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
-from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubTagClient
+from sentinel.github_poller import GitHubClient, GitHubIssue
+from sentinel.github_rest_client import GitHubTagClient
 from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraClient
 from sentinel.router import Router

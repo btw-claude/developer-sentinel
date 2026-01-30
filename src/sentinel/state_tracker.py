@@ -17,7 +17,7 @@ import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sentinel.logging import get_logger
 
@@ -252,7 +252,7 @@ class StateTracker:
         with self._running_steps_lock:
             return self._running_steps.pop(future_id, None)
 
-    def get_running_steps(self, active_futures: list[Future]) -> list[RunningStepInfo]:
+    def get_running_steps(self, active_futures: list[Future[Any]]) -> list[RunningStepInfo]:
         """Get information about currently running execution steps.
 
         Args:

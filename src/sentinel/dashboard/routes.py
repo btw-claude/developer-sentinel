@@ -26,7 +26,7 @@ import time
 import warnings
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -232,10 +232,13 @@ def create_routes(
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return await templates.TemplateResponse(
-            request=request,
-            name="index.html",
-            context={"state": state},
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="index.html",
+                context={"state": state},
+            ),
         )
 
     @dashboard_router.get("/orchestrations", response_class=HTMLResponse)
@@ -250,10 +253,13 @@ def create_routes(
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return await templates.TemplateResponse(
-            request=request,
-            name="orchestrations.html",
-            context={"state": state},
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="orchestrations.html",
+                context={"state": state},
+            ),
         )
 
     @dashboard_router.get("/metrics", response_class=HTMLResponse)
@@ -268,14 +274,17 @@ def create_routes(
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return await templates.TemplateResponse(
-            request=request,
-            name="metrics.html",
-            context={"state": state},
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="metrics.html",
+                context={"state": state},
+            ),
         )
 
     @dashboard_router.get("/api/state")
-    async def api_state(request: Request) -> dict:
+    async def api_state(request: Request) -> dict[str, Any]:
         """Return the current state as JSON.
 
         This endpoint is useful for HTMX partial updates and JavaScript clients.
@@ -324,10 +333,13 @@ def create_routes(
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return await templates.TemplateResponse(
-            request=request,
-            name="partials/status.html",
-            context={"state": state},
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/status.html",
+                context={"state": state},
+            ),
         )
 
     @dashboard_router.get("/partials/orchestrations", response_class=HTMLResponse)
@@ -352,10 +364,13 @@ def create_routes(
             projects = state.jira_projects
             source_type = "jira"
 
-        return await templates.TemplateResponse(
-            request=request,
-            name="partials/orchestrations.html",
-            context={"projects": projects, "source_type": source_type, "state": state},
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/orchestrations.html",
+                context={"projects": projects, "source_type": source_type, "state": state},
+            ),
         )
 
     @dashboard_router.get("/partials/running_steps", response_class=HTMLResponse)
@@ -373,10 +388,13 @@ def create_routes(
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return await templates.TemplateResponse(
-            request=request,
-            name="partials/running_steps.html",
-            context={"state": state},
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/running_steps.html",
+                context={"state": state},
+            ),
         )
 
     @dashboard_router.get("/partials/issue_queue", response_class=HTMLResponse)
@@ -395,10 +413,13 @@ def create_routes(
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return await templates.TemplateResponse(
-            request=request,
-            name="partials/issue_queue.html",
-            context={"state": state},
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/issue_queue.html",
+                context={"state": state},
+            ),
         )
 
     @dashboard_router.get("/partials/system_status", response_class=HTMLResponse)
@@ -417,14 +438,17 @@ def create_routes(
         """
         state = state_accessor.get_state()
         templates = request.app.state.templates
-        return await templates.TemplateResponse(
-            request=request,
-            name="partials/system_status.html",
-            context={"state": state},
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/system_status.html",
+                context={"state": state},
+            ),
         )
 
     @dashboard_router.get("/health")
-    async def health(response: Response) -> dict:
+    async def health(response: Response) -> dict[str, str]:
         """Legacy health check endpoint.
 
         Deprecated: Use /health/live for liveness checks or
@@ -447,7 +471,7 @@ def create_routes(
         return {"status": "healthy"}
 
     @dashboard_router.get("/health/live")
-    async def health_live() -> dict:
+    async def health_live() -> dict[str, Any]:
         """Liveness probe endpoint.
 
         Basic health check to verify the service is running.
@@ -462,7 +486,7 @@ def create_routes(
         return {"status": "healthy", "timestamp": time.time(), "checks": {}}
 
     @dashboard_router.get("/health/ready")
-    async def health_ready() -> dict:
+    async def health_ready() -> dict[str, Any]:
         """Readiness probe endpoint.
 
         Checks connectivity to configured external services:
@@ -504,14 +528,17 @@ def create_routes(
         """
         log_files = state_accessor.get_log_files()
         templates = request.app.state.templates
-        return await templates.TemplateResponse(
-            request=request,
-            name="log_viewer.html",
-            context={"log_files": log_files},
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="log_viewer.html",
+                context={"log_files": log_files},
+            ),
         )
 
     @dashboard_router.get("/api/logs/files")
-    async def api_logs_files() -> list[dict]:
+    async def api_logs_files() -> list[dict[str, Any]]:
         """Return the list of available log files per orchestration.
 
         This endpoint discovers log files in the agent_logs_dir, grouped by
@@ -548,7 +575,7 @@ def create_routes(
             EventSourceResponse streaming log content.
         """
 
-        async def event_generator() -> AsyncGenerator[dict, None]:
+        async def event_generator() -> AsyncGenerator[dict[str, Any], None]:
             """Generate SSE events for log file content."""
             log_path = state_accessor.get_log_file_path(orchestration, filename)
 

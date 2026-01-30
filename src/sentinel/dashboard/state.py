@@ -11,11 +11,12 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from sentinel.logging import generate_log_filename, parse_log_filename
 
 if TYPE_CHECKING:
+    from sentinel.config import Config
     from sentinel.main import QueuedIssueInfo, RunningStepInfo
     from sentinel.orchestration import Orchestration
 
@@ -244,7 +245,7 @@ class SentinelStateProvider(Protocol):
     """
 
     @property
-    def config(self) -> object:
+    def config(self) -> Config:
         """Return the configuration object."""
         ...
 
@@ -545,7 +546,7 @@ class SentinelStateAccessor:
 
         return jira_projects, github_repos
 
-    def get_log_files(self) -> list[dict]:
+    def get_log_files(self) -> list[dict[str, Any]]:
         """Get available log files grouped by orchestration.
 
         Discovers log files in the agent_logs_dir, grouped by orchestration
@@ -589,7 +590,7 @@ class SentinelStateAccessor:
                         pass
 
             # Sort files by modified time (newest first)
-            files.sort(key=lambda f: f["modified"], reverse=True)
+            files.sort(key=lambda f: cast(str, f["modified"]), reverse=True)
 
             if files:
                 result.append(
@@ -600,7 +601,7 @@ class SentinelStateAccessor:
                 )
 
         # Sort orchestrations alphabetically
-        result.sort(key=lambda x: x["orchestration"])
+        result.sort(key=lambda x: cast(str, x["orchestration"]))
 
         return result
 

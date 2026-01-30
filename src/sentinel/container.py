@@ -23,7 +23,7 @@ See docs/dependency-injection.md for more patterns and examples.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from dependency_injector import containers, providers
 
@@ -46,7 +46,7 @@ class ClientsContainer(containers.DeclarativeContainer):
     to swap entire client sets for integration testing or different environments.
     """
 
-    config = providers.Dependency()
+    config: providers.Dependency[Config] = providers.Dependency()
 
     # Jira clients - provided lazily to support both REST and SDK implementations
     jira_client = providers.Singleton(
@@ -72,7 +72,7 @@ class ServicesContainer(containers.DeclarativeContainer):
     between clients and business logic.
     """
 
-    config = providers.Dependency()
+    config: providers.Dependency[Config] = providers.Dependency()
     clients = providers.DependenciesContainer()
 
     # AgentClientFactory - creates agent clients based on orchestration config
@@ -146,12 +146,14 @@ class SentinelContainer(containers.DeclarativeContainer):
     )
 
     # Core configuration
+    # Type annotation removed due to placeholder incompatibility with Callable[..., Config]
     config = providers.Singleton(
         providers.Callable(lambda: None)  # Placeholder, set via factory
     )
 
     # Orchestrations list
-    orchestrations = providers.Singleton(
+    # Using Any type to allow placeholder with incompatible Callable type
+    orchestrations: providers.Singleton[Any] = providers.Singleton(
         providers.Callable(lambda: [])  # Placeholder, set via factory
     )
 
