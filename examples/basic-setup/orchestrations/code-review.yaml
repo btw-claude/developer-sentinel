@@ -12,6 +12,19 @@ orchestrations:
   - name: "code-review"
 
     # Trigger: Which issues activate this workflow
+    #
+    # Available fields for Jira triggers:
+    #   - project: Jira project key (validated for safe characters)
+    #   - tags: List of labels the issue must have (all required, sanitized)
+    #   - jql_filter: Custom JQL fragment for advanced filtering (see Security Note)
+    #
+    # Security Note for jql_filter:
+    #   The jql_filter field accepts raw JQL and should only be configured by
+    #   trusted administrators. Basic validation is performed (balanced quotes
+    #   and parentheses, no null bytes, length limits), but the content is
+    #   passed to the Jira API. Example usage:
+    #     jql_filter: 'priority = "High" AND type = "Bug"'
+    #
     trigger:
       source: jira
       project: "DEMO"           # Change to your Jira project key

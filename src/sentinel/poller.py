@@ -99,6 +99,90 @@ def validate_jql_identifier(value: str, field_name: str = "identifier") -> str:
     return value
 
 
+def validate_jql_filter(value: str) -> str:
+    """Validate a custom JQL filter fragment for safe use.
+
+    This function performs security validation on custom JQL filter fragments to
+    prevent potential injection attacks while allowing legitimate JQL syntax.
+
+    The validation checks for:
+    - Null bytes which could cause parsing issues
+    - Excessively long values that could be DoS attempts
+    - Unbalanced parentheses which indicate malformed JQL
+    - Unbalanced quotes which could lead to injection
+
+    Note: This is a security-focused validation, not a full JQL syntax validator.
+    Valid JQL syntax errors will be caught by the Jira API.
+
+    Args:
+        value: The JQL filter fragment to validate.
+
+    Returns:
+        The validated JQL filter (unchanged if valid).
+
+    Raises:
+        JqlSanitizationError: If the value contains potentially dangerous patterns.
+
+    Security Considerations:
+        - jql_filter is expected to be configured by trusted administrators
+        - This validation provides defense-in-depth against misuse
+        - The Jira API provides additional server-side validation
+    """
+    if not value:
+        return value  # Empty filter is valid (optional field)
+
+    # Check for null bytes which could cause issues
+    if "\x00" in value:
+        raise JqlSanitizationError("jql_filter contains invalid null character")
+
+    # Check for excessively long values that could be DoS attempts
+    max_length = 10000
+    if len(value) > max_length:
+        raise JqlSanitizationError(
+            f"jql_filter exceeds maximum length of {max_length} characters"
+        )
+
+    # Check for unbalanced parentheses (basic structure validation)
+    paren_count = 0
+    for char in value:
+        if char == "(":
+            paren_count += 1
+        elif char == ")":
+            paren_count -= 1
+        if paren_count < 0:
+            raise JqlSanitizationError(
+                "jql_filter contains unbalanced parentheses (unexpected closing parenthesis)"
+            )
+    if paren_count != 0:
+        raise JqlSanitizationError(
+            "jql_filter contains unbalanced parentheses (unclosed opening parenthesis)"
+        )
+
+    # Check for unbalanced double quotes (basic string literal validation)
+    # Count quotes that are not escaped
+    quote_count = 0
+    i = 0
+    while i < len(value):
+        if value[i] == '"':
+            # Check if this quote is escaped
+            num_backslashes = 0
+            j = i - 1
+            while j >= 0 and value[j] == "\\":
+                num_backslashes += 1
+                j -= 1
+            # Quote is escaped only if preceded by odd number of backslashes
+            if num_backslashes % 2 == 0:
+                quote_count += 1
+        i += 1
+
+    if quote_count % 2 != 0:
+        raise JqlSanitizationError(
+            "jql_filter contains unbalanced quotes (unclosed string literal)"
+        )
+
+    return value
+
+
 @dataclass
 class JiraIssue:
     """Represents a Jira issue with relevant fields for orchestration."""
@@ -353,12 +437,13 @@ class JiraPoller:
             sanitized_tag = sanitize_jql_string(tag, "tag")
             conditions.append(f'labels = "{sanitized_tag}"')
 
-        # Custom JQL filter (appended as-is)
-        # NOTE: jql_filter is intentionally not sanitized as it's expected to be
-        # a complete JQL fragment. Users providing custom JQL are responsible for
-        # its content. Consider adding validation if this becomes a security concern.
+        # Custom JQL filter - validated for structural integrity
+        # Note: jql_filter is expected to be configured by trusted administrators.
+        # Validation provides defense-in-depth against misuse (null bytes, unbalanced
+        # parentheses/quotes, excessive length). Full JQL syntax is validated by Jira API.
         if trigger.jql_filter:
-            conditions.append(f"({trigger.jql_filter})")
+            validated_filter = validate_jql_filter(trigger.jql_filter)
+            conditions.append(f"({validated_filter})")
 
         # Default: exclude resolved/closed issues
         if not any("status" in c.lower() for c in conditions):
