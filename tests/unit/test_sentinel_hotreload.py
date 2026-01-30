@@ -9,9 +9,10 @@ from sentinel.orchestration import Orchestration
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
-    MockJiraClient,
+    MockJiraPoller,
     MockTagClient,
     make_config,
+    make_issue,
     make_orchestration,
     set_mtime_in_future,
 )
@@ -32,7 +33,7 @@ class TestSentinelOrchestrationHotReload:
             )
             (orch_dir / "readme.txt").write_text("This is not an orchestration file")
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -41,8 +42,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -55,7 +56,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -64,8 +65,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -96,7 +97,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -105,8 +106,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -136,9 +137,9 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(
+            jira_poller = MockJiraPoller(
                 issues=[
-                    {"key": "TEST-1", "fields": {"summary": "Test", "labels": ["new-tag"]}},
+                    make_issue(key="TEST-1", summary="Test", labels=["new-tag"]),
                 ]
             )
             agent_client = MockAgentClient(responses=["SUCCESS"])
@@ -149,8 +150,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -178,7 +179,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -187,8 +188,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -204,7 +205,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -213,8 +214,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -255,7 +256,7 @@ class TestSentinelOrchestrationHotReload:
 """
             )
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -264,8 +265,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -279,7 +280,7 @@ class TestSentinelOrchestrationHotReload:
 
     def test_handles_nonexistent_orchestrations_directory(self) -> None:
         """Test handling when orchestrations directory doesn't exist."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(orchestrations_dir=Path("/nonexistent/path"))
@@ -288,8 +289,8 @@ class TestSentinelOrchestrationHotReload:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -314,7 +315,7 @@ class TestSentinelOrchestrationHotReload:
 """
             )
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -323,8 +324,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -371,7 +372,7 @@ class TestSentinelOrchestrationHotReload:
 """
             )
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -380,8 +381,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -436,7 +437,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -445,8 +446,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -490,7 +491,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -499,8 +500,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -550,7 +551,7 @@ class TestSentinelOrchestrationHotReload:
 """
             )
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -559,8 +560,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -572,7 +573,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -581,8 +582,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -615,7 +616,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -624,8 +625,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -660,7 +661,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -669,8 +670,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -701,7 +702,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -710,8 +711,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -742,9 +743,9 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(
+            jira_poller = MockJiraPoller(
                 issues=[
-                    {"key": "TEST-1", "fields": {"summary": "Test", "labels": ["review"]}},
+                    make_issue(key="TEST-1", summary="Test", labels=["review"]),
                 ]
             )
             agent_client = MockAgentClient(responses=["SUCCESS"])
@@ -755,8 +756,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -775,7 +776,7 @@ class TestSentinelOrchestrationHotReload:
             results, submitted_count = sentinel.run_once()
             assert len(results) == 1
 
-            jira_client.search_calls.clear()
+            jira_poller.poll_calls.clear()
             orch_file.unlink()
             results, submitted_count = sentinel.run_once()
 
@@ -786,7 +787,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -795,8 +796,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 
@@ -837,7 +838,7 @@ class TestSentinelOrchestrationHotReload:
         with tempfile.TemporaryDirectory() as tmpdir:
             orch_dir = Path(tmpdir)
 
-            jira_client = MockJiraClient(issues=[])
+            jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
@@ -846,8 +847,8 @@ class TestSentinelOrchestrationHotReload:
             sentinel = Sentinel(
                 config=config,
                 orchestrations=orchestrations,
-                jira_client=jira_client,
-                agent_client=agent_client,
+                jira_poller=jira_poller,
+                agent_factory=agent_client,
                 tag_client=tag_client,
             )
 

@@ -13,7 +13,7 @@ from sentinel.main import Sentinel
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
-    MockJiraClient,
+    MockJiraPoller,
     MockTagClient,
     make_config,
     make_orchestration,
@@ -25,7 +25,7 @@ class TestQueueEvictionBehavior:
 
     def test_queue_evicts_oldest_item_when_full(self) -> None:
         """Test that the oldest item is evicted when queue reaches maxlen."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(max_queue_size=3)
@@ -34,8 +34,8 @@ class TestQueueEvictionBehavior:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -56,7 +56,7 @@ class TestQueueEvictionBehavior:
 
     def test_queue_maintains_fifo_ordering(self) -> None:
         """Test that the queue maintains FIFO ordering as items are added."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(max_queue_size=5)
@@ -65,8 +65,8 @@ class TestQueueEvictionBehavior:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -83,7 +83,7 @@ class TestQueueEvictionBehavior:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test that eviction logging includes the evicted item's key."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(max_queue_size=2)
@@ -92,8 +92,8 @@ class TestQueueEvictionBehavior:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -132,7 +132,7 @@ class TestQueueEvictionBehavior:
 
     def test_dashboard_shows_most_recent_queued_issues(self) -> None:
         """Test that get_issue_queue returns most recent items after eviction."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(max_queue_size=3)
@@ -141,8 +141,8 @@ class TestQueueEvictionBehavior:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -159,7 +159,7 @@ class TestQueueEvictionBehavior:
 
     def test_no_eviction_log_when_queue_not_full(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that no eviction log is produced when queue is not full."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(max_queue_size=10)
@@ -168,8 +168,8 @@ class TestQueueEvictionBehavior:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -194,7 +194,7 @@ class TestQueueEvictionBehavior:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test that each eviction produces a log with the correct evicted item."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(max_queue_size=2)
@@ -203,8 +203,8 @@ class TestQueueEvictionBehavior:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -238,7 +238,7 @@ class TestQueueEvictionBehavior:
 
     def test_queue_clear_resets_for_new_cycle(self) -> None:
         """Test that _clear_issue_queue properly resets the queue."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(max_queue_size=3)
@@ -247,8 +247,8 @@ class TestQueueEvictionBehavior:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -268,7 +268,7 @@ class TestQueueEvictionBehavior:
 
     def test_eviction_preserves_queued_at_timestamp_ordering(self) -> None:
         """Test that queued_at timestamps are preserved and ordered correctly."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(max_queue_size=2)
@@ -277,8 +277,8 @@ class TestQueueEvictionBehavior:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -312,7 +312,7 @@ class TestSentinelOrchestrationLogging:
 
     def test_sentinel_initializes_orch_log_manager_when_configured(self, tmp_path: Path) -> None:
         """Test Sentinel initializes OrchestrationLogManager when configured."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
@@ -322,8 +322,8 @@ class TestSentinelOrchestrationLogging:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -334,7 +334,7 @@ class TestSentinelOrchestrationLogging:
         self,
     ) -> None:
         """Test Sentinel doesn't initialize OrchestrationLogManager when not set."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -344,8 +344,8 @@ class TestSentinelOrchestrationLogging:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -353,7 +353,7 @@ class TestSentinelOrchestrationLogging:
 
     def test_sentinel_creates_log_files_via_log_for_orchestration(self, tmp_path: Path) -> None:
         """Test that _log_for_orchestration creates log files for orchestrations."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
@@ -363,8 +363,8 @@ class TestSentinelOrchestrationLogging:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -377,7 +377,7 @@ class TestSentinelOrchestrationLogging:
 
     def test_sentinel_logs_contain_orchestration_activity(self, tmp_path: Path) -> None:
         """Test orchestration logs contain relevant execution activity."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
@@ -387,8 +387,8 @@ class TestSentinelOrchestrationLogging:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -411,7 +411,7 @@ class TestSentinelOrchestrationLogging:
 
     def test_sentinel_separate_orchestrations_have_separate_logs(self, tmp_path: Path) -> None:
         """Test different orchestrations write to separate log files."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
@@ -424,8 +424,8 @@ class TestSentinelOrchestrationLogging:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -449,7 +449,7 @@ class TestSentinelOrchestrationLogging:
 
     def test_sentinel_closes_log_manager_on_run_once_and_wait(self, tmp_path: Path) -> None:
         """Test that run_once_and_wait properly closes the log manager."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
@@ -459,8 +459,8 @@ class TestSentinelOrchestrationLogging:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -476,7 +476,7 @@ class TestSentinelOrchestrationLogging:
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test that _log_for_orchestration logs to the main logger."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -485,8 +485,8 @@ class TestSentinelOrchestrationLogging:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -499,7 +499,7 @@ class TestSentinelOrchestrationLogging:
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test _log_for_orchestration logs to both main logger and orch file."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
@@ -509,8 +509,8 @@ class TestSentinelOrchestrationLogging:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 

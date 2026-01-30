@@ -9,7 +9,7 @@ from sentinel.main import Sentinel
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
-    MockJiraClient,
+    MockJiraPoller,
     MockTagClient,
     build_github_trigger_key,
     make_config,
@@ -22,7 +22,7 @@ class TestExtractRepoFromUrl:
 
     def test_extracts_from_issue_url(self) -> None:
         """Test extraction from GitHub issue URL."""
-        from sentinel.main import extract_repo_from_url
+        from sentinel.poll_coordinator import extract_repo_from_url
 
         url = "https://github.com/org/repo/issues/123"
         result = extract_repo_from_url(url)
@@ -30,7 +30,7 @@ class TestExtractRepoFromUrl:
 
     def test_extracts_from_pull_url(self) -> None:
         """Test extraction from GitHub pull request URL."""
-        from sentinel.main import extract_repo_from_url
+        from sentinel.poll_coordinator import extract_repo_from_url
 
         url = "https://github.com/my-org/my-repo/pull/456"
         result = extract_repo_from_url(url)
@@ -38,14 +38,14 @@ class TestExtractRepoFromUrl:
 
     def test_handles_empty_url(self) -> None:
         """Test that empty URL returns None."""
-        from sentinel.main import extract_repo_from_url
+        from sentinel.poll_coordinator import extract_repo_from_url
 
         assert extract_repo_from_url("") is None
         assert extract_repo_from_url(None) is None  # type: ignore[arg-type]
 
     def test_handles_invalid_url(self) -> None:
         """Test that invalid URLs return None."""
-        from sentinel.main import extract_repo_from_url
+        from sentinel.poll_coordinator import extract_repo_from_url
 
         assert extract_repo_from_url("not a url") is None
         assert extract_repo_from_url("https://github.com/org/repo") is None
@@ -53,7 +53,7 @@ class TestExtractRepoFromUrl:
 
     def test_handles_enterprise_github_url(self) -> None:
         """Test extraction from GitHub Enterprise URLs."""
-        from sentinel.main import extract_repo_from_url
+        from sentinel.poll_coordinator import extract_repo_from_url
 
         url = "https://github.enterprise.com/org/repo/issues/123"
         result = extract_repo_from_url(url)
@@ -61,7 +61,7 @@ class TestExtractRepoFromUrl:
 
     def test_handles_http_url(self) -> None:
         """Test extraction from HTTP URL (no HTTPS)."""
-        from sentinel.main import extract_repo_from_url
+        from sentinel.poll_coordinator import extract_repo_from_url
 
         url = "http://github.com/org/repo/pull/789"
         result = extract_repo_from_url(url)
@@ -69,7 +69,7 @@ class TestExtractRepoFromUrl:
 
     def test_handles_complex_repo_names(self) -> None:
         """Test extraction with complex org/repo names."""
-        from sentinel.main import extract_repo_from_url
+        from sentinel.poll_coordinator import extract_repo_from_url
 
         url = "https://github.com/my-org-123/my-repo-name/issues/1"
         result = extract_repo_from_url(url)
@@ -82,7 +82,7 @@ class TestGitHubIssueWithRepo:
     def test_key_includes_repo_context(self) -> None:
         """Test that key property includes full repo context."""
         from sentinel.github_poller import GitHubIssue
-        from sentinel.main import GitHubIssueWithRepo
+        from sentinel.poll_coordinator import GitHubIssueWithRepo
 
         issue = GitHubIssue(number=123, title="Test")
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
@@ -92,7 +92,7 @@ class TestGitHubIssueWithRepo:
     def test_delegates_all_properties(self) -> None:
         """Test that all properties are properly delegated via __getattr__."""
         from sentinel.github_poller import GitHubIssue
-        from sentinel.main import GitHubIssueWithRepo
+        from sentinel.poll_coordinator import GitHubIssueWithRepo
 
         issue = GitHubIssue(
             number=42,
@@ -129,7 +129,7 @@ class TestGitHubIssueWithRepo:
     def test_raises_attribute_error_for_invalid_attribute(self) -> None:
         """Test that AttributeError is raised for non-existent attributes."""
         from sentinel.github_poller import GitHubIssue
-        from sentinel.main import GitHubIssueWithRepo
+        from sentinel.poll_coordinator import GitHubIssueWithRepo
 
         issue = GitHubIssue(number=123, title="Test")
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
@@ -145,7 +145,7 @@ class TestAddRepoContextFromUrls:
         """Test that issues are wrapped with repo context from URL."""
         from sentinel.github_poller import GitHubIssue
 
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -154,8 +154,8 @@ class TestAddRepoContextFromUrls:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -182,7 +182,7 @@ class TestAddRepoContextFromUrls:
         """Test that issues with invalid URLs are skipped with warning."""
         from sentinel.github_poller import GitHubIssue
 
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -191,8 +191,8 @@ class TestAddRepoContextFromUrls:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -229,7 +229,7 @@ class TestAddRepoContextFromUrls:
         """Test handling of issues from multiple repos in a single project."""
         from sentinel.github_poller import GitHubIssue
 
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -238,8 +238,8 @@ class TestAddRepoContextFromUrls:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 

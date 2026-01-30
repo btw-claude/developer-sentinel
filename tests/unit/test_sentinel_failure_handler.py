@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 from sentinel.main import Sentinel
 from tests.conftest import (
     MockAgentClient,
-    MockJiraClient,
+    MockJiraPoller,
     MockTagClient,
     make_config,
     make_orchestration,
@@ -25,7 +25,7 @@ class TestHandleExecutionFailure:
         self, tag_client: MockTagClient | None = None
     ) -> tuple[Sentinel, MockTagClient]:
         """Create a Sentinel instance for testing."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         if tag_client is None:
             tag_client = MockTagClient()
@@ -35,8 +35,8 @@ class TestHandleExecutionFailure:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
         return sentinel, tag_client
@@ -220,7 +220,7 @@ class TestExecuteOrchestrationTaskUsesHelper:
 
     def _create_sentinel(self) -> tuple[Sentinel, MockTagClient]:
         """Create a Sentinel instance for testing."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -229,8 +229,8 @@ class TestExecuteOrchestrationTaskUsesHelper:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
         return sentinel, tag_client
