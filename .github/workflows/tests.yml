@@ -94,5 +94,8 @@ jobs:
       - name: Run ruff
         run: ruff check src tests
 
+      - name: Run pydocstyle
+        run: pydocstyle src
+
       - name: Run mypy
         run: mypy src

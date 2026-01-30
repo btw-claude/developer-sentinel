@@ -66,6 +66,9 @@ dev = [
     # Time mocking for deterministic testing of time-dependent code
     # See: tests/integration/test_fault_injection.py (circuit breaker recovery timeout tests)
     "freezegun>=1.2.0,<2.0.0",
+    # Docstring style linter - enforces Google style docstrings (DS-513)
+    # See: [tool.pydocstyle] configuration below and CONTRIBUTING.md
+    "pydocstyle>=6.3.0,<7.0.0",
 ]
 
 [project.scripts]
@@ -124,3 +127,21 @@ src_paths = ["src", "tests"]
 known_first_party = ["sentinel"]
 # Skip files that shouldn't be modified
 skip_gitignore = true
+
+[tool.pydocstyle]
+# Use Google style docstrings (DS-513)
+# See: CONTRIBUTING.md for docstring format guidelines
+convention = "google"
+# Check source files only (tests have relaxed requirements)
+match = "(?!test_).*\\.py"
+# Match directories to check
+match_dir = "^(?!tests).*"
+# Ignore certain rules that are overly strict or don't apply well:
+# D102: Missing docstring in public method - not always needed for simple methods
+# D105: Missing docstring in magic method - magic methods are self-documenting
+# D107: Missing docstring in __init__ - class docstring is often sufficient
+# D214: Section is over-indented - flexible indentation in examples is acceptable
+# D301: Use r""" if any backslashes - raw strings not needed for well-escaped content
+# D402: First line should not be function's signature - some property docstrings are fine
+# D403: First word should be capitalized - false positives for proper nouns (e.g., "GitHub")
+add_ignore = ["D102", "D105", "D107", "D214", "D301", "D402", "D403"]
