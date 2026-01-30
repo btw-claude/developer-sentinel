@@ -1065,10 +1065,9 @@ class TestClaudeSdkAgentClientBranchSetup:
 
             return result
 
-        with patch("subprocess.run", side_effect=mock_run):
-            with pytest.raises(
-                AgentClientError, match="Unexpected git rev-parse output: expected 3 lines, got 2"
-            ):
-                client._setup_branch(
-                    workdir, "feature/DS-123", create_branch=False, base_branch="main"
-                )
+        with patch("subprocess.run", side_effect=mock_run), pytest.raises(
+            AgentClientError, match="Unexpected git rev-parse output: expected 3 lines, got 2"
+        ):
+            client._setup_branch(
+                workdir, "feature/DS-123", create_branch=False, base_branch="main"
+            )

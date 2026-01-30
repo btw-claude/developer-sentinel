@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from sentinel.config import Config
     from sentinel.github_poller import GitHubClient
     from sentinel.github_rest_client import GitHubTagClient
+    from sentinel.main import Sentinel
     from sentinel.orchestration import Orchestration
     from sentinel.poller import JiraClient
     from sentinel.tag_manager import JiraTagClient, TagManager

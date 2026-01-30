@@ -1,6 +1,7 @@
 """Tests for Sentinel retry attempt tracking functionality."""
 
 import asyncio
+import contextlib
 import logging
 import threading
 import time
@@ -215,10 +216,8 @@ class TestAttemptCountTracking:
                     pass
                 finally:
                     unblock_task.cancel()
-                    try:
+                    with contextlib.suppress(asyncio.CancelledError):
                         await unblock_task
-                    except asyncio.CancelledError:
-                        pass
                 return await super().run_agent(*args, **kwargs)
 
         agent_client = BlockingAgentClient(responses=["SUCCESS"])

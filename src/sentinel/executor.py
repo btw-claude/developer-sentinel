@@ -14,6 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sentinel.agent_clients.base import AgentClientError, AgentTimeoutError
 from sentinel.branch_validation import validate_runtime_branch_name
 from sentinel.github_poller import GitHubIssue
 from sentinel.logging import get_logger, log_agent_summary
@@ -424,10 +425,10 @@ class ExecutionResult:
         return self.status == ExecutionStatus.SUCCESS
 
 
-# Import exception classes from agent_clients.base for backward compatibility
+# Re-export exception classes for backward compatibility
 # These exceptions are now defined in agent_clients.base but re-exported here
 # to maintain existing import paths used throughout the codebase
-from sentinel.agent_clients.base import AgentClientError, AgentTimeoutError
+__all__ = ["AgentClientError", "AgentTimeoutError", "AgentClient", "AgentExecutor"]
 
 
 class AgentClient(ABC):
@@ -890,7 +891,8 @@ class AgentExecutor:
                         cleanup_workdir(last_workdir)
                     elif not self.cleanup_workdir_on_success and last_workdir:
                         logger.debug(
-                            f"Workdir preserved at {last_workdir} (cleanup_workdir_on_success=False)"
+                            f"Workdir preserved at {last_workdir} "
+                            "(cleanup_workdir_on_success=False)"
                         )
                     return result
 

@@ -110,7 +110,8 @@ class JiraSdkTagClient(JiraTagClient):
         self.config = config
 
     async def _update_label(self, issue_key: str, label: str, action: str) -> None:
-        prompt = f"""{action.capitalize()} the label "{label}" {"to" if action == "add" else "from"} Jira issue {issue_key}.
+        preposition = "to" if action == "add" else "from"
+        prompt = f"""{action.capitalize()} the label "{label}" {preposition} Jira issue {issue_key}.
 
 If successful, respond with exactly: SUCCESS
 If there's an error, respond with: ERROR: <description>"""
@@ -122,7 +123,7 @@ If there's an error, respond with: ERROR: <description>"""
                 raise JiraTagClientError(f"Failed to {action} label: {response}")
 
             logger.info(
-                f"{action.capitalize()}ed label '{label}' {'to' if action == 'add' else 'from'} {issue_key}"
+                f"{action.capitalize()}ed label '{label}' {preposition} {issue_key}"
             )
 
         except ClaudeProcessInterruptedError:

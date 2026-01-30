@@ -7,7 +7,6 @@ based on tags/labels and source-specific filters.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Union
 
 from sentinel.github_poller import GitHubIssueProtocol
 from sentinel.logging import get_logger
@@ -18,7 +17,7 @@ logger = get_logger(__name__)
 
 # Type alias for issues from any supported source
 # Uses GitHubIssueProtocol to support both GitHubIssue and GitHubIssueWithRepo
-AnyIssue = Union[JiraIssue, GitHubIssueProtocol]
+AnyIssue = JiraIssue | GitHubIssueProtocol
 
 
 @dataclass

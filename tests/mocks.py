@@ -71,7 +71,7 @@ class MockJiraClient(JiraClient):
                 issue_key = issue.get("key", "")
                 removed = self.tag_client.remove_calls
                 # Check if any label in this issue was removed
-                labels = issue.get("fields", {}).get("labels", [])
+                issue.get("fields", {}).get("labels", [])
                 # If any label was removed for this issue, skip it
                 if any(key == issue_key for key, _ in removed):
                     continue

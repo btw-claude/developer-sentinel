@@ -102,9 +102,11 @@ class TestFilterExpression:
 
     def test_filter_expression_is_frozen(self) -> None:
         """FilterExpression should be immutable (frozen)."""
+        from dataclasses import FrozenInstanceError
+
         cond = Condition(field="Status", operator=Operator.EQUALS, values=("Ready",))
         expr = FilterExpression(condition=cond)
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(FrozenInstanceError):
             expr.condition = None  # type: ignore[misc]
 
 

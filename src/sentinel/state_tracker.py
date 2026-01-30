@@ -171,10 +171,7 @@ class StateTracker:
         current_time = time.monotonic()
         with self._attempt_counts_lock:
             entry = self._attempt_counts.get(key)
-            if entry is None:
-                new_count = 1
-            else:
-                new_count = entry.count + 1
+            new_count = 1 if entry is None else entry.count + 1
             self._attempt_counts[key] = AttemptCountEntry(count=new_count, last_access=current_time)
             return new_count
 
@@ -315,7 +312,8 @@ class StateTracker:
             if evicted_item is not None:
                 logger.debug(
                     f"Issue queue at capacity ({self._issue_queue.maxlen}), "
-                    f"evicted '{evicted_item.issue_key}' (orchestration: '{evicted_item.orchestration_name}') "
+                    f"evicted '{evicted_item.issue_key}' "
+                    f"(orch: '{evicted_item.orchestration_name}') "
                     f"to add {issue_key} for '{orchestration_name}'"
                 )
 
@@ -345,7 +343,8 @@ class StateTracker:
             self._per_orch_active_counts[orchestration_name] += 1
             new_count = self._per_orch_active_counts[orchestration_name]
             logger.debug(
-                f"Incremented per-orch count for '{orchestration_name}': {new_count - 1} -> {new_count}"
+                f"Incremented per-orch count for '{orchestration_name}': "
+                f"{new_count - 1} -> {new_count}"
             )
             return new_count
 
@@ -373,7 +372,8 @@ class StateTracker:
             else:
                 self._per_orch_active_counts[orchestration_name] = new_count
             logger.debug(
-                f"Decremented per-orch count for '{orchestration_name}': {current_count} -> {new_count}"
+                f"Decremented per-orch count for '{orchestration_name}': "
+                f"{current_count} -> {new_count}"
             )
             return new_count
 

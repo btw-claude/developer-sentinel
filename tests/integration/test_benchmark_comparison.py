@@ -897,7 +897,7 @@ class TestMultipleResponseSimulation:
         metrics.start_query()
 
         # Simulate receiving 5 messages with varying delays
-        for i in range(5):
+        for _i in range(5):
             time.sleep(0.01)  # Simulate network delay
             metrics.record_message_received()
 

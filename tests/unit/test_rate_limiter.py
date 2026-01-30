@@ -325,9 +325,8 @@ class TestClaudeRateLimiter:
         limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100, enabled=True)
         limiter.acquire(timeout=0)
 
-        with limiter.pause_metrics():
-            with limiter.pause_metrics():
-                limiter.reset_metrics()
+        with limiter.pause_metrics(), limiter.pause_metrics():
+            limiter.reset_metrics()
             # Inner context exits, but outer context still paused
 
         # Metrics were reset, should be 0

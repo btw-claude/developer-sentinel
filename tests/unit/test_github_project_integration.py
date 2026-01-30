@@ -379,10 +379,7 @@ class TestRepoUrlExtractionIntegration:
         ]
 
         for url in invalid_urls:
-            if url is None:
-                result = extract_repo_from_url(url)  # type: ignore[arg-type]
-            else:
-                result = extract_repo_from_url(url)
+            result = extract_repo_from_url(url)  # type: ignore[arg-type]
             # Note: URLs with /issues/ or /pull/ pattern will match even on non-github domains
             if url and "/issues/" not in str(url) and "/pull/" not in str(url):
                 assert result is None, f"Expected None for URL: {url}"

@@ -343,13 +343,14 @@ class OrchestrationRegistry:
                 if old_version.has_active_executions:
                     self._pending_removal_versions.append(old_version)
                     logger.info(
-                        f"Orchestration '{old_version.name}' (version {old_version.version_id[:8]}) "
-                        f"moved to pending removal with {old_version.active_executions} active execution(s)"
+                        f"Orchestration '{old_version.name}' "
+                        f"(version {old_version.version_id[:8]}) moved to pending "
+                        f"removal with {old_version.active_executions} active execution(s)"
                     )
                 else:
                     logger.debug(
-                        f"Orchestration '{old_version.name}' (version {old_version.version_id[:8]}) "
-                        f"removed immediately (no active executions)"
+                        f"Orchestration '{old_version.name}' "
+                        f"(version {old_version.version_id[:8]}) removed immediately"
                     )
 
             # Remove old orchestrations from the main list
@@ -402,13 +403,14 @@ class OrchestrationRegistry:
                     # Keep alive until executions complete
                     self._pending_removal_versions.append(version)
                     logger.info(
-                        f"Orchestration '{version.name}' (version {version.version_id[:8]}) "
-                        f"moved to pending removal with {version.active_executions} active execution(s)"
+                        f"Orchestration '{version.name}' "
+                        f"(version {version.version_id[:8]}) moved to pending "
+                        f"removal with {version.active_executions} active execution(s)"
                     )
                 else:
                     logger.debug(
-                        f"Orchestration '{version.name}' (version {version.version_id[:8]}) "
-                        f"removed immediately (no active executions)"
+                        f"Orchestration '{version.name}' "
+                        f"(version {version.version_id[:8]}) removed immediately"
                     )
 
                 unloaded_count += 1

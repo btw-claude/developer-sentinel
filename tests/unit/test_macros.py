@@ -109,7 +109,7 @@ class TestStatusBadgeMacro:
     def render_status_badge(self, jinja_env: Environment) -> Callable[[int, int], str]:
         """Create a helper function to render the status_badge macro."""
         # Load the macros template
-        macros_template = jinja_env.get_template("macros.html")
+        jinja_env.get_template("macros.html")
 
         # Create a template that imports and uses the macro
         def render(active_count: int, total_count: int) -> str:

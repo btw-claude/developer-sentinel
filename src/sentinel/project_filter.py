@@ -515,10 +515,7 @@ class ProjectFilterParser:
                 break
 
         # Handle missing field as None
-        if field_value is None:
-            field_value_lower = None
-        else:
-            field_value_lower = field_value.lower()
+        field_value_lower = None if field_value is None else field_value.lower()
 
         # Case-insensitive value comparison
         condition_values_lower = tuple(v.lower() for v in condition.values)

@@ -124,9 +124,11 @@ class TestCleanupWorkdir:
                 # Successful removal on second attempt - actually remove it
                 original_rmtree(path, **kwargs)
 
-            with patch("shutil.rmtree", side_effect=mock_rmtree_side_effect):
-                with patch("time.sleep"):  # Speed up test
-                    result = cleanup_workdir(workdir, force=True, max_retries=3)
+            with (
+                patch("shutil.rmtree", side_effect=mock_rmtree_side_effect),
+                patch("time.sleep"),  # Speed up test
+            ):
+                result = cleanup_workdir(workdir, force=True, max_retries=3)
 
             assert result is True
             assert call_count == 2

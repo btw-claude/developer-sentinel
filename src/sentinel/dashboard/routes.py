@@ -29,6 +29,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from cachetools import TTLCache
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
+
+from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
+
+if TYPE_CHECKING:
+    from sentinel.config import Config
+    from sentinel.dashboard.state import SentinelStateAccessor
+    from sentinel.health import HealthChecker
 
 logger = logging.getLogger(__name__)
 
@@ -74,19 +85,6 @@ def __getattr__(name: str) -> Any:
         )
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
-
-from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
-
-if TYPE_CHECKING:
-    from sentinel.config import Config
-    from sentinel.dashboard.state import SentinelStateAccessor
-    from sentinel.health import HealthChecker
 
 
 class RateLimiter:
@@ -138,7 +136,10 @@ class RateLimiter:
                 )
                 raise HTTPException(
                     status_code=429,
-                    detail=f"Rate limit exceeded. Please wait {remaining:.1f} seconds before toggling again.",
+                    detail=(
+                        f"Rate limit exceeded. Please wait {remaining:.1f} "
+                        "seconds before toggling again."
+                    ),
                 )
 
     def record_write(self, file_path: str) -> None:
@@ -732,7 +733,8 @@ def create_routes(
             BulkToggleResponse with success status and count of toggled orchestrations.
 
         Raises:
-            HTTPException: 404 if no matching orchestrations found, 429 for rate limit, 500 for YAML errors.
+            HTTPException: 404 if no matching orchestrations found,
+                429 for rate limit, 500 for YAML errors.
         """
         logger.debug(
             "bulk_toggle_orchestrations called for %s '%s' with enabled=%s",
@@ -760,18 +762,24 @@ def create_routes(
                     and orch.trigger_project == request_body.identifier
                 ):
                     orch_files[orch.name] = source_file
-            elif request_body.source == "github":
-                if orch.trigger_source == "github" and orch.trigger_repo == request_body.identifier:
-                    orch_files[orch.name] = source_file
+            elif (
+                request_body.source == "github"
+                and orch.trigger_source == "github"
+                and orch.trigger_repo == request_body.identifier
+            ):
+                orch_files[orch.name] = source_file
 
         if not orch_files:
             raise HTTPException(
                 status_code=404,
-                detail=f"No orchestrations found for {request_body.source} '{request_body.identifier}'",
+                detail=(
+                    f"No orchestrations found for {request_body.source} "
+                    f"'{request_body.identifier}'"
+                ),
             )
 
         # Check rate limit for all unique files before writing
-        unique_files = set(str(f) for f in orch_files.values())
+        unique_files = {str(f) for f in orch_files.values()}
         for file_path in unique_files:
             rate_limiter.check_rate_limit(file_path)
 

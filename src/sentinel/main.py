@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     import uvicorn
     from starlette.types import ASGIApp
 
+    from sentinel.dashboard.state import ExecutionStateSnapshot, OrchestrationVersionSnapshot
+
 from sentinel.agent_clients.factory import AgentClientFactory, create_default_factory
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config, load_config
@@ -538,11 +540,13 @@ class Sentinel:
                 issue_key = routing_result.issue.key
 
                 # Check deduplication
-                if submitted_pairs is not None:
-                    if not self._poll_coordinator.check_and_mark_submitted(
+                if (
+                    submitted_pairs is not None
+                    and not self._poll_coordinator.check_and_mark_submitted(
                         submitted_pairs, issue_key, matched_orch.name
-                    ):
-                        continue
+                    )
+                ):
+                    continue
 
                 # Check slot availability
                 if self._get_available_slots_for_orchestration(matched_orch) <= 0:
@@ -791,7 +795,7 @@ class Sentinel:
 
                     if pending_futures:
                         logger.debug(
-                            f"Waiting for completion of {len(pending_futures)} task(s) before next poll"
+                            f"Waiting for {len(pending_futures)} task(s) to complete"
                         )
                         done, _ = wait(pending_futures, timeout=1.0, return_when=FIRST_COMPLETED)
                         while not done and not self._shutdown_requested:

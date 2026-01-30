@@ -789,12 +789,13 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
 
     # Parse max_concurrent field (defaults to None for no per-orchestration limit)
     max_concurrent = data.get("max_concurrent")
-    if max_concurrent is not None:
-        if not isinstance(max_concurrent, int) or max_concurrent <= 0:
-            raise OrchestrationError(
-                f"Orchestration '{name}' has invalid 'max_concurrent' value: "
-                "must be a positive integer"
-            )
+    if max_concurrent is not None and (
+        not isinstance(max_concurrent, int) or max_concurrent <= 0
+    ):
+        raise OrchestrationError(
+            f"Orchestration '{name}' has invalid 'max_concurrent' value: "
+            "must be a positive integer"
+        )
 
     return Orchestration(
         name=name,

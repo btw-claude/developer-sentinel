@@ -308,7 +308,8 @@ def _check_rate_limit_warning(response: httpx.Response) -> None:
             if remaining_int <= 10:
                 reset_time = response.headers.get("X-RateLimit-Reset", "unknown")
                 logger.warning(
-                    f"GitHub rate limit near exhaustion. Remaining: {remaining}, Reset: {reset_time}"
+                    "GitHub rate limit near exhaustion. "
+                    f"Remaining: {remaining}, Reset: {reset_time}"
                 )
         except ValueError:
             pass
@@ -472,13 +473,13 @@ class BaseGitHubHttpClient:
             # Runtime safety check: ensure subclass has properly initialized required attributes
             if not hasattr(self, "timeout") or self.timeout is None:
                 raise RuntimeError(
-                    f"{self.__class__.__name__} must set self.timeout before calling _get_client(). "
-                    "See BaseGitHubHttpClient docstring for implementation example."
+                    f"{self.__class__.__name__} must set self.timeout before "
+                    "calling _get_client(). See BaseGitHubHttpClient docstring."
                 )
             if not hasattr(self, "_headers") or self._headers is None:
                 raise RuntimeError(
-                    f"{self.__class__.__name__} must set self._headers before calling _get_client(). "
-                    "See BaseGitHubHttpClient docstring for implementation example."
+                    f"{self.__class__.__name__} must set self._headers before "
+                    "calling _get_client(). See BaseGitHubHttpClient docstring."
                 )
             self._client = httpx.Client(timeout=self.timeout, headers=self._headers)
         return self._client

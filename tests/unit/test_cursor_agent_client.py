@@ -264,7 +264,7 @@ class TestCursorAgentClientRunAgent:
         config = make_test_config()
         client = CursorAgentClient(config)
 
-        result = asyncio.run(
+        asyncio.run(
             client.run_agent(
                 "test prompt",
                 tools=[],

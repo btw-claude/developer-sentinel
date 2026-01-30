@@ -304,7 +304,8 @@ def _validate_cursor_mode(value: str, default: str = "agent") -> str:
     normalized = value.lower()
     if normalized not in VALID_CURSOR_MODES:
         logging.warning(
-            "Invalid SENTINEL_CURSOR_DEFAULT_MODE: '%s' is not valid, using default '%s'. Valid values: %s",
+            "Invalid SENTINEL_CURSOR_DEFAULT_MODE: '%s' is not valid, "
+            "using default '%s'. Valid values: %s",
             value,
             default,
             ", ".join(sorted(VALID_CURSOR_MODES)),
@@ -328,7 +329,8 @@ def _validate_agent_type(value: str) -> str:
     normalized = value.lower()
     if normalized not in VALID_AGENT_TYPES:
         logging.warning(
-            "Invalid SENTINEL_DEFAULT_AGENT_TYPE: '%s' is not valid, using default '%s'. Valid values: %s",
+            "Invalid SENTINEL_DEFAULT_AGENT_TYPE: '%s' is not valid, "
+            "using default '%s'. Valid values: %s",
             value,
             default,
             ", ".join(sorted(VALID_AGENT_TYPES)),
@@ -352,7 +354,8 @@ def _validate_rate_limit_strategy(value: str, default: str = "queue") -> str:
     normalized = value.lower()
     if normalized not in VALID_RATE_LIMIT_STRATEGIES:
         logging.warning(
-            "Invalid SENTINEL_CLAUDE_RATE_LIMIT_STRATEGY: '%s' is not valid, using default '%s'. Valid values: %s",
+            "Invalid SENTINEL_CLAUDE_RATE_LIMIT_STRATEGY: '%s' is not valid, "
+            "using default '%s'. Valid values: %s",
             value,
             default,
             ", ".join(sorted(VALID_RATE_LIMIT_STRATEGIES)),
@@ -480,7 +483,8 @@ def load_config(env_file: Path | None = None) -> Config:
     # Parse log JSON format option
     log_json = _parse_bool(os.getenv("SENTINEL_LOG_JSON", ""))
 
-    # Parse workdir cleanup option (SENTINEL_KEEP_WORKDIR=true means cleanup_workdir_on_success=False)
+    # Parse workdir cleanup option
+    # (SENTINEL_KEEP_WORKDIR=true means cleanup_workdir_on_success=False)
     keep_workdir = _parse_bool(os.getenv("SENTINEL_KEEP_WORKDIR", ""))
     cleanup_workdir_on_success = not keep_workdir
 

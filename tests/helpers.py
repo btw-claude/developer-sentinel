@@ -213,7 +213,7 @@ def set_mtime_in_future(file_path: Path, seconds_offset: float = 1.0) -> None:
     os.utime(file_path, (current_stat.st_atime, new_mtime))
 
 
-def assert_call_args_length(call_args: "_Call", min_length: int) -> None:
+def assert_call_args_length(call_args: _Call, min_length: int) -> None:
     """Assert that call_args tuple has at least min_length positional arguments.
 
     This helper provides clearer error messages when checking mock call arguments

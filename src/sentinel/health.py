@@ -134,12 +134,14 @@ class HealthCheckConfig:
             timeout = float(timeout_str)
             if timeout <= 0:
                 logger.warning(
-                    f"Invalid SENTINEL_HEALTH_CHECK_TIMEOUT: {timeout} must be positive, using default 5.0"
+                    f"Invalid SENTINEL_HEALTH_CHECK_TIMEOUT: {timeout} must be "
+                    "positive, using default 5.0"
                 )
                 timeout = 5.0
         except ValueError:
             logger.warning(
-                f"Invalid SENTINEL_HEALTH_CHECK_TIMEOUT: '{timeout_str}' is not a valid number, using default 5.0"
+                f"Invalid SENTINEL_HEALTH_CHECK_TIMEOUT: '{timeout_str}' is not "
+                "a valid number, using default 5.0"
             )
             timeout = 5.0
 
@@ -414,7 +416,7 @@ class HealthChecker:
 
         start_time = time.perf_counter()
         try:
-            # Use the GitHub API rate_limit endpoint (lightweight and doesn't count against rate limit)
+            # Use GitHub API rate_limit endpoint (lightweight, doesn't count)
             url = f"{self.github_client.base_url}/rate_limit"
             headers = {
                 "Accept": "application/vnd.github+json",
