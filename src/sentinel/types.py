@@ -171,14 +171,58 @@ class RateLimitStrategy(str, Enum):
         return frozenset(member.value for member in cls)
 
 
+class ErrorType(str, Enum):
+    """Enum for execution failure error types.
+
+    Inherits from str to allow direct string comparison and
+    seamless logging integration.
+
+    This enum provides type safety for the error_type parameter in
+    _handle_execution_failure, preventing typos and enabling IDE
+    autocomplete support.
+
+    Values:
+        IO_ERROR: I/O and network-related errors ("I/O error")
+        RUNTIME_ERROR: Runtime execution errors ("runtime error")
+        DATA_ERROR: Data validation and key errors ("data error")
+    """
+
+    IO_ERROR = "I/O error"
+    RUNTIME_ERROR = "runtime error"
+    DATA_ERROR = "data error"
+
+    @classmethod
+    def is_valid(cls, value: str) -> bool:
+        """Check if a string value is a valid error type.
+
+        Args:
+            value: The string value to validate.
+
+        Returns:
+            True if the value matches a valid error type.
+        """
+        return value in cls._value2member_map_
+
+    @classmethod
+    def values(cls) -> frozenset[str]:
+        """Return all valid error type values as a frozenset.
+
+        Returns:
+            Frozenset of valid error type string values.
+        """
+        return frozenset(member.value for member in cls)
+
+
 # Type aliases for Literal types (for backward compatibility with type hints)
 TriggerSourceLiteral = Literal["jira", "github"]
 AgentTypeLiteral = Literal["claude", "cursor"]
 CursorModeLiteral = Literal["agent", "plan", "ask"]
 RateLimitStrategyLiteral = Literal["queue", "reject"]
+ErrorTypeLiteral = Literal["I/O error", "runtime error", "data error"]
 
 # Frozen sets for validation (derived from enums for single source of truth)
 VALID_TRIGGER_SOURCES = TriggerSource.values()
 VALID_AGENT_TYPES = AgentType.values()
 VALID_CURSOR_MODES = CursorMode.values()
 VALID_RATE_LIMIT_STRATEGIES = RateLimitStrategy.values()
+VALID_ERROR_TYPES = ErrorType.values()

@@ -53,6 +53,7 @@ from sentinel.state_tracker import (
     StateTracker,
 )
 from sentinel.tag_manager import JiraTagClient, TagManager
+from sentinel.types import ErrorType
 
 logger = get_logger(__name__)
 
@@ -321,7 +322,7 @@ class Sentinel:
         issue_key: str,
         orchestration: Orchestration,
         exception: Exception,
-        error_type: str,
+        error_type: ErrorType,
     ) -> None:
         """Handle execution failure by logging and applying failure tags.
 
@@ -334,14 +335,15 @@ class Sentinel:
             issue_key: The issue key (e.g., "PROJ-123") being processed.
             orchestration: The orchestration that failed.
             exception: The exception that caused the failure.
-            error_type: A descriptive type of the error for logging (e.g., "I/O error",
-                "runtime error", "data error").
+            error_type: The type of error for logging, using the ErrorType enum
+                for type safety (e.g., ErrorType.IO_ERROR, ErrorType.RUNTIME_ERROR,
+                ErrorType.DATA_ERROR).
         """
         self._log_for_orchestration(
             orchestration.name,
             logging.ERROR,
             f"Failed to execute '{orchestration.name}' for {issue_key} "
-            f"due to {error_type}: {exception}",
+            f"due to {error_type.value}: {exception}",
         )
         try:
             self.tag_manager.apply_failure_tags(issue_key, orchestration)
@@ -429,13 +431,13 @@ class Sentinel:
                 )
             return None
         except (OSError, TimeoutError) as e:
-            self._handle_execution_failure(issue_key, orchestration, e, "I/O error")
+            self._handle_execution_failure(issue_key, orchestration, e, ErrorType.IO_ERROR)
             return None
         except RuntimeError as e:
-            self._handle_execution_failure(issue_key, orchestration, e, "runtime error")
+            self._handle_execution_failure(issue_key, orchestration, e, ErrorType.RUNTIME_ERROR)
             return None
         except (KeyError, ValueError) as e:
-            self._handle_execution_failure(issue_key, orchestration, e, "data error")
+            self._handle_execution_failure(issue_key, orchestration, e, ErrorType.DATA_ERROR)
             return None
         finally:
             if version is not None:
