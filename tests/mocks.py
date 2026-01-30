@@ -356,7 +356,22 @@ class MockJiraPoller:
         self.tag_client = tag_client
 
     def poll(self, trigger: TriggerConfig, max_results: int = 50) -> list[JiraIssue]:
-        """Mock implementation of poll that returns configured issues."""
+        """Mock implementation of poll that returns configured issues.
+
+        When a tag_client is linked to this poller, issues are filtered based on
+        tag removal operations. Specifically, if any label has been removed from
+        an issue via the tag_client (recorded in tag_client.remove_calls), that
+        issue will be excluded from the poll results. This simulates the real
+        behavior where issues are no longer returned by Jira once their trigger
+        tags have been removed during processing.
+
+        Args:
+            trigger: The trigger configuration to poll for.
+            max_results: Maximum number of results to return.
+
+        Returns:
+            List of JiraIssue objects, filtered by tag removal if tag_client is set.
+        """
         self.poll_calls.append(trigger)
         # If we have a tag client, filter out issues whose trigger tags have been removed
         if self.tag_client:

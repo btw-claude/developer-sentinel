@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import signal
 import time
+import warnings
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from datetime import datetime
 from types import FrameType
@@ -119,8 +120,6 @@ class Sentinel:
             github_client: Deprecated - use github_poller instead.
             agent_client: Deprecated - use agent_factory instead.
         """
-        import warnings
-
         self.config = config
         self.orchestrations = orchestrations
 
