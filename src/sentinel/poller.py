@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -11,6 +12,90 @@ from sentinel.logging import get_logger
 from sentinel.orchestration import TriggerConfig
 
 logger = get_logger(__name__)
+
+
+class JqlSanitizationError(ValueError):
+    """Raised when a value cannot be safely used in JQL."""
+
+    pass
+
+
+def sanitize_jql_string(value: str, field_name: str = "value") -> str:
+    """Sanitize a string value for safe use in JQL queries.
+
+    This function validates and escapes string values to prevent JQL injection attacks.
+    Values are checked for dangerous patterns and properly escaped for use in quoted
+    JQL string literals.
+
+    Args:
+        value: The string value to sanitize.
+        field_name: Name of the field being sanitized (for error messages).
+
+    Returns:
+        The sanitized string safe for use in JQL quoted literals.
+
+    Raises:
+        JqlSanitizationError: If the value contains patterns that cannot be safely escaped.
+    """
+    if not value:
+        raise JqlSanitizationError(f"{field_name} cannot be empty")
+
+    # Check for null bytes which could cause issues
+    if "\x00" in value:
+        raise JqlSanitizationError(f"{field_name} contains invalid null character")
+
+    # Escape backslashes first (before escaping quotes)
+    sanitized = value.replace("\\", "\\\\")
+
+    # Escape double quotes
+    sanitized = sanitized.replace('"', '\\"')
+
+    # Check for excessively long values that could be DoS attempts
+    max_length = 1000
+    if len(sanitized) > max_length:
+        raise JqlSanitizationError(
+            f"{field_name} exceeds maximum length of {max_length} characters"
+        )
+
+    return sanitized
+
+
+def validate_jql_identifier(value: str, field_name: str = "identifier") -> str:
+    """Validate a value for use as a JQL identifier (like project key).
+
+    JQL identifiers like project keys should only contain alphanumeric characters,
+    underscores, and hyphens. This provides stricter validation than string sanitization.
+
+    Args:
+        value: The identifier value to validate.
+        field_name: Name of the field being validated (for error messages).
+
+    Returns:
+        The validated identifier (unchanged if valid).
+
+    Raises:
+        JqlSanitizationError: If the value contains invalid characters.
+    """
+    if not value:
+        raise JqlSanitizationError(f"{field_name} cannot be empty")
+
+    # Project keys and similar identifiers should be alphanumeric with underscores/hyphens
+    # Common format: letters followed by optional numbers, e.g., "TEST", "PROJ-1", "MY_PROJECT"
+    if not re.match(r"^[A-Za-z][A-Za-z0-9_-]*$", value):
+        raise JqlSanitizationError(
+            f"{field_name} contains invalid characters. "
+            f"Only alphanumeric characters, underscores, and hyphens are allowed "
+            f"(must start with a letter): {value!r}"
+        )
+
+    # Check for reasonable length
+    max_length = 255
+    if len(value) > max_length:
+        raise JqlSanitizationError(
+            f"{field_name} exceeds maximum length of {max_length} characters"
+        )
+
+    return value
 
 
 @dataclass
@@ -197,18 +282,27 @@ class JiraPoller:
 
         Returns:
             JQL query string.
+
+        Raises:
+            JqlSanitizationError: If trigger values contain invalid characters.
         """
         conditions: list[str] = []
 
-        # Project filter
+        # Project filter - validate as identifier
         if trigger.project:
-            conditions.append(f'project = "{trigger.project}"')
+            validated_project = validate_jql_identifier(trigger.project, "project")
+            conditions.append(f'project = "{validated_project}"')
 
         # Tag/label filter - must have ALL specified tags
+        # Labels are sanitized as strings since they can contain more characters
         for tag in trigger.tags:
-            conditions.append(f'labels = "{tag}"')
+            sanitized_tag = sanitize_jql_string(tag, "tag")
+            conditions.append(f'labels = "{sanitized_tag}"')
 
         # Custom JQL filter (appended as-is)
+        # NOTE: jql_filter is intentionally not sanitized as it's expected to be
+        # a complete JQL fragment. Users providing custom JQL are responsible for
+        # its content. Consider adding validation if this becomes a security concern.
         if trigger.jql_filter:
             conditions.append(f"({trigger.jql_filter})")
 
