@@ -147,40 +147,77 @@ class Sentinel:
         self,
         config: Config,
         orchestrations: list[Orchestration],
-        jira_client: JiraClient,
         tag_client: JiraTagClient,
         agent_factory: AgentClientFactory | AgentClient | None = None,
         agent_logger: AgentLogger | None = None,
-        github_client: GitHubClient | None = None,
+        jira_poller: JiraPoller | None = None,
+        router: Router | None = None,
+        github_poller: GitHubPoller | None = None,
         github_tag_client: GitHubTagClient | None = None,
         *,
+        # Deprecated parameters for backward compatibility
+        jira_client: JiraClient | None = None,
+        github_client: GitHubClient | None = None,
         agent_client: AgentClient | None = None,
     ) -> None:
         """Initialize the Sentinel orchestrator.
 
+        All dependencies can be injected via the DI container, or the deprecated
+        jira_client/github_client/agent_client parameters can be used for
+        backward compatibility with existing code.
+
         Args:
             config: Application configuration.
             orchestrations: List of orchestration configurations.
-            jira_client: Jira client for polling issues.
             tag_client: Jira client for tag operations.
             agent_factory: Factory for creating agent clients per-orchestration.
-            agent_logger: Optional logger for agent execution logs.
-            github_client: Optional GitHub client for polling GitHub issues/PRs.
+            agent_logger: Logger for agent execution logs.
+            jira_poller: Poller for fetching Jira issues (or use jira_client).
+            router: Router for matching issues to orchestrations.
+            github_poller: Optional poller for GitHub issues/PRs (or use github_client).
             github_tag_client: Optional GitHub client for tag/label operations.
-            agent_client: Deprecated keyword argument for backward compatibility.
+            jira_client: Deprecated - use jira_poller instead.
+            github_client: Deprecated - use github_poller instead.
+            agent_client: Deprecated - use agent_factory instead.
         """
+        import warnings
+
         self.config = config
         self.orchestrations = orchestrations
 
-        # Initialize pollers
-        self.jira_poller = JiraPoller(
-            jira_client,
-            epic_link_field=config.jira_epic_link_field,
-        )
-        self.github_poller = GitHubPoller(github_client) if github_client else None
+        # Handle backward compatibility for deprecated jira_client parameter
+        if jira_client is not None:
+            warnings.warn(
+                "jira_client parameter is deprecated, use jira_poller instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self.jira_poller = JiraPoller(
+                jira_client,
+                epic_link_field=config.jira_epic_link_field,
+            )
+        elif jira_poller is not None:
+            self.jira_poller = jira_poller
+        else:
+            raise ValueError("Either jira_poller or jira_client must be provided")
 
-        # Initialize router
-        self.router = Router(orchestrations)
+        # Handle backward compatibility for deprecated github_client parameter
+        if github_client is not None:
+            warnings.warn(
+                "github_client parameter is deprecated, use github_poller instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self.github_poller = GitHubPoller(github_client)
+        else:
+            self.github_poller = github_poller
+
+        # Initialize or create router
+        if router is not None:
+            self.router = router
+        else:
+            # Create router from orchestrations for backward compatibility
+            self.router = Router(orchestrations)
 
         # Initialize agent factory
         self._agent_logger = agent_logger

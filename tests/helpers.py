@@ -1,5 +1,9 @@
 """Test helper functions for Developer Sentinel tests.
 
+This module also provides helper functions for creating Sentinel instances
+with dependency injection, making it easier to write tests that don't rely
+on deprecated constructor parameters.
+
 This module provides utility functions for creating test fixtures and
 managing test data. These helpers simplify test setup by providing
 sensible defaults while allowing customization.
@@ -32,6 +36,9 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from unittest.mock import _Call
+
+    from sentinel.router import Router
+    from tests.mocks import MockJiraPoller
 
 from sentinel.config import Config
 from sentinel.orchestration import (
@@ -236,3 +243,33 @@ def assert_call_args_length(call_args: _Call, min_length: int) -> None:
     assert (
         len(call_args[0]) >= min_length
     ), f"Expected at least {min_length} positional args, got {len(call_args[0])}"
+
+
+def make_jira_poller(
+    issues: list[JiraIssue] | None = None,
+) -> MockJiraPoller:
+    """Create a MockJiraPoller for testing.
+
+    Args:
+        issues: List of JiraIssue objects to return from poll.
+
+    Returns:
+        A MockJiraPoller configured with the specified issues.
+    """
+    from tests.mocks import MockJiraPoller
+
+    return MockJiraPoller(issues=issues)
+
+
+def make_router(orchestrations: list[Orchestration] | None = None) -> Router:
+    """Create a Router for testing.
+
+    Args:
+        orchestrations: List of orchestrations to configure the router with.
+
+    Returns:
+        A Router configured with the specified orchestrations.
+    """
+    from sentinel.router import Router
+
+    return Router(orchestrations or [])

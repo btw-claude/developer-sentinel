@@ -64,7 +64,10 @@ from tests.helpers import (
 from tests.mocks import (
     MockAgentClient,
     MockAgentClientFactory,
+    MockGitHubPoller,
     MockJiraClient,
+    MockJiraPoller,
+    MockRouter,
     MockTagClient,
     TrackingAgentClient,
 )
@@ -80,7 +83,10 @@ __all__ = [
     # Mocks (alphabetized)
     "MockAgentClient",
     "MockAgentClientFactory",
+    "MockGitHubPoller",
     "MockJiraClient",
+    "MockJiraPoller",
+    "MockRouter",
     "MockTagClient",
     "TrackingAgentClient",
     # Helpers (alphabetized)

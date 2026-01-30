@@ -34,7 +34,10 @@ from sentinel.agent_clients.base import AgentType
 from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.config import Config
 from sentinel.executor import AgentClient, AgentRunResult
-from sentinel.poller import JiraClient
+from sentinel.github_poller import GitHubIssue
+from sentinel.orchestration import Orchestration, TriggerConfig
+from sentinel.poller import JiraClient, JiraIssue
+from sentinel.router import Router, RoutingResult
 from sentinel.tag_manager import JiraTagClient
 
 
@@ -325,3 +328,124 @@ class MockAgentClientFactory(AgentClientFactory):
     ) -> AgentClient:
         """Return the mock client regardless of orchestration config."""
         return self._mock_client
+
+
+class MockJiraPoller:
+    """Mock Jira poller for testing.
+
+    Allows tests to control polling results without requiring a real Jira client.
+    Supports linked MockTagClient to filter out issues that have been processed.
+
+    Args:
+        issues: List of JiraIssue objects to return from poll.
+        tag_client: Optional MockTagClient to coordinate label removal filtering.
+
+    Attributes:
+        issues: The issues that will be returned by poll.
+        poll_calls: List of TriggerConfig objects recording each poll call.
+        tag_client: Reference to MockTagClient for filtering logic.
+    """
+
+    def __init__(
+        self,
+        issues: list[JiraIssue] | None = None,
+        tag_client: MockTagClient | None = None,
+    ) -> None:
+        self.issues = issues or []
+        self.poll_calls: list[TriggerConfig] = []
+        self.tag_client = tag_client
+
+    def poll(self, trigger: TriggerConfig, max_results: int = 50) -> list[JiraIssue]:
+        """Mock implementation of poll that returns configured issues."""
+        self.poll_calls.append(trigger)
+        # If we have a tag client, filter out issues whose trigger tags have been removed
+        if self.tag_client:
+            result = []
+            for issue in self.issues:
+                removed = self.tag_client.remove_calls
+                # If any label was removed for this issue, skip it
+                if any(key == issue.key for key, _ in removed):
+                    continue
+                result.append(issue)
+            return result
+        return self.issues
+
+    def build_jql(self, trigger: TriggerConfig) -> str:
+        """Build a JQL query from trigger configuration (for compatibility)."""
+        conditions: list[str] = []
+        if trigger.project:
+            conditions.append(f'project = "{trigger.project}"')
+        for tag in trigger.tags:
+            conditions.append(f'labels = "{tag}"')
+        return " AND ".join(conditions) if conditions else ""
+
+
+class MockGitHubPoller:
+    """Mock GitHub poller for testing.
+
+    Allows tests to control polling results without requiring a real GitHub client.
+
+    Args:
+        issues: List of GitHubIssue objects to return from poll.
+
+    Attributes:
+        issues: The issues that will be returned by poll.
+        poll_calls: List of TriggerConfig objects recording each poll call.
+    """
+
+    def __init__(self, issues: list[GitHubIssue] | None = None) -> None:
+        self.issues = issues or []
+        self.poll_calls: list[TriggerConfig] = []
+
+    def poll(self, trigger: TriggerConfig, max_results: int = 50) -> list[GitHubIssue]:
+        """Mock implementation of poll that returns configured issues."""
+        self.poll_calls.append(trigger)
+        return self.issues
+
+
+class MockRouter:
+    """Mock router for testing.
+
+    Allows tests to control routing results without complex orchestration setup.
+
+    Args:
+        orchestrations: List of orchestrations the router is configured with.
+        route_results: Optional dict mapping issue keys to matching orchestrations.
+
+    Attributes:
+        orchestrations: The orchestrations list.
+        route_calls: List of issues that were routed.
+        route_results: Dict mapping issue keys to orchestrations for custom routing.
+    """
+
+    def __init__(
+        self,
+        orchestrations: list[Orchestration] | None = None,
+        route_results: dict[str, list[Orchestration]] | None = None,
+    ) -> None:
+        self.orchestrations = orchestrations or []
+        self.route_calls: list[JiraIssue | GitHubIssue] = []
+        self.route_results = route_results or {}
+        # Delegate to real Router for actual routing if no custom results
+        self._real_router = Router(self.orchestrations) if self.orchestrations else None
+
+    def route(self, issue: JiraIssue | GitHubIssue) -> RoutingResult:
+        """Route an issue to matching orchestrations."""
+        self.route_calls.append(issue)
+        # Use custom results if provided
+        if issue.key in self.route_results:
+            return RoutingResult(issue=issue, orchestrations=self.route_results[issue.key])
+        # Otherwise delegate to real router
+        if self._real_router:
+            return self._real_router.route(issue)
+        return RoutingResult(issue=issue, orchestrations=[])
+
+    def route_all(self, issues: list[JiraIssue | GitHubIssue]) -> list[RoutingResult]:
+        """Route multiple issues."""
+        return [self.route(issue) for issue in issues]
+
+    def route_matched_only(
+        self, issues: list[JiraIssue | GitHubIssue]
+    ) -> list[RoutingResult]:
+        """Route multiple issues and return only those that matched."""
+        return [result for result in self.route_all(issues) if result.matched]

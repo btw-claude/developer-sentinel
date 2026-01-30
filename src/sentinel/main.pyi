@@ -16,10 +16,10 @@ from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
-from sentinel.github_poller import GitHubClient, GitHubIssue
+from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubPoller
 from sentinel.github_rest_client import GitHubTagClient
 from sentinel.orchestration import Orchestration
-from sentinel.poller import JiraClient
+from sentinel.poller import JiraClient, JiraPoller
 from sentinel.router import Router
 from sentinel.tag_manager import JiraTagClient, TagManager
 
@@ -118,13 +118,17 @@ class Sentinel:
         self,
         config: Config,
         orchestrations: list[Orchestration],
-        jira_client: JiraClient,
         tag_client: JiraTagClient,
         agent_factory: AgentClientFactory | AgentClient | None = ...,
         agent_logger: AgentLogger | None = ...,
-        github_client: GitHubClient | None = ...,
+        jira_poller: JiraPoller | None = ...,
+        router: Router | None = ...,
+        github_poller: GitHubPoller | None = ...,
         github_tag_client: GitHubTagClient | None = ...,
         *,
+        # Deprecated parameters for backward compatibility
+        jira_client: JiraClient | None = ...,
+        github_client: GitHubClient | None = ...,
         agent_client: AgentClient | None = ...,
     ) -> None: ...
     def request_shutdown(self) -> None: ...
