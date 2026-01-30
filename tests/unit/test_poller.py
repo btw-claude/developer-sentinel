@@ -6,7 +6,16 @@ from unittest.mock import patch
 import pytest
 
 from sentinel.orchestration import TriggerConfig
-from sentinel.poller import JiraClient, JiraClientError, JiraIssue, JiraPoller, _extract_adf_text
+from sentinel.poller import (
+    JiraClient,
+    JiraClientError,
+    JiraIssue,
+    JiraPoller,
+    JqlSanitizationError,
+    _extract_adf_text,
+    sanitize_jql_string,
+    validate_jql_identifier,
+)
 
 
 class MockJiraClient(JiraClient):
@@ -218,6 +227,153 @@ class TestExtractAdfText:
     def test_empty_adf(self) -> None:
         adf: dict[str, Any] = {"type": "doc", "content": []}
         assert _extract_adf_text(adf) == ""
+
+
+class TestSanitizeJqlString:
+    """Tests for sanitize_jql_string function."""
+
+    def test_simple_string_unchanged(self) -> None:
+        """Test that simple alphanumeric strings pass through unchanged."""
+        assert sanitize_jql_string("needs-review") == "needs-review"
+        assert sanitize_jql_string("urgent") == "urgent"
+        assert sanitize_jql_string("bug-fix-123") == "bug-fix-123"
+
+    def test_escapes_double_quotes(self) -> None:
+        """Test that double quotes are properly escaped."""
+        assert sanitize_jql_string('tag"with"quotes') == 'tag\\"with\\"quotes'
+        assert sanitize_jql_string('"quoted"') == '\\"quoted\\"'
+
+    def test_escapes_backslashes(self) -> None:
+        """Test that backslashes are properly escaped."""
+        assert sanitize_jql_string("path\\to\\thing") == "path\\\\to\\\\thing"
+
+    def test_escapes_backslash_before_quote(self) -> None:
+        """Test that backslash followed by quote is properly escaped."""
+        # Input: tag\" -> should become tag\\\"
+        assert sanitize_jql_string('tag\\"') == 'tag\\\\\\"'
+
+    def test_rejects_empty_string(self) -> None:
+        """Test that empty strings are rejected."""
+        with pytest.raises(JqlSanitizationError, match="cannot be empty"):
+            sanitize_jql_string("")
+
+    def test_rejects_null_character(self) -> None:
+        """Test that null characters are rejected."""
+        with pytest.raises(JqlSanitizationError, match="invalid null character"):
+            sanitize_jql_string("tag\x00with\x00nulls")
+
+    def test_rejects_excessively_long_string(self) -> None:
+        """Test that very long strings are rejected."""
+        long_string = "a" * 1001
+        with pytest.raises(JqlSanitizationError, match="exceeds maximum length"):
+            sanitize_jql_string(long_string)
+
+    def test_allows_special_characters(self) -> None:
+        """Test that various special characters are allowed (after escaping)."""
+        # These are valid label characters that should be allowed
+        assert sanitize_jql_string("tag-with-dashes") == "tag-with-dashes"
+        assert sanitize_jql_string("tag_with_underscores") == "tag_with_underscores"
+        assert sanitize_jql_string("tag.with.dots") == "tag.with.dots"
+        assert sanitize_jql_string("tag:with:colons") == "tag:with:colons"
+
+    def test_custom_field_name_in_error(self) -> None:
+        """Test that custom field name appears in error messages."""
+        with pytest.raises(JqlSanitizationError, match="my_label cannot be empty"):
+            sanitize_jql_string("", "my_label")
+
+
+class TestValidateJqlIdentifier:
+    """Tests for validate_jql_identifier function."""
+
+    def test_valid_project_keys(self) -> None:
+        """Test that valid project keys pass validation."""
+        assert validate_jql_identifier("TEST") == "TEST"
+        assert validate_jql_identifier("PROJ") == "PROJ"
+        assert validate_jql_identifier("MyProject") == "MyProject"
+        assert validate_jql_identifier("PROJ123") == "PROJ123"
+        assert validate_jql_identifier("MY-PROJECT") == "MY-PROJECT"
+        assert validate_jql_identifier("MY_PROJECT") == "MY_PROJECT"
+
+    def test_rejects_empty_string(self) -> None:
+        """Test that empty identifiers are rejected."""
+        with pytest.raises(JqlSanitizationError, match="cannot be empty"):
+            validate_jql_identifier("")
+
+    def test_rejects_starting_with_number(self) -> None:
+        """Test that identifiers starting with numbers are rejected."""
+        with pytest.raises(JqlSanitizationError, match="invalid characters"):
+            validate_jql_identifier("123PROJECT")
+
+    def test_rejects_special_characters(self) -> None:
+        """Test that special characters are rejected."""
+        with pytest.raises(JqlSanitizationError, match="invalid characters"):
+            validate_jql_identifier('PROJECT"INJECT')
+        with pytest.raises(JqlSanitizationError, match="invalid characters"):
+            validate_jql_identifier("PROJECT OR 1=1")
+        with pytest.raises(JqlSanitizationError, match="invalid characters"):
+            validate_jql_identifier("PROJECT;DROP")
+
+    def test_rejects_quotes(self) -> None:
+        """Test that quotes are rejected (injection attempt)."""
+        with pytest.raises(JqlSanitizationError, match="invalid characters"):
+            validate_jql_identifier('TEST" OR project = "OTHER')
+
+    def test_rejects_excessively_long_identifier(self) -> None:
+        """Test that very long identifiers are rejected."""
+        long_id = "A" * 256
+        with pytest.raises(JqlSanitizationError, match="exceeds maximum length"):
+            validate_jql_identifier(long_id)
+
+    def test_custom_field_name_in_error(self) -> None:
+        """Test that custom field name appears in error messages."""
+        with pytest.raises(JqlSanitizationError, match="project_key cannot be empty"):
+            validate_jql_identifier("", "project_key")
+
+
+class TestJqlSanitizationInBuildJql:
+    """Tests verifying JQL sanitization is applied in build_jql."""
+
+    def test_tag_with_quotes_is_escaped(self) -> None:
+        """Test that tags containing quotes are properly escaped."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(tags=['needs"review'])
+        jql = poller.build_jql(trigger)
+        # The quote should be escaped
+        assert 'labels = "needs\\"review"' in jql
+
+    def test_tag_with_backslash_is_escaped(self) -> None:
+        """Test that tags containing backslashes are properly escaped."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(tags=["path\\tag"])
+        jql = poller.build_jql(trigger)
+        # The backslash should be escaped
+        assert 'labels = "path\\\\tag"' in jql
+
+    def test_invalid_project_raises_error(self) -> None:
+        """Test that invalid project keys raise JqlSanitizationError."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(project='TEST" OR 1=1 --')
+        with pytest.raises(JqlSanitizationError, match="invalid characters"):
+            poller.build_jql(trigger)
+
+    def test_empty_tag_raises_error(self) -> None:
+        """Test that empty tags raise JqlSanitizationError."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(tags=["valid", ""])
+        with pytest.raises(JqlSanitizationError, match="cannot be empty"):
+            poller.build_jql(trigger)
+
+    def test_tag_with_null_raises_error(self) -> None:
+        """Test that tags with null characters raise JqlSanitizationError."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(tags=["tag\x00injection"])
+        with pytest.raises(JqlSanitizationError, match="invalid null character"):
+            poller.build_jql(trigger)
 
 
 class TestJiraPollerBuildJql:
