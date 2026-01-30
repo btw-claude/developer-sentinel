@@ -13,6 +13,7 @@ The module structure follows single responsibility:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import signal
 import time
@@ -389,7 +390,10 @@ class Sentinel:
                 )
                 executor = AgentExecutor(client, self._agent_logger)
 
-            result = executor.execute(issue, orchestration)
+            # Use asyncio.run() at the thread entry point to drive async execution
+            # This is the top-level entry point for async code in each thread,
+            # avoiding nested event loops (DS-509)
+            result = asyncio.run(executor.execute(issue, orchestration))
             self.tag_manager.update_tags(result, orchestration)
 
             status = "succeeded" if result.succeeded else "failed"

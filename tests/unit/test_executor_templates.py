@@ -433,8 +433,9 @@ class TestParentEpicBranchPatternExpansion:
         assert result == "feature/DS-123/add-login-button"
 
 
+@pytest.mark.asyncio
 class TestParentEpicIntegration:
-    """Integration tests for parent/epic template variables.
+    """Integration tests for parent/epic template variables (async execute method).
 
     These tests verify end-to-end integration of parent/epic template
     variables with the executor, ensuring they work correctly in
@@ -451,7 +452,7 @@ class TestParentEpicIntegration:
         """Create an AgentExecutor with a mock client."""
         return AgentExecutor(mock_client)
 
-    def test_execute_with_jira_epic_in_prompt(
+    async def test_execute_with_jira_epic_in_prompt(
         self, mock_client: MockAgentClient, executor: AgentExecutor
     ) -> None:
         """Execute should properly substitute Jira epic key in prompt."""
@@ -462,14 +463,14 @@ class TestParentEpicIntegration:
             prompt="Fix issue {jira_issue_key} in epic {jira_epic_key} (parent: {jira_parent_key})"
         )
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         # Verify the prompt was correctly built
         prompt = mock_client.calls[0][0]
         assert prompt == "Fix issue DS-123 in epic EPIC-100 (parent: DS-100)"
 
-    def test_execute_with_github_parent_in_prompt(
+    async def test_execute_with_github_parent_in_prompt(
         self, mock_client: MockAgentClient, executor: AgentExecutor
     ) -> None:
         """Execute should properly substitute GitHub parent issue number in prompt."""
@@ -485,13 +486,13 @@ class TestParentEpicIntegration:
             prompt="Implement fix for #{github_issue_number} (parent: #{github_parent_issue_number})"
         )
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         prompt = mock_client.calls[0][0]
         assert prompt == "Implement fix for #42 (parent: #10)"
 
-    def test_full_workflow_jira_with_epic_branch(
+    async def test_full_workflow_jira_with_epic_branch(
         self, mock_client: MockAgentClient, executor: AgentExecutor
     ) -> None:
         """Test complete workflow: Jira issue with epic-based branch pattern."""
@@ -513,14 +514,14 @@ class TestParentEpicIntegration:
             ),
         )
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         # Verify prompt substitution
         prompt = mock_client.calls[0][0]
         assert prompt == "Implement Implement feature for DS-456 under epic FEAT-100"
 
-    def test_full_workflow_github_with_parent_branch(
+    async def test_full_workflow_github_with_parent_branch(
         self, mock_client: MockAgentClient, executor: AgentExecutor
     ) -> None:
         """Test complete workflow: GitHub issue with parent-based branch pattern."""
@@ -545,7 +546,7 @@ class TestParentEpicIntegration:
             ),
         )
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         prompt = mock_client.calls[0][0]

@@ -10,6 +10,8 @@ import threading
 import time
 from datetime import datetime
 
+import pytest
+
 from sentinel.agent_clients.base import UsageInfo
 from sentinel.executor import AgentExecutor, ExecutionResult, ExecutionStatus
 from sentinel.main import Sentinel
@@ -314,10 +316,14 @@ class TestExecutionResultUsageData:
         assert result.total_cost_usd == 0.05
 
 
+@pytest.mark.asyncio
 class TestAgentExecutorUsageDataPropagation:
-    """Tests for AgentExecutor usage data extraction from AgentRunResult (DS-528)."""
+    """Tests for AgentExecutor usage data extraction from AgentRunResult (DS-528).
 
-    def test_executor_propagates_usage_data_on_success(self) -> None:
+    Note: execute() is async (DS-509), so these tests are async.
+    """
+
+    async def test_executor_propagates_usage_data_on_success(self) -> None:
         """Test that executor extracts usage data from AgentRunResult on success."""
         usage = UsageInfo(
             input_tokens=1500,
@@ -333,14 +339,14 @@ class TestAgentExecutorUsageDataPropagation:
         issue = make_issue("TEST-1", "Test summary")
         orchestration = make_orchestration()
 
-        result = executor.execute(issue, orchestration)
+        result = await executor.execute(issue, orchestration)
 
         assert result.succeeded
         assert result.input_tokens == 1500
         assert result.output_tokens == 750
         assert result.total_cost_usd == 0.075
 
-    def test_executor_propagates_usage_data_on_failure(self) -> None:
+    async def test_executor_propagates_usage_data_on_failure(self) -> None:
         """Test that executor extracts usage data from AgentRunResult even on failure."""
         usage = UsageInfo(
             input_tokens=500,
@@ -358,14 +364,14 @@ class TestAgentExecutorUsageDataPropagation:
         orchestration.retry.max_attempts = 1
         issue = make_issue("TEST-2", "Test summary")
 
-        result = executor.execute(issue, orchestration)
+        result = await executor.execute(issue, orchestration)
 
         assert not result.succeeded
         assert result.input_tokens == 500
         assert result.output_tokens == 250
         assert result.total_cost_usd == 0.025
 
-    def test_executor_handles_none_usage(self) -> None:
+    async def test_executor_handles_none_usage(self) -> None:
         """Test that executor handles None usage data gracefully."""
         agent_client = MockAgentClient(
             responses=["SUCCESS: Task completed"],
@@ -376,7 +382,7 @@ class TestAgentExecutorUsageDataPropagation:
         issue = make_issue("TEST-3", "Test summary")
         orchestration = make_orchestration()
 
-        result = executor.execute(issue, orchestration)
+        result = await executor.execute(issue, orchestration)
 
         assert result.succeeded
         assert result.input_tokens == 0

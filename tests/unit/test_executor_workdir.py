@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 from sentinel.executor import AgentExecutor, AgentRunResult, ExecutionStatus, cleanup_workdir
 from tests.helpers import make_issue, make_orchestration
 from tests.mocks import MockAgentClient
@@ -272,8 +274,9 @@ class TestCleanupWorkdir:
             mock_sleep.assert_called_with(1.5)
 
 
+@pytest.mark.asyncio
 class TestAgentExecutorWorkdirCleanup:
-    """Tests for AgentExecutor workdir cleanup behavior.
+    """Tests for AgentExecutor workdir cleanup behavior (async execute method).
 
     Design rationale for workdir preservation on failure:
         When an agent execution fails (whether through explicit FAILURE response,
@@ -291,7 +294,7 @@ class TestAgentExecutorWorkdirCleanup:
         debugging context when something goes wrong.
     """
 
-    def test_cleanup_on_success_when_enabled(self) -> None:
+    async def test_cleanup_on_success_when_enabled(self) -> None:
         """Should cleanup workdir on successful execution when cleanup is enabled."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workdir = Path(tmpdir) / "test_workdir"
@@ -308,12 +311,12 @@ class TestAgentExecutorWorkdirCleanup:
             orch = make_orchestration()
 
             assert workdir.exists()
-            result = executor.execute(issue, orch)
+            result = await executor.execute(issue, orch)
 
             assert result.succeeded is True
             assert not workdir.exists()
 
-    def test_no_cleanup_when_disabled(self, caplog: Any) -> None:
+    async def test_no_cleanup_when_disabled(self, caplog: Any) -> None:
         """Should preserve workdir when cleanup_workdir_on_success is False.
 
         Also verifies that the appropriate debug log message is emitted
@@ -333,7 +336,7 @@ class TestAgentExecutorWorkdirCleanup:
             orch = make_orchestration()
 
             with caplog.at_level(logging.DEBUG, logger="sentinel.executor"):
-                result = executor.execute(issue, orch)
+                result = await executor.execute(issue, orch)
 
             assert result.succeeded is True
             assert workdir.exists()  # Workdir should be preserved
@@ -346,7 +349,7 @@ class TestAgentExecutorWorkdirCleanup:
                 for record in caplog.records
             ), "Expected debug log message about workdir preservation was not emitted"
 
-    def test_no_cleanup_on_failure(self) -> None:
+    async def test_no_cleanup_on_failure(self) -> None:
         """Should preserve workdir on failed execution for debugging.
 
         When an agent reports FAILURE, we intentionally keep the workdir intact.
@@ -367,13 +370,13 @@ class TestAgentExecutorWorkdirCleanup:
             issue = make_issue()
             orch = make_orchestration(max_attempts=1)
 
-            result = executor.execute(issue, orch)
+            result = await executor.execute(issue, orch)
 
             assert result.succeeded is False
             assert result.status == ExecutionStatus.FAILURE
             assert workdir.exists()  # Workdir preserved for debugging
 
-    def test_cleanup_handles_none_workdir(self) -> None:
+    async def test_cleanup_handles_none_workdir(self) -> None:
         """Should handle None workdir gracefully when no workdir is provided.
 
         This test covers the scenario where an agent execution completes
@@ -398,7 +401,7 @@ class TestAgentExecutorWorkdirCleanup:
         orch = make_orchestration()
 
         # Should not raise any errors
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
 
@@ -414,7 +417,7 @@ class TestAgentExecutorWorkdirCleanup:
 
         assert executor.cleanup_workdir_on_success is True
 
-    def test_no_cleanup_on_error(self) -> None:
+    async def test_no_cleanup_on_error(self) -> None:
         """Should preserve workdir on agent client error.
 
         When the agent client raises an error (e.g., API failure, network issue),
@@ -436,13 +439,13 @@ class TestAgentExecutorWorkdirCleanup:
             issue = make_issue()
             orch = make_orchestration(max_attempts=1)
 
-            result = executor.execute(issue, orch)
+            result = await executor.execute(issue, orch)
 
             assert result.succeeded is False
             assert result.status == ExecutionStatus.ERROR
             assert workdir.exists()  # Workdir preserved
 
-    def test_no_cleanup_on_timeout(self) -> None:
+    async def test_no_cleanup_on_timeout(self) -> None:
         """Should preserve workdir on agent timeout.
 
         When an agent times out, the workdir is preserved to support debugging.
@@ -465,7 +468,7 @@ class TestAgentExecutorWorkdirCleanup:
             issue = make_issue()
             orch = make_orchestration(max_attempts=1)
 
-            result = executor.execute(issue, orch)
+            result = await executor.execute(issue, orch)
 
             assert result.succeeded is False
             assert result.status == ExecutionStatus.ERROR
