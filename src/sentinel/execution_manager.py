@@ -13,8 +13,10 @@ composable components (DS-384).
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from sentinel.logging import get_logger
@@ -26,36 +28,108 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 
+# Default TTL for futures in seconds (5 minutes)
+DEFAULT_FUTURE_TTL_SECONDS = 300
+
+# Default maximum number of futures to track
+DEFAULT_MAX_FUTURES = 1000
+
+# Warning threshold for long-running futures (seconds)
+LONG_RUNNING_WARNING_THRESHOLD = 60
+
+
+@dataclass
+class TrackedFuture:
+    """A future with associated metadata for TTL tracking.
+
+    Attributes:
+        future: The actual Future object.
+        created_at: Timestamp when the future was created (monotonic time).
+        description: Optional description for logging purposes.
+    """
+
+    future: Future[Any]
+    created_at: float = field(default_factory=time.monotonic)
+    description: str = ""
+
+    def age_seconds(self) -> float:
+        """Get the age of this future in seconds."""
+        return time.monotonic() - self.created_at
+
+    def is_stale(self, ttl_seconds: float) -> bool:
+        """Check if this future has exceeded the TTL threshold.
+
+        Args:
+            ttl_seconds: The TTL threshold in seconds.
+
+        Returns:
+            True if the future is older than the TTL and not done.
+        """
+        return not self.future.done() and self.age_seconds() > ttl_seconds
+
 
 class ExecutionManager:
     """Manages thread pool and execution futures for the Sentinel orchestrator.
 
     This class is responsible for:
     - Creating and managing the ThreadPoolExecutor
-    - Tracking active futures
+    - Tracking active futures with TTL-based cleanup
     - Collecting completed results
     - Providing slot availability information
     - Managing graceful shutdown
+    - Monitoring and logging long-running futures
 
     Thread Safety:
         All public methods that modify shared state use internal locks.
+
+    Memory Safety:
+        Futures are tracked with timestamps and cleaned up based on TTL.
+        A maximum list size prevents unbounded memory growth.
     """
 
-    def __init__(self, max_concurrent_executions: int) -> None:
+    def __init__(
+        self,
+        max_concurrent_executions: int,
+        future_ttl_seconds: float = DEFAULT_FUTURE_TTL_SECONDS,
+        max_futures: int = DEFAULT_MAX_FUTURES,
+    ) -> None:
         """Initialize the execution manager.
 
         Args:
             max_concurrent_executions: Maximum number of concurrent executions allowed.
+            future_ttl_seconds: TTL in seconds for futures before they are considered stale.
+                Stale futures are logged and cleaned up. Default is 300 seconds (5 minutes).
+            max_futures: Maximum number of futures to track. When exceeded, oldest
+                completed futures are removed first, then oldest stale futures.
+                Default is 1000.
         """
         self._max_concurrent_executions = max_concurrent_executions
+        self._future_ttl_seconds = future_ttl_seconds
+        self._max_futures = max_futures
         self._thread_pool: ThreadPoolExecutor | None = None
-        self._active_futures: list[Future[Any]] = []
+        self._active_futures: list[TrackedFuture] = []
         self._futures_lock = threading.Lock()
+        self._stale_futures_cleaned = 0  # Counter for monitoring
 
     @property
     def max_concurrent_executions(self) -> int:
         """Get the maximum number of concurrent executions."""
         return self._max_concurrent_executions
+
+    @property
+    def future_ttl_seconds(self) -> float:
+        """Get the TTL for futures in seconds."""
+        return self._future_ttl_seconds
+
+    @property
+    def max_futures(self) -> int:
+        """Get the maximum number of futures to track."""
+        return self._max_futures
+
+    @property
+    def stale_futures_cleaned(self) -> int:
+        """Get the total count of stale futures that have been cleaned up."""
+        return self._stale_futures_cleaned
 
     def start(self) -> None:
         """Start the thread pool.
@@ -101,7 +175,7 @@ class ExecutionManager:
         """
         with self._futures_lock:
             # Count active futures without removing them
-            active_count = sum(1 for f in self._active_futures if not f.done())
+            active_count = sum(1 for tf in self._active_futures if not tf.future.done())
             return self._max_concurrent_executions - active_count
 
     def get_active_count(self) -> int:
@@ -111,7 +185,7 @@ class ExecutionManager:
             Number of active executions.
         """
         with self._futures_lock:
-            return sum(1 for f in self._active_futures if not f.done())
+            return sum(1 for tf in self._active_futures if not tf.future.done())
 
     def get_active_futures(self) -> list[Future[Any]]:
         """Get a copy of the list of active futures.
@@ -120,12 +194,22 @@ class ExecutionManager:
             List of currently active Future objects.
         """
         with self._futures_lock:
+            return [tf.future for tf in self._active_futures]
+
+    def get_tracked_futures(self) -> list[TrackedFuture]:
+        """Get a copy of the list of tracked futures with metadata.
+
+        Returns:
+            List of TrackedFuture objects with timing information.
+        """
+        with self._futures_lock:
             return list(self._active_futures)
 
     def submit(
         self,
         fn: Callable[..., T],
         *args: Any,
+        description: str = "",
         **kwargs: Any,
     ) -> Future[T] | None:
         """Submit a task to the thread pool.
@@ -133,39 +217,145 @@ class ExecutionManager:
         Args:
             fn: The callable to execute.
             *args: Positional arguments for the callable.
+            description: Optional description for logging and monitoring.
             **kwargs: Keyword arguments for the callable.
 
         Returns:
-            The Future representing the execution, or None if pool not running.
+            The Future representing the execution, or None if pool not running
+            or max futures limit reached.
         """
         if self._thread_pool is None:
             logger.warning("Cannot submit task: thread pool not running")
             return None
 
         future = self._thread_pool.submit(fn, *args, **kwargs)
+        tracked = TrackedFuture(future=future, description=description)
+
         with self._futures_lock:
-            self._active_futures.append(future)
+            # Enforce maximum futures limit
+            if len(self._active_futures) >= self._max_futures:
+                self._enforce_max_futures_limit()
+
+            self._active_futures.append(tracked)
+
         return future
 
+    def _enforce_max_futures_limit(self) -> None:
+        """Enforce the maximum futures limit by removing old futures.
+
+        This method should be called while holding _futures_lock.
+        Removes completed futures first, then stale futures if needed.
+        """
+        # First, remove completed futures
+        original_count = len(self._active_futures)
+        self._active_futures = [tf for tf in self._active_futures if not tf.future.done()]
+
+        # If still over limit, remove stale futures (oldest first)
+        if len(self._active_futures) >= self._max_futures:
+            stale = [tf for tf in self._active_futures if tf.is_stale(self._future_ttl_seconds)]
+            if stale:
+                # Sort by age (oldest first) and remove oldest stale futures
+                stale.sort(key=lambda tf: tf.created_at)
+                stale_to_remove = {id(tf) for tf in stale[: len(stale) // 2 + 1]}
+                removed_count = len(stale_to_remove)
+                self._active_futures = [
+                    tf for tf in self._active_futures if id(tf) not in stale_to_remove
+                ]
+                self._stale_futures_cleaned += removed_count
+                logger.warning(
+                    f"Max futures limit ({self._max_futures}) reached. "
+                    f"Removed {removed_count} stale futures."
+                )
+
+        removed = original_count - len(self._active_futures)
+        if removed > 0:
+            logger.debug(f"Cleaned up {removed} futures to enforce limit")
+
     def collect_completed_results(self) -> list[ExecutionResult]:
-        """Collect results from completed futures.
+        """Collect results from completed futures and clean up stale ones.
+
+        This method also performs TTL-based cleanup:
+        - Removes completed futures after collecting their results
+        - Logs and removes stale futures that have exceeded the TTL
+        - Logs warnings for long-running futures
 
         Returns:
             List of execution results from completed futures.
         """
-
         results: list[ExecutionResult] = []
         with self._futures_lock:
-            completed = [f for f in self._active_futures if f.done()]
-            for future in completed:
+            completed = [tf for tf in self._active_futures if tf.future.done()]
+            for tracked in completed:
                 try:
-                    result = future.result()
+                    result = tracked.future.result()
                     if result is not None:
                         results.append(result)
                 except Exception as e:
                     logger.error(f"Error collecting result from future: {e}")
-            self._active_futures = [f for f in self._active_futures if not f.done()]
+
+            # Log warnings for long-running futures
+            self._log_long_running_futures()
+
+            # Identify and clean up stale futures
+            stale_count = self._cleanup_stale_futures()
+            if stale_count > 0:
+                logger.warning(
+                    f"Cleaned up {stale_count} stale futures that exceeded "
+                    f"TTL of {self._future_ttl_seconds}s"
+                )
+
+            # Remove completed futures
+            self._active_futures = [tf for tf in self._active_futures if not tf.future.done()]
+
         return results
+
+    def _log_long_running_futures(self) -> None:
+        """Log warnings for futures that have been running for a long time.
+
+        This method should be called while holding _futures_lock.
+        """
+        for tracked in self._active_futures:
+            if not tracked.future.done():
+                age = tracked.age_seconds()
+                if age > LONG_RUNNING_WARNING_THRESHOLD:
+                    desc = tracked.description or "unnamed task"
+                    logger.warning(
+                        f"Long-running future detected: {desc} "
+                        f"(running for {age:.1f}s)"
+                    )
+
+    def _cleanup_stale_futures(self) -> int:
+        """Clean up futures that have exceeded the TTL threshold.
+
+        This method should be called while holding _futures_lock.
+        Stale futures are cancelled if possible and removed from tracking.
+
+        Returns:
+            Number of stale futures cleaned up.
+        """
+        stale_futures = [
+            tf for tf in self._active_futures
+            if tf.is_stale(self._future_ttl_seconds)
+        ]
+
+        for tracked in stale_futures:
+            desc = tracked.description or "unnamed task"
+            age = tracked.age_seconds()
+            logger.error(
+                f"Future exceeded TTL: {desc} (age: {age:.1f}s, TTL: {self._future_ttl_seconds}s). "
+                "This may indicate a hung task or network issue."
+            )
+            # Attempt to cancel the future (may not work if already running)
+            tracked.future.cancel()
+
+        # Remove stale futures from tracking
+        stale_ids = {id(tf) for tf in stale_futures}
+        self._active_futures = [
+            tf for tf in self._active_futures if id(tf) not in stale_ids
+        ]
+        self._stale_futures_cleaned += len(stale_futures)
+
+        return len(stale_futures)
 
     def get_pending_futures(self) -> list[Future[Any]]:
         """Get futures that are still pending.
@@ -174,7 +364,7 @@ class ExecutionManager:
             List of futures that haven't completed yet.
         """
         with self._futures_lock:
-            return [f for f in self._active_futures if not f.done()]
+            return [tf.future for tf in self._active_futures if not tf.future.done()]
 
     def wait_for_completion(
         self,
@@ -217,13 +407,11 @@ class ExecutionManager:
         Returns:
             List of all execution results.
         """
-        import time
-
         all_results: list[ExecutionResult] = []
 
         while True:
             with self._futures_lock:
-                pending = [f for f in self._active_futures if not f.done()]
+                pending = [tf for tf in self._active_futures if not tf.future.done()]
 
             if not pending:
                 break
@@ -265,17 +453,57 @@ class ExecutionManager:
             on_future_done: Optional callback for each completed future.
 
         Returns:
-            Number of futures cleaned up.
+            Number of futures cleaned up (completed + stale).
         """
         cleaned_count = 0
         with self._futures_lock:
-            completed = [f for f in self._active_futures if f.done()]
-            for future in completed:
+            completed = [tf for tf in self._active_futures if tf.future.done()]
+            for tracked in completed:
                 if on_future_done:
                     try:
-                        on_future_done(future)
+                        on_future_done(tracked.future)
                     except Exception as e:
                         logger.error(f"Error in future done callback: {e}")
                 cleaned_count += 1
-            self._active_futures = [f for f in self._active_futures if not f.done()]
+
+            # Also clean up stale futures
+            stale_count = self._cleanup_stale_futures()
+            cleaned_count += stale_count
+
+            self._active_futures = [tf for tf in self._active_futures if not tf.future.done()]
         return cleaned_count
+
+    def get_futures_stats(self) -> dict[str, Any]:
+        """Get statistics about tracked futures for monitoring.
+
+        Returns:
+            Dictionary with futures statistics including counts, ages, and stale info.
+        """
+        with self._futures_lock:
+            total = len(self._active_futures)
+            pending = sum(1 for tf in self._active_futures if not tf.future.done())
+            completed = total - pending
+            stale = sum(
+                1 for tf in self._active_futures if tf.is_stale(self._future_ttl_seconds)
+            )
+            long_running = sum(
+                1 for tf in self._active_futures
+                if not tf.future.done() and tf.age_seconds() > LONG_RUNNING_WARNING_THRESHOLD
+            )
+
+            ages = [tf.age_seconds() for tf in self._active_futures if not tf.future.done()]
+            max_age = max(ages) if ages else 0.0
+            avg_age = sum(ages) / len(ages) if ages else 0.0
+
+            return {
+                "total_tracked": total,
+                "pending": pending,
+                "completed": completed,
+                "stale": stale,
+                "long_running": long_running,
+                "max_age_seconds": max_age,
+                "avg_age_seconds": avg_age,
+                "total_stale_cleaned": self._stale_futures_cleaned,
+                "ttl_seconds": self._future_ttl_seconds,
+                "max_futures": self._max_futures,
+            }
