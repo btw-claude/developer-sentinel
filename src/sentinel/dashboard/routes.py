@@ -447,6 +447,31 @@ def create_routes(
             ),
         )
 
+    @dashboard_router.get("/partials/recent_executions", response_class=HTMLResponse)
+    async def partial_recent_executions(request: Request) -> HTMLResponse:
+        """Render the recent executions partial for HTMX updates.
+
+        This endpoint returns the recent executions section HTML for efficient
+        live updates without full page reloads. Shows completed executions
+        with their token usage and costs.
+
+        Args:
+            request: The incoming HTTP request.
+
+        Returns:
+            HTML response with the recent executions partial.
+        """
+        state = state_accessor.get_state()
+        templates = request.app.state.templates
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/recent_executions.html",
+                context={"state": state},
+            ),
+        )
+
     @dashboard_router.get("/health")
     async def health(response: Response) -> dict[str, str]:
         """Legacy health check endpoint.

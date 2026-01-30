@@ -902,6 +902,46 @@
 }
 
 /* =============================================================================
+   STATUS BADGE COMPONENT
+   Styles for execution status badges in recent executions display.
+
+   BEM Structure:
+   - Block: .status-badge
+   - Modifiers: .status-success, .status-failure
+
+   Usage:
+     <span class="status-badge status-success">Success</span>
+     <span class="status-badge status-failure">Failure</span>
+   ============================================================================= */
+
+.status-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-success {
+    background-color: var(--success, #00d26a);
+    color: var(--bg-primary, #1a1a2e);
+}
+
+.status-failure {
+    background-color: var(--danger, #e63946);
+    color: var(--text-primary, #eee);
+}
+
+/* =============================================================================
+   TEXT MUTED UTILITY
+   Muted text style for placeholder content (em-dash, etc.)
+   ============================================================================= */
+
+.text-muted {
+    color: var(--text-secondary, #aaa);
+}
+
+/* =============================================================================
    RESPONSIVE UTILITIES (Future Consideration)
 
    TODO: Consider adding breakpoint prefixes for responsive variants:
