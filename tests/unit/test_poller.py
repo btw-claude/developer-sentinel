@@ -385,9 +385,9 @@ class TestValidateJqlFilter:
         with pytest.raises(JqlSanitizationError, match="unclosed opening parenthesis"):
             validate_jql_filter('((priority = "High")')
 
-    def test_rejects_unbalanced_quotes(self) -> None:
-        """Test that unbalanced quotes are rejected."""
-        with pytest.raises(JqlSanitizationError, match="unclosed string literal"):
+    def test_rejects_unbalanced_double_quotes(self) -> None:
+        """Test that unbalanced double quotes are rejected."""
+        with pytest.raises(JqlSanitizationError, match="unbalanced double quotes"):
             validate_jql_filter('priority = "High')
 
     def test_balanced_quotes_with_escaped_quotes(self) -> None:
@@ -406,6 +406,40 @@ class TestValidateJqlFilter:
     def test_accepts_jql_without_quotes(self) -> None:
         """Test that JQL without quotes is valid."""
         jql = "project = TEST AND status != Done"
+        assert validate_jql_filter(jql) == jql
+
+    def test_valid_jql_with_single_quotes(self) -> None:
+        """Test that valid JQL with single quotes passes validation."""
+        jql = "priority = 'High'"
+        assert validate_jql_filter(jql) == jql
+
+        jql2 = "type = 'Bug' AND status = 'Open'"
+        assert validate_jql_filter(jql2) == jql2
+
+        jql3 = "labels IN ('urgent', 'critical')"
+        assert validate_jql_filter(jql3) == jql3
+
+    def test_jql_with_escaped_single_quotes(self) -> None:
+        """Test that JQL with escaped single quotes is valid."""
+        jql = "summary ~ 'test\\'quoted\\'value'"
+        assert validate_jql_filter(jql) == jql
+
+    def test_rejects_unbalanced_single_quotes(self) -> None:
+        """Test that unbalanced single quotes are rejected."""
+        with pytest.raises(JqlSanitizationError, match="unbalanced single quotes"):
+            validate_jql_filter("priority = 'High")
+
+    def test_mixed_balanced_quotes(self) -> None:
+        """Test that mixed balanced quotes are valid."""
+        # Both single and double quotes, each balanced
+        jql = "priority = 'High' AND type = \"Bug\""
+        assert validate_jql_filter(jql) == jql
+
+    def test_single_quotes_with_multiple_escapes(self) -> None:
+        """Test handling of multiple backslashes before single quotes."""
+        # Two backslashes before quote = escaped backslash + real quote
+        jql = "summary ~ 'test\\\\'"  # 'test\\' - ends with escaped backslash
+        # This should have balanced quotes: one opening, one closing
         assert validate_jql_filter(jql) == jql
 
 
@@ -429,11 +463,19 @@ class TestJqlFilterValidationInBuildJql:
             poller.build_jql(trigger)
 
     def test_jql_filter_with_unbalanced_quotes_raises_error(self) -> None:
-        """Test that jql_filter with unbalanced quotes raises error."""
+        """Test that jql_filter with unbalanced double quotes raises error."""
         client = MockJiraClient()
         poller = JiraPoller(client)
         trigger = TriggerConfig(jql_filter='priority = "High')
-        with pytest.raises(JqlSanitizationError, match="unclosed string literal"):
+        with pytest.raises(JqlSanitizationError, match="unbalanced double quotes"):
+            poller.build_jql(trigger)
+
+    def test_jql_filter_with_unbalanced_single_quotes_raises_error(self) -> None:
+        """Test that jql_filter with unbalanced single quotes raises error."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(jql_filter="priority = 'High")
+        with pytest.raises(JqlSanitizationError, match="unbalanced single quotes"):
             poller.build_jql(trigger)
 
     def test_valid_jql_filter_passes_through(self) -> None:
@@ -443,6 +485,61 @@ class TestJqlFilterValidationInBuildJql:
         trigger = TriggerConfig(jql_filter='priority = "High" AND type = "Bug"')
         jql = poller.build_jql(trigger)
         assert '(priority = "High" AND type = "Bug")' in jql
+
+
+class TestValidateJqlFilterDebugLogging:
+    """Tests for debug logging when jql_filter validation fails."""
+
+    def test_logs_debug_on_null_character(self, caplog: Any) -> None:
+        """Test that debug logging occurs when null character is detected."""
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="sentinel.poller"):
+            with pytest.raises(JqlSanitizationError):
+                validate_jql_filter('priority = "High"\x00DROP')
+        assert "JQL filter validation failed" in caplog.text
+        assert "invalid null character" in caplog.text
+
+    def test_logs_debug_on_excessive_length(self, caplog: Any) -> None:
+        """Test that debug logging occurs when filter exceeds max length."""
+        import logging
+
+        long_filter = 'priority = "' + "a" * 10001 + '"'
+        with caplog.at_level(logging.DEBUG, logger="sentinel.poller"):
+            with pytest.raises(JqlSanitizationError):
+                validate_jql_filter(long_filter)
+        assert "JQL filter validation failed" in caplog.text
+        assert "exceeds maximum length" in caplog.text
+
+    def test_logs_debug_on_unbalanced_parens(self, caplog: Any) -> None:
+        """Test that debug logging occurs when parentheses are unbalanced."""
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="sentinel.poller"):
+            with pytest.raises(JqlSanitizationError):
+                validate_jql_filter('(priority = "High"')
+        assert "JQL filter validation failed" in caplog.text
+        assert "unbalanced parentheses" in caplog.text
+
+    def test_logs_debug_on_unbalanced_double_quotes(self, caplog: Any) -> None:
+        """Test that debug logging occurs when double quotes are unbalanced."""
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="sentinel.poller"):
+            with pytest.raises(JqlSanitizationError):
+                validate_jql_filter('priority = "High')
+        assert "JQL filter validation failed" in caplog.text
+        assert "unbalanced double quotes" in caplog.text
+
+    def test_logs_debug_on_unbalanced_single_quotes(self, caplog: Any) -> None:
+        """Test that debug logging occurs when single quotes are unbalanced."""
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="sentinel.poller"):
+            with pytest.raises(JqlSanitizationError):
+                validate_jql_filter("priority = 'High")
+        assert "JQL filter validation failed" in caplog.text
+        assert "unbalanced single quotes" in caplog.text
 
 
 class TestJqlSanitizationInBuildJql:
