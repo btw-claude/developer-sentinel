@@ -12,6 +12,7 @@ from sentinel.poller import (
     JiraIssue,
     JiraPoller,
     JqlSanitizationError,
+    _count_unescaped_chars,
     _extract_adf_text,
     sanitize_jql_string,
     validate_jql_filter,
@@ -228,6 +229,69 @@ class TestExtractAdfText:
     def test_empty_adf(self) -> None:
         adf: dict[str, Any] = {"type": "doc", "content": []}
         assert _extract_adf_text(adf) == ""
+
+
+class TestCountUnescapedChars:
+    """Tests for _count_unescaped_chars helper function."""
+
+    def test_no_occurrences(self) -> None:
+        """Test counting when character is not present."""
+        assert _count_unescaped_chars("hello world", '"') == 0
+        assert _count_unescaped_chars("hello world", "'") == 0
+
+    def test_simple_unescaped_chars(self) -> None:
+        """Test counting simple unescaped characters."""
+        assert _count_unescaped_chars('"hello"', '"') == 2
+        assert _count_unescaped_chars("'hello'", "'") == 2
+        assert _count_unescaped_chars('"a" "b" "c"', '"') == 6
+
+    def test_escaped_chars_not_counted(self) -> None:
+        """Test that escaped characters are not counted."""
+        # Single backslash escapes the quote
+        assert _count_unescaped_chars('hello\\"world', '"') == 0
+        assert _count_unescaped_chars("hello\\'world", "'") == 0
+
+    def test_double_backslash_does_not_escape(self) -> None:
+        """Test that double backslash (escaped backslash) doesn't escape the char."""
+        # Two backslashes = escaped backslash, so the quote is NOT escaped
+        assert _count_unescaped_chars('hello\\\\"world', '"') == 1
+        assert _count_unescaped_chars("hello\\\\'world", "'") == 1
+
+    def test_triple_backslash_escapes(self) -> None:
+        """Test that triple backslash (escaped backslash + escape) escapes the char."""
+        # Three backslashes = escaped backslash + escaping backslash, quote IS escaped
+        assert _count_unescaped_chars('hello\\\\\\"world', '"') == 0
+
+    def test_mixed_escaped_and_unescaped(self) -> None:
+        """Test counting with mix of escaped and unescaped characters."""
+        # "hello\" has one unescaped quote at start
+        assert _count_unescaped_chars('"hello\\"', '"') == 1
+        # "hello" has two unescaped quotes
+        assert _count_unescaped_chars('"hello"', '"') == 2
+        # "test\"value" has two unescaped quotes (start and end)
+        assert _count_unescaped_chars('"test\\"value"', '"') == 2
+
+    def test_empty_string(self) -> None:
+        """Test counting in empty string."""
+        assert _count_unescaped_chars("", '"') == 0
+        assert _count_unescaped_chars("", "'") == 0
+
+    def test_only_backslashes(self) -> None:
+        """Test string with only backslashes."""
+        assert _count_unescaped_chars("\\\\\\\\", '"') == 0
+
+    def test_char_at_start(self) -> None:
+        """Test character at start of string."""
+        assert _count_unescaped_chars('"start', '"') == 1
+
+    def test_char_at_end(self) -> None:
+        """Test character at end of string."""
+        assert _count_unescaped_chars('end"', '"') == 1
+
+    def test_consecutive_unescaped_chars(self) -> None:
+        """Test consecutive unescaped characters."""
+        assert _count_unescaped_chars('""', '"') == 2
+        assert _count_unescaped_chars('"""', '"') == 3
 
 
 class TestSanitizeJqlString:

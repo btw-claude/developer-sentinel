@@ -99,6 +99,39 @@ def validate_jql_identifier(value: str, field_name: str = "identifier") -> str:
     return value
 
 
+def _count_unescaped_chars(value: str, char: str) -> int:
+    """Count occurrences of a character that are not backslash-escaped.
+
+    A character is considered escaped if it is preceded by an odd number of
+    backslashes. For example, in the string 'test\\"value', the double quote
+    is escaped (preceded by one backslash), but in 'test\\\\"value', the
+    double quote is not escaped (preceded by two backslashes, which form an
+    escaped backslash).
+
+    Args:
+        value: The string to search in.
+        char: The single character to count (must be exactly one character).
+
+    Returns:
+        The count of unescaped occurrences of the character.
+    """
+    count = 0
+    i = 0
+    while i < len(value):
+        if value[i] == char:
+            # Check if this character is escaped
+            num_backslashes = 0
+            j = i - 1
+            while j >= 0 and value[j] == "\\":
+                num_backslashes += 1
+                j -= 1
+            # Character is escaped only if preceded by odd number of backslashes
+            if num_backslashes % 2 == 0:
+                count += 1
+        i += 1
+    return count
+
+
 def validate_jql_filter(value: str) -> str:
     """Validate a custom JQL filter fragment for safe use.
 
@@ -167,44 +200,14 @@ def validate_jql_filter(value: str) -> str:
         raise JqlSanitizationError(error_msg)
 
     # Check for unbalanced double quotes (basic string literal validation)
-    # Count quotes that are not escaped
-    double_quote_count = 0
-    i = 0
-    while i < len(value):
-        if value[i] == '"':
-            # Check if this quote is escaped
-            num_backslashes = 0
-            j = i - 1
-            while j >= 0 and value[j] == "\\":
-                num_backslashes += 1
-                j -= 1
-            # Quote is escaped only if preceded by odd number of backslashes
-            if num_backslashes % 2 == 0:
-                double_quote_count += 1
-        i += 1
-
+    double_quote_count = _count_unescaped_chars(value, '"')
     if double_quote_count % 2 != 0:
         error_msg = "jql_filter contains unbalanced double quotes (unclosed string literal)"
         logger.debug("JQL filter validation failed: %s. Filter: %r", error_msg, value)
         raise JqlSanitizationError(error_msg)
 
     # Check for unbalanced single quotes (JQL supports both quote styles)
-    # Count single quotes that are not escaped
-    single_quote_count = 0
-    i = 0
-    while i < len(value):
-        if value[i] == "'":
-            # Check if this quote is escaped
-            num_backslashes = 0
-            j = i - 1
-            while j >= 0 and value[j] == "\\":
-                num_backslashes += 1
-                j -= 1
-            # Quote is escaped only if preceded by odd number of backslashes
-            if num_backslashes % 2 == 0:
-                single_quote_count += 1
-        i += 1
-
+    single_quote_count = _count_unescaped_chars(value, "'")
     if single_quote_count % 2 != 0:
         error_msg = "jql_filter contains unbalanced single quotes (unclosed string literal)"
         logger.debug("JQL filter validation failed: %s. Filter: %r", error_msg, value)
