@@ -7,8 +7,10 @@ This module contains core executor tests including:
 - matches_pattern tests
 """
 
+# Third-party imports
 import pytest
 
+# Local imports (sentinel and tests are both first-party per isort config)
 from sentinel.executor import AgentExecutor, ExecutionResult, ExecutionStatus
 from sentinel.orchestration import GitHubContext
 from tests.helpers import make_issue, make_orchestration
