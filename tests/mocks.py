@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,12 @@ class MockJiraClient(JiraClient):
 
     Simulates Jira API responses for search operations without making real API calls.
 
+    This mock maintains its own internal state to track which issues have been processed
+    (had labels removed), rather than inspecting the internals of other mock objects.
+    When a tag_client is provided, the mock registers itself as an observer to receive
+    notifications when labels are removed, simulating real Jira behavior where issues
+    with removed trigger labels no longer appear in search results.
+
     Args:
         issues: List of issue dicts to return from search_issues.
         tag_client: Optional MockTagClient to coordinate label removal filtering.
@@ -53,7 +60,7 @@ class MockJiraClient(JiraClient):
     Attributes:
         issues: The issues that will be returned by search_issues.
         search_calls: List of (jql, max_results) tuples recording each search call.
-        tag_client: Reference to MockTagClient for filtering logic.
+        processed_issue_keys: Set of issue keys that have been processed (labels removed).
     """
 
     def __init__(
@@ -63,24 +70,43 @@ class MockJiraClient(JiraClient):
     ) -> None:
         self.issues = issues or []
         self.search_calls: list[tuple[str, int]] = []
-        self.tag_client = tag_client
+        self.processed_issue_keys: set[str] = set()
+        # Register with tag_client to receive notifications when labels are removed
+        if tag_client:
+            tag_client.register_observer(self._on_label_removed)
+
+    def _on_label_removed(self, issue_key: str, label: str) -> None:
+        """Callback invoked when a label is removed from an issue.
+
+        This simulates the real Jira behavior where issues no longer match
+        search queries after their trigger labels are removed.
+
+        Args:
+            issue_key: The issue key that had a label removed.
+            label: The label that was removed (unused but part of the callback signature).
+        """
+        self.processed_issue_keys.add(issue_key)
+
+    def mark_issue_processed(self, issue_key: str) -> None:
+        """Explicitly mark an issue as processed (excluded from future searches).
+
+        This provides a way for tests to directly control which issues are filtered
+        without requiring a tag_client.
+
+        Args:
+            issue_key: The issue key to mark as processed.
+        """
+        self.processed_issue_keys.add(issue_key)
 
     def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
         self.search_calls.append((jql, max_results))
-        # If we have a tag client, filter out issues whose trigger tags have been removed
-        if self.tag_client:
-            result = []
-            for issue in self.issues:
-                issue_key = issue.get("key", "")
-                removed = self.tag_client.remove_calls
-                # Check if any label in this issue was removed
-                issue.get("fields", {}).get("labels", [])
-                # If any label was removed for this issue, skip it
-                if any(key == issue_key for key, _ in removed):
-                    continue
+        # Filter out issues that have been processed (had labels removed)
+        result = []
+        for issue in self.issues:
+            issue_key = issue.get("key", "")
+            if issue_key not in self.processed_issue_keys:
                 result.append(issue)
-            return result
-        return self.issues
+        return result
 
 
 class MockAgentClient(AgentClient):
@@ -175,6 +201,8 @@ class MockTagClient(JiraTagClient):
     """Mock tag client for testing.
 
     Tracks label add/remove operations without making real API calls.
+    Supports an observer pattern to notify interested parties (like MockJiraClient)
+    when labels are removed, allowing those mocks to update their own state.
 
     Attributes:
         labels: Dict mapping issue keys to their current labels.
@@ -182,10 +210,25 @@ class MockTagClient(JiraTagClient):
         remove_calls: List of (issue_key, label) tuples for remove operations.
     """
 
+    # Type alias for label removal observer callbacks
+    LabelRemovedObserver = Callable[[str, str], None]
+
     def __init__(self) -> None:
         self.labels: dict[str, list[str]] = {}
         self.add_calls: list[tuple[str, str]] = []
         self.remove_calls: list[tuple[str, str]] = []
+        self._observers: list[MockTagClient.LabelRemovedObserver] = []
+
+    def register_observer(self, observer: LabelRemovedObserver) -> None:
+        """Register an observer to be notified when labels are removed.
+
+        This enables other mocks (like MockJiraClient) to maintain their own state
+        based on label removal events, rather than inspecting this client's internals.
+
+        Args:
+            observer: Callback function that takes (issue_key, label) parameters.
+        """
+        self._observers.append(observer)
 
     def add_label(self, issue_key: str, label: str) -> None:
         self.add_calls.append((issue_key, label))
@@ -195,6 +238,9 @@ class MockTagClient(JiraTagClient):
 
     def remove_label(self, issue_key: str, label: str) -> None:
         self.remove_calls.append((issue_key, label))
+        # Notify all observers about the label removal
+        for observer in self._observers:
+            observer(issue_key, label)
 
 
 class TrackingAgentClient(AgentClient):
@@ -338,7 +384,12 @@ class MockJiraPoller:
     """Mock Jira poller for testing.
 
     Allows tests to control polling results without requiring a real Jira client.
-    Supports linked MockTagClient to filter out issues that have been processed.
+
+    This mock maintains its own internal state to track which issues have been processed
+    (had labels removed), rather than inspecting the internals of other mock objects.
+    When a tag_client is provided, the mock registers itself as an observer to receive
+    notifications when labels are removed, simulating real Jira behavior where issues
+    with removed trigger labels no longer appear in poll results.
 
     Args:
         issues: List of JiraIssue objects to return from poll.
@@ -347,7 +398,7 @@ class MockJiraPoller:
     Attributes:
         issues: The issues that will be returned by poll.
         poll_calls: List of TriggerConfig objects recording each poll call.
-        tag_client: Reference to MockTagClient for filtering logic.
+        processed_issue_keys: Set of issue keys that have been processed (labels removed).
     """
 
     def __init__(
@@ -357,37 +408,55 @@ class MockJiraPoller:
     ) -> None:
         self.issues = issues or []
         self.poll_calls: list[TriggerConfig] = []
-        self.tag_client = tag_client
+        self.processed_issue_keys: set[str] = set()
+        # Register with tag_client to receive notifications when labels are removed
+        if tag_client:
+            tag_client.register_observer(self._on_label_removed)
+
+    def _on_label_removed(self, issue_key: str, label: str) -> None:
+        """Callback invoked when a label is removed from an issue.
+
+        This simulates the real Jira behavior where issues no longer match
+        poll queries after their trigger labels are removed.
+
+        Args:
+            issue_key: The issue key that had a label removed.
+            label: The label that was removed (unused but part of the callback signature).
+        """
+        self.processed_issue_keys.add(issue_key)
+
+    def mark_issue_processed(self, issue_key: str) -> None:
+        """Explicitly mark an issue as processed (excluded from future polls).
+
+        This provides a way for tests to directly control which issues are filtered
+        without requiring a tag_client.
+
+        Args:
+            issue_key: The issue key to mark as processed.
+        """
+        self.processed_issue_keys.add(issue_key)
 
     def poll(self, trigger: TriggerConfig, max_results: int = 50) -> list[JiraIssue]:
         """Mock implementation of poll that returns configured issues.
 
-        When a tag_client is linked to this poller, issues are filtered based on
-        tag removal operations. Specifically, if any label has been removed from
-        an issue via the tag_client (recorded in tag_client.remove_calls), that
-        issue will be excluded from the poll results. This simulates the real
-        behavior where issues are no longer returned by Jira once their trigger
-        tags have been removed during processing.
+        Issues that have been processed (had labels removed) are automatically
+        filtered out, simulating real Jira behavior where issues no longer match
+        queries after their trigger tags have been removed.
 
         Args:
             trigger: The trigger configuration to poll for.
             max_results: Maximum number of results to return.
 
         Returns:
-            List of JiraIssue objects, filtered by tag removal if tag_client is set.
+            List of JiraIssue objects, filtered to exclude processed issues.
         """
         self.poll_calls.append(trigger)
-        # If we have a tag client, filter out issues whose trigger tags have been removed
-        if self.tag_client:
-            result = []
-            for issue in self.issues:
-                removed = self.tag_client.remove_calls
-                # If any label was removed for this issue, skip it
-                if any(key == issue.key for key, _ in removed):
-                    continue
+        # Filter out issues that have been processed (had labels removed)
+        result = []
+        for issue in self.issues:
+            if issue.key not in self.processed_issue_keys:
                 result.append(issue)
-            return result
-        return self.issues
+        return result
 
     def build_jql(self, trigger: TriggerConfig) -> str:
         """Build a JQL query from trigger configuration (for compatibility)."""
