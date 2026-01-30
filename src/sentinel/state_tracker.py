@@ -79,6 +79,36 @@ class StateTracker:
 
     Thread Safety:
         All public methods are thread-safe and use internal locks.
+
+    Lock Ordering Discipline:
+        This class uses multiple locks to protect different data structures.
+        To prevent deadlocks, the following lock ordering MUST be followed
+        if multiple locks need to be acquired simultaneously:
+
+            1. _attempt_counts_lock (highest priority)
+            2. _running_steps_lock
+            3. _queue_lock
+            4. _per_orch_counts_lock (lowest priority)
+
+        Rules:
+        - When acquiring multiple locks, always acquire them in the order above.
+        - Never acquire a higher-priority lock while holding a lower-priority lock.
+        - Currently, all methods acquire only a single lock at a time, which is
+          the preferred pattern. This ordering is documented for future maintenance
+          in case methods need to be added that require multiple locks.
+        - If you need to call a method that acquires a different lock, release
+          your current lock first to avoid potential deadlock.
+
+        Example (if multiple locks were needed):
+            # CORRECT: Acquire locks in order
+            with self._attempt_counts_lock:
+                with self._running_steps_lock:
+                    # ... do work ...
+
+            # INCORRECT: Would violate lock ordering
+            with self._running_steps_lock:
+                with self._attempt_counts_lock:  # NEVER DO THIS
+                    # ... do work ...
     """
 
     def __init__(
@@ -99,19 +129,23 @@ class StateTracker:
 
         # Track attempt counts per (issue_key, orchestration_name) pair
         self._attempt_counts: dict[tuple[str, str], AttemptCountEntry] = {}
+        # Lock ordering priority: 1 (highest) - see class docstring for details
         self._attempt_counts_lock = threading.Lock()
 
         # Track running step metadata for dashboard display
         # Maps future id() to RunningStepInfo for active executions
         self._running_steps: dict[int, RunningStepInfo] = {}
+        # Lock ordering priority: 2 - see class docstring for details
         self._running_steps_lock = threading.Lock()
 
         # Track queued issues waiting for execution slots
         self._issue_queue: deque[QueuedIssueInfo] = deque(maxlen=max_queue_size)
+        # Lock ordering priority: 3 - see class docstring for details
         self._queue_lock = threading.Lock()
 
         # Track per-orchestration active execution counts
         self._per_orch_active_counts: defaultdict[str, int] = defaultdict(int)
+        # Lock ordering priority: 4 (lowest) - see class docstring for details
         self._per_orch_counts_lock = threading.Lock()
 
         # Track process start time
