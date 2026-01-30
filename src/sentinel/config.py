@@ -96,6 +96,7 @@ class DashboardConfig:
         toggle_cooldown_seconds: Cooldown period between writes to the same file.
         rate_limit_cache_ttl: TTL in seconds for rate limit cache entries.
         rate_limit_cache_maxsize: Maximum number of entries in the rate limit cache.
+        max_recent_executions: Maximum number of recent executions to display.
     """
 
     enabled: bool = False
@@ -104,6 +105,7 @@ class DashboardConfig:
     toggle_cooldown_seconds: float = 2.0
     rate_limit_cache_ttl: int = 3600
     rate_limit_cache_maxsize: int = 10000
+    max_recent_executions: int = 10
 
 
 @dataclass(frozen=True)
@@ -436,6 +438,11 @@ class Config:
     def rate_limit_cache_maxsize(self) -> int:
         """Maximum number of entries in the rate limit cache."""
         return self.dashboard.rate_limit_cache_maxsize
+
+    @property
+    def max_recent_executions(self) -> int:
+        """Maximum number of recent executions to display."""
+        return self.dashboard.max_recent_executions
 
     # ==========================================================================
     # Backward compatibility properties - Rate Limiting
@@ -933,6 +940,11 @@ def load_config(env_file: Path | None = None) -> Config:
         "SENTINEL_RATE_LIMIT_CACHE_MAXSIZE",
         10000,
     )
+    max_recent_executions = _parse_positive_int(
+        os.getenv("SENTINEL_MAX_RECENT_EXECUTIONS", "10"),
+        "SENTINEL_MAX_RECENT_EXECUTIONS",
+        10,
+    )
 
     # Parse Claude API rate limiting configuration
     claude_rate_limit_enabled = _parse_bool(os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_ENABLED", "true"))
@@ -1013,6 +1025,7 @@ def load_config(env_file: Path | None = None) -> Config:
         toggle_cooldown_seconds=toggle_cooldown_seconds,
         rate_limit_cache_ttl=rate_limit_cache_ttl,
         rate_limit_cache_maxsize=rate_limit_cache_maxsize,
+        max_recent_executions=max_recent_executions,
     )
 
     rate_limit_config = RateLimitConfig(
@@ -1108,6 +1121,7 @@ def create_config(
     toggle_cooldown_seconds: float = 2.0,
     rate_limit_cache_ttl: int = 3600,
     rate_limit_cache_maxsize: int = 10000,
+    max_recent_executions: int = 10,
     # Jira settings
     jira_base_url: str = "",
     jira_email: str = "",
@@ -1166,6 +1180,7 @@ def create_config(
         toggle_cooldown_seconds: Cooldown period for dashboard toggles.
         rate_limit_cache_ttl: TTL for rate limit cache entries.
         rate_limit_cache_maxsize: Maximum rate limit cache entries.
+        max_recent_executions: Maximum number of recent executions to display.
         jira_base_url: Jira instance URL.
         jira_email: User email for Jira authentication.
         jira_api_token: API token for Jira authentication.
@@ -1221,6 +1236,7 @@ def create_config(
             toggle_cooldown_seconds=toggle_cooldown_seconds,
             rate_limit_cache_ttl=rate_limit_cache_ttl,
             rate_limit_cache_maxsize=rate_limit_cache_maxsize,
+            max_recent_executions=max_recent_executions,
         ),
         jira=JiraConfig(
             base_url=jira_base_url,

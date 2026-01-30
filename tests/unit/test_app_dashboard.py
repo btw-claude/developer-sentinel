@@ -2,6 +2,8 @@
 
 These tests verify that the start_dashboard function handles failures gracefully
 and allows Sentinel to continue operating without the dashboard (DS-515).
+
+Also includes tests for the format_duration Jinja2 filter (DS-529).
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import pytest
 from sentinel.app import start_dashboard
 from sentinel.bootstrap import BootstrapContext
 from sentinel.config import create_config
+from sentinel.dashboard.app import format_duration
 
 
 class MockSentinel:
@@ -260,3 +263,33 @@ def _simulate_import_error(
             "Sentinel will continue without dashboard functionality. Error: %s",
             e,
         )
+
+
+class TestFormatDurationFilter:
+    """Tests for the format_duration Jinja2 filter."""
+
+    def test_format_duration_seconds_only(self) -> None:
+        """Test formatting durations less than 60 seconds."""
+        assert format_duration(45) == "45s"
+        assert format_duration(0) == "0s"
+        assert format_duration(59) == "59s"
+
+    def test_format_duration_with_minutes(self) -> None:
+        """Test formatting durations of 60 seconds or more."""
+        assert format_duration(60) == "1m 0s"
+        assert format_duration(125) == "2m 5s"
+        assert format_duration(3661) == "61m 1s"
+
+    def test_format_duration_float_input(self) -> None:
+        """Test that float inputs are handled correctly."""
+        assert format_duration(45.7) == "45s"
+        assert format_duration(125.9) == "2m 5s"
+
+    def test_format_duration_none_input(self) -> None:
+        """Test that None input returns '0s'."""
+        assert format_duration(None) == "0s"
+
+    def test_format_duration_negative_input(self) -> None:
+        """Test that negative input returns '0s'."""
+        assert format_duration(-5) == "0s"
+        assert format_duration(-100) == "0s"
