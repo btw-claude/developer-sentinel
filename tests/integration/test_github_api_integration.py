@@ -292,19 +292,24 @@ class TestGitHubRestTagClientIntegration:
     def test_circuit_breaker_tracks_operations(
         self, github_tag_client: GitHubRestTagClient
     ) -> None:
-        """Circuit breaker should track tag client operations."""
-        # Use a read operation (get_current_labels) to test circuit breaker tracking
-        # Write operations like remove_label require repo permissions
-        labels = github_tag_client.get_current_labels(
-            owner="microsoft",
-            repo="vscode",
-            issue_number=1,  # Issue #1 exists
-        )
+        """Circuit breaker should track tag client operations (including failures)."""
+        # Tag client only has write operations (add_label, remove_label)
+        # Without write permission, these will fail with 403
+        # But the circuit breaker should still track these attempts
+        initial_failures = github_tag_client.circuit_breaker.metrics.failed_calls
 
-        # Circuit breaker should record this as success
-        assert isinstance(labels, list)
+        with pytest.raises(GitHubTagClientError):
+            github_tag_client.add_label(
+                owner="microsoft",
+                repo="vscode",
+                issue_number=1,
+                label="test-label-xyz123",
+            )
+
+        # Circuit breaker should have recorded the failure
+        assert github_tag_client.circuit_breaker.metrics.failed_calls > initial_failures
+        # But circuit should still be closed (single failure doesn't trip it)
         assert github_tag_client.circuit_breaker.state == CircuitState.CLOSED
-        assert github_tag_client.circuit_breaker.metrics.successful_calls > 0
 
     @pytest.mark.integration
     def test_add_label_requires_write_permission(
