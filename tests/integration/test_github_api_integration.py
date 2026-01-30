@@ -36,7 +36,11 @@ from sentinel.github_rest_client import (
 # Can be overridden via GITHUB_TEST_REPO environment variable
 DEFAULT_TEST_REPO = "microsoft/vscode"
 
-# Reduced timeout for API response assertions (GitHub API typically responds in <5s)
+# Timeout for API response assertions in integration tests.
+# The GitHub API typically responds in under 5 seconds for most operations.
+# We use a 10-second timeout to provide a reasonable buffer for network
+# variability and occasional API latency spikes while still catching
+# significant performance regressions.
 API_RESPONSE_TIMEOUT_SECONDS = 10.0
 
 
@@ -61,7 +65,8 @@ def _get_test_repo() -> tuple[str, str]:
         owner, name = repo.split("/", 1)
         return owner, name
     # Fallback to default if env var is malformed
-    return DEFAULT_TEST_REPO.split("/", 1)  # type: ignore[return-value]
+    owner, name = DEFAULT_TEST_REPO.split("/", 1)
+    return owner, name
 
 
 def _get_test_repo_query() -> str:
