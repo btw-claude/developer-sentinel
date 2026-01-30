@@ -53,7 +53,8 @@ class CursorMode(str, Enum):
             return cls(value.lower())
         except ValueError:
             valid_modes = [m.value for m in cls]
-            raise ValueError(f"Invalid Cursor mode: '{value}'. Valid modes: {valid_modes}")
+            msg = f"Invalid Cursor mode: '{value}'. Valid modes: {valid_modes}"
+            raise ValueError(msg) from None
 
 
 class CursorAgentClient(AgentClient):
@@ -192,7 +193,8 @@ class CursorAgentClient(AgentClient):
 
         Args:
             prompt: The prompt to send to the agent.
-            tools: List of tool names (not used by Cursor CLI, reserved for interface compatibility).
+            tools: List of tool names (not used by Cursor CLI, reserved for interface
+                compatibility).
             context: Optional context dict to append to prompt.
             timeout_seconds: Optional timeout in seconds. If None, no timeout is applied.
             issue_key: Optional issue key for creating a unique working directory.
@@ -260,10 +262,12 @@ class CursorAgentClient(AgentClient):
 
         except subprocess.TimeoutExpired:
             logger.error(f"Cursor CLI timed out after {timeout_seconds}s")
-            raise AgentTimeoutError(f"Cursor agent execution timed out after {timeout_seconds}s")
+            msg = f"Cursor agent execution timed out after {timeout_seconds}s"
+            raise AgentTimeoutError(msg) from None
         except FileNotFoundError:
             logger.error(f"Cursor CLI not found at path: {self._cursor_path}")
-            raise AgentClientError(f"Cursor CLI executable not found: {self._cursor_path}")
+            msg = f"Cursor CLI executable not found: {self._cursor_path}"
+            raise AgentClientError(msg) from None
         except OSError as e:
             logger.error(f"Failed to execute Cursor CLI: {e}")
             raise AgentClientError(f"Failed to execute Cursor CLI: {e}") from e
