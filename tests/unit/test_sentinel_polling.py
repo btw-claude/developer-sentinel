@@ -265,10 +265,10 @@ class TestSentinelEagerPolling:
         )
 
         # Manually set up the thread pool with a busy slot
-        sentinel._thread_pool = ThreadPoolExecutor(max_workers=1)
+        sentinel._execution_manager._thread_pool = ThreadPoolExecutor(max_workers=1)
         block_event = threading.Event()
-        future = sentinel._thread_pool.submit(lambda: block_event.wait(timeout=5))
-        sentinel._active_futures = [future]
+        future = sentinel._execution_manager._thread_pool.submit(lambda: block_event.wait(timeout=5))
+        sentinel._execution_manager._active_futures = [future]
 
         # run_once should return 0 submitted since slot is busy
         results, submitted_count = sentinel.run_once()
@@ -279,8 +279,8 @@ class TestSentinelEagerPolling:
         # Clean up
         block_event.set()
         future.result()
-        sentinel._thread_pool.shutdown(wait=True)
-        sentinel._thread_pool = None
+        sentinel._execution_manager._thread_pool.shutdown(wait=True)
+        sentinel._execution_manager._thread_pool = None
 
     def test_completion_driven_polling_waits_for_task_completion(self) -> None:
         """Integration test: verify polling waits for task completion.

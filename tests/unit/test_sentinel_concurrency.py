@@ -194,14 +194,14 @@ class TestPerOrchestrationConcurrencyLimits:
         )
 
         # Before execution, count should be 0
-        assert sentinel._per_orch_active_counts.get("test-orch", 0) == 0
+        assert sentinel._state_tracker._per_orch_active_counts.get("test-orch", 0) == 0
 
         # Run and wait for completion
         results = sentinel.run_once_and_wait()
 
         assert len(results) == 1
         # After execution completes, count should return to 0
-        assert sentinel._per_orch_active_counts.get("test-orch", 0) == 0
+        assert sentinel._state_tracker._per_orch_active_counts.get("test-orch", 0) == 0
 
     def test_increment_per_orch_count_returns_new_count(self) -> None:
         """Test _increment_per_orch_count returns the new count."""
@@ -220,20 +220,20 @@ class TestPerOrchestrationConcurrencyLimits:
         )
 
         # First increment
-        count = sentinel._increment_per_orch_count("test-orch")
+        count = sentinel._state_tracker.increment_per_orch_count("test-orch")
         assert count == 1
-        assert sentinel._per_orch_active_counts["test-orch"] == 1
+        assert sentinel._state_tracker._per_orch_active_counts["test-orch"] == 1
 
         # Second increment
-        count = sentinel._increment_per_orch_count("test-orch")
+        count = sentinel._state_tracker.increment_per_orch_count("test-orch")
         assert count == 2
-        assert sentinel._per_orch_active_counts["test-orch"] == 2
+        assert sentinel._state_tracker._per_orch_active_counts["test-orch"] == 2
 
         # Increment different orchestration
-        count = sentinel._increment_per_orch_count("other-orch")
+        count = sentinel._state_tracker.increment_per_orch_count("other-orch")
         assert count == 1
-        assert sentinel._per_orch_active_counts["other-orch"] == 1
-        assert sentinel._per_orch_active_counts["test-orch"] == 2
+        assert sentinel._state_tracker._per_orch_active_counts["other-orch"] == 1
+        assert sentinel._state_tracker._per_orch_active_counts["test-orch"] == 2
 
     def test_decrement_per_orch_count_returns_new_count(self) -> None:
         """Test _decrement_per_orch_count returns the new count."""
@@ -252,19 +252,19 @@ class TestPerOrchestrationConcurrencyLimits:
         )
 
         # Setup initial counts
-        sentinel._per_orch_active_counts["test-orch"] = 3
+        sentinel._state_tracker._per_orch_active_counts["test-orch"] = 3
 
         # First decrement
-        count = sentinel._decrement_per_orch_count("test-orch")
+        count = sentinel._state_tracker.decrement_per_orch_count("test-orch")
         assert count == 2
-        assert sentinel._per_orch_active_counts["test-orch"] == 2
+        assert sentinel._state_tracker._per_orch_active_counts["test-orch"] == 2
 
         # Second decrement
-        count = sentinel._decrement_per_orch_count("test-orch")
+        count = sentinel._state_tracker.decrement_per_orch_count("test-orch")
         assert count == 1
 
         # Third decrement
-        count = sentinel._decrement_per_orch_count("test-orch")
+        count = sentinel._state_tracker.decrement_per_orch_count("test-orch")
         assert count == 0
 
     def test_decrement_per_orch_count_clamps_to_zero(self) -> None:
@@ -284,12 +284,12 @@ class TestPerOrchestrationConcurrencyLimits:
         )
 
         # Decrement when count is 0
-        count = sentinel._decrement_per_orch_count("test-orch")
+        count = sentinel._state_tracker.decrement_per_orch_count("test-orch")
         assert count == 0
-        assert sentinel._per_orch_active_counts["test-orch"] == 0
+        assert sentinel._state_tracker._per_orch_active_counts["test-orch"] == 0
 
         # Decrement again
-        count = sentinel._decrement_per_orch_count("test-orch")
+        count = sentinel._state_tracker.decrement_per_orch_count("test-orch")
         assert count == 0
 
     def test_decrement_per_orch_count_cleans_up_at_zero(self) -> None:
@@ -309,14 +309,14 @@ class TestPerOrchestrationConcurrencyLimits:
         )
 
         # Increment to 1
-        sentinel._increment_per_orch_count("test-orch")
-        assert "test-orch" in sentinel._per_orch_active_counts
+        sentinel._state_tracker.increment_per_orch_count("test-orch")
+        assert "test-orch" in sentinel._state_tracker._per_orch_active_counts
 
         # Decrement to 0 - should clean up entry
-        count = sentinel._decrement_per_orch_count("test-orch")
+        count = sentinel._state_tracker.decrement_per_orch_count("test-orch")
         assert count == 0
         # Entry should be removed when count reaches 0
-        assert "test-orch" not in sentinel._per_orch_active_counts
+        assert "test-orch" not in sentinel._state_tracker._per_orch_active_counts
 
     def test_get_per_orch_count_returns_count(self) -> None:
         """Test get_per_orch_count returns the current count for observability."""
@@ -338,10 +338,10 @@ class TestPerOrchestrationConcurrencyLimits:
         assert sentinel.get_per_orch_count("test-orch") == 0
 
         # After incrementing, should return the count
-        sentinel._increment_per_orch_count("test-orch")
+        sentinel._state_tracker.increment_per_orch_count("test-orch")
         assert sentinel.get_per_orch_count("test-orch") == 1
 
-        sentinel._increment_per_orch_count("test-orch")
+        sentinel._state_tracker.increment_per_orch_count("test-orch")
         assert sentinel.get_per_orch_count("test-orch") == 2
 
         # Check a different orchestration
@@ -368,9 +368,9 @@ class TestPerOrchestrationConcurrencyLimits:
         assert counts == {}
 
         # After incrementing multiple orchestrations
-        sentinel._increment_per_orch_count("orch-a")
-        sentinel._increment_per_orch_count("orch-a")
-        sentinel._increment_per_orch_count("orch-b")
+        sentinel._state_tracker.increment_per_orch_count("orch-a")
+        sentinel._state_tracker.increment_per_orch_count("orch-a")
+        sentinel._state_tracker.increment_per_orch_count("orch-b")
 
         counts = sentinel.get_all_per_orch_counts()
         assert counts == {"orch-a": 2, "orch-b": 1}
@@ -445,14 +445,14 @@ class TestPerOrchestrationConcurrencyLimits:
         orch = make_orchestration(name="limited", max_concurrent=3)
 
         # Simulate 2 active executions for this orchestration
-        sentinel._per_orch_active_counts["limited"] = 2
+        sentinel._state_tracker._per_orch_active_counts["limited"] = 2
 
         # Should return 1 (3 - 2)
         available = sentinel._get_available_slots_for_orchestration(orch)
         assert available == 1
 
         # Simulate 3 active executions (at limit)
-        sentinel._per_orch_active_counts["limited"] = 3
+        sentinel._state_tracker._per_orch_active_counts["limited"] = 3
         available = sentinel._get_available_slots_for_orchestration(orch)
         assert available == 0
 
@@ -523,7 +523,7 @@ class TestPerOrchestrationConcurrencyLimits:
         # Execution should complete (with failure after retries)
         assert len(results) == 1
         # Count should be decremented back to 0 even on failure
-        assert sentinel._per_orch_active_counts.get("test-orch", 0) == 0
+        assert sentinel._state_tracker._per_orch_active_counts.get("test-orch", 0) == 0
 
     def test_make_orchestration_helper_with_max_concurrent(self) -> None:
         """Test the make_orchestration helper supports max_concurrent."""

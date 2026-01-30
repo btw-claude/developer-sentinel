@@ -43,7 +43,7 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
 
-        count = sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        count = sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "my-orchestration")
         assert count == 1
 
     def test_get_and_increment_attempt_count_increments(self) -> None:
@@ -62,9 +62,9 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
 
-        count1 = sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
-        count2 = sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
-        count3 = sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        count1 = sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        count2 = sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        count3 = sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "my-orchestration")
 
         assert count1 == 1
         assert count2 == 2
@@ -86,10 +86,10 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
 
-        sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
-        sentinel._get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "my-orchestration")
+        sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "my-orchestration")
 
-        count = sentinel._get_and_increment_attempt_count("TEST-2", "my-orchestration")
+        count = sentinel._state_tracker.get_and_increment_attempt_count("TEST-2", "my-orchestration")
         assert count == 1
 
     def test_get_and_increment_tracks_separately_by_orchestration(self) -> None:
@@ -108,10 +108,10 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
 
-        sentinel._get_and_increment_attempt_count("TEST-1", "orch-a")
-        sentinel._get_and_increment_attempt_count("TEST-1", "orch-a")
+        sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "orch-a")
+        sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "orch-a")
 
-        count = sentinel._get_and_increment_attempt_count("TEST-1", "orch-b")
+        count = sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "orch-b")
         assert count == 1
 
     def test_get_and_increment_is_thread_safe(self) -> None:
@@ -134,7 +134,7 @@ class TestAttemptCountTracking:
         num_threads = 10
 
         def increment() -> None:
-            count = sentinel._get_and_increment_attempt_count("TEST-1", "orch")
+            count = sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "orch")
             results.append(count)
 
         threads = [threading.Thread(target=increment) for _ in range(num_threads)]
@@ -166,17 +166,17 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
 
-        count1 = sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
-        count2 = sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
-        count3 = sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
+        count1 = sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "test-orch")
+        count2 = sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "test-orch")
+        count3 = sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "test-orch")
 
         assert count1 == 1, "First attempt should be 1"
         assert count2 == 2, "Second attempt should be 2"
         assert count3 == 3, "Third attempt should be 3"
 
         key = ("TEST-1", "test-orch")
-        with sentinel._attempt_counts_lock:
-            entry = sentinel._attempt_counts.get(key)
+        with sentinel._state_tracker._attempt_counts_lock:
+            entry = sentinel._state_tracker._attempt_counts.get(key)
             stored_count = entry.count if entry else 0
         assert stored_count == 3, "Stored count should be 3 after 3 increments"
 
@@ -232,8 +232,8 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
 
-        sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
-        sentinel._thread_pool = ThreadPoolExecutor(max_workers=2)
+        sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "test-orch")
+        sentinel._execution_manager._thread_pool = ThreadPoolExecutor(max_workers=2)
 
         try:
             run_thread = threading.Thread(target=sentinel.run_once)
@@ -250,8 +250,8 @@ class TestAttemptCountTracking:
         finally:
             should_unblock.set()
             run_thread.join(timeout=5)
-            sentinel._thread_pool.shutdown(wait=True)
-            sentinel._thread_pool = None
+            sentinel._execution_manager._thread_pool.shutdown(wait=True)
+            sentinel._execution_manager._thread_pool = None
 
     def test_cleanup_stale_attempt_counts(self) -> None:
         """Test that stale attempt count entries are cleaned up based on TTL."""
@@ -275,22 +275,22 @@ class TestAttemptCountTracking:
         )
 
         current_time = time.monotonic()
-        with sentinel._attempt_counts_lock:
-            sentinel._attempt_counts[("OLD-1", "test-orch")] = AttemptCountEntry(
+        with sentinel._state_tracker._attempt_counts_lock:
+            sentinel._state_tracker._attempt_counts[("OLD-1", "test-orch")] = AttemptCountEntry(
                 count=5, last_access=current_time - 100
             )
-            sentinel._attempt_counts[("RECENT-1", "test-orch")] = AttemptCountEntry(
+            sentinel._state_tracker._attempt_counts[("RECENT-1", "test-orch")] = AttemptCountEntry(
                 count=3, last_access=current_time - 0.5
             )
 
-        assert len(sentinel._attempt_counts) == 2
+        assert len(sentinel._state_tracker._attempt_counts) == 2
 
-        cleaned = sentinel._cleanup_stale_attempt_counts()
+        cleaned = sentinel._state_tracker.cleanup_stale_attempt_counts()
 
         assert cleaned == 1
-        assert len(sentinel._attempt_counts) == 1
-        assert ("OLD-1", "test-orch") not in sentinel._attempt_counts
-        assert ("RECENT-1", "test-orch") in sentinel._attempt_counts
+        assert len(sentinel._state_tracker._attempt_counts) == 1
+        assert ("OLD-1", "test-orch") not in sentinel._state_tracker._attempt_counts
+        assert ("RECENT-1", "test-orch") in sentinel._state_tracker._attempt_counts
 
     def test_cleanup_attempt_counts_called_in_run_once(self) -> None:
         """Test that _cleanup_stale_attempt_counts is called during run_once."""
@@ -332,12 +332,12 @@ class TestAttemptCountTracking:
         )
 
         time_before = time.monotonic()
-        sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
+        sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "test-orch")
         time_after = time.monotonic()
 
         key = ("TEST-1", "test-orch")
-        with sentinel._attempt_counts_lock:
-            entry = sentinel._attempt_counts[key]
+        with sentinel._state_tracker._attempt_counts_lock:
+            entry = sentinel._state_tracker._attempt_counts[key]
 
         assert entry.count == 1
         assert entry.last_access >= time_before
@@ -346,10 +346,10 @@ class TestAttemptCountTracking:
         time.sleep(0.01)
         time_before_second = time.monotonic()
 
-        sentinel._get_and_increment_attempt_count("TEST-1", "test-orch")
+        sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "test-orch")
 
-        with sentinel._attempt_counts_lock:
-            entry = sentinel._attempt_counts[key]
+        with sentinel._state_tracker._attempt_counts_lock:
+            entry = sentinel._state_tracker._attempt_counts[key]
 
         assert entry.count == 2
         assert entry.last_access >= time_before_second
@@ -373,10 +373,10 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
 
-        assert len(sentinel._attempt_counts) == 0
+        assert len(sentinel._state_tracker._attempt_counts) == 0
 
         with caplog.at_level(logging.DEBUG, logger="sentinel.state_tracker"):
-            cleaned = sentinel._cleanup_stale_attempt_counts()
+            cleaned = sentinel._state_tracker.cleanup_stale_attempt_counts()
 
         assert cleaned == 0
 
