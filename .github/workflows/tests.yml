@@ -42,7 +42,8 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     # Integration tests are optional and run separately
-    # They may require external services or CLI tools
+    # They require external services (Jira, GitHub APIs)
+    # Tests will be skipped if credentials are not available
     continue-on-error: true
 
     steps:
@@ -59,8 +60,16 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run integration tests
+        env:
+          # Jira API credentials (optional - tests skip if not set)
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          # GitHub API credentials (optional - tests skip if not set)
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TEST_REPO: ${{ secrets.GITHUB_TEST_REPO }}
         run: |
-          pytest tests/integration -v -m integration
+          pytest tests/integration -v -m integration --tb=short
 
   lint:
     name: Lint
