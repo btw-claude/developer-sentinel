@@ -30,6 +30,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+__all__ = [
+    "ConfigurationError",
+    "ValidationError",
+    "handle_tool_exceptions",
+]
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 
