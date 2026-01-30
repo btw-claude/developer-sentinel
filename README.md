@@ -388,6 +388,86 @@ This allows updating orchestration configurations without restarting the service
 
 When work is submitted for execution, Sentinel polls immediately for more work instead of waiting for the next poll interval. This maximizes throughput when there's a backlog of issues to process while conserving resources during idle periods.
 
+## Troubleshooting
+
+### Common Issues
+
+#### Sentinel Not Picking Up Issues
+
+**Symptom:** Issues with the correct tags aren't being processed.
+
+**Solutions:**
+1. Verify the project key matches your Jira project exactly (case-sensitive)
+2. Check that tags in the orchestration match Jira labels exactly
+3. Ensure the issue doesn't already have the `on_start` tag (e.g., `sentinel-processing`)
+4. Enable debug logging: `SENTINEL_LOG_LEVEL=DEBUG`
+
+```bash
+# Check which orchestrations are loaded
+sentinel --config-dir ./orchestrations 2>&1 | grep "Loaded orchestration"
+```
+
+#### API Authentication Failures
+
+**Symptom:** Errors like "401 Unauthorized" or "Authentication failed".
+
+**Solutions:**
+1. Verify your API tokens are correct and not expired
+2. For Jira: Ensure you're using the email associated with the API token
+3. For GitHub: Verify token has required scopes (`repo`, `read:org`, `read:project`)
+
+```bash
+# Test Jira connectivity
+curl -u "your-email@example.com:your-api-token" \
+  "https://your-instance.atlassian.net/rest/api/3/myself"
+```
+
+#### Agent Execution Fails
+
+**Symptom:** Agent starts but fails with errors.
+
+**Solutions:**
+1. Check agent logs in `SENTINEL_AGENT_LOGS_DIR` (default: `./logs`)
+2. Verify Claude API key is valid: `ANTHROPIC_API_KEY`
+3. Check for rate limiting (see Rate Limiting section in `.env.example`)
+4. Review the agent prompt for issues with template variables
+
+#### Out of Memory Errors
+
+**Symptom:** Process killed or "MemoryError" exceptions.
+
+**Solutions:**
+1. Reduce `SENTINEL_MAX_CONCURRENT_EXECUTIONS`
+2. Increase system memory or container limits
+3. Check for runaway processes in workdir
+
+#### Hot-Reload Not Working
+
+**Symptom:** Changes to orchestration files aren't picked up.
+
+**Solutions:**
+1. Verify file has valid YAML syntax: `python -c "import yaml; yaml.safe_load(open('file.yaml'))"`
+2. Check file permissions (must be readable by sentinel process)
+3. Look for load errors in logs at start of poll cycle
+
+### Debug Mode
+
+Enable comprehensive debug logging:
+
+```bash
+SENTINEL_LOG_LEVEL=DEBUG SENTINEL_LOG_JSON=false sentinel
+```
+
+### Getting Help
+
+1. Check the [examples](./examples/) for working configurations
+2. Review [docs/FAILURE_PATTERNS.md](docs/FAILURE_PATTERNS.md) for outcome detection
+3. See [docs/TESTING.md](docs/TESTING.md) for running tests
+4. Open an issue on GitHub with:
+   - Sentinel version
+   - Relevant log output (sanitize credentials!)
+   - Orchestration configuration (sanitize sensitive data)
+
 ## Development
 
 ```bash

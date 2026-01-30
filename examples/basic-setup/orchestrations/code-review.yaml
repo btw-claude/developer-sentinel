@@ -1,0 +1,71 @@
+# Basic Code Review Orchestration
+#
+# This is a minimal example that:
+# 1. Watches for issues tagged with "needs-code-review"
+# 2. Sends them to a Claude agent for review
+# 3. Posts feedback as a Jira comment
+# 4. Tags the issue as "code-reviewed" when complete
+#
+# Customize the project key and prompts for your use case.
+
+orchestrations:
+  - name: "code-review"
+
+    # Trigger: Which issues activate this workflow
+    trigger:
+      source: jira
+      project: "DEMO"           # Change to your Jira project key
+      tags:
+        - "needs-code-review"   # Issues with this label trigger processing
+
+    # Agent: How Claude processes the issue
+    agent:
+      prompt: |
+        You are a code review assistant. Review the following Jira issue.
+
+        ## Issue Details
+        **Key:** {jira_issue_key}
+        **Summary:** {jira_summary}
+        **Status:** {jira_status}
+        **Assignee:** {jira_assignee}
+
+        **Description:**
+        {jira_description}
+
+        ## Your Task
+        1. Analyze the issue description for code-related concerns
+        2. If there are linked pull requests, review them
+        3. Post a helpful comment on the Jira issue with your findings
+        4. Focus on:
+           - Code correctness and potential bugs
+           - Security considerations
+           - Performance implications
+           - Best practices
+
+        End your response with SUCCESS if the review was completed,
+        or FAILURE if you encountered blocking issues.
+
+      # Tools the agent can use
+      tools:
+        - jira
+
+    # Retry: How to handle failures
+    retry:
+      max_attempts: 3
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+
+    # Tag management: Prevent duplicate processing
+    on_start:
+      add_tag: "sentinel-processing"
+
+    # What to do on success
+    on_complete:
+      add_tag: "code-reviewed"
+
+    # What to do when all retries fail
+    on_failure:
+      add_tag: "review-failed"
