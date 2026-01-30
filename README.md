@@ -69,8 +69,20 @@ Configure these for direct REST API access, which is faster than SDK-based polli
 | `JIRA_BASE_URL` | No* | - | Jira instance URL (e.g., `https://company.atlassian.net`) |
 | `JIRA_EMAIL` | No* | - | Email address for Jira authentication |
 | `JIRA_API_TOKEN` | No* | - | Jira API token ([create one here](https://id.atlassian.com/manage-profile/security/api-tokens)) |
+| `JIRA_EPIC_LINK_FIELD` | No | `customfield_10014` | Custom field ID for epic links (see below) |
 
-*All three Jira variables must be set together. If not configured, falls back to SDK-based Jira access via Claude Agent SDK.
+*All three Jira authentication variables must be set together. If not configured, falls back to SDK-based Jira access via Claude Agent SDK.
+
+**Finding Your Epic Link Field ID:**
+
+The epic link custom field ID varies between Jira instances. To find yours:
+
+1. Navigate to any issue that has an epic link
+2. Use the Jira REST API to inspect the issue: `GET /rest/api/3/issue/{issueKey}`
+3. Look in the `fields` object for a field containing your epic key (e.g., `"customfield_10014": "EPIC-123"`)
+4. The field name (e.g., `customfield_10014`) is what you should set for `JIRA_EPIC_LINK_FIELD`
+
+Alternatively, you can find custom field IDs in Jira Admin under **Settings > Issues > Custom Fields**.
 
 **Rate Limiting**: The Jira REST client automatically handles rate limiting with exponential backoff and jitter per [Atlassian's recommendations](https://developer.atlassian.com/cloud/jira/platform/rate-limiting/). When a 429 (Too Many Requests) response is received, the client retries up to 4 times with increasing delays (max 30 seconds).
 

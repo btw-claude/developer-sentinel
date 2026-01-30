@@ -553,6 +553,33 @@ class TestJiraIssueEpicAndParentFields:
         issue = JiraIssue.from_api_response(data)
         assert issue.epic_key == "EPIC-200"
 
+    def test_epic_key_from_custom_epic_link_field(self) -> None:
+        """Test epic_key is populated from custom epic link field."""
+        data = {
+            "key": "TEST-457",
+            "fields": {
+                "summary": "Issue with custom epic field",
+                "customfield_99999": "EPIC-300",
+            },
+        }
+        # Use a custom epic link field ID
+        issue = JiraIssue.from_api_response(data, epic_link_field="customfield_99999")
+        assert issue.epic_key == "EPIC-300"
+
+    def test_epic_key_default_field_not_found_with_custom(self) -> None:
+        """Test that default field is not used when custom field is specified."""
+        data = {
+            "key": "TEST-458",
+            "fields": {
+                "summary": "Issue with default field only",
+                "customfield_10014": "EPIC-DEFAULT",  # Default field has value
+            },
+        }
+        # Specify a different custom field that doesn't exist
+        issue = JiraIssue.from_api_response(data, epic_link_field="customfield_99999")
+        # Should not find the epic because we're looking at wrong field
+        assert issue.epic_key is None
+
     def test_epic_key_parent_takes_precedence_over_customfield(self) -> None:
         """Test Epic parent field takes precedence over customfield for epic_key."""
         data = {
@@ -682,3 +709,86 @@ class TestJiraIssueEpicAndParentFields:
         issue = JiraIssue(key="TEST-1", summary="Test")
         assert issue.epic_key is None
         assert issue.parent_key is None
+
+
+class TestJiraPollerEpicLinkField:
+    """Tests for JiraPoller with configurable epic_link_field."""
+
+    def test_poller_uses_default_epic_link_field(self) -> None:
+        """Test that poller uses default epic_link_field when not specified."""
+        client = MockJiraClient(
+            issues=[
+                {
+                    "key": "TEST-1",
+                    "fields": {
+                        "summary": "Issue 1",
+                        "customfield_10014": "EPIC-100",
+                    },
+                }
+            ]
+        )
+        poller = JiraPoller(client)
+        trigger = TriggerConfig(project="TEST")
+
+        issues = poller.poll(trigger)
+
+        assert len(issues) == 1
+        assert issues[0].epic_key == "EPIC-100"
+
+    def test_poller_uses_custom_epic_link_field(self) -> None:
+        """Test that poller uses custom epic_link_field when specified."""
+        client = MockJiraClient(
+            issues=[
+                {
+                    "key": "TEST-1",
+                    "fields": {
+                        "summary": "Issue 1",
+                        "customfield_12345": "EPIC-200",
+                    },
+                }
+            ]
+        )
+        poller = JiraPoller(client, epic_link_field="customfield_12345")
+        trigger = TriggerConfig(project="TEST")
+
+        issues = poller.poll(trigger)
+
+        assert len(issues) == 1
+        assert issues[0].epic_key == "EPIC-200"
+
+    def test_poller_custom_field_not_found(self) -> None:
+        """Test that epic_key is None when custom field is not found."""
+        client = MockJiraClient(
+            issues=[
+                {
+                    "key": "TEST-1",
+                    "fields": {
+                        "summary": "Issue 1",
+                        "customfield_10014": "EPIC-100",  # Default field exists
+                    },
+                }
+            ]
+        )
+        # Specify a different custom field
+        poller = JiraPoller(client, epic_link_field="customfield_99999")
+        trigger = TriggerConfig(project="TEST")
+
+        issues = poller.poll(trigger)
+
+        assert len(issues) == 1
+        # Should not find epic because looking at wrong field
+        assert issues[0].epic_key is None
+
+    def test_poller_stores_epic_link_field(self) -> None:
+        """Test that poller stores the epic_link_field attribute."""
+        client = MockJiraClient()
+        poller = JiraPoller(client, epic_link_field="customfield_67890")
+
+        assert poller.epic_link_field == "customfield_67890"
+
+    def test_poller_default_epic_link_field_attribute(self) -> None:
+        """Test that poller has default epic_link_field attribute."""
+        client = MockJiraClient()
+        poller = JiraPoller(client)
+
+        assert poller.epic_link_field == "customfield_10014"
