@@ -84,6 +84,10 @@ The epic link custom field ID varies between Jira instances. To find yours:
 
 Alternatively, you can find custom field IDs in Jira Admin under **Settings > Issues > Custom Fields**.
 
+**Note on Empty Values:** If `JIRA_EPIC_LINK_FIELD` is explicitly set to an empty string, epic link detection via the classic custom field will be disabled (epic_key will always be `None` for issues without a next-gen parent epic). This may be intentional for Jira instances that don't use classic epic links.
+
+**Troubleshooting:** If the configured epic link field is not found on any polled issues, a warning will be logged suggesting verification of the field ID. This helps identify misconfigured field names.
+
 **Rate Limiting**: The Jira REST client automatically handles rate limiting with exponential backoff and jitter per [Atlassian's recommendations](https://developer.atlassian.com/cloud/jira/platform/rate-limiting/). When a 429 (Too Many Requests) response is received, the client retries up to 4 times with increasing delays (max 30 seconds).
 
 #### Sentinel Configuration

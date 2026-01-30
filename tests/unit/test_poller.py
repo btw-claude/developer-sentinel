@@ -907,3 +907,92 @@ class TestJiraPollerEpicLinkField:
         poller = JiraPoller(client)
 
         assert poller.epic_link_field == "customfield_10014"
+
+    def test_poller_warns_when_epic_link_field_not_found(self, caplog: Any) -> None:
+        """Test that poller warns when epic_link_field is not found on any issues."""
+        client = MockJiraClient(
+            issues=[
+                {
+                    "key": "TEST-1",
+                    "fields": {
+                        "summary": "Issue 1",
+                        # Note: no customfield_99999 field present
+                    },
+                },
+                {
+                    "key": "TEST-2",
+                    "fields": {
+                        "summary": "Issue 2",
+                        # Note: no customfield_99999 field present
+                    },
+                },
+            ]
+        )
+        poller = JiraPoller(client, epic_link_field="customfield_99999")
+        trigger = TriggerConfig(project="TEST")
+
+        with caplog.at_level("WARNING"):
+            issues = poller.poll(trigger)
+
+        assert len(issues) == 2
+        assert "customfield_99999" in caplog.text
+        assert "was not found" in caplog.text
+        assert "JIRA_EPIC_LINK_FIELD" in caplog.text
+
+    def test_poller_no_warning_when_epic_link_field_exists(self, caplog: Any) -> None:
+        """Test that poller does not warn when epic_link_field exists on issues."""
+        client = MockJiraClient(
+            issues=[
+                {
+                    "key": "TEST-1",
+                    "fields": {
+                        "summary": "Issue 1",
+                        "customfield_12345": "EPIC-100",
+                    },
+                }
+            ]
+        )
+        poller = JiraPoller(client, epic_link_field="customfield_12345")
+        trigger = TriggerConfig(project="TEST")
+
+        with caplog.at_level("WARNING"):
+            issues = poller.poll(trigger)
+
+        assert len(issues) == 1
+        assert issues[0].epic_key == "EPIC-100"
+        assert "was not found" not in caplog.text
+
+    def test_poller_no_warning_when_epic_link_field_empty(self, caplog: Any) -> None:
+        """Test that poller does not warn when epic_link_field is empty string."""
+        client = MockJiraClient(
+            issues=[
+                {
+                    "key": "TEST-1",
+                    "fields": {
+                        "summary": "Issue 1",
+                    },
+                }
+            ]
+        )
+        # Empty epic_link_field means user intentionally disabled epic link detection
+        poller = JiraPoller(client, epic_link_field="")
+        trigger = TriggerConfig(project="TEST")
+
+        with caplog.at_level("WARNING"):
+            issues = poller.poll(trigger)
+
+        assert len(issues) == 1
+        assert issues[0].epic_key is None
+        assert "was not found" not in caplog.text
+
+    def test_poller_no_warning_when_no_issues_found(self, caplog: Any) -> None:
+        """Test that poller does not warn when no issues are found."""
+        client = MockJiraClient(issues=[])
+        poller = JiraPoller(client, epic_link_field="customfield_99999")
+        trigger = TriggerConfig(project="TEST")
+
+        with caplog.at_level("WARNING"):
+            issues = poller.poll(trigger)
+
+        assert len(issues) == 0
+        assert "was not found" not in caplog.text
