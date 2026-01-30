@@ -256,7 +256,7 @@ class TestHealthCheckContext:
 
         assert ctx.result is not None
         assert ctx.result.status == HealthStatus.DOWN
-        assert "Connection refused" in ctx.result.error
+        assert ctx.result.error == "Connection refused"
 
 
 class TestHealthCheckResult:

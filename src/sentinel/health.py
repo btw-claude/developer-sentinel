@@ -507,6 +507,12 @@ class HealthChecker:
 
         Performs a lightweight API call to verify Jira connectivity.
 
+        Note:
+            This method relies on HealthCheckContext.handle_exceptions() for
+            HTTP exception handling. All httpx exceptions (TimeoutException,
+            HTTPStatusError, RequestError) and other common exceptions are
+            caught and converted to appropriate ServiceHealth responses.
+
         Returns:
             ServiceHealth with status and latency.
         """
@@ -540,6 +546,12 @@ class HealthChecker:
         """Check GitHub API connectivity.
 
         Performs a lightweight API call to verify GitHub connectivity.
+
+        Note:
+            This method relies on HealthCheckContext.handle_exceptions() for
+            HTTP exception handling. All httpx exceptions (TimeoutException,
+            HTTPStatusError, RequestError) and other common exceptions are
+            caught and converted to appropriate ServiceHealth responses.
 
         Returns:
             ServiceHealth with status and latency.
@@ -579,6 +591,12 @@ class HealthChecker:
 
         Performs a lightweight API call to verify Claude API connectivity.
         Uses the models list endpoint which is fast and lightweight.
+
+        Note:
+            This method relies on HealthCheckContext.handle_exceptions() for
+            HTTP exception handling. All httpx exceptions (TimeoutException,
+            HTTPStatusError, RequestError) and other common exceptions are
+            caught and converted to appropriate ServiceHealth responses.
 
         Returns:
             ServiceHealth with status and latency.
