@@ -8,7 +8,7 @@ from sentinel.orchestration import Orchestration
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
-    MockJiraClient,
+    MockJiraPoller,
     MockTagClient,
     make_config,
     set_mtime_in_future,
@@ -21,7 +21,7 @@ class TestSentinelHotReloadMetrics:
     def test_get_hot_reload_metrics_returns_dict(
         self,
         temp_orchestrations_dir: Path,
-        mock_jira_client: MockJiraClient,
+        mock_jira_poller: MockJiraPoller,
         mock_agent_client: MockAgentClient,
         mock_tag_client: MockTagClient,
     ) -> None:
@@ -32,8 +32,8 @@ class TestSentinelHotReloadMetrics:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=mock_jira_client,
-            agent_client=mock_agent_client,
+            jira_poller=mock_jira_poller,
+            agent_factory=mock_agent_client,
             tag_client=mock_tag_client,
         )
 
@@ -50,7 +50,7 @@ class TestSentinelHotReloadMetrics:
     def test_loaded_counter_increments_on_new_file(
         self,
         temp_orchestrations_dir: Path,
-        mock_jira_client: MockJiraClient,
+        mock_jira_poller: MockJiraPoller,
         mock_agent_client: MockAgentClient,
         mock_tag_client: MockTagClient,
     ) -> None:
@@ -61,8 +61,8 @@ class TestSentinelHotReloadMetrics:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=mock_jira_client,
-            agent_client=mock_agent_client,
+            jira_poller=mock_jira_poller,
+            agent_factory=mock_agent_client,
             tag_client=mock_tag_client,
         )
 
@@ -85,7 +85,7 @@ class TestSentinelHotReloadMetrics:
     def test_unloaded_counter_increments_on_file_deletion(
         self,
         temp_orchestrations_dir: Path,
-        mock_jira_client: MockJiraClient,
+        mock_jira_poller: MockJiraPoller,
         mock_agent_client: MockAgentClient,
         mock_tag_client: MockTagClient,
     ) -> None:
@@ -96,8 +96,8 @@ class TestSentinelHotReloadMetrics:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=mock_jira_client,
-            agent_client=mock_agent_client,
+            jira_poller=mock_jira_poller,
+            agent_factory=mock_agent_client,
             tag_client=mock_tag_client,
         )
 
@@ -124,7 +124,7 @@ class TestSentinelHotReloadMetrics:
     def test_reloaded_counter_increments_on_file_modification(
         self,
         temp_orchestrations_dir: Path,
-        mock_jira_client: MockJiraClient,
+        mock_jira_poller: MockJiraPoller,
         mock_agent_client: MockAgentClient,
         mock_tag_client: MockTagClient,
     ) -> None:
@@ -147,8 +147,8 @@ class TestSentinelHotReloadMetrics:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=mock_jira_client,
-            agent_client=mock_agent_client,
+            jira_poller=mock_jira_poller,
+            agent_factory=mock_agent_client,
             tag_client=mock_tag_client,
         )
 
@@ -173,7 +173,7 @@ class TestSentinelHotReloadMetrics:
     def test_metrics_accumulate_over_multiple_operations(
         self,
         temp_orchestrations_dir: Path,
-        mock_jira_client: MockJiraClient,
+        mock_jira_poller: MockJiraPoller,
         mock_agent_client: MockAgentClient,
         mock_tag_client: MockTagClient,
     ) -> None:
@@ -184,8 +184,8 @@ class TestSentinelHotReloadMetrics:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=mock_jira_client,
-            agent_client=mock_agent_client,
+            jira_poller=mock_jira_poller,
+            agent_factory=mock_agent_client,
             tag_client=mock_tag_client,
         )
 

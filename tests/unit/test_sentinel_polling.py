@@ -9,15 +9,19 @@ from typing import Any
 from unittest.mock import patch
 
 from sentinel.execution_manager import TrackedFuture
-from sentinel.main import Sentinel, parse_args, setup_logging
+from sentinel.logging import setup_logging
+from sentinel.main import Sentinel, parse_args
+from sentinel.poller import JiraPoller
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
     MockJiraClient,
+    MockJiraPoller,
     MockTagClient,
     SignalHandler,
     make_config,
+    make_issue,
     make_orchestration,
 )
 
@@ -91,33 +95,34 @@ class TestSentinelRunOnce:
     """Tests for Sentinel.run_once method."""
 
     def test_polls_and_executes(self) -> None:
-        jira_client = MockJiraClient(
+        tag_client = MockTagClient()
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Test issue", "labels": ["review"]}},
-            ]
+                make_issue(key="TEST-1", summary="Test issue", labels=["review"]),
+            ],
+            tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS: Completed"])
-        tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration(tags=["review"])]
 
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
             tag_client=tag_client,
+            agent_factory=agent_client,
+            jira_poller=jira_poller,
         )
 
         results, submitted_count = sentinel.run_once()
 
         assert len(results) == 1
         assert results[0].succeeded is True
-        assert len(jira_client.search_calls) == 1
+        assert len(jira_poller.poll_calls) == 1
         assert len(agent_client.calls) == 1
 
     def test_no_issues_returns_empty(self) -> None:
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -126,9 +131,9 @@ class TestSentinelRunOnce:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
             tag_client=tag_client,
+            agent_factory=agent_client,
+            jira_poller=jira_poller,
         )
 
         results, submitted_count = sentinel.run_once()
@@ -137,13 +142,14 @@ class TestSentinelRunOnce:
         assert len(agent_client.calls) == 0
 
     def test_handles_multiple_orchestrations(self) -> None:
-        jira_client = MockJiraClient(
+        tag_client = MockTagClient()
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-            ]
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+            ],
+            tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS"])
-        tag_client = MockTagClient()
         config = make_config()
         orchestrations = [
             make_orchestration(name="orch1", tags=["review"]),
@@ -153,9 +159,9 @@ class TestSentinelRunOnce:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
             tag_client=tag_client,
+            agent_factory=agent_client,
+            jira_poller=jira_poller,
         )
 
         results, submitted_count = sentinel.run_once()
@@ -164,23 +170,24 @@ class TestSentinelRunOnce:
         assert len(results) == 2
 
     def test_respects_shutdown_request(self) -> None:
-        jira_client = MockJiraClient(
+        tag_client = MockTagClient()
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
-            ]
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+                make_issue(key="TEST-2", summary="Issue 2", labels=["review"]),
+            ],
+            tag_client=tag_client,
         )
         agent_client = MockAgentClient()
-        tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration(tags=["review"])]
 
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
             tag_client=tag_client,
+            agent_factory=agent_client,
+            jira_poller=jira_poller,
         )
 
         # Request shutdown before running
@@ -197,10 +204,10 @@ class TestSentinelEagerPolling:
     def test_run_once_returns_submitted_count(self) -> None:
         """Test that run_once returns the number of submitted tasks."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+                make_issue(key="TEST-2", summary="Issue 2", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -211,8 +218,8 @@ class TestSentinelEagerPolling:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -225,7 +232,7 @@ class TestSentinelEagerPolling:
 
     def test_run_once_returns_zero_submitted_when_no_work(self) -> None:
         """Test that run_once returns 0 submitted when no issues found."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -234,8 +241,8 @@ class TestSentinelEagerPolling:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -249,8 +256,8 @@ class TestSentinelEagerPolling:
         from concurrent.futures import ThreadPoolExecutor
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
-            issues=[{"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}}],
+        jira_poller = MockJiraPoller(
+            issues=[make_issue(key="TEST-1", summary="Issue 1", labels=["review"])],
             tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS"])
@@ -260,8 +267,8 @@ class TestSentinelEagerPolling:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -329,6 +336,7 @@ class TestSentinelEagerPolling:
 
         tag_client = MockTagClient()
         jira_client = ControlledWorkJiraClient(tag_client=tag_client)
+        jira_poller = JiraPoller(jira_client)
         agent_client = MockAgentClient(responses=["SUCCESS: Done"])
 
         config = make_config(
@@ -340,8 +348,8 @@ class TestSentinelEagerPolling:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -422,6 +430,7 @@ class TestSentinelEagerPolling:
 
         tag_client = MockTagClient()
         jira_client = EmptyJiraClient(issues=[], tag_client=tag_client)
+        jira_poller = JiraPoller(jira_client)
         agent_client = MockAgentClient()
 
         config = make_config(
@@ -433,8 +442,8 @@ class TestSentinelEagerPolling:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -488,7 +497,7 @@ class TestSentinelRun:
     """Tests for Sentinel.run method."""
 
     def test_runs_until_shutdown(self) -> None:
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -497,8 +506,8 @@ class TestSentinelRun:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -514,13 +523,13 @@ class TestSentinelRun:
 
         shutdown_thread.join()
         # Should have completed at least one cycle
-        assert len(jira_client.search_calls) >= 1
+        assert len(jira_poller.poll_calls) >= 1
 
     def test_handles_errors_gracefully(self) -> None:
         from unittest.mock import MagicMock
 
-        jira_client = MockJiraClient()
-        jira_client.search_issues = MagicMock(side_effect=Exception("API error"))
+        jira_poller = MockJiraPoller()
+        jira_poller.poll = MagicMock(side_effect=Exception("API error"))
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -529,8 +538,8 @@ class TestSentinelRun:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 

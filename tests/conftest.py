@@ -113,6 +113,12 @@ def mock_jira_client() -> MockJiraClient:
 
 
 @pytest.fixture
+def mock_jira_poller() -> MockJiraPoller:
+    """Provide a fresh MockJiraPoller instance."""
+    return MockJiraPoller(issues=[])
+
+
+@pytest.fixture
 def mock_agent_client() -> MockAgentClient:
     """Provide a fresh MockAgentClient instance."""
     return MockAgentClient()

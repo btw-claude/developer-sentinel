@@ -10,10 +10,11 @@ from sentinel.orchestration import Orchestration
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
-    MockJiraClient,
+    MockJiraPoller,
     MockTagClient,
     TrackingAgentClient,
     make_config,
+    make_issue,
     make_orchestration,
 )
 
@@ -34,11 +35,11 @@ class TestPerOrchestrationConcurrencyLimits:
         agent_client = TrackingAgentClient(execution_delay=0.05)
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
-                {"key": "TEST-3", "fields": {"summary": "Issue 3", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+                make_issue(key="TEST-2", summary="Issue 2", labels=["review"]),
+                make_issue(key="TEST-3", summary="Issue 3", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -49,8 +50,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -67,11 +68,11 @@ class TestPerOrchestrationConcurrencyLimits:
         agent_client = TrackingAgentClient(execution_delay=0.1)
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
-                {"key": "TEST-3", "fields": {"summary": "Issue 3", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+                make_issue(key="TEST-2", summary="Issue 2", labels=["review"]),
+                make_issue(key="TEST-3", summary="Issue 3", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -84,8 +85,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -101,11 +102,11 @@ class TestPerOrchestrationConcurrencyLimits:
         agent_client = TrackingAgentClient(execution_delay=0.1)
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
-                {"key": "TEST-3", "fields": {"summary": "Issue 3", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+                make_issue(key="TEST-2", summary="Issue 2", labels=["review"]),
+                make_issue(key="TEST-3", summary="Issue 3", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -118,8 +119,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -135,14 +136,14 @@ class TestPerOrchestrationConcurrencyLimits:
         agent_client = TrackingAgentClient(execution_delay=0.05, track_per_orch=True)
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
                 # Issues for orch-1 (max_concurrent=1)
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+                make_issue(key="TEST-2", summary="Issue 2", labels=["review"]),
                 # Issues for orch-2 (max_concurrent=2)
-                {"key": "TEST-3", "fields": {"summary": "Issue 3", "labels": ["deploy"]}},
-                {"key": "TEST-4", "fields": {"summary": "Issue 4", "labels": ["deploy"]}},
+                make_issue(key="TEST-3", summary="Issue 3", labels=["deploy"]),
+                make_issue(key="TEST-4", summary="Issue 4", labels=["deploy"]),
             ],
             tag_client=tag_client,
         )
@@ -156,8 +157,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -176,9 +177,9 @@ class TestPerOrchestrationConcurrencyLimits:
         agent_client = TrackingAgentClient(execution_delay=0.05)
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -188,8 +189,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -206,7 +207,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_increment_per_orch_count_returns_new_count(self) -> None:
         """Test _increment_per_orch_count returns the new count."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config()
         orchestrations: list[Orchestration] = []
@@ -214,8 +215,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -238,7 +239,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_decrement_per_orch_count_returns_new_count(self) -> None:
         """Test _decrement_per_orch_count returns the new count."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config()
         orchestrations: list[Orchestration] = []
@@ -246,8 +247,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -270,7 +271,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_decrement_per_orch_count_clamps_to_zero(self) -> None:
         """Test _decrement_per_orch_count does not go below zero."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config()
         orchestrations: list[Orchestration] = []
@@ -278,8 +279,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -295,7 +296,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_decrement_per_orch_count_cleans_up_at_zero(self) -> None:
         """Test _decrement_per_orch_count removes entry when count reaches 0."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config()
         orchestrations: list[Orchestration] = []
@@ -303,8 +304,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -321,7 +322,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_get_per_orch_count_returns_count(self) -> None:
         """Test get_per_orch_count returns the current count for observability."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config()
         orchestrations: list[Orchestration] = []
@@ -329,8 +330,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -350,7 +351,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_get_all_per_orch_counts_returns_all_counts(self) -> None:
         """Test get_all_per_orch_counts returns all counts for observability."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config()
         orchestrations: list[Orchestration] = []
@@ -358,8 +359,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -382,7 +383,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_get_available_slots_for_orchestration_no_limit(self) -> None:
         """Test _get_available_slots_for_orchestration with no per-orch limit."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config(max_concurrent_executions=5)
         orchestrations: list[Orchestration] = []
@@ -390,8 +391,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -405,7 +406,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_get_available_slots_for_orchestration_with_limit(self) -> None:
         """Test _get_available_slots_for_orchestration with per-orch limit."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config(max_concurrent_executions=10)
         orchestrations: list[Orchestration] = []
@@ -413,8 +414,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -429,7 +430,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_get_available_slots_considers_current_per_orch_count(self) -> None:
         """Test _get_available_slots_for_orchestration considers current count."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config(max_concurrent_executions=10)
         orchestrations: list[Orchestration] = []
@@ -437,8 +438,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -459,7 +460,7 @@ class TestPerOrchestrationConcurrencyLimits:
     def test_get_available_slots_returns_min_of_global_and_per_orch(self) -> None:
         """Test that available slots is minimum of global and per-orch."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         config = make_config(max_concurrent_executions=2)
         orchestrations: list[Orchestration] = []
@@ -467,8 +468,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -500,9 +501,9 @@ class TestPerOrchestrationConcurrencyLimits:
                 return AgentRunResult(response="FAILURE: Error occurred", workdir=None)
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -513,8 +514,8 @@ class TestPerOrchestrationConcurrencyLimits:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 

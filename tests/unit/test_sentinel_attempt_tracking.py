@@ -17,9 +17,10 @@ from sentinel.main import Sentinel
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
-    MockJiraClient,
+    MockJiraPoller,
     MockTagClient,
     make_config,
+    make_issue,
     make_orchestration,
 )
 
@@ -34,7 +35,7 @@ class TestAttemptCountTracking:
 
     def test_get_and_increment_attempt_count_starts_at_one(self) -> None:
         """Test that first attempt for an issue/orchestration pair returns 1."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -43,8 +44,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -53,7 +54,7 @@ class TestAttemptCountTracking:
 
     def test_get_and_increment_attempt_count_increments(self) -> None:
         """Test that subsequent calls increment the attempt count."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -62,8 +63,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -77,7 +78,7 @@ class TestAttemptCountTracking:
 
     def test_get_and_increment_tracks_separately_by_issue_key(self) -> None:
         """Test that different issues have separate attempt counts."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -86,8 +87,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -99,7 +100,7 @@ class TestAttemptCountTracking:
 
     def test_get_and_increment_tracks_separately_by_orchestration(self) -> None:
         """Test that different orchestrations have separate attempt counts."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -108,8 +109,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -121,7 +122,7 @@ class TestAttemptCountTracking:
 
     def test_get_and_increment_is_thread_safe(self) -> None:
         """Test that attempt count incrementing is thread-safe."""
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
@@ -130,8 +131,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -153,9 +154,9 @@ class TestAttemptCountTracking:
     def test_running_steps_use_tracked_attempt_number(self) -> None:
         """Test that Running Steps dashboard uses the tracked attempt number."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -166,8 +167,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -188,9 +189,9 @@ class TestAttemptCountTracking:
     def test_running_step_info_contains_attempt_number(self) -> None:
         """Test that RunningStepInfo is created with correct attempt_number."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -228,8 +229,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -270,10 +271,10 @@ class TestAttemptCountTracking:
         """Test that stale attempt count entries are cleaned up based on TTL."""
         import time
 
-        from sentinel.main import AttemptCountEntry
+        from sentinel.state_tracker import AttemptCountEntry
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[], tag_client=tag_client)
+        jira_poller = MockJiraPoller(issues=[], tag_client=tag_client)
         agent_client = MockAgentClient(responses=[])
 
         config = make_config(attempt_counts_ttl=1)
@@ -282,8 +283,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -309,7 +310,7 @@ class TestAttemptCountTracking:
         """Test that _cleanup_stale_attempt_counts is called during run_once."""
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[], tag_client=tag_client)
+        jira_poller = MockJiraPoller(issues=[], tag_client=tag_client)
         agent_client = MockAgentClient(responses=[])
         config = make_config()
         orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
@@ -317,8 +318,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -331,7 +332,7 @@ class TestAttemptCountTracking:
         """Test that accessing an attempt count updates its last_access time."""
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[], tag_client=tag_client)
+        jira_poller = MockJiraPoller(issues=[], tag_client=tag_client)
         agent_client = MockAgentClient(responses=[])
         config = make_config()
         orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
@@ -339,8 +340,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -373,7 +374,7 @@ class TestAttemptCountTracking:
         """Test that cleanup logs at debug level when no stale entries are found."""
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(issues=[], tag_client=tag_client)
+        jira_poller = MockJiraPoller(issues=[], tag_client=tag_client)
         agent_client = MockAgentClient(responses=[])
         config = make_config(attempt_counts_ttl=3600)
         orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
@@ -381,8 +382,8 @@ class TestAttemptCountTracking:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 

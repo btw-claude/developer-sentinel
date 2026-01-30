@@ -3,15 +3,12 @@
 This module contains the Sentinel class, the core orchestrator that coordinates
 polling, routing, and execution of orchestrations.
 
-The module structure has been refactored for single responsibility:
+The module structure follows single responsibility:
 - cli.py: Command-line argument parsing
 - bootstrap.py: Startup and dependency wiring
 - app.py: Application runner and lifecycle
 - shutdown.py: Graceful termination
 - dashboard_server.py: Dashboard management
-
-For backward compatibility, this module re-exports commonly used functions
-and classes from the new modules.
 """
 
 from __future__ import annotations
@@ -19,7 +16,6 @@ from __future__ import annotations
 import logging
 import signal
 import time
-import warnings
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from datetime import datetime
 from types import FrameType
@@ -34,41 +30,32 @@ from sentinel.agent_logger import AgentLogger
 # Import main from app module
 from sentinel.app import main
 
-# Import from refactored modules for backward compatibility
+# Import from refactored modules
 from sentinel.cli import parse_args
 from sentinel.config import Config
-from sentinel.dashboard_server import DashboardServer
 from sentinel.execution_manager import ExecutionManager
 from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
-from sentinel.github_poller import GitHubClient, GitHubIssueProtocol, GitHubPoller
+from sentinel.github_poller import GitHubIssueProtocol, GitHubPoller
 from sentinel.github_rest_client import GitHubTagClient
-from sentinel.logging import OrchestrationLogManager, get_logger, setup_logging
+from sentinel.logging import OrchestrationLogManager, get_logger
 from sentinel.orchestration import Orchestration, OrchestrationVersion
 from sentinel.orchestration_registry import OrchestrationRegistry
-from sentinel.poll_coordinator import GitHubIssueWithRepo, PollCoordinator, extract_repo_from_url
-from sentinel.poller import JiraClient, JiraIssue, JiraPoller
+from sentinel.poll_coordinator import PollCoordinator
+from sentinel.poller import JiraIssue, JiraPoller
 from sentinel.router import Router, RoutingResult
 from sentinel.sdk_clients import ClaudeProcessInterruptedError
 from sentinel.sdk_clients import request_shutdown as request_claude_shutdown
-from sentinel.state_tracker import AttemptCountEntry, QueuedIssueInfo, RunningStepInfo, StateTracker
+from sentinel.state_tracker import QueuedIssueInfo, RunningStepInfo, StateTracker
 from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
 
 
-# Re-export dataclasses and functions for backward compatibility
+# Public API exports
 __all__ = [
-    "AttemptCountEntry",
-    "RunningStepInfo",
-    "QueuedIssueInfo",
-    "DashboardServer",
     "Sentinel",
     "parse_args",
     "main",
-    "setup_logging",
-    # Re-exports from poll_coordinator for backward compatibility
-    "extract_repo_from_url",
-    "GitHubIssueWithRepo",
 ]
 
 
@@ -88,93 +75,53 @@ class Sentinel:
         config: Config,
         orchestrations: list[Orchestration],
         tag_client: JiraTagClient,
-        agent_factory: AgentClientFactory | AgentClient | None = None,
+        agent_factory: AgentClientFactory | AgentClient,
+        jira_poller: JiraPoller,
         agent_logger: AgentLogger | None = None,
-        jira_poller: JiraPoller | None = None,
         router: Router | None = None,
         github_poller: GitHubPoller | None = None,
         github_tag_client: GitHubTagClient | None = None,
-        *,
-        # Deprecated parameters for backward compatibility
-        jira_client: JiraClient | None = None,
-        github_client: GitHubClient | None = None,
-        agent_client: AgentClient | None = None,
     ) -> None:
         """Initialize the Sentinel orchestrator.
 
-        All dependencies can be injected via the DI container, or the deprecated
-        jira_client/github_client/agent_client parameters can be used for
-        backward compatibility with existing code.
+        All dependencies can be injected via the DI container.
 
         Args:
             config: Application configuration.
             orchestrations: List of orchestration configurations.
             tag_client: Jira client for tag operations.
-            agent_factory: Factory for creating agent clients per-orchestration.
+            agent_factory: Factory for creating agent clients per-orchestration,
+                or a single AgentClient for all orchestrations.
+            jira_poller: Poller for fetching Jira issues.
             agent_logger: Logger for agent execution logs.
-            jira_poller: Poller for fetching Jira issues (or use jira_client).
             router: Router for matching issues to orchestrations.
-            github_poller: Optional poller for GitHub issues/PRs (or use github_client).
+            github_poller: Optional poller for GitHub issues/PRs.
             github_tag_client: Optional GitHub client for tag/label operations.
-            jira_client: Deprecated - use jira_poller instead.
-            github_client: Deprecated - use github_poller instead.
-            agent_client: Deprecated - use agent_factory instead.
         """
         self.config = config
         self.orchestrations = orchestrations
-
-        # Handle backward compatibility for deprecated jira_client parameter
-        if jira_client is not None:
-            warnings.warn(
-                "jira_client parameter is deprecated, use jira_poller instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            self.jira_poller = JiraPoller(
-                jira_client,
-                epic_link_field=config.jira_epic_link_field,
-            )
-        elif jira_poller is not None:
-            self.jira_poller = jira_poller
-        else:
-            raise ValueError("Either jira_poller or jira_client must be provided")
-
-        # Handle backward compatibility for deprecated github_client parameter
-        if github_client is not None:
-            warnings.warn(
-                "github_client parameter is deprecated, use github_poller instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            self.github_poller = GitHubPoller(github_client)
-        else:
-            self.github_poller = github_poller
+        self.jira_poller = jira_poller
+        self.github_poller = github_poller
 
         # Initialize or create router
         if router is not None:
             self.router = router
         else:
-            # Create router from orchestrations for backward compatibility
+            # Create router from orchestrations
             self.router = Router(orchestrations)
 
         # Initialize agent factory
         self._agent_logger = agent_logger
-        effective_agent: AgentClientFactory | AgentClient | None = agent_factory
-        if agent_client is not None:
-            effective_agent = agent_client
 
-        if effective_agent is None:
-            raise ValueError("Either agent_factory or agent_client must be provided to Sentinel")
-
-        if isinstance(effective_agent, AgentClientFactory):
-            self._agent_factory: AgentClientFactory | None = effective_agent
+        if isinstance(agent_factory, AgentClientFactory):
+            self._agent_factory: AgentClientFactory | None = agent_factory
             self._legacy_agent_client: AgentClient | None = None
-            default_client = effective_agent.create_for_orchestration(None, config)
+            default_client = agent_factory.create_for_orchestration(None, config)
             self.executor = AgentExecutor(default_client, agent_logger)
         else:
             self._agent_factory = None
-            self._legacy_agent_client = effective_agent
-            self.executor = AgentExecutor(effective_agent, agent_logger)
+            self._legacy_agent_client = agent_factory
+            self.executor = AgentExecutor(agent_factory, agent_logger)
 
         # Initialize tag manager
         self.tag_manager = TagManager(tag_client, github_client=github_tag_client)

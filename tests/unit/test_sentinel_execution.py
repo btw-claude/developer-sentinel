@@ -13,11 +13,12 @@ from sentinel.main import Sentinel
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
-    MockJiraClient,
+    MockJiraPoller,
     MockTagClient,
     SignalHandler,
     TrackingAgentClient,
     make_config,
+    make_issue,
     make_orchestration,
 )
 
@@ -28,7 +29,7 @@ class TestSentinelSignalHandling:
     def test_registers_signal_handlers(self) -> None:
         from unittest.mock import patch
 
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -37,8 +38,8 @@ class TestSentinelSignalHandling:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -59,7 +60,7 @@ class TestSentinelSignalHandling:
     def test_sigint_triggers_shutdown(self) -> None:
         from unittest.mock import patch
 
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -68,8 +69,8 @@ class TestSentinelSignalHandling:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -102,7 +103,7 @@ class TestSentinelSignalHandling:
     def test_sigterm_triggers_shutdown(self) -> None:
         from unittest.mock import patch
 
-        jira_client = MockJiraClient(issues=[])
+        jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -111,8 +112,8 @@ class TestSentinelSignalHandling:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -183,11 +184,11 @@ class TestSentinelConcurrentExecution:
                 return AgentRunResult(response="SUCCESS: Done", workdir=None)
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
-                {"key": "TEST-3", "fields": {"summary": "Issue 3", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+                make_issue(key="TEST-2", summary="Issue 2", labels=["review"]),
+                make_issue(key="TEST-3", summary="Issue 3", labels=["review"]),
             ],
             tag_client=tag_client,  # Link tag client so it filters processed issues
         )
@@ -198,8 +199,8 @@ class TestSentinelConcurrentExecution:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -213,10 +214,10 @@ class TestSentinelConcurrentExecution:
     def test_run_once_and_wait_completes_all_work(self) -> None:
         """Test that run_once_and_wait waits for all tasks to complete."""
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+                make_issue(key="TEST-2", summary="Issue 2", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -227,8 +228,8 @@ class TestSentinelConcurrentExecution:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -243,15 +244,15 @@ class TestSentinelConcurrentExecution:
         # Track poll calls
         poll_calls = 0
 
-        class TrackingJiraClient(MockJiraClient):
-            def search_issues(self, jql: str, max_results: int = 50) -> list[dict[str, Any]]:
+        class TrackingJiraPoller(MockJiraPoller):
+            def poll(self, trigger: Any, max_results: int = 50) -> list[Any]:
                 nonlocal poll_calls
                 poll_calls += 1
-                return super().search_issues(jql, max_results)
+                return super().poll(trigger, max_results)
 
         tag_client = MockTagClient()
-        jira_client = TrackingJiraClient(
-            issues=[{"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}}],
+        jira_poller = TrackingJiraPoller(
+            issues=[make_issue(key="TEST-1", summary="Issue 1", labels=["review"])],
             tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS: Done"])
@@ -261,8 +262,8 @@ class TestSentinelConcurrentExecution:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 
@@ -295,10 +296,10 @@ class TestSentinelConcurrentExecution:
         agent_client = TrackingAgentClient(execution_delay=0.05, track_order=True)
 
         tag_client = MockTagClient()
-        jira_client = MockJiraClient(
+        jira_poller = MockJiraPoller(
             issues=[
-                {"key": "TEST-1", "fields": {"summary": "Issue 1", "labels": ["review"]}},
-                {"key": "TEST-2", "fields": {"summary": "Issue 2", "labels": ["review"]}},
+                make_issue(key="TEST-1", summary="Issue 1", labels=["review"]),
+                make_issue(key="TEST-2", summary="Issue 2", labels=["review"]),
             ],
             tag_client=tag_client,
         )
@@ -308,8 +309,8 @@ class TestSentinelConcurrentExecution:
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
-            jira_client=jira_client,
-            agent_client=agent_client,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
             tag_client=tag_client,
         )
 

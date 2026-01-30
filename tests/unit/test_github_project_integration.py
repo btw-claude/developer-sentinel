@@ -350,7 +350,7 @@ class TestRepoUrlExtractionIntegration:
 
     def test_extract_repo_from_url_integration(self) -> None:
         """Test extract_repo_from_url works correctly with main.py."""
-        from sentinel.main import extract_repo_from_url
+        from sentinel.poll_coordinator import extract_repo_from_url
 
         # Test various URL formats
         test_cases = [
@@ -367,7 +367,7 @@ class TestRepoUrlExtractionIntegration:
 
     def test_extract_repo_from_url_invalid_cases(self) -> None:
         """Test that invalid URLs return None."""
-        from sentinel.main import extract_repo_from_url
+        from sentinel.poll_coordinator import extract_repo_from_url
 
         invalid_urls = [
             "",
