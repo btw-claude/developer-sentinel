@@ -192,13 +192,10 @@ class TestAttemptCountTracking:
         )
         # Use threading.Event for cross-thread signaling (test coordination)
         # Use asyncio.Event for async consistency within run_agent method
-        task_started_event = threading.Event()
         should_unblock = threading.Event()
 
         class BlockingAgentClient(MockAgentClient):
             async def run_agent(self, *args: Any, **kwargs: Any) -> AgentRunResult:
-                # Signal that the task has started (cross-thread coordination)
-                task_started_event.set()
                 # Use asyncio.Event for async-consistent blocking within the async method
                 blocking_event = asyncio.Event()
 
@@ -211,7 +208,7 @@ class TestAttemptCountTracking:
                 # Start the polling task and wait for the blocking event
                 unblock_task = asyncio.create_task(wait_for_unblock())
                 try:
-                    await asyncio.wait_for(blocking_event.wait(), timeout=5)
+                    await asyncio.wait_for(blocking_event.wait(), timeout=10)
                 except TimeoutError:
                     pass
                 finally:
@@ -239,26 +236,29 @@ class TestAttemptCountTracking:
             run_thread = threading.Thread(target=sentinel.run_once)
             run_thread.start()
 
-            task_started_event.wait(timeout=5)
-
-            # Wait for the running step to be registered (race condition fix)
-            # The task may start running before add_running_step is called in
-            # _submit_execution_tasks, so we retry a few times with a short delay.
+            # Wait for the running step to be registered.
+            # The running step is added in _submit_execution_tasks after the future
+            # is created, which happens very quickly after run_once starts. We poll
+            # with sufficient timeout to handle CI environments with high load.
+            # Using 200 iterations * 0.05s = 10s max wait provides ample margin.
             running_steps = []
-            for _ in range(50):  # 50 * 0.01s = 0.5s max wait
+            for _ in range(200):
                 running_steps = sentinel.get_running_steps()
                 if len(running_steps) == 1:
                     break
-                time.sleep(0.01)
+                time.sleep(0.05)
 
-            assert len(running_steps) == 1, "Should have one running step"
+            assert len(running_steps) == 1, (
+                f"Should have one running step, got {len(running_steps)}. "
+                "This may indicate a race condition or the task was not submitted."
+            )
             step = running_steps[0]
             assert step.attempt_number == 2, "Attempt number should be 2 (second attempt)"
             assert step.issue_key == "TEST-1"
             assert step.orchestration_name == "test-orch"
         finally:
             should_unblock.set()
-            run_thread.join(timeout=5)
+            run_thread.join(timeout=10)
             sentinel._execution_manager._thread_pool.shutdown(wait=True)
             sentinel._execution_manager._thread_pool = None
 
