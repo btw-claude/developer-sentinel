@@ -138,6 +138,11 @@ class Config:
     # Can be overridden per-orchestration in GitHubContext.base_branch
     default_base_branch: str = "main"
 
+    # Subprocess timeout configuration
+    # Default timeout in seconds for subprocess calls (git, shell commands)
+    # Prevents commands from hanging indefinitely against unresponsive servers
+    subprocess_timeout: float = 60.0
+
     @property
     def jira_configured(self) -> bool:
         """Check if Jira REST API is configured."""
@@ -611,6 +616,13 @@ def load_config(env_file: Path | None = None) -> Config:
         os.getenv("SENTINEL_DEFAULT_BASE_BRANCH", "main"),
     )
 
+    # Parse subprocess timeout
+    subprocess_timeout = _parse_non_negative_float(
+        os.getenv("SENTINEL_SUBPROCESS_TIMEOUT", "60.0"),
+        "SENTINEL_SUBPROCESS_TIMEOUT",
+        60.0,
+    )
+
     return Config(
         poll_interval=poll_interval,
         max_issues_per_poll=max_issues,
@@ -653,4 +665,5 @@ def load_config(env_file: Path | None = None) -> Config:
         health_check_enabled=health_check_enabled,
         health_check_timeout=health_check_timeout,
         default_base_branch=default_base_branch,
+        subprocess_timeout=subprocess_timeout,
     )
