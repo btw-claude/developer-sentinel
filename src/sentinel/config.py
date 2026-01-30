@@ -57,6 +57,7 @@ class Config:
     jira_base_url: str = ""  # e.g., "https://yoursite.atlassian.net"
     jira_email: str = ""  # User email for authentication
     jira_api_token: str = ""  # API token for authentication
+    jira_epic_link_field: str = "customfield_10014"  # Custom field ID for epic links
 
     # GitHub REST API configuration
     github_token: str = ""  # Personal access token or app token
@@ -636,6 +637,7 @@ def load_config(env_file: Path | None = None) -> Config:
         jira_base_url=os.getenv("JIRA_BASE_URL", ""),
         jira_email=os.getenv("JIRA_EMAIL", ""),
         jira_api_token=os.getenv("JIRA_API_TOKEN", ""),
+        jira_epic_link_field=os.getenv("JIRA_EPIC_LINK_FIELD", "customfield_10014"),
         github_token=os.getenv("GITHUB_TOKEN", ""),
         github_api_url=os.getenv("GITHUB_API_URL", ""),
         cleanup_workdir_on_success=cleanup_workdir_on_success,

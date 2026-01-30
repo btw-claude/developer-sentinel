@@ -1207,3 +1207,40 @@ class TestDefaultBaseBranchConfig:
         config = load_config()
 
         assert config.default_base_branch == "develop"
+
+
+class TestJiraEpicLinkFieldConfig:
+    """Tests for jira_epic_link_field configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that jira_epic_link_field defaults to 'customfield_10014'."""
+        monkeypatch.delenv("JIRA_EPIC_LINK_FIELD", raising=False)
+
+        config = load_config()
+
+        assert config.jira_epic_link_field == "customfield_10014"
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that jira_epic_link_field loads from environment variable."""
+        monkeypatch.setenv("JIRA_EPIC_LINK_FIELD", "customfield_12345")
+
+        config = load_config()
+
+        assert config.jira_epic_link_field == "customfield_12345"
+
+    def test_custom_field_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that any custom field ID can be used."""
+        monkeypatch.setenv("JIRA_EPIC_LINK_FIELD", "customfield_99999")
+
+        config = load_config()
+
+        assert config.jira_epic_link_field == "customfield_99999"
+
+    def test_empty_uses_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that empty value falls back to default."""
+        monkeypatch.setenv("JIRA_EPIC_LINK_FIELD", "")
+
+        config = load_config()
+
+        # Empty string is valid, just means no fallback to classic epic link
+        assert config.jira_epic_link_field == ""

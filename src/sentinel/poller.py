@@ -114,11 +114,15 @@ class JiraIssue:
     parent_key: str | None = None  # Parent issue key (for sub-tasks)
 
     @classmethod
-    def from_api_response(cls, data: dict[str, Any]) -> JiraIssue:
+    def from_api_response(
+        cls, data: dict[str, Any], epic_link_field: str = "customfield_10014"
+    ) -> JiraIssue:
         """Create a JiraIssue from Jira API response data.
 
         Args:
             data: Raw issue data from Jira API.
+            epic_link_field: The custom field ID for epic links (varies by Jira instance).
+                Defaults to "customfield_10014" which is common for classic Jira projects.
 
         Returns:
             JiraIssue instance.
@@ -184,7 +188,7 @@ class JiraIssue:
 
         # Fallback to classic epic link field if no epic found from parent
         if not epic_key:
-            epic_key = fields.get("customfield_10014")  # Classic epic link field
+            epic_key = fields.get(epic_link_field)
 
         return cls(
             key=data.get("key", ""),
@@ -262,6 +266,7 @@ class JiraPoller:
         client: JiraClient,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        epic_link_field: str = "customfield_10014",
     ) -> None:
         """Initialize the Jira poller.
 
@@ -269,10 +274,14 @@ class JiraPoller:
             client: Jira client implementation.
             max_retries: Maximum number of retry attempts for API calls.
             retry_delay: Base delay between retries (exponential backoff).
+            epic_link_field: The custom field ID for epic links (varies by Jira instance).
+                Defaults to "customfield_10014" which is common for classic Jira projects.
+                Can be configured via JIRA_EPIC_LINK_FIELD environment variable.
         """
         self.client = client
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.epic_link_field = epic_link_field
 
     def build_jql(self, trigger: TriggerConfig) -> str:
         """Build a JQL query from trigger configuration.
@@ -336,7 +345,10 @@ class JiraPoller:
         for attempt in range(self.max_retries):
             try:
                 raw_issues = self.client.search_issues(jql, max_results)
-                issues = [JiraIssue.from_api_response(issue) for issue in raw_issues]
+                issues = [
+                    JiraIssue.from_api_response(issue, self.epic_link_field)
+                    for issue in raw_issues
+                ]
                 logger.info(f"Found {len(issues)} matching issues")
                 return issues
             except JiraClientError as e:

@@ -173,7 +173,10 @@ class Sentinel:
         self.orchestrations = orchestrations
 
         # Initialize pollers
-        self.jira_poller = JiraPoller(jira_client)
+        self.jira_poller = JiraPoller(
+            jira_client,
+            epic_link_field=config.jira_epic_link_field,
+        )
         self.github_poller = GitHubPoller(github_client) if github_client else None
 
         # Initialize router
