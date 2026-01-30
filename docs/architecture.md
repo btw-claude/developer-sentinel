@@ -331,6 +331,89 @@ def call_github_api():
 
 ---
 
+### Resilience Wrapper: Circuit Breaker and Rate Limiter Coordination
+
+**Module:** `sentinel/resilience.py`
+
+The `ResilienceWrapper` coordinates the `CircuitBreaker` and `ClaudeRateLimiter` to avoid wasting rate limit tokens when the circuit breaker is open.
+
+**Problem Solved:**
+
+Without coordination, the following wasteful scenario can occur:
+1. Request comes in
+2. Rate limiter consumes a token
+3. Circuit breaker rejects the request immediately
+4. Token is wasted
+
+**Solution:**
+
+The `ResilienceWrapper` checks the circuit breaker state BEFORE acquiring a rate limit token:
+
+```
+    ┌─────────────────────┐
+    │  Incoming Request   │
+    └──────────┬──────────┘
+               │
+               ▼
+    ┌─────────────────────┐     NO      ┌─────────────────────┐
+    │  Circuit Breaker    │────────────►│  Reject Request     │
+    │  allows_request()?  │             │  (NO token consumed)│
+    └──────────┬──────────┘             └─────────────────────┘
+               │ YES
+               ▼
+    ┌─────────────────────┐     NO      ┌─────────────────────┐
+    │  Rate Limiter       │────────────►│  Reject Request     │
+    │  acquire()?         │             │  (token consumed)   │
+    └──────────┬──────────┘             └─────────────────────┘
+               │ YES
+               ▼
+    ┌─────────────────────┐
+    │  Execute Request    │
+    └─────────────────────┘
+```
+
+**Usage:**
+
+```python
+from sentinel.circuit_breaker import get_circuit_breaker
+from sentinel.rate_limiter import ClaudeRateLimiter
+from sentinel.resilience import ResilienceWrapper
+
+# Create wrapper with existing components
+wrapper = ResilienceWrapper(
+    circuit_breaker=get_circuit_breaker("claude"),
+    rate_limiter=ClaudeRateLimiter.from_config(config),
+)
+
+# Acquire permission before making API call
+if wrapper.acquire(timeout=30.0):
+    try:
+        result = await call_claude_api()
+        wrapper.record_success()
+    except Exception as e:
+        wrapper.record_failure(e)
+        raise
+
+# Or use as a context manager
+with wrapper:
+    result = call_claude_api()
+```
+
+**Metrics:**
+
+The wrapper tracks coordination-specific metrics:
+- `circuit_breaker_rejections`: Requests rejected by circuit breaker (tokens saved)
+- `rate_limit_acquired`: Successful rate limit token acquisitions
+- `rate_limit_rejections`: Requests rejected by rate limiter
+- `tokens_saved`: Number of tokens that would have been wasted (same as `circuit_breaker_rejections`)
+
+```python
+metrics = wrapper.get_metrics()
+print(f"Tokens saved: {metrics['wrapper_metrics']['tokens_saved']}")
+```
+
+---
+
 ### Retry Strategies
 
 #### REST Client Retry (Rate Limiting)
