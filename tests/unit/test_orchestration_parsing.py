@@ -396,6 +396,117 @@ class TestOrchestrationVersion:
 
         assert version.has_active_executions is False
 
+    def test_concurrent_increment_executions(self) -> None:
+        """increment_executions should be thread-safe under concurrent access."""
+        import threading
+
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+
+        num_threads = 100
+        increments_per_thread = 100
+
+        def increment_many_times() -> None:
+            for _ in range(increments_per_thread):
+                version.increment_executions()
+
+        threads = [threading.Thread(target=increment_many_times) for _ in range(num_threads)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Without thread safety, the count would likely be less than expected
+        # due to race conditions (lost updates)
+        expected_count = num_threads * increments_per_thread
+        assert version.active_executions == expected_count
+
+    def test_concurrent_decrement_executions(self) -> None:
+        """decrement_executions should be thread-safe under concurrent access."""
+        import threading
+
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+
+        num_threads = 100
+        decrements_per_thread = 100
+        initial_count = num_threads * decrements_per_thread
+        version.active_executions = initial_count
+
+        def decrement_many_times() -> None:
+            for _ in range(decrements_per_thread):
+                version.decrement_executions()
+
+        threads = [threading.Thread(target=decrement_many_times) for _ in range(num_threads)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Should reach exactly zero without race conditions
+        assert version.active_executions == 0
+
+    def test_concurrent_mixed_increment_decrement(self) -> None:
+        """Mixed increment/decrement operations should be thread-safe."""
+        import threading
+
+        orch = Orchestration(
+            name="test",
+            trigger=TriggerConfig(),
+            agent=AgentConfig(),
+        )
+        version = OrchestrationVersion.create(orch, Path("/tmp/test.yaml"), 1234567890.0)
+
+        num_threads = 50
+        operations_per_thread = 100
+        # Start with enough headroom to avoid hitting zero mid-operation
+        version.active_executions = num_threads * operations_per_thread
+
+        increment_count = 0
+        decrement_count = 0
+        count_lock = threading.Lock()
+
+        def increment_task() -> None:
+            nonlocal increment_count
+            for _ in range(operations_per_thread):
+                version.increment_executions()
+            with count_lock:
+                increment_count += operations_per_thread
+
+        def decrement_task() -> None:
+            nonlocal decrement_count
+            for _ in range(operations_per_thread):
+                version.decrement_executions()
+            with count_lock:
+                decrement_count += operations_per_thread
+
+        # Create equal numbers of increment and decrement threads
+        threads = []
+        for _ in range(num_threads // 2):
+            threads.append(threading.Thread(target=increment_task))
+            threads.append(threading.Thread(target=decrement_task))
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Final count should equal: initial + increments - decrements
+        expected_count = (
+            num_threads * operations_per_thread + increment_count - decrement_count
+        )
+        assert version.active_executions == expected_count
+
 
 class TestBranchNameValidation:
     """Tests for branch name validation in orchestration."""
