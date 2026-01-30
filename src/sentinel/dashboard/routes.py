@@ -8,6 +8,13 @@ Health check endpoints provide:
 - /health: Legacy health endpoint (deprecated, use /health/live)
 - /health/live: Liveness probe (basic health check)
 - /health/ready: Readiness probe (checks external service dependencies)
+- /health/dashboard: Dashboard status endpoint (verifies dashboard is operational)
+
+The /health/dashboard endpoint is specifically designed to verify that the
+dashboard component is running and accessible. This is useful for monitoring
+dashboard availability separately from the core Sentinel health, especially
+since the dashboard can fail to start while Sentinel continues operating
+in dashboard-less mode.
 
 Deprecated module-level constants:
     The following constants have been deprecated and moved to Config class.
@@ -540,6 +547,38 @@ def create_routes(
             result = await health_checker.check_readiness()
             return result.to_dict()
         return {"status": "healthy", "timestamp": time.time(), "checks": {}}
+
+    @dashboard_router.get("/health/dashboard")
+    async def health_dashboard() -> dict[str, Any]:
+        """Dashboard status endpoint.
+
+        Verifies that the dashboard component is operational. This endpoint
+        is useful for monitoring dashboard availability separately from the
+        core Sentinel health.
+
+        Since the dashboard is an optional component that can fail to start
+        while Sentinel continues operating, this endpoint provides a way to
+        specifically check if the dashboard is available.
+
+        If you can reach this endpoint, the dashboard is running.
+
+        Returns:
+            JSON with dashboard status.
+
+        Example response:
+            {
+                "status": "up",
+                "component": "dashboard",
+                "timestamp": 1706472123.456,
+                "message": "Dashboard is operational"
+            }
+        """
+        return {
+            "status": "up",
+            "component": "dashboard",
+            "timestamp": time.time(),
+            "message": "Dashboard is operational",
+        }
 
     @dashboard_router.get("/logs", response_class=HTMLResponse)
     async def logs(request: Request) -> HTMLResponse:

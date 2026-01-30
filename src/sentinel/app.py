@@ -7,6 +7,20 @@ This module provides the main application runner that coordinates:
 
 It acts as the orchestration layer between bootstrap, Sentinel, and shutdown
 components.
+
+Dashboard-less Operation Mode:
+    The Sentinel application can operate without the dashboard if it fails to
+    start. When dashboard startup fails (due to import errors, network issues,
+    runtime errors, or other exceptions), the application logs a warning and
+    continues operating normally without dashboard functionality.
+
+    This graceful degradation ensures that:
+    - The core polling and execution functionality remains operational
+    - External monitoring can detect dashboard unavailability via metrics
+    - The application does not crash due to optional component failures
+
+    To check dashboard status, use the DashboardServer.is_running property
+    or monitor the dashboard_available flag returned by start_dashboard().
 """
 
 from __future__ import annotations
@@ -28,15 +42,26 @@ logger = get_logger(__name__)
 def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardServer | None:
     """Start the dashboard server if enabled.
 
+    This function implements graceful degradation for dashboard startup failures.
+    If the dashboard fails to start for any reason, the Sentinel application
+    continues to operate without dashboard functionality.
+
     Args:
         context: Bootstrap context with configuration.
         sentinel: Sentinel instance for dashboard state.
 
     Returns:
         DashboardServer if started successfully, None otherwise.
+        When None is returned, Sentinel continues operating without the dashboard.
+
+    Note:
+        All exceptions during dashboard startup are caught and logged as warnings.
+        This ensures the main Sentinel polling loop is never blocked by dashboard
+        failures. The dashboard is considered an optional, non-critical component.
     """
     config = context.config
     if not config.dashboard_enabled:
+        logger.info("Dashboard is disabled via configuration")
         return None
 
     try:
@@ -53,18 +78,51 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
         dashboard_server.start(dashboard_app)
         return dashboard_server
     except ImportError as e:
-        logger.warning("Dashboard dependencies not available, skipping dashboard: %s", e)
+        logger.warning(
+            "Dashboard startup failed: dependencies not available. "
+            "Sentinel will continue without dashboard functionality. Error: %s",
+            e,
+            extra={"host": config.dashboard_host, "port": config.dashboard_port},
+        )
         return None
     except OSError as e:
-        logger.error(
-            "Failed to start dashboard server due to network/OS error: %s", e,
+        logger.warning(
+            "Dashboard startup failed: network/OS error. "
+            "Sentinel will continue without dashboard functionality. Error: %s",
+            e,
             extra={"host": config.dashboard_host, "port": config.dashboard_port},
         )
         return None
     except RuntimeError as e:
-        logger.error(
-            "Failed to start dashboard server due to runtime error: %s", e,
+        logger.warning(
+            "Dashboard startup failed: runtime error. "
+            "Sentinel will continue without dashboard functionality. Error: %s",
+            e,
             extra={"host": config.dashboard_host, "port": config.dashboard_port},
+        )
+        return None
+    except (ValueError, TypeError) as e:
+        logger.warning(
+            "Dashboard startup failed: configuration error. "
+            "Sentinel will continue without dashboard functionality. Error: %s",
+            e,
+            extra={"host": config.dashboard_host, "port": config.dashboard_port},
+        )
+        return None
+    except Exception as e:
+        # INTENTIONAL BROAD CATCH: Dashboard is optional and must never crash Sentinel.
+        # All known exception types are caught above; this catches truly unexpected
+        # errors to ensure the main application continues operating.
+        logger.warning(
+            "Dashboard startup failed: unexpected error (%s). "
+            "Sentinel will continue without dashboard functionality. Error: %s",
+            type(e).__name__,
+            e,
+            extra={
+                "host": config.dashboard_host,
+                "port": config.dashboard_port,
+                "error_type": type(e).__name__,
+            },
         )
         return None
 
