@@ -209,7 +209,7 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
             extra={"orchestrations_dir": str(config.orchestrations_dir)},
         )
         return None
-    except (KeyError, TypeError, ValueError) as e:
+    except (KeyError, ValueError) as e:
         logger.error(
             f"Failed to load orchestrations due to configuration error: {e}",
             extra={"orchestrations_dir": str(config.orchestrations_dir)},

@@ -7,7 +7,12 @@ from typing import Any
 import pytest
 
 from sentinel.agents.base import Tool, ToolParameter, ToolResult, ToolSchema
-from sentinel.agents.exceptions import _extract_context, handle_tool_exceptions
+from sentinel.agents.exceptions import (
+    ConfigurationError,
+    ValidationError,
+    _extract_context,
+    handle_tool_exceptions,
+)
 
 
 class MockToolSchema(ToolSchema):
@@ -159,8 +164,13 @@ class TestHandleToolExceptionsDecorator:
         assert result.error_code == "DATA_ERROR"
         assert "missing_key" in result.error
 
-    def test_handles_type_error(self) -> None:
-        """Test that TypeError is caught and converted to ToolResult.fail()."""
+    def test_typeerror_propagates(self) -> None:
+        """Test that TypeError propagates (indicates programming bug).
+
+        TypeError should NOT be caught because it typically indicates a
+        programming bug (wrong argument types) rather than a data or
+        configuration error. Let TypeError propagate so bugs are visible.
+        """
 
         class TypeErrorTool(BaseMockTool):
             @handle_tool_exceptions(
@@ -171,11 +181,44 @@ class TestHandleToolExceptionsDecorator:
                 raise TypeError("Expected string")
 
         tool = TypeErrorTool()
+        with pytest.raises(TypeError, match="Expected string"):
+            tool.execute(issue_key="TEST-1")
+
+    def test_handles_configuration_error(self) -> None:
+        """Test that ConfigurationError is caught and converted to ToolResult.fail()."""
+
+        class ConfigErrorTool(BaseMockTool):
+            @handle_tool_exceptions(
+                error_code="CONFIG_ERROR",
+                error_message_template="Configuration error: {error}",
+            )
+            def execute(self, **kwargs: Any) -> ToolResult:
+                raise ConfigurationError("Missing required field 'api_key'")
+
+        tool = ConfigErrorTool()
         result = tool.execute(issue_key="TEST-1")
 
         assert result.success is False
-        assert result.error_code == "DATA_ERROR"
-        assert "Expected string" in result.error
+        assert result.error_code == "CONFIG_ERROR"
+        assert "Missing required field 'api_key'" in result.error
+
+    def test_handles_validation_error(self) -> None:
+        """Test that ValidationError is caught and converted to ToolResult.fail()."""
+
+        class ValidationErrorTool(BaseMockTool):
+            @handle_tool_exceptions(
+                error_code="VALIDATION_ERROR",
+                error_message_template="Validation error: {error}",
+            )
+            def execute(self, **kwargs: Any) -> ToolResult:
+                raise ValidationError("Issue key must match pattern 'PROJ-\\d+'")
+
+        tool = ValidationErrorTool()
+        result = tool.execute(issue_key="TEST-1")
+
+        assert result.success is False
+        assert result.error_code == "VALIDATION_ERROR"
+        assert "Issue key must match pattern" in result.error
 
     def test_handles_value_error(self) -> None:
         """Test that ValueError is caught and converted to ToolResult.fail()."""
@@ -393,3 +436,47 @@ class TestDecoratorIntegration:
         assert result.error_code == "JIRA_ERROR"
         assert "TEST-123" in result.error
         assert "API connection failed" in result.error
+
+
+class TestExceptionClasses:
+    """Tests for custom exception classes."""
+
+    def test_configuration_error_is_exception(self) -> None:
+        """Test that ConfigurationError is a proper exception."""
+        error = ConfigurationError("Missing required field 'api_key'")
+        assert isinstance(error, Exception)
+        assert str(error) == "Missing required field 'api_key'"
+
+    def test_configuration_error_can_be_raised_and_caught(self) -> None:
+        """Test that ConfigurationError can be raised and caught."""
+        with pytest.raises(ConfigurationError, match="Invalid config"):
+            raise ConfigurationError("Invalid config file format")
+
+    def test_validation_error_is_exception(self) -> None:
+        """Test that ValidationError is a proper exception."""
+        error = ValidationError("Issue key must match pattern 'PROJ-\\d+'")
+        assert isinstance(error, Exception)
+        assert "Issue key must match pattern" in str(error)
+
+    def test_validation_error_can_be_raised_and_caught(self) -> None:
+        """Test that ValidationError can be raised and caught."""
+        with pytest.raises(ValidationError, match="Invalid value"):
+            raise ValidationError("Invalid value for field 'priority'")
+
+    def test_configuration_error_not_caught_by_value_error(self) -> None:
+        """Test that ConfigurationError is not caught by ValueError handler."""
+        try:
+            raise ConfigurationError("Config error")
+        except ValueError:
+            pytest.fail("ConfigurationError should not be caught by ValueError")
+        except ConfigurationError:
+            pass  # Expected
+
+    def test_validation_error_not_caught_by_key_error(self) -> None:
+        """Test that ValidationError is not caught by KeyError handler."""
+        try:
+            raise ValidationError("Validation error")
+        except KeyError:
+            pytest.fail("ValidationError should not be caught by KeyError")
+        except ValidationError:
+            pass  # Expected

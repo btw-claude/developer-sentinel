@@ -248,7 +248,7 @@ class PollCoordinator:
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
                 continue
-            except (KeyError, TypeError, ValueError) as e:
+            except (KeyError, ValueError) as e:
                 logger.error(
                     f"Failed to poll Jira for '{orch.name}' due to data error: {e}",
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
@@ -331,7 +331,7 @@ class PollCoordinator:
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
                 continue
-            except (KeyError, TypeError, ValueError) as e:
+            except (KeyError, ValueError) as e:
                 logger.error(
                     f"Failed to poll GitHub for '{orch.name}' due to data error: {e}",
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},

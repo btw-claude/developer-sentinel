@@ -777,7 +777,7 @@ class ClaudeSdkAgentClient(AgentClient):
         except OSError as e:
             self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Agent execution failed due to I/O error: {e}") from e
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, ValueError) as e:
             self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Agent execution failed due to data error: {e}") from e
         except RuntimeError as e:
@@ -989,7 +989,7 @@ class ClaudeSdkAgentClient(AgentClient):
             except OSError:
                 pass  # Ignore errors when writing error to log
             raise AgentClientError(f"Agent execution failed due to I/O error: {e}") from e
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, ValueError) as e:
             self._circuit_breaker.record_failure(e)
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key}) - ERROR")

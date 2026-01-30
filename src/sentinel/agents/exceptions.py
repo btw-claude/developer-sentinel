@@ -7,8 +7,14 @@ handle_tool_exceptions decorator.
 
 The pattern handles three categories of exceptions:
 - I/O errors (OSError, TimeoutError): Network/filesystem issues
-- Data errors (KeyError, TypeError, ValueError): Invalid data from APIs
+- Configuration errors (ConfigurationError): Configuration/YAML parsing issues
+- Validation errors (ValidationError): Data validation failures
 - Runtime errors (RuntimeError): Unexpected runtime issues
+
+Note: TypeError is intentionally NOT caught as it typically indicates a
+programming bug (wrong argument types) rather than a data or configuration
+error. Let TypeError propagate so bugs are visible rather than being
+swallowed as data errors.
 """
 
 from __future__ import annotations
@@ -25,6 +31,38 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+class ConfigurationError(Exception):
+    """Raised when there's a configuration or YAML parsing issue.
+
+    This exception should be used for:
+    - Missing required configuration values
+    - Invalid configuration file format
+    - YAML parsing errors
+    - Configuration validation failures
+
+    Example:
+        >>> raise ConfigurationError("Missing required field 'api_key' in config")
+    """
+
+    pass
+
+
+class ValidationError(Exception):
+    """Raised when data validation fails.
+
+    This exception should be used for:
+    - Invalid data from external APIs
+    - Missing required fields in API responses
+    - Data format validation failures
+    - Business logic validation errors
+
+    Example:
+        >>> raise ValidationError("Issue key must match pattern 'PROJ-\\d+'")
+    """
+
+    pass
 
 
 def handle_tool_exceptions(
@@ -96,7 +134,27 @@ def handle_tool_exceptions(
                     error_message_template.format(context=context, error=e),
                     error_code,
                 )
-            except (KeyError, TypeError, ValueError) as e:
+            except ConfigurationError as e:
+                context = _extract_context(kwargs)
+                logger.error(
+                    f"Tool {tool_name} failed due to configuration error: {e}",
+                    extra={"tool": tool_name, "error": str(e), "error_type": type(e).__name__},
+                )
+                return ToolResult.fail(
+                    error_message_template.format(context=context, error=e),
+                    error_code,
+                )
+            except ValidationError as e:
+                context = _extract_context(kwargs)
+                logger.error(
+                    f"Tool {tool_name} failed due to validation error: {e}",
+                    extra={"tool": tool_name, "error": str(e), "error_type": type(e).__name__},
+                )
+                return ToolResult.fail(
+                    error_message_template.format(context=context, error=e),
+                    error_code,
+                )
+            except (KeyError, ValueError) as e:
                 context = _extract_context(kwargs)
                 logger.error(
                     f"Tool {tool_name} failed due to data error: {e}",
