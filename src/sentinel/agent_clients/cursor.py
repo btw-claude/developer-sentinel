@@ -261,6 +261,10 @@ class CursorAgentClient(AgentClient):
             return AgentRunResult(response=response, workdir=workdir)
 
         except subprocess.TimeoutExpired:
+            logger.debug(
+                f"Cursor subprocess timeout: timeout={timeout_seconds}s, "
+                f"workdir={workdir}, mode={(effective_mode or self._default_mode).value}"
+            )
             logger.error(f"Cursor CLI timed out after {timeout_seconds}s")
             msg = f"Cursor agent execution timed out after {timeout_seconds}s"
             raise AgentTimeoutError(msg) from None
