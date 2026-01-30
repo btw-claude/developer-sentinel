@@ -57,6 +57,17 @@ DEFAULT_MAX_FUTURES = 1000
 # Warning threshold for long-running futures (seconds)
 LONG_RUNNING_WARNING_THRESHOLD = 60
 
+# Minimum interval between repeated warnings for the same long-running future (seconds)
+# After the first warning, subsequent warnings are logged at DEBUG level until
+# this interval has elapsed, then a new WARNING is logged. This prevents log
+# flooding while still providing visibility into long-running tasks (DS-481).
+LONG_RUNNING_WARNING_INTERVAL = 300
+
+# Default fraction of stale futures to remove when max_futures limit is reached.
+# When the limit is hit, we remove this fraction of stale futures (oldest first)
+# to create headroom for new work while avoiding thrashing (DS-481).
+DEFAULT_STALE_REMOVAL_FRACTION = 0.5
+
 
 @dataclass
 class TrackedFuture:
@@ -66,11 +77,15 @@ class TrackedFuture:
         future: The actual Future object.
         created_at: Timestamp when the future was created (monotonic time).
         description: Optional description for logging purposes.
+        last_warned_at: Timestamp when a long-running warning was last logged for this
+            future (monotonic time). None if never warned. Used to deduplicate warnings
+            and avoid log noise for legitimately long-running tasks (DS-481).
     """
 
     future: Future[Any]
     created_at: float = field(default_factory=time.monotonic)
     description: str = ""
+    last_warned_at: float | None = field(default=None)
 
     def age_seconds(self) -> float:
         """Get the age of this future in seconds."""
@@ -112,6 +127,7 @@ class ExecutionManager:
         max_concurrent_executions: int,
         future_ttl_seconds: float = DEFAULT_FUTURE_TTL_SECONDS,
         max_futures: int = DEFAULT_MAX_FUTURES,
+        stale_removal_fraction: float = DEFAULT_STALE_REMOVAL_FRACTION,
     ) -> None:
         """Initialize the execution manager.
 
@@ -122,10 +138,16 @@ class ExecutionManager:
             max_futures: Maximum number of futures to track. When exceeded, oldest
                 completed futures are removed first, then oldest stale futures.
                 Default is 1000.
+            stale_removal_fraction: Fraction of stale futures to remove when max_futures
+                limit is reached (0.0 to 1.0). Default is 0.5 (50%). This creates headroom
+                for new work while avoiding excessive cleanup thrashing. Higher values
+                remove more futures at once (fewer cleanups, more aggressive), while lower
+                values remove fewer (more frequent cleanups, gentler). Added in DS-481.
         """
         self._max_concurrent_executions = max_concurrent_executions
         self._future_ttl_seconds = future_ttl_seconds
         self._max_futures = max_futures
+        self._stale_removal_fraction = max(0.0, min(1.0, stale_removal_fraction))
         self._thread_pool: ThreadPoolExecutor | None = None
         self._active_futures: list[TrackedFuture] = []
         self._futures_lock = threading.Lock()
@@ -145,6 +167,11 @@ class ExecutionManager:
     def max_futures(self) -> int:
         """Get the maximum number of futures to track."""
         return self._max_futures
+
+    @property
+    def stale_removal_fraction(self) -> float:
+        """Get the fraction of stale futures to remove when limit is reached."""
+        return self._stale_removal_fraction
 
     @property
     def stale_futures_cleaned(self) -> int:
@@ -265,6 +292,25 @@ class ExecutionManager:
 
         This method should be called while holding _futures_lock.
         Removes completed futures first, then stale futures if needed.
+
+        Stale Future Removal Strategy (DS-481):
+            When the max_futures limit is reached and we still have too many futures
+            after removing completed ones, we remove a configurable fraction of stale
+            futures (controlled by stale_removal_fraction, default 50%).
+
+            Rationale for removing a fraction rather than all stale futures:
+            1. **Headroom Creation**: Removing a fraction creates sufficient headroom
+               for new work without being overly aggressive. If we only removed one
+               future at a time, we'd trigger cleanup on every submit.
+            2. **Thrashing Prevention**: Removing too few futures would cause frequent
+               cleanups (thrashing). Removing approximately half strikes a balance.
+            3. **Graceful Degradation**: Stale futures may complete eventually. By
+               keeping some, we give them a chance to finish before being evicted.
+            4. **Predictable Behavior**: A consistent fraction makes the cleanup
+               behavior predictable and easier to tune via configuration.
+
+            The fraction is configurable via the stale_removal_fraction parameter
+            to allow tuning based on workload characteristics.
         """
         # First, remove completed futures
         original_count = len(self._active_futures)
@@ -274,9 +320,12 @@ class ExecutionManager:
         if len(self._active_futures) >= self._max_futures:
             stale = [tf for tf in self._active_futures if tf.is_stale(self._future_ttl_seconds)]
             if stale:
-                # Sort by age (oldest first) and remove oldest stale futures
+                # Sort by age (oldest first) and remove a fraction of stale futures.
+                # We use the configured fraction (default 50%) plus 1 to ensure we
+                # always remove at least one future when over the limit.
                 stale.sort(key=lambda tf: tf.created_at)
-                stale_to_remove = {id(tf) for tf in stale[: len(stale) // 2 + 1]}
+                num_to_remove = int(len(stale) * self._stale_removal_fraction) + 1
+                stale_to_remove = {id(tf) for tf in stale[:num_to_remove]}
                 removed_count = len(stale_to_remove)
                 self._active_futures = [
                     tf for tf in self._active_futures if id(tf) not in stale_to_remove
@@ -284,7 +333,8 @@ class ExecutionManager:
                 self._stale_futures_cleaned += removed_count
                 logger.warning(
                     f"Max futures limit ({self._max_futures}) reached. "
-                    f"Removed {removed_count} stale futures."
+                    f"Removed {removed_count} stale futures "
+                    f"({self._stale_removal_fraction:.0%} of {len(stale)} stale)."
                 )
 
         removed = original_count - len(self._active_futures)
@@ -346,16 +396,41 @@ class ExecutionManager:
         """Log warnings for futures that have been running for a long time.
 
         This method should be called while holding _futures_lock.
+
+        Warning Deduplication Strategy (DS-481):
+            To avoid log flooding for legitimately long-running tasks, we track
+            when each future was last warned about via the `last_warned_at` field.
+
+            - First warning: Logged at WARNING level, updates `last_warned_at`
+            - Subsequent checks within LONG_RUNNING_WARNING_INTERVAL: Logged at DEBUG
+            - After LONG_RUNNING_WARNING_INTERVAL has elapsed: Logged at WARNING again
+
+            This ensures visibility into long-running tasks without creating excessive
+            log noise when collect_completed_results() is called frequently.
         """
+        current_time = time.monotonic()
         for tracked in self._active_futures:
             if not tracked.future.done():
                 age = tracked.age_seconds()
                 if age > LONG_RUNNING_WARNING_THRESHOLD:
                     desc = tracked.description or "unnamed task"
-                    logger.warning(
+                    message = (
                         f"Long-running future detected: {desc} "
                         f"(running for {age:.1f}s)"
                     )
+
+                    # Determine whether to log at WARNING or DEBUG level
+                    if tracked.last_warned_at is None:
+                        # First warning for this future
+                        logger.warning(message)
+                        tracked.last_warned_at = current_time
+                    elif current_time - tracked.last_warned_at >= LONG_RUNNING_WARNING_INTERVAL:
+                        # Enough time has passed since last warning
+                        logger.warning(message)
+                        tracked.last_warned_at = current_time
+                    else:
+                        # Recently warned, log at DEBUG to reduce noise
+                        logger.debug(message)
 
     def _cleanup_stale_futures(self) -> int:
         """Clean up futures that have exceeded the TTL threshold.
@@ -568,4 +643,5 @@ class ExecutionManager:
                 "total_stale_cleaned": self._stale_futures_cleaned,
                 "ttl_seconds": self._future_ttl_seconds,
                 "max_futures": self._max_futures,
+                "stale_removal_fraction": self._stale_removal_fraction,
             }
