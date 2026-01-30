@@ -7,12 +7,13 @@ the codebase with type-safe constants.
 Usage:
     from sentinel.types import TriggerSource, AgentType
 
-    # Enum usage
+    # Enum usage - since TriggerSource inherits from str, direct comparison works
     if trigger.source == TriggerSource.JIRA:
         ...
 
-    # String value access for YAML compatibility
-    source_str = TriggerSource.JIRA.value  # "jira"
+    # String value access - .value is redundant since enum inherits from str
+    # TriggerSource.JIRA == "jira" and str(TriggerSource.JIRA) == "jira"
+    source_str = TriggerSource.JIRA  # Can be used directly as "jira"
 
     # Validation
     TriggerSource.is_valid("jira")  # True

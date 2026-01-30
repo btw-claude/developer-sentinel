@@ -14,7 +14,14 @@ import yaml
 
 from sentinel.branch_validation import validate_branch_name_core
 from sentinel.logging import get_logger
-from sentinel.types import AgentType, CursorMode, TriggerSource
+from sentinel.types import (
+    AgentType,
+    AgentTypeLiteral,
+    CursorMode,
+    CursorModeLiteral,
+    TriggerSource,
+    TriggerSourceLiteral,
+)
 
 logger = get_logger(__name__)
 
@@ -86,7 +93,7 @@ class TriggerConfig:
     Note: repo, query_filter, and tags are DEPRECATED for GitHub triggers.
     """
 
-    source: Literal["jira", "github"] = TriggerSource.JIRA.value
+    source: TriggerSourceLiteral = "jira"
     project: str = ""
     jql_filter: str = ""
     tags: list[str] = field(default_factory=list)
@@ -226,8 +233,8 @@ class AgentConfig:
     github: GitHubContext | None = None
     timeout_seconds: int | None = None
     model: str | None = None
-    agent_type: Literal["claude", "cursor"] | None = None
-    cursor_mode: Literal["agent", "plan", "ask"] | None = None
+    agent_type: AgentTypeLiteral | None = None
+    cursor_mode: CursorModeLiteral | None = None
 
 
 @dataclass
