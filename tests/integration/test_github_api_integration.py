@@ -207,7 +207,9 @@ class TestGitHubProjectsIntegration:
                 scope="organization",
             )
 
-        assert "not found" in str(exc_info.value).lower()
+        # Error message may vary: "not found" or "could not resolve"
+        error_msg = str(exc_info.value).lower()
+        assert "not found" in error_msg or "could not resolve" in error_msg
 
     @pytest.mark.integration
     def test_get_project_with_invalid_scope(
@@ -291,16 +293,16 @@ class TestGitHubRestTagClientIntegration:
         self, github_tag_client: GitHubRestTagClient
     ) -> None:
         """Circuit breaker should track tag client operations."""
-        # Attempt to remove a non-existent label from a public repo
-        # This should succeed (404 is handled gracefully)
-        github_tag_client.remove_label(
+        # Use a read operation (get_current_labels) to test circuit breaker tracking
+        # Write operations like remove_label require repo permissions
+        labels = github_tag_client.get_current_labels(
             owner="microsoft",
             repo="vscode",
             issue_number=1,  # Issue #1 exists
-            label="nonexistent-label-xyz123",
         )
 
         # Circuit breaker should record this as success
+        assert isinstance(labels, list)
         assert github_tag_client.circuit_breaker.state == CircuitState.CLOSED
         assert github_tag_client.circuit_breaker.metrics.successful_calls > 0
 
