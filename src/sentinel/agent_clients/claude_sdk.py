@@ -669,6 +669,9 @@ class ClaudeSdkAgentClient(AgentClient):
                 )
 
         except subprocess.TimeoutExpired as e:
+            logger.debug(
+                f"Subprocess timeout expired: command={e.cmd}, timeout={timeout}s"
+            )
             raise AgentTimeoutError(
                 f"Git operation timed out after {timeout}s: {' '.join(e.cmd)}"
             ) from e
@@ -769,6 +772,7 @@ class ClaudeSdkAgentClient(AgentClient):
             raise
         except TimeoutError as e:
             self._circuit_breaker.record_failure(e)
+            logger.debug(f"Agent execution timeout: timeout={timeout}s, error={e}")
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s") from e
         except OSError as e:
             self._circuit_breaker.record_failure(e)
@@ -969,6 +973,9 @@ class ClaudeSdkAgentClient(AgentClient):
             self._circuit_breaker.record_failure(e)
             metrics.finish()
             metrics.log_metrics(f"_run_with_log ({issue_key}) - TIMEOUT")
+            logger.debug(
+                f"Agent execution timeout: issue_key={issue_key}, timeout={timeout}s, error={e}"
+            )
             raise AgentTimeoutError(f"Agent execution timed out after {timeout}s") from e
         except OSError as e:
             self._circuit_breaker.record_failure(e)
