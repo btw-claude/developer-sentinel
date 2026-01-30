@@ -296,6 +296,7 @@ class ClaudeRateLimiter:
             warning_threshold=warning_threshold,
         )
         self._metrics = RateLimiterMetrics()
+        self._metrics_lock = threading.Lock()  # Lock for thread-safe metrics access
         self._requests_per_minute = requests_per_minute
         self._requests_per_hour = requests_per_hour
         self._warning_threshold = warning_threshold
@@ -472,7 +473,8 @@ class ClaudeRateLimiter:
         Returns:
             Dictionary with metrics including request counts and timing.
         """
-        metrics = self._metrics.to_dict()
+        with self._metrics_lock:
+            metrics = self._metrics.to_dict()
         metrics["bucket_status"] = self._bucket.get_status()
         metrics["enabled"] = self._enabled
         metrics["strategy"] = self._strategy.value
@@ -487,19 +489,17 @@ class ClaudeRateLimiter:
         """Reset collected metrics to zero.
 
         Note:
-            This method should only be called when no requests are currently
-            in flight to avoid potential race conditions with metrics recording.
-            Calling this while requests are being processed may result in
-            inconsistent metrics state.
-
-            For safer resets, consider using the `pause_metrics()` context manager:
+            This method is thread-safe and can be called concurrently with
+            acquire() or acquire_async() calls. However, for consistent metrics
+            snapshots, consider using the `pause_metrics()` context manager:
 
             ```python
             with limiter.pause_metrics():
                 limiter.reset_metrics()
             ```
         """
-        self._metrics = RateLimiterMetrics()
+        with self._metrics_lock:
+            self._metrics = RateLimiterMetrics()
 
     @contextmanager
     def pause_metrics(self) -> Generator[None, None, None]:
@@ -522,41 +522,36 @@ class ClaudeRateLimiter:
             None
 
         Note:
-            This context manager achieves thread-safety through object reference
-            swapping rather than an explicit lock. The atomicity of this operation
-            relies on CPython's Global Interpreter Lock (GIL), which ensures that
-            attribute assignment is atomic. Any requests that start while metrics
-            are paused will not have their metrics recorded. Requests that were
-            already in progress when pause_metrics() was entered may still record
-            metrics for their completion.
-
-            This implementation is compatible with CPython and PyPy (which also has
-            a GIL). However, it may not be thread-safe on interpreters that lack a
-            GIL, such as Jython, IronPython, or experimental free-threaded Python
-            3.13+ builds (python -X gil=0). If cross-interpreter compatibility
-            is required, an explicit lock should be added.
+            This context manager achieves thread-safety through an explicit lock,
+            ensuring safe operation across all Python interpreters including
+            free-threaded Python 3.13+ builds (python -X gil=0). Any requests
+            that start while metrics are paused will not have their metrics
+            recorded. Requests that were already in progress when pause_metrics()
+            was entered may still record metrics for their completion.
 
         See Also:
             :class:`_PausedMetrics`: The no-op metrics class used internally to
                 discard recordings during the pause period.
         """
-        # Store the current metrics object reference
-        old_metrics = self._metrics
+        with self._metrics_lock:
+            # Store the current metrics object reference
+            old_metrics = self._metrics
 
-        # Create a "paused" metrics object that doesn't actually record anything
-        paused_metrics = _PausedMetrics()
+            # Create a "paused" metrics object that doesn't actually record anything
+            paused_metrics = _PausedMetrics()
 
-        # Swap in the paused metrics
-        self._metrics = paused_metrics
+            # Swap in the paused metrics
+            self._metrics = paused_metrics
 
         try:
             yield
         finally:
-            # If reset_metrics() was called, self._metrics will be a new RateLimiterMetrics
-            # If not called, self._metrics will still be paused_metrics
-            # In either case, if it's still the paused one, restore the old metrics
-            if self._metrics is paused_metrics:
-                self._metrics = old_metrics
+            with self._metrics_lock:
+                # If reset_metrics() was called, self._metrics will be a new RateLimiterMetrics
+                # If not called, self._metrics will still be paused_metrics
+                # In either case, if it's still the paused one, restore the old metrics
+                if self._metrics is paused_metrics:
+                    self._metrics = old_metrics
 
 
 class _PausedMetrics(RateLimiterMetrics):
