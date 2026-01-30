@@ -1,0 +1,57 @@
+# Example Orchestration for Docker Deployment
+#
+# This is a sample orchestration to verify your Docker setup is working.
+# Replace with your actual workflow configurations.
+
+orchestrations:
+  - name: "docker-test"
+
+    # Disabled by default - enable after configuring
+    enabled: false
+
+    trigger:
+      source: jira
+      project: "DEMO"           # Change to your Jira project key
+      tags:
+        - "test-docker"
+
+    agent:
+      prompt: |
+        You are a test agent running in Docker. Process issue {jira_issue_key}.
+
+        ## Issue Details
+        **Summary:** {jira_summary}
+
+        **Description:**
+        {jira_description}
+
+        ## Your Task
+        1. Verify you can access the Jira API
+        2. Add a test comment to confirm Docker deployment is working
+        3. The comment should include:
+           - Timestamp of processing
+           - Confirmation that the agent executed successfully
+
+        End with SUCCESS after adding the comment.
+
+      tools:
+        - jira
+
+      timeout_seconds: 60
+
+    retry:
+      max_attempts: 1
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+
+    on_start:
+      add_tag: "docker-processing"
+
+    on_complete:
+      add_tag: "docker-verified"
+
+    on_failure:
+      add_tag: "docker-failed"

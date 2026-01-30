@@ -1,0 +1,69 @@
+# Documentation Update Orchestration
+#
+# This workflow:
+# 1. Monitors Jira for issues tagged "needs-docs"
+# 2. Updates Confluence documentation based on issue content
+# 3. Posts a summary on the Jira issue
+
+orchestrations:
+  - name: "docs-update"
+
+    trigger:
+      source: jira
+      project: "DEMO"           # Change to your Jira project key
+      tags:
+        - "needs-docs"
+
+    agent:
+      prompt: |
+        You are a technical documentation specialist. Update documentation for {jira_issue_key}.
+
+        ## Issue Details
+        **Summary:** {jira_summary}
+        **Labels:** {jira_labels}
+
+        **Description:**
+        {jira_description}
+
+        ## Your Task
+        1. Analyze the issue to understand what documentation needs updating
+        2. Search Confluence for relevant existing pages
+        3. Update or create documentation as needed:
+           - Keep language clear and concise
+           - Include code examples where helpful
+           - Update any related pages for consistency
+        4. Post a comment on the Jira issue summarizing what was updated
+
+        ## Guidelines
+        - Follow existing documentation style
+        - Include screenshots for UI changes if applicable
+        - Link between related documentation pages
+        - Update any "last updated" timestamps
+
+        End your response with SUCCESS after updating documentation,
+        or FAILURE if you couldn't complete the task.
+
+      tools:
+        - jira
+        - confluence
+
+      timeout_seconds: 300       # 5 minutes
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+        - "documentation updated"
+      failure_patterns:
+        - "FAILURE"
+        - "COULD_NOT_COMPLETE:"
+        - "ERROR:"
+
+    on_start:
+      add_tag: "sentinel-documenting"
+
+    on_complete:
+      add_tag: "docs-updated"
+
+    on_failure:
+      add_tag: "docs-update-failed"

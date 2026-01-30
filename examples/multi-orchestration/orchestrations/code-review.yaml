@@ -1,0 +1,85 @@
+# Code Review Orchestration with GitHub Integration
+#
+# This workflow:
+# 1. Monitors Jira for issues tagged "needs-code-review"
+# 2. Reviews linked GitHub PRs
+# 3. Posts feedback on both Jira and GitHub
+# 4. Uses outcome-based tagging (approved vs changes-requested)
+
+orchestrations:
+  - name: "code-review"
+
+    trigger:
+      source: jira
+      project: "DEMO"           # Change to your Jira project key
+      tags:
+        - "needs-code-review"
+
+    agent:
+      prompt: |
+        You are a senior code reviewer. Review the code changes for {jira_issue_key}.
+
+        ## Issue Details
+        **Summary:** {jira_summary}
+        **Status:** {jira_status}
+        **Assignee:** {jira_assignee}
+
+        **Description:**
+        {jira_description}
+
+        ## Repository Context
+        **Repository:** {github_org}/{github_repo}
+
+        ## Your Task
+        1. Find the linked GitHub pull request
+        2. Review the code changes thoroughly:
+           - Code correctness and logic
+           - Security vulnerabilities
+           - Performance considerations
+           - Test coverage
+           - Code style and maintainability
+        3. Post your review on the GitHub PR
+        4. Add a summary comment on the Jira issue
+
+        ## Response Format
+        End your response with one of:
+        - "APPROVED: [brief summary]" if the code is ready to merge
+        - "CHANGES REQUESTED: [what needs to change]" if revisions are needed
+
+      tools:
+        - jira
+        - github
+
+      github:
+        host: "github.com"
+        org: "your-org"          # Change to your GitHub org
+        repo: "your-repo"        # Change to your repository
+
+      timeout_seconds: 600       # 10 minutes for complex reviews
+
+    retry:
+      max_attempts: 3
+      failure_patterns:
+        - "ERROR:"
+        - "API_ERROR"
+        - "COULD_NOT_COMPLETE:"
+
+    # Outcome-based tagging: different tags for different results
+    outcomes:
+      - name: approved
+        patterns:
+          - "APPROVED"
+          - "LGTM"
+        add_tag: "code-reviewed"
+
+      - name: changes-requested
+        patterns:
+          - "CHANGES REQUESTED"
+          - "REQUEST CHANGES"
+        add_tag: "changes-requested"
+
+    on_start:
+      add_tag: "sentinel-reviewing"
+
+    on_failure:
+      add_tag: "review-failed"
