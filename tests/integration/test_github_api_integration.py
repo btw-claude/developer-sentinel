@@ -358,7 +358,12 @@ class TestGitHubApiPerformance:
             try:
                 github_client.search_issues("repo:microsoft/vscode is:issue", max_results=1)
                 successful_calls += 1
-            except Exception:
+            except (httpx.HTTPError, GitHubClientError):
+                # Handle HTTP-related errors (network issues, status errors)
+                # and GitHub-specific client errors (rate limits, API errors)
+                pass
+            except OSError:
+                # Handle OS-level network errors (connection refused, DNS failure)
                 pass
 
         assert successful_calls >= 2, f"Only {successful_calls}/3 calls succeeded"

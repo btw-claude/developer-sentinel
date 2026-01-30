@@ -363,7 +363,7 @@ class TestSentinelEagerPolling:
             wait_calls.append(len(futures) if futures else 0)
             return original_wait(futures, timeout=timeout, return_when=return_when)
 
-        sentinel_exception: Exception | None = None
+        sentinel_exception: BaseException | None = None
 
         def run_sentinel() -> None:
             nonlocal sentinel_exception
@@ -374,7 +374,9 @@ class TestSentinelEagerPolling:
                     patch("sentinel.main.wait", side_effect=mock_wait),
                 ):
                     sentinel.run()
-            except Exception as e:
+            except BaseException as e:
+                # Intentional broad catch: Test observer needs to capture any exception
+                # from the threaded sentinel execution for assertion and debugging.
                 sentinel_exception = e
 
         sentinel_thread = threading.Thread(target=run_sentinel, daemon=True)
@@ -443,7 +445,7 @@ class TestSentinelEagerPolling:
         def mock_signal(signum: int, handler: SignalHandler) -> None:
             pass
 
-        sentinel_exception: Exception | None = None
+        sentinel_exception: BaseException | None = None
 
         def run_sentinel() -> None:
             nonlocal sentinel_exception
@@ -453,7 +455,9 @@ class TestSentinelEagerPolling:
                     patch("signal.signal", side_effect=mock_signal),
                 ):
                     sentinel.run()
-            except Exception as e:
+            except BaseException as e:
+                # Intentional broad catch: Test observer needs to capture any exception
+                # from the threaded sentinel execution for assertion and debugging.
                 sentinel_exception = e
 
         sentinel_thread = threading.Thread(target=run_sentinel, daemon=True)
