@@ -92,6 +92,29 @@ assert ("PROJ-123", "needs-review") in tag_client.add_calls
 assert ("PROJ-123", "needs-review") in tag_client.remove_calls
 ```
 
+##### Observer Pattern
+
+The `MockTagClient` implements a complete observer pattern for label removal
+notifications. Observers can be registered to receive callbacks when labels
+are removed, and can also be unregistered when no longer needed:
+
+```python
+tag_client = MockTagClient()
+
+# Define an observer callback
+def on_label_removed(issue_key: str, label: str) -> None:
+    print(f"Label {label} removed from {issue_key}")
+
+# Register the observer
+tag_client.register_observer(on_label_removed)
+
+# The callback will be invoked when labels are removed
+tag_client.remove_label("PROJ-123", "needs-review")
+
+# Unregister when no longer needed (prevents memory leaks in reused mocks)
+tag_client.unregister_observer(on_label_removed)
+```
+
 #### MockJiraClient
 
 Simulates Jira search operations. Automatically filters out processed issues

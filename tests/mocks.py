@@ -204,6 +204,11 @@ class MockTagClient(JiraTagClient):
     Supports an observer pattern to notify interested parties (like MockJiraClient)
     when labels are removed, allowing those mocks to update their own state.
 
+    Provides both register_observer() and unregister_observer() methods to allow
+    observers to be added and removed. This completes the observer pattern
+    implementation and prevents potential memory leaks if mocks are reused
+    across multiple tests.
+
     Attributes:
         labels: Dict mapping issue keys to their current labels.
         add_calls: List of (issue_key, label) tuples for add operations.
@@ -229,6 +234,25 @@ class MockTagClient(JiraTagClient):
             observer: Callback function that takes (issue_key, label) parameters.
         """
         self._observers.append(observer)
+
+    def unregister_observer(self, observer: LabelRemovedObserver) -> bool:
+        """Unregister an observer from label removal notifications.
+
+        This method allows observers to be removed, completing the observer pattern
+        implementation and preventing potential memory leaks if mocks are reused
+        across multiple tests.
+
+        Args:
+            observer: The callback function to remove from the observer list.
+
+        Returns:
+            True if the observer was found and removed, False otherwise.
+        """
+        try:
+            self._observers.remove(observer)
+            return True
+        except ValueError:
+            return False
 
     def add_label(self, issue_key: str, label: str) -> None:
         self.add_calls.append((issue_key, label))
