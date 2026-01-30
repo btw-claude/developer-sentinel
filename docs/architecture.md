@@ -554,7 +554,9 @@ INFO  circuit_breaker.jira: State changed from HALF_OPEN to CLOSED (recovery suc
 
 **Prometheus-Style Metrics (Optional):**
 
-For production deployments, expose metrics via a `/metrics` endpoint:
+For production deployments, expose metrics via a `/metrics` endpoint. For more information on setting up Prometheus and AlertManager, see:
+- [Prometheus Documentation](https://prometheus.io/docs/introduction/overview/)
+- [AlertManager Documentation](https://prometheus.io/docs/alerting/latest/alertmanager/)
 ```python
 # Example metrics to track
 sentinel_circuit_breaker_state{service="jira"} 0  # 0=CLOSED, 1=OPEN, 2=HALF_OPEN
@@ -589,9 +591,30 @@ Track failure rates over time windows for trending and alerting:
 ```python
 # Example: Track failures per 5-minute window
 from collections import deque
+from threading import Lock
 from time import time
 
 class FailureRateTracker:
+    """
+    Tracks failure rates over a sliding time window.
+
+    Thread Safety Note: This implementation is NOT thread-safe as written.
+    While `deque` operations like `append()` and `popleft()` are individually
+    atomic in CPython due to the GIL, compound operations (read-then-write)
+    are not. For production multi-threaded usage, add a threading.Lock:
+
+        def __init__(self, window_seconds: int = 300):
+            self._lock = Lock()
+            # ... rest of init
+
+        def record_failure(self) -> None:
+            with self._lock:
+                self._cleanup()
+                self.failures.append(time())
+
+    Alternatively, consider using `queue.Queue` for thread-safe operations
+    or restrict usage to a single thread.
+    """
     def __init__(self, window_seconds: int = 300):
         self.window = window_seconds
         self.failures: deque[float] = deque()
@@ -893,6 +916,8 @@ This section provides recommended thresholds and alerting strategies for error h
 | All Circuits Open | All external service circuits are OPEN | Critical | Major incident, likely network or infrastructure issue |
 
 **Alerting Rules (Prometheus/AlertManager Style):**
+
+For detailed configuration syntax and options, see [Prometheus Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) and [AlertManager Configuration](https://prometheus.io/docs/alerting/latest/configuration/).
 
 ```yaml
 groups:
