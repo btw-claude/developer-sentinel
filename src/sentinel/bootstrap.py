@@ -24,7 +24,7 @@ from sentinel.config import Config, load_config
 from sentinel.github_poller import GitHubClient
 from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
 from sentinel.logging import get_logger, setup_logging
-from sentinel.orchestration import Orchestration, load_orchestrations
+from sentinel.orchestration import Orchestration, OrchestrationError, load_orchestrations
 from sentinel.poller import JiraClient
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.sdk_clients import JiraSdkClient, JiraSdkTagClient
@@ -203,8 +203,23 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
     logger.info(f"Loading orchestrations from {config.orchestrations_dir}")
     try:
         orchestrations = load_orchestrations(config.orchestrations_dir)
-    except Exception as e:
-        logger.error(f"Failed to load orchestrations: {e}")
+    except OSError as e:
+        logger.error(
+            f"Failed to load orchestrations due to file system error: {e}",
+            extra={"orchestrations_dir": str(config.orchestrations_dir)},
+        )
+        return None
+    except (KeyError, TypeError, ValueError) as e:
+        logger.error(
+            f"Failed to load orchestrations due to configuration error: {e}",
+            extra={"orchestrations_dir": str(config.orchestrations_dir)},
+        )
+        return None
+    except OrchestrationError as e:
+        logger.error(
+            f"Failed to load orchestrations: {e}",
+            extra={"orchestrations_dir": str(config.orchestrations_dir)},
+        )
         return None
 
     if not orchestrations:

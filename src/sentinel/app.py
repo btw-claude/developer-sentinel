@@ -55,8 +55,17 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
     except ImportError as e:
         logger.warning(f"Dashboard dependencies not available, skipping dashboard: {e}")
         return None
-    except Exception as e:
-        logger.error(f"Failed to start dashboard server: {e}")
+    except OSError as e:
+        logger.error(
+            f"Failed to start dashboard server due to network/OS error: {e}",
+            extra={"host": config.dashboard_host, "port": config.dashboard_port},
+        )
+        return None
+    except RuntimeError as e:
+        logger.error(
+            f"Failed to start dashboard server due to runtime error: {e}",
+            extra={"host": config.dashboard_host, "port": config.dashboard_port},
+        )
         return None
 
 

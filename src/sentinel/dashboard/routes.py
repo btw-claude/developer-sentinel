@@ -593,10 +593,28 @@ def create_routes(
                     "event": "initial",
                     "data": json.dumps({"type": "initial", "content": content}),
                 }
-            except Exception as e:
+            except OSError as e:
+                logger.warning(
+                    "Failed to read log file %s/%s: %s",
+                    orchestration,
+                    filename,
+                    e,
+                )
                 yield {
                     "event": "error",
-                    "data": json.dumps({"error": str(e)}),
+                    "data": json.dumps({"error": f"I/O error: {e}"}),
+                }
+                return
+            except UnicodeDecodeError as e:
+                logger.warning(
+                    "Failed to decode log file %s/%s: %s",
+                    orchestration,
+                    filename,
+                    e,
+                )
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"error": f"Encoding error: {e}"}),
                 }
                 return
 
@@ -643,13 +661,21 @@ def create_routes(
                         last_size = current_size
                         last_mtime = current_mtime
 
-                except Exception:
+                except OSError as e:
                     # Log file access errors for debugging
                     logger.warning(
-                        "Error accessing log file %s/%s",
+                        "I/O error accessing log file %s/%s: %s",
                         orchestration,
                         filename,
-                        exc_info=True,
+                        e,
+                    )
+                except UnicodeDecodeError as e:
+                    # Log encoding errors for debugging
+                    logger.warning(
+                        "Encoding error reading log file %s/%s: %s",
+                        orchestration,
+                        filename,
+                        e,
                     )
 
         return EventSourceResponse(event_generator())

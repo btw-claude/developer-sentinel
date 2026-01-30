@@ -375,19 +375,74 @@ class Sentinel:
             )
             try:
                 self.tag_manager.apply_failure_tags(issue_key, orchestration)
-            except Exception as tag_error:
-                logger.error(f"Failed to apply failure tags: {tag_error}")
+            except (OSError, TimeoutError) as tag_error:
+                logger.error(
+                    f"Failed to apply failure tags due to I/O error: {tag_error}",
+                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
+                )
+            except (KeyError, TypeError, ValueError) as tag_error:
+                logger.error(
+                    f"Failed to apply failure tags due to data error: {tag_error}",
+                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
+                )
             return None
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             self._log_for_orchestration(
                 orchestration.name,
                 logging.ERROR,
-                f"Failed to execute '{orchestration.name}' for {issue_key}: {e}",
+                f"Failed to execute '{orchestration.name}' for {issue_key} due to I/O error: {e}",
             )
             try:
                 self.tag_manager.apply_failure_tags(issue_key, orchestration)
-            except Exception as tag_error:
-                logger.error(f"Failed to apply failure tags: {tag_error}")
+            except (OSError, TimeoutError) as tag_error:
+                logger.error(
+                    f"Failed to apply failure tags due to I/O error: {tag_error}",
+                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
+                )
+            except (KeyError, TypeError, ValueError) as tag_error:
+                logger.error(
+                    f"Failed to apply failure tags due to data error: {tag_error}",
+                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
+                )
+            return None
+        except RuntimeError as e:
+            self._log_for_orchestration(
+                orchestration.name,
+                logging.ERROR,
+                f"Failed to execute '{orchestration.name}' for {issue_key} "
+                f"due to runtime error: {e}",
+            )
+            try:
+                self.tag_manager.apply_failure_tags(issue_key, orchestration)
+            except (OSError, TimeoutError) as tag_error:
+                logger.error(
+                    f"Failed to apply failure tags due to I/O error: {tag_error}",
+                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
+                )
+            except (KeyError, TypeError, ValueError) as tag_error:
+                logger.error(
+                    f"Failed to apply failure tags due to data error: {tag_error}",
+                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
+                )
+            return None
+        except (KeyError, TypeError, ValueError) as e:
+            self._log_for_orchestration(
+                orchestration.name,
+                logging.ERROR,
+                f"Failed to execute '{orchestration.name}' for {issue_key} due to data error: {e}",
+            )
+            try:
+                self.tag_manager.apply_failure_tags(issue_key, orchestration)
+            except (OSError, TimeoutError) as tag_error:
+                logger.error(
+                    f"Failed to apply failure tags due to I/O error: {tag_error}",
+                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
+                )
+            except (KeyError, TypeError, ValueError) as tag_error:
+                logger.error(
+                    f"Failed to apply failure tags due to data error: {tag_error}",
+                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
+                )
             return None
         finally:
             if version is not None:
@@ -480,15 +535,54 @@ class Sentinel:
                         if result is not None:
                             all_results.append(result)
 
-                except Exception as e:
+                except (OSError, TimeoutError) as e:
                     if version is not None:
                         version.decrement_executions()
                     self._state_tracker.decrement_per_orch_count(matched_orch.name)
-                    logger.error(f"Failed to submit '{matched_orch.name}' for {issue_key}: {e}")
+                    logger.error(
+                        f"Failed to submit '{matched_orch.name}' for {issue_key} "
+                        f"due to I/O error: {e}",
+                        extra={"issue_key": issue_key, "orchestration": matched_orch.name},
+                    )
                     try:
                         self.tag_manager.apply_failure_tags(issue_key, matched_orch)
-                    except Exception as tag_error:
-                        logger.error(f"Failed to apply failure tags: {tag_error}")
+                    except (OSError, TimeoutError, KeyError, TypeError, ValueError) as tag_error:
+                        logger.error(
+                            f"Failed to apply failure tags: {tag_error}",
+                            extra={"issue_key": issue_key, "orchestration": matched_orch.name},
+                        )
+                except RuntimeError as e:
+                    if version is not None:
+                        version.decrement_executions()
+                    self._state_tracker.decrement_per_orch_count(matched_orch.name)
+                    logger.error(
+                        f"Failed to submit '{matched_orch.name}' for {issue_key} "
+                        f"due to runtime error: {e}",
+                        extra={"issue_key": issue_key, "orchestration": matched_orch.name},
+                    )
+                    try:
+                        self.tag_manager.apply_failure_tags(issue_key, matched_orch)
+                    except (OSError, TimeoutError, KeyError, TypeError, ValueError) as tag_error:
+                        logger.error(
+                            f"Failed to apply failure tags: {tag_error}",
+                            extra={"issue_key": issue_key, "orchestration": matched_orch.name},
+                        )
+                except (KeyError, TypeError, ValueError) as e:
+                    if version is not None:
+                        version.decrement_executions()
+                    self._state_tracker.decrement_per_orch_count(matched_orch.name)
+                    logger.error(
+                        f"Failed to submit '{matched_orch.name}' for {issue_key} "
+                        f"due to data error: {e}",
+                        extra={"issue_key": issue_key, "orchestration": matched_orch.name},
+                    )
+                    try:
+                        self.tag_manager.apply_failure_tags(issue_key, matched_orch)
+                    except (OSError, TimeoutError, KeyError, TypeError, ValueError) as tag_error:
+                        logger.error(
+                            f"Failed to apply failure tags: {tag_error}",
+                            extra={"issue_key": issue_key, "orchestration": matched_orch.name},
+                        )
 
         return submitted_count
 
@@ -657,8 +751,23 @@ class Sentinel:
                     success_count = sum(1 for r in results if r.succeeded)
                     if results:
                         logger.info(f"Cycle completed: {success_count}/{len(results)} successful")
-                except Exception as e:
-                    logger.error(f"Error in polling cycle: {e}")
+                except (OSError, TimeoutError) as e:
+                    logger.error(
+                        f"Error in polling cycle due to I/O or timeout: {e}",
+                        extra={"error_type": type(e).__name__},
+                    )
+                    submitted_count = 0
+                except RuntimeError as e:
+                    logger.error(
+                        f"Error in polling cycle due to runtime error: {e}",
+                        extra={"error_type": type(e).__name__},
+                    )
+                    submitted_count = 0
+                except (KeyError, TypeError, ValueError) as e:
+                    logger.error(
+                        f"Error in polling cycle due to data error: {e}",
+                        extra={"error_type": type(e).__name__},
+                    )
                     submitted_count = 0
 
                 # Wait for task completion or timeout

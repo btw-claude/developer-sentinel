@@ -112,9 +112,22 @@ class GetIssueTool(Tool):
             result = self.client.get_issue(issue_key)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get issue {issue_key}: {e}", "JIRA_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get issue {issue_key}: {e}", "JIRA_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to get issue {issue_key}: {e}", "JIRA_ERROR")
 
@@ -179,9 +192,22 @@ class UpdateIssueTool(Tool):
             )
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to update issue {issue_key}: {e}", "JIRA_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to update issue {issue_key}: {e}", "JIRA_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to update issue {issue_key}: {e}", "JIRA_ERROR")
 
@@ -227,9 +253,22 @@ class AddCommentTool(Tool):
             result = self.client.add_comment(issue_key, body)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to add comment to {issue_key}: {e}", "JIRA_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to add comment to {issue_key}: {e}", "JIRA_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to add comment to {issue_key}: {e}", "JIRA_ERROR")
 
@@ -278,9 +317,22 @@ class TransitionIssueTool(Tool):
             result = self.client.transition_issue(issue_key, transition_id)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to transition issue {issue_key}: {e}", "JIRA_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to transition issue {issue_key}: {e}", "JIRA_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to transition issue {issue_key}: {e}", "JIRA_ERROR")
 
@@ -322,9 +374,22 @@ class GetTransitionsTool(Tool):
             result = self.client.get_transitions(issue_key)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get transitions for {issue_key}: {e}", "JIRA_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to get transitions for {issue_key}: {e}", "JIRA_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to get transitions for {issue_key}: {e}", "JIRA_ERROR")
 
@@ -370,9 +435,22 @@ class AddLabelTool(Tool):
             result = self.client.add_label(issue_key, label)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to add label to {issue_key}: {e}", "JIRA_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to add label to {issue_key}: {e}", "JIRA_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to add label to {issue_key}: {e}", "JIRA_ERROR")
 
@@ -418,9 +496,22 @@ class RemoveLabelTool(Tool):
             result = self.client.remove_label(issue_key, label)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok(result)
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to remove label from {issue_key}: {e}", "JIRA_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to remove label from {issue_key}: {e}", "JIRA_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to remove label from {issue_key}: {e}", "JIRA_ERROR")
 
@@ -470,9 +561,22 @@ class SearchIssuesTool(Tool):
             results = self.client.search_issues(jql, max_results)
             logger.info(f"Tool {self.name} succeeded", extra={"tool": self.name})
             return ToolResult.ok({"issues": results, "count": len(results)})
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             logger.error(
-                f"Tool {self.name} failed: {e}", extra={"tool": self.name, "error": str(e)}
+                f"Tool {self.name} failed due to I/O or timeout: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to search issues: {e}", "JIRA_ERROR")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Tool {self.name} failed due to data error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
+            )
+            return ToolResult.fail(f"Failed to search issues: {e}", "JIRA_ERROR")
+        except RuntimeError as e:
+            logger.error(
+                f"Tool {self.name} failed due to runtime error: {e}",
+                extra={"tool": self.name, "error": str(e), "error_type": type(e).__name__},
             )
             return ToolResult.fail(f"Failed to search issues: {e}", "JIRA_ERROR")
 

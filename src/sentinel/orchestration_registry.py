@@ -18,7 +18,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sentinel.logging import get_logger
-from sentinel.orchestration import Orchestration, OrchestrationVersion, load_orchestration_file
+from sentinel.orchestration import (
+    Orchestration,
+    OrchestrationError,
+    OrchestrationVersion,
+    load_orchestration_file,
+)
 
 if TYPE_CHECKING:
     from sentinel.router import Router
@@ -315,8 +320,23 @@ class OrchestrationRegistry:
             else:
                 logger.debug(f"No enabled orchestrations in {file_path.name}")
                 return 0
-        except Exception as e:
-            logger.error(f"Failed to load orchestration file {file_path}: {e}")
+        except OSError as e:
+            logger.error(
+                f"Failed to load orchestration file {file_path} due to I/O error: {e}",
+                extra={"file_path": str(file_path)},
+            )
+            return 0
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Failed to load orchestration file {file_path} due to data error: {e}",
+                extra={"file_path": str(file_path)},
+            )
+            return 0
+        except OrchestrationError as e:
+            logger.error(
+                f"Failed to load orchestration file {file_path}: {e}",
+                extra={"file_path": str(file_path)},
+            )
             return 0
 
     def _reload_modified_file(self, file_path: Path, new_mtime: float) -> int:
@@ -331,8 +351,23 @@ class OrchestrationRegistry:
         """
         try:
             new_orchestrations = load_orchestration_file(file_path)
-        except Exception as e:
-            logger.error(f"Failed to reload modified orchestration file {file_path}: {e}")
+        except OSError as e:
+            logger.error(
+                f"Failed to reload modified orchestration file {file_path} due to I/O error: {e}",
+                extra={"file_path": str(file_path)},
+            )
+            return 0
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                f"Failed to reload modified orchestration file {file_path} due to data error: {e}",
+                extra={"file_path": str(file_path)},
+            )
+            return 0
+        except OrchestrationError as e:
+            logger.error(
+                f"Failed to reload modified orchestration file {file_path}: {e}",
+                extra={"file_path": str(file_path)},
+            )
             return 0
 
         with self._versions_lock:
