@@ -404,18 +404,17 @@ def _extract_usage_from_message(message: Any) -> UsageInfo | None:
         usage_info.num_turns = getattr(message, "num_turns", 0) or 0
 
     # Extract token counts from the usage dict if present
+    # Note: total_tokens is now a computed property, so we only need to set
+    # input_tokens and output_tokens
     if hasattr(message, "usage") and message.usage is not None:
         usage_dict = message.usage
         if isinstance(usage_dict, dict):
             usage_info.input_tokens = usage_dict.get("input_tokens", 0) or 0
             usage_info.output_tokens = usage_dict.get("output_tokens", 0) or 0
-            # Calculate total_tokens if not provided
-            usage_info.total_tokens = usage_info.input_tokens + usage_info.output_tokens
         elif hasattr(usage_dict, "input_tokens"):
             # Handle case where usage is an object with attributes
             usage_info.input_tokens = getattr(usage_dict, "input_tokens", 0) or 0
             usage_info.output_tokens = getattr(usage_dict, "output_tokens", 0) or 0
-            usage_info.total_tokens = usage_info.input_tokens + usage_info.output_tokens
 
     logger.debug(
         "[USAGE] Extracted usage info: tokens=%s, cost=$%.6f, turns=%s",

@@ -11,7 +11,7 @@ at their entry points when needed.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -29,23 +29,68 @@ class UsageInfo:
     that is yielded at the end of each query. This data is valuable for tracking
     costs, monitoring usage patterns, and optimizing agent operations.
 
+    The total_tokens property is computed from input_tokens + output_tokens to
+    guarantee consistency. If an explicit total_tokens value is provided during
+    initialization, it will be validated against the computed value.
+
     Attributes:
         input_tokens: Number of input tokens consumed.
         output_tokens: Number of output tokens generated.
-        total_tokens: Total tokens (input + output).
         total_cost_usd: Total cost in USD for this query.
         duration_ms: Total duration in milliseconds.
         duration_api_ms: Time spent on API calls in milliseconds.
         num_turns: Number of conversation turns in this query.
+        _total_tokens_override: Internal field for backward compatibility.
+            If set to a non-None value during initialization, it will be
+            validated against the computed total.
     """
 
     input_tokens: int = 0
     output_tokens: int = 0
-    total_tokens: int = 0
     total_cost_usd: float = 0.0
     duration_ms: float = 0.0
     duration_api_ms: float = 0.0
     num_turns: int = 0
+    _total_tokens_override: int | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate total_tokens consistency if explicitly provided."""
+        if self._total_tokens_override is not None:
+            computed = self.input_tokens + self.output_tokens
+            if self._total_tokens_override != computed:
+                raise ValueError(
+                    f"total_tokens mismatch: provided {self._total_tokens_override}, "
+                    f"but input_tokens ({self.input_tokens}) + output_tokens "
+                    f"({self.output_tokens}) = {computed}"
+                )
+
+    @property
+    def total_tokens(self) -> int:
+        """Total tokens (input + output).
+
+        This property is computed to guarantee consistency between
+        input_tokens, output_tokens, and total_tokens.
+
+        Returns:
+            Sum of input_tokens and output_tokens.
+        """
+        return self.input_tokens + self.output_tokens
+
+    def __repr__(self) -> str:
+        """Return a developer-friendly string representation.
+
+        Returns:
+            String showing all usage fields in a readable format.
+        """
+        return (
+            f"UsageInfo(input_tokens={self.input_tokens}, "
+            f"output_tokens={self.output_tokens}, "
+            f"total_tokens={self.total_tokens}, "
+            f"total_cost_usd={self.total_cost_usd}, "
+            f"duration_ms={self.duration_ms}, "
+            f"duration_api_ms={self.duration_api_ms}, "
+            f"num_turns={self.num_turns})"
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert usage info to dictionary for serialization.
