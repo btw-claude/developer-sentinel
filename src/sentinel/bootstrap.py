@@ -6,10 +6,15 @@ application, including:
 - Client initialization (Jira, GitHub)
 - Agent factory creation
 - Orchestration loading
+- Circuit breaker registry creation
 - Sentinel instance assembly
 
 The bootstrap module acts as the composition root, wiring together all
 dependencies before the application starts running.
+
+Circuit breakers are created via dependency injection pattern. The
+CircuitBreakerRegistry is created during bootstrap and circuit breakers
+are injected into components that need them, avoiding global mutable state.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from sentinel.agent_clients.factory import create_default_factory
 from sentinel.agent_logger import AgentLogger
+from sentinel.circuit_breaker import CircuitBreakerRegistry
 from sentinel.config import Config, load_config
 from sentinel.github_poller import GitHubClient
 from sentinel.github_rest_client import GitHubRestClient, GitHubRestTagClient, GitHubTagClient
@@ -54,6 +60,7 @@ class BootstrapContext:
         tag_client: JiraTagClient,
         agent_factory: AgentClientFactory,
         agent_logger: AgentLogger,
+        circuit_breaker_registry: CircuitBreakerRegistry,
         github_client: GitHubClient | None = None,
         github_tag_client: GitHubTagClient | None = None,
     ) -> None:
@@ -66,6 +73,7 @@ class BootstrapContext:
             tag_client: Jira client for tag operations.
             agent_factory: Factory for creating agent clients.
             agent_logger: Logger for agent execution.
+            circuit_breaker_registry: Registry for managing circuit breakers.
             github_client: Optional GitHub client for polling.
             github_tag_client: Optional GitHub client for tag operations.
         """
@@ -75,6 +83,7 @@ class BootstrapContext:
         self.tag_client = tag_client
         self.agent_factory = agent_factory
         self.agent_logger = agent_logger
+        self.circuit_breaker_registry = circuit_breaker_registry
         self.github_client = github_client
         self.github_tag_client = github_tag_client
 
@@ -103,7 +112,10 @@ def apply_cli_overrides(config: Config, parsed: argparse.Namespace) -> Config:
     return config
 
 
-def create_jira_clients(config: Config) -> tuple[JiraClient, JiraTagClient]:
+def create_jira_clients(
+    config: Config,
+    circuit_breaker_registry: CircuitBreakerRegistry | None = None,
+) -> tuple[JiraClient, JiraTagClient]:
     """Create Jira clients based on configuration.
 
     Selects between REST API clients (preferred) and SDK clients
@@ -111,21 +123,32 @@ def create_jira_clients(config: Config) -> tuple[JiraClient, JiraTagClient]:
 
     Args:
         config: Application configuration.
+        circuit_breaker_registry: Optional registry to get circuit breakers from.
+            If provided, the Jira circuit breaker will be retrieved from this
+            registry rather than creating a new one. This enables sharing
+            circuit breaker state across components.
 
     Returns:
         Tuple of (jira_client, tag_client).
     """
+    # Get or create circuit breaker for Jira service
+    jira_circuit_breaker = (
+        circuit_breaker_registry.get("jira") if circuit_breaker_registry else None
+    )
+
     if config.jira_configured:
         logger.info("Using Jira REST API clients (direct HTTP)")
         jira_client: JiraClient = JiraRestClient(
             base_url=config.jira_base_url,
             email=config.jira_email,
             api_token=config.jira_api_token,
+            circuit_breaker=jira_circuit_breaker,
         )
         tag_client: JiraTagClient = JiraRestTagClient(
             base_url=config.jira_base_url,
             email=config.jira_email,
             api_token=config.jira_api_token,
+            circuit_breaker=jira_circuit_breaker,
         )
     else:
         logger.info("Using Jira SDK clients (via Claude Agent SDK)")
@@ -142,25 +165,37 @@ def create_jira_clients(config: Config) -> tuple[JiraClient, JiraTagClient]:
 def create_github_clients(
     config: Config,
     orchestrations: list[Orchestration],
+    circuit_breaker_registry: CircuitBreakerRegistry | None = None,
 ) -> tuple[GitHubClient | None, GitHubTagClient | None]:
     """Create GitHub clients if configured.
 
     Args:
         config: Application configuration.
         orchestrations: List of orchestrations (used for warning messages).
+        circuit_breaker_registry: Optional registry to get circuit breakers from.
+            If provided, the GitHub circuit breaker will be retrieved from this
+            registry rather than creating a new one. This enables sharing
+            circuit breaker state across components.
 
     Returns:
         Tuple of (github_client, github_tag_client), both may be None.
     """
+    # Get or create circuit breaker for GitHub service
+    github_circuit_breaker = (
+        circuit_breaker_registry.get("github") if circuit_breaker_registry else None
+    )
+
     if config.github_configured:
         logger.info("Using GitHub REST API clients (direct HTTP)")
         github_client: GitHubClient | None = GitHubRestClient(
             token=config.github_token,
             base_url=config.github_api_url if config.github_api_url else None,
+            circuit_breaker=github_circuit_breaker,
         )
         github_tag_client: GitHubTagClient | None = GitHubRestTagClient(
             token=config.github_token,
             base_url=config.github_api_url if config.github_api_url else None,
+            circuit_breaker=github_circuit_breaker,
         )
     else:
         github_client = None
@@ -232,12 +267,18 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
 
     logger.info("Loaded %s orchestrations", len(orchestrations))
 
-    # Initialize clients
-    jira_client, tag_client = create_jira_clients(config)
-    github_client, github_tag_client = create_github_clients(config, orchestrations)
+    # Create circuit breaker registry for centralized management
+    circuit_breaker_registry = CircuitBreakerRegistry()
+    logger.debug("Created circuit breaker registry for dependency injection")
+
+    # Initialize clients with shared circuit breakers from registry
+    jira_client, tag_client = create_jira_clients(config, circuit_breaker_registry)
+    github_client, github_tag_client = create_github_clients(
+        config, orchestrations, circuit_breaker_registry
+    )
 
     # Create agent factory and logger
-    agent_factory = create_default_factory(config)
+    agent_factory = create_default_factory(config, circuit_breaker_registry)
     agent_logger = AgentLogger(base_dir=config.agent_logs_dir)
 
     logger.info("Initialized agent factory with types: %s", agent_factory.registered_types)
@@ -249,6 +290,7 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
         tag_client=tag_client,
         agent_factory=agent_factory,
         agent_logger=agent_logger,
+        circuit_breaker_registry=circuit_breaker_registry,
         github_client=github_client,
         github_tag_client=github_tag_client,
     )

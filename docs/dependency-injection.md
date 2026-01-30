@@ -411,8 +411,114 @@ def teardown_method(self):
     self.container.reset_override()
 ```
 
+## Circuit Breaker Dependency Injection
+
+The circuit breaker pattern is implemented using dependency injection to avoid global mutable state and enable proper test isolation.
+
+### Design Principles
+
+1. **No Global Registry**: Circuit breakers are not stored in a global registry. Instead, a `CircuitBreakerRegistry` is created during bootstrap and passed to components that need it.
+
+2. **Constructor Injection**: Components receive their circuit breaker via constructor injection, making dependencies explicit and testable.
+
+3. **Test Isolation**: Each test can create its own `CircuitBreakerRegistry`, ensuring tests don't interfere with each other.
+
+### How It Works
+
+The bootstrap process creates a `CircuitBreakerRegistry` and passes it to components:
+
+```python
+from sentinel.circuit_breaker import CircuitBreakerRegistry
+
+# During bootstrap
+circuit_breaker_registry = CircuitBreakerRegistry()
+
+# Inject into Jira clients
+jira_client = JiraRestClient(
+    base_url=config.jira_base_url,
+    email=config.jira_email,
+    api_token=config.jira_api_token,
+    circuit_breaker=circuit_breaker_registry.get("jira"),
+)
+
+# Inject into GitHub clients
+github_client = GitHubRestClient(
+    token=config.github_token,
+    circuit_breaker=circuit_breaker_registry.get("github"),
+)
+
+# Inject into agent factory
+agent_factory = create_default_factory(config, circuit_breaker_registry)
+```
+
+### Testing with Circuit Breakers
+
+For unit tests, create isolated registries to avoid test pollution:
+
+```python
+class TestMyComponent:
+    def test_circuit_breaker_behavior(self) -> None:
+        # Create isolated registry for this test
+        registry = CircuitBreakerRegistry()
+
+        # Create component with injected circuit breaker
+        client = JiraRestClient(
+            base_url="https://test.atlassian.net",
+            email="test@example.com",
+            api_token="test-token",
+            circuit_breaker=registry.get("jira"),
+        )
+
+        # Test that circuit breaker is in initial state
+        assert client.circuit_breaker.state == CircuitState.CLOSED
+```
+
+For integration tests that need to share circuit breaker state:
+
+```python
+class TestIntegration:
+    def setUp(self) -> None:
+        # Shared registry for integration test
+        self.registry = CircuitBreakerRegistry()
+
+    def test_shared_circuit_breaker_state(self) -> None:
+        # Both clients share the same Jira circuit breaker
+        client1 = JiraRestClient(
+            base_url="https://test.atlassian.net",
+            email="test@example.com",
+            api_token="test-token",
+            circuit_breaker=self.registry.get("jira"),
+        )
+        client2 = JiraRestTagClient(
+            base_url="https://test.atlassian.net",
+            email="test@example.com",
+            api_token="test-token",
+            circuit_breaker=self.registry.get("jira"),
+        )
+
+        # Same circuit breaker instance
+        assert client1.circuit_breaker is client2.circuit_breaker
+```
+
+### Default Behavior
+
+When no circuit breaker is provided, components create their own default circuit breaker:
+
+```python
+# Without explicit injection, creates default circuit breaker
+client = JiraRestClient(
+    base_url="https://test.atlassian.net",
+    email="test@example.com",
+    api_token="test-token",
+    # circuit_breaker defaults to CircuitBreaker("jira", CircuitBreakerConfig.from_env("jira"))
+)
+```
+
+This ensures backward compatibility while encouraging explicit injection for better testability.
+
 ## References
 
 - [dependency-injector documentation](https://python-dependency-injector.ets-labs.org/)
 - [Dependency Injection principles](https://en.wikipedia.org/wiki/Dependency_injection)
 - [sentinel/container.py](../src/sentinel/container.py) - Container implementation
+- [sentinel/circuit_breaker.py](../src/sentinel/circuit_breaker.py) - Circuit breaker implementation

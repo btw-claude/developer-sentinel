@@ -33,7 +33,7 @@ from sentinel.agent_clients.base import (
     AgentType,
     UsageInfo,
 )
-from sentinel.circuit_breaker import CircuitBreaker, get_circuit_breaker
+from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from sentinel.config import Config
 from sentinel.logging import generate_log_filename, get_logger
 from sentinel.rate_limiter import ClaudeRateLimiter, RateLimitExceededError
@@ -536,8 +536,8 @@ class ClaudeSdkAgentClient(AgentClient):
             rate_limiter: Optional rate limiter for Claude API calls.
                 If not provided, creates one from config. Inject a custom rate
                 limiter for testing or to share a limiter across clients.
-            circuit_breaker: Optional circuit breaker instance. If not provided,
-                uses the global "claude" circuit breaker from the registry.
+            circuit_breaker: Circuit breaker instance for resilience. If not provided,
+                creates a default circuit breaker for the "claude" service.
         """
         self.config = config
         self.base_workdir = base_workdir
@@ -556,8 +556,11 @@ class ClaudeSdkAgentClient(AgentClient):
         self._rate_limiter = (
             rate_limiter if rate_limiter is not None else ClaudeRateLimiter.from_config(config)
         )
-        # Use provided circuit breaker or get from global registry
-        self._circuit_breaker = circuit_breaker or get_circuit_breaker("claude")
+        # Use provided circuit breaker or create a default one for the claude service
+        self._circuit_breaker = circuit_breaker or CircuitBreaker(
+            service_name="claude",
+            config=CircuitBreakerConfig.from_env("claude"),
+        )
 
     @property
     def agent_type(self) -> AgentType:

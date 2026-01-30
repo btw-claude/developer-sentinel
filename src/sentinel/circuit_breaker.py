@@ -589,36 +589,3 @@ class CircuitBreakerRegistry:
             logger.info("[CIRCUIT_BREAKER] All circuit breakers reset")
 
 
-# Global registry instance
-_global_registry = CircuitBreakerRegistry()
-
-
-def get_circuit_breaker_registry() -> CircuitBreakerRegistry:
-    """Get the global circuit breaker registry.
-
-    Returns:
-        The global CircuitBreakerRegistry instance.
-    """
-    return _global_registry
-
-
-def get_circuit_breaker(
-    service_name: str,
-    config: CircuitBreakerConfig | None = None,
-    excluded_exceptions: tuple[type[BaseException], ...] | None = None,
-) -> CircuitBreaker:
-    """Get a circuit breaker from the global registry.
-
-    Convenience function for accessing circuit breakers without
-    directly using the registry.
-
-    Args:
-        service_name: Name of the service (e.g., "jira", "github", "claude").
-        config: Optional configuration override.
-        excluded_exceptions: Optional tuple of exception types that should
-            not count as failures.
-
-    Returns:
-        CircuitBreaker instance for the service.
-    """
-    return _global_registry.get(service_name, config, excluded_exceptions)

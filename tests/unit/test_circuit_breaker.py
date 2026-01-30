@@ -16,8 +16,6 @@ from sentinel.circuit_breaker import (
     CircuitBreakerError,
     CircuitBreakerRegistry,
     CircuitState,
-    get_circuit_breaker,
-    get_circuit_breaker_registry,
 )
 
 
@@ -543,24 +541,50 @@ class TestCircuitBreakerThreadSafety:
         assert cb.metrics.total_calls > 0
 
 
-class TestGlobalHelperFunctions:
-    """Tests for global helper functions."""
+class TestRegistryDependencyInjection:
+    """Tests for registry dependency injection pattern."""
 
-    def test_get_circuit_breaker_registry(self) -> None:
-        """Test global registry accessor returns singleton."""
-        reg1 = get_circuit_breaker_registry()
-        reg2 = get_circuit_breaker_registry()
+    def test_isolated_registry_for_testing(self) -> None:
+        """Test that isolated registries can be created for tests."""
+        # Create isolated registry - no global state sharing
+        registry1 = CircuitBreakerRegistry()
+        registry2 = CircuitBreakerRegistry()
 
-        assert reg1 is reg2
+        # Each registry should be independent
+        cb1 = registry1.get("test_service")
+        cb2 = registry2.get("test_service")
 
-    def test_get_circuit_breaker(self) -> None:
-        """Test global circuit breaker accessor."""
-        cb = get_circuit_breaker("test_service")
+        # Different registries, different circuit breaker instances
+        assert cb1 is not cb2
+
+    def test_registry_can_be_injected(self) -> None:
+        """Test that registry can be injected into components."""
+        registry = CircuitBreakerRegistry()
+
+        # Get circuit breaker from registry
+        cb = registry.get("test_service")
         assert cb.service_name == "test_service"
 
-        # Should return same instance
-        cb2 = get_circuit_breaker("test_service")
+        # Same registry returns same instance
+        cb2 = registry.get("test_service")
         assert cb is cb2
+
+    def test_test_isolation_pattern(self) -> None:
+        """Test the pattern for test isolation using fresh registries."""
+        # Pattern: Create a fresh registry for each test
+        registry = CircuitBreakerRegistry()
+        config = CircuitBreakerConfig(failure_threshold=1)
+
+        cb = registry.get("service", config)
+        cb.record_failure(Exception("Error"))
+
+        # Circuit is open in this registry
+        assert cb.state == CircuitState.OPEN
+
+        # New registry has clean state
+        fresh_registry = CircuitBreakerRegistry()
+        fresh_cb = fresh_registry.get("service", config)
+        assert fresh_cb.state == CircuitState.CLOSED
 
 
 class TestExcludedExceptions:
