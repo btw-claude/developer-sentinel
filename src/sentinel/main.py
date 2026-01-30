@@ -45,7 +45,12 @@ from sentinel.poller import JiraIssue, JiraPoller
 from sentinel.router import Router, RoutingResult
 from sentinel.sdk_clients import ClaudeProcessInterruptedError
 from sentinel.sdk_clients import request_shutdown as request_claude_shutdown
-from sentinel.state_tracker import QueuedIssueInfo, RunningStepInfo, StateTracker
+from sentinel.state_tracker import (
+    CompletedExecutionInfo,
+    QueuedIssueInfo,
+    RunningStepInfo,
+    StateTracker,
+)
 from sentinel.tag_manager import JiraTagClient, TagManager
 
 logger = get_logger(__name__)
@@ -243,6 +248,14 @@ class Sentinel:
         """Get all per-orchestration active execution counts."""
         return self._state_tracker.get_all_per_orch_counts()
 
+    def get_completed_executions(self) -> list[CompletedExecutionInfo]:
+        """Get information about recently completed executions.
+
+        Returns:
+            List of CompletedExecutionInfo for recent executions, ordered most recent first.
+        """
+        return self._state_tracker.get_completed_executions()
+
     # =========================================================================
     # Private Helpers
     # =========================================================================
@@ -259,6 +272,47 @@ class Sentinel:
     def _get_available_slots(self) -> int:
         """Get the number of available execution slots."""
         return self._execution_manager.get_available_slots()
+
+    def _record_completed_execution(
+        self,
+        result: ExecutionResult,
+        running_step: RunningStepInfo,
+    ) -> None:
+        """Record a completed execution with usage data.
+
+        This method creates a CompletedExecutionInfo from the execution result
+        and running step metadata, then adds it to the state tracker for
+        dashboard display.
+
+        Args:
+            result: The execution result containing status and usage data.
+            running_step: The running step info with timing and context.
+        """
+        # Extract usage data from result if available
+        # Note: result.usage is populated from AgentRunResult.usage when available
+        input_tokens = 0
+        output_tokens = 0
+        total_cost_usd = 0.0
+
+        # The result object doesn't directly contain usage info - it comes from
+        # the AgentRunResult returned by the client. Since we don't have access
+        # to that here, we default to zeros. The usage data will be populated
+        # in future when we pass it through the execution result.
+        # For now, we record the execution with available metadata.
+
+        completed_info = CompletedExecutionInfo(
+            issue_key=result.issue_key,
+            orchestration_name=result.orchestration_name,
+            attempt_number=running_step.attempt_number,
+            started_at=running_step.started_at,
+            completed_at=datetime.now(),
+            status="success" if result.succeeded else "failure",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_cost_usd=total_cost_usd,
+            issue_url=running_step.issue_url,
+        )
+        self._state_tracker.add_completed_execution(completed_info)
 
     def _get_available_slots_for_orchestration(self, orchestration: Orchestration) -> int:
         """Get available slots for a specific orchestration."""
@@ -524,15 +578,28 @@ class Sentinel:
         return submitted_count
 
     def _collect_completed_results(self) -> list[ExecutionResult]:
-        """Collect results from completed futures."""
+        """Collect results from completed futures and record completed executions."""
         # First, collect results from completed futures
         results = self._execution_manager.collect_completed_results()
 
+        # Build a map of (issue_key, orchestration_name) -> result for recording
+        # completed executions. We need to match results with their running step metadata.
+        result_map: dict[tuple[str, str], ExecutionResult] = {}
+        for result in results:
+            key = (result.issue_key, result.orchestration_name)
+            result_map[key] = result
+
         # Then, clean up running step metadata for any remaining completed futures
         # Note: collect_completed_results already removes completed futures from _active_futures
-        # but we need to handle the metadata cleanup
-        def on_future_done(future: Future) -> None:
-            self._state_tracker.remove_running_step(id(future))
+        # but we need to handle the metadata cleanup and record completed executions
+        def on_future_done(future: Future[Any]) -> None:
+            running_step = self._state_tracker.remove_running_step(id(future))
+            if running_step is not None:
+                # Try to find the matching result to record the completed execution
+                key = (running_step.issue_key, running_step.orchestration_name)
+                result = result_map.get(key)
+                if result is not None:
+                    self._record_completed_execution(result, running_step)
 
         self._execution_manager.cleanup_completed_futures(on_future_done)
 

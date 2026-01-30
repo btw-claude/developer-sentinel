@@ -89,6 +89,27 @@ class QueuedIssueInfo:
     queued_at: datetime
 
 
+@dataclass
+class CompletedExecutionInfo:
+    """Metadata about a completed execution with usage data.
+
+    This class tracks information about completed agent executions for dashboard display.
+    It captures the execution context, timing, success/failure status, and usage data
+    (token counts and cost) from the Claude Agent SDK.
+    """
+
+    issue_key: str
+    orchestration_name: str
+    attempt_number: int
+    started_at: datetime
+    completed_at: datetime
+    status: str  # "success" or "failure"
+    input_tokens: int
+    output_tokens: int
+    total_cost_usd: float
+    issue_url: str
+
+
 class StateTracker:
     """Tracks execution state, metrics, and queues for the Sentinel orchestrator.
 
@@ -109,7 +130,8 @@ class StateTracker:
             1. _attempt_counts_lock (highest priority)
             2. _running_steps_lock
             3. _queue_lock
-            4. _per_orch_counts_lock (lowest priority)
+            4. _per_orch_counts_lock
+            5. _completed_executions_lock (lowest priority)
 
         Rules:
         - When acquiring multiple locks, always acquire them in the order above.
@@ -136,6 +158,7 @@ class StateTracker:
         self,
         max_queue_size: int = 100,
         attempt_counts_ttl: float = 86400.0,
+        max_completed_executions: int = 50,
     ) -> None:
         """Initialize the state tracker.
 
@@ -144,9 +167,12 @@ class StateTracker:
                 are evicted to make room for new ones.
             attempt_counts_ttl: Time-to-live in seconds for attempt count entries.
                 Entries older than this are cleaned up to prevent unbounded memory growth.
+            max_completed_executions: Maximum number of completed executions to track.
+                When full, oldest entries are evicted to make room for new ones.
         """
         self._max_queue_size = max_queue_size
         self._attempt_counts_ttl = attempt_counts_ttl
+        self._max_completed_executions = max_completed_executions
 
         # Track attempt counts per (issue_key, orchestration_name) pair
         self._attempt_counts: dict[tuple[str, str], AttemptCountEntry] = {}
@@ -166,8 +192,16 @@ class StateTracker:
 
         # Track per-orchestration active execution counts
         self._per_orch_active_counts: defaultdict[str, int] = defaultdict(int)
-        # Lock ordering priority: 4 (lowest) - see class docstring for details
+        # Lock ordering priority: 4 - see class docstring for details
         self._per_orch_counts_lock = threading.Lock()
+
+        # Track completed executions for dashboard display
+        # Uses appendleft for most recent first, maxlen for automatic eviction
+        self._completed_executions: deque[CompletedExecutionInfo] = deque(
+            maxlen=max_completed_executions
+        )
+        # Lock ordering priority: 5 (lowest) - see class docstring for details
+        self._completed_executions_lock = threading.Lock()
 
         # Track process start time
         self._start_time: datetime = datetime.now()
@@ -486,3 +520,33 @@ class StateTracker:
         )
 
         return max(0, available)
+
+    # =========================================================================
+    # Completed Executions Tracking
+    # =========================================================================
+
+    def add_completed_execution(self, info: CompletedExecutionInfo) -> None:
+        """Add a completed execution entry for dashboard display.
+
+        Uses appendleft to add entries at the front of the deque, ensuring
+        most recent executions are first. The deque's maxlen automatically
+        evicts the oldest entry when the maximum size is exceeded.
+
+        Args:
+            info: The completed execution information to add.
+        """
+        with self._completed_executions_lock:
+            self._completed_executions.appendleft(info)
+            logger.debug(
+                f"Recorded completed execution for '{info.issue_key}' "
+                f"(orchestration: '{info.orchestration_name}', status: {info.status})"
+            )
+
+    def get_completed_executions(self) -> list[CompletedExecutionInfo]:
+        """Get the list of completed executions for dashboard display.
+
+        Returns:
+            A list of CompletedExecutionInfo entries, ordered with most recent first.
+        """
+        with self._completed_executions_lock:
+            return list(self._completed_executions)
