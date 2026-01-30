@@ -33,6 +33,8 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -161,6 +163,121 @@ class HealthCheckConfig:
             timeout=config.health_check_timeout,
             enabled=config.health_check_enabled,
         )
+
+
+@dataclass
+class HealthCheckContext:
+    """Context manager for consistent health check exception handling.
+
+    This class encapsulates the common exception handling pattern used across
+    all health check methods (_check_jira, _check_github, _check_claude).
+    It tracks timing, handles exceptions, and produces consistent ServiceHealth
+    responses.
+
+    Attributes:
+        service_name: Name of the service being checked (for logging).
+        result: The ServiceHealth result, set if an exception occurs.
+        start_time: The time when the context was entered.
+
+    Usage:
+        ctx = HealthCheckContext("jira")
+        with ctx.handle_exceptions():
+            # Perform health check operations
+            response = await client.get(url)
+            response.raise_for_status()
+        if ctx.result is not None:
+            return ctx.result
+        # Success case: create ServiceHealth with ctx.elapsed_ms()
+    """
+
+    service_name: str
+    result: ServiceHealth | None = field(default=None, init=False)
+    start_time: float = field(default=0.0, init=False)
+
+    def elapsed_ms(self) -> float:
+        """Calculate elapsed time in milliseconds since context entry.
+
+        Returns:
+            Elapsed time in milliseconds.
+        """
+        return (time.perf_counter() - self.start_time) * 1000
+
+    @contextmanager
+    def handle_exceptions(self) -> Generator[None, None, None]:
+        """Context manager that handles common health check exceptions.
+
+        This method catches and handles:
+        - AttributeError: Configuration/None access issues
+        - TypeError, ValueError, KeyError: Data processing errors
+        - OSError: OS-level errors (DNS, sockets, filesystem)
+        - RuntimeError: Event loop and threading issues
+        - Exception: Unexpected errors (logged with full context)
+
+        Note: HTTP-specific exceptions (httpx.TimeoutException, httpx.HTTPStatusError,
+        httpx.RequestError) should be handled separately in the calling code as they
+        require service-specific error messages.
+
+        Yields:
+            None - the context for health check operations.
+
+        Side Effects:
+            Sets self.result to a ServiceHealth object if an exception occurs.
+            The result will have status=DOWN and appropriate error message.
+        """
+        self.start_time = time.perf_counter()
+        try:
+            yield
+        except AttributeError as e:
+            latency_ms = self.elapsed_ms()
+            logger.error(f"{self.service_name} health check failed due to None access: {e}")
+            self.result = ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Configuration error: {e}",
+            )
+        except (TypeError, ValueError, KeyError) as e:
+            latency_ms = self.elapsed_ms()
+            logger.error(f"{self.service_name} health check failed due to data error: {e}")
+            self.result = ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Data error: {e}",
+            )
+        except OSError as e:
+            latency_ms = self.elapsed_ms()
+            logger.error(f"{self.service_name} health check failed due to OS error: {e}")
+            self.result = ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"OS error: {e}",
+            )
+        except RuntimeError as e:
+            latency_ms = self.elapsed_ms()
+            logger.error(
+                f"{self.service_name} health check failed due to runtime error: {e}",
+                extra={"service": self.service_name, "error_type": "RuntimeError"},
+            )
+            self.result = ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Runtime error: {e}",
+            )
+        except Exception as e:
+            # INTENTIONAL BROAD CATCH: Health checks must never crash the application.
+            # All known exception types are caught above; this catches truly unexpected
+            # errors to ensure graceful degradation. Log with full context for debugging.
+            latency_ms = self.elapsed_ms()
+            logger.error(
+                f"{self.service_name} health check failed with unexpected error: "
+                f"{type(e).__name__}: {e}",
+                extra={"service": self.service_name, "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            self.result = ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Unexpected error ({type(e).__name__}): {e}",
+            )
 
 
 class HealthChecker:
@@ -376,101 +493,51 @@ class HealthChecker:
                 error="Jira client not configured",
             )
 
-        start_time = time.perf_counter()
-        try:
-            # Use the Jira REST API to get server info (lightweight call)
-            url = f"{self.jira_client.base_url}/rest/api/3/serverInfo"
-            async with httpx.AsyncClient(
-                auth=self.jira_client.auth,
-                timeout=httpx.Timeout(self.config.timeout),
-            ) as client:
-                response = await client.get(url)
-                response.raise_for_status()
+        ctx = HealthCheckContext("Jira")
+        with ctx.handle_exceptions():
+            try:
+                # Use the Jira REST API to get server info (lightweight call)
+                url = f"{self.jira_client.base_url}/rest/api/3/serverInfo"
+                async with httpx.AsyncClient(
+                    auth=self.jira_client.auth,
+                    timeout=httpx.Timeout(self.config.timeout),
+                ) as client:
+                    response = await client.get(url)
+                    response.raise_for_status()
 
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.debug(f"Jira health check succeeded in {latency_ms:.2f}ms")
-            return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
+                latency_ms = ctx.elapsed_ms()
+                logger.debug(f"Jira health check succeeded in {latency_ms:.2f}ms")
+                return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
 
-        except httpx.TimeoutException:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"Jira health check timed out after {latency_ms:.2f}ms")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error="Connection timed out",
-            )
-        except httpx.HTTPStatusError as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            error_msg = f"HTTP {e.response.status_code}"
-            logger.warning(f"Jira health check failed: {error_msg}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=error_msg,
-            )
-        except httpx.RequestError as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"Jira health check failed due to request error: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=str(e),
-            )
-        except AttributeError as e:
-            # Catch AttributeError explicitly for potential None access issues
-            # (e.g., accessing attributes on partially configured clients)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Jira health check failed due to None access: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Configuration error: {e}",
-            )
-        except (TypeError, ValueError, KeyError) as e:
-            # Catch data processing errors (invalid response format, missing fields)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Jira health check failed due to data error: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Data error: {e}",
-            )
-        except OSError as e:
-            # Catch OS-level errors (DNS resolution, socket errors, etc.)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Jira health check failed due to OS error: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"OS error: {e}",
-            )
-        except RuntimeError as e:
-            # Catch runtime errors (event loop issues, threading problems)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(
-                f"Jira health check failed due to runtime error: {e}",
-                extra={"service": "jira", "error_type": "RuntimeError"},
-            )
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Runtime error: {e}",
-            )
-        except Exception as e:
-            # INTENTIONAL BROAD CATCH: Health checks must never crash the application.
-            # All known exception types are caught above; this catches truly unexpected
-            # errors to ensure graceful degradation. Log with full context for debugging.
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(
-                f"Jira health check failed with unexpected error: {type(e).__name__}: {e}",
-                extra={"service": "jira", "error_type": type(e).__name__},
-                exc_info=True,
-            )
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Unexpected error ({type(e).__name__}): {e}",
-            )
+            except httpx.TimeoutException:
+                latency_ms = ctx.elapsed_ms()
+                logger.warning(f"Jira health check timed out after {latency_ms:.2f}ms")
+                return ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=latency_ms,
+                    error="Connection timed out",
+                )
+            except httpx.HTTPStatusError as e:
+                latency_ms = ctx.elapsed_ms()
+                error_msg = f"HTTP {e.response.status_code}"
+                logger.warning(f"Jira health check failed: {error_msg}")
+                return ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=latency_ms,
+                    error=error_msg,
+                )
+            except httpx.RequestError as e:
+                latency_ms = ctx.elapsed_ms()
+                logger.warning(f"Jira health check failed due to request error: {e}")
+                return ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=latency_ms,
+                    error=str(e),
+                )
+
+        # If ctx.result is set, an exception was caught by the context manager
+        assert ctx.result is not None  # Type narrowing for mypy
+        return ctx.result
 
     async def _check_github(self) -> ServiceHealth:
         """Check GitHub API connectivity.
@@ -487,105 +554,55 @@ class HealthChecker:
                 error="GitHub client not configured",
             )
 
-        start_time = time.perf_counter()
-        try:
-            # Use GitHub API rate_limit endpoint (lightweight, doesn't count)
-            url = f"{self.github_client.base_url}/rate_limit"
-            headers = {
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self.github_client.token}",
-                "X-GitHub-Api-Version": "2022-11-28",
-            }
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(self.config.timeout),
-            ) as client:
-                response = await client.get(url, headers=headers)
-                response.raise_for_status()
+        ctx = HealthCheckContext("GitHub")
+        with ctx.handle_exceptions():
+            try:
+                # Use GitHub API rate_limit endpoint (lightweight, doesn't count)
+                url = f"{self.github_client.base_url}/rate_limit"
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "Authorization": f"Bearer {self.github_client.token}",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(self.config.timeout),
+                ) as client:
+                    response = await client.get(url, headers=headers)
+                    response.raise_for_status()
 
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.debug(f"GitHub health check succeeded in {latency_ms:.2f}ms")
-            return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
+                latency_ms = ctx.elapsed_ms()
+                logger.debug(f"GitHub health check succeeded in {latency_ms:.2f}ms")
+                return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
 
-        except httpx.TimeoutException:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"GitHub health check timed out after {latency_ms:.2f}ms")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error="Connection timed out",
-            )
-        except httpx.HTTPStatusError as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            error_msg = f"HTTP {e.response.status_code}"
-            logger.warning(f"GitHub health check failed: {error_msg}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=error_msg,
-            )
-        except httpx.RequestError as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"GitHub health check failed due to request error: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=str(e),
-            )
-        except AttributeError as e:
-            # Catch AttributeError explicitly for potential None access issues
-            # (e.g., accessing attributes on partially configured clients)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"GitHub health check failed due to None access: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Configuration error: {e}",
-            )
-        except (TypeError, ValueError, KeyError) as e:
-            # Catch data processing errors (invalid response format, missing fields)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"GitHub health check failed due to data error: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Data error: {e}",
-            )
-        except OSError as e:
-            # Catch OS-level errors (DNS resolution, socket errors, etc.)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"GitHub health check failed due to OS error: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"OS error: {e}",
-            )
-        except RuntimeError as e:
-            # Catch runtime errors (event loop issues, threading problems)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(
-                f"GitHub health check failed due to runtime error: {e}",
-                extra={"service": "github", "error_type": "RuntimeError"},
-            )
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Runtime error: {e}",
-            )
-        except Exception as e:
-            # INTENTIONAL BROAD CATCH: Health checks must never crash the application.
-            # All known exception types are caught above; this catches truly unexpected
-            # errors to ensure graceful degradation. Log with full context for debugging.
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(
-                f"GitHub health check failed with unexpected error: {type(e).__name__}: {e}",
-                extra={"service": "github", "error_type": type(e).__name__},
-                exc_info=True,
-            )
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Unexpected error ({type(e).__name__}): {e}",
-            )
+            except httpx.TimeoutException:
+                latency_ms = ctx.elapsed_ms()
+                logger.warning(f"GitHub health check timed out after {latency_ms:.2f}ms")
+                return ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=latency_ms,
+                    error="Connection timed out",
+                )
+            except httpx.HTTPStatusError as e:
+                latency_ms = ctx.elapsed_ms()
+                error_msg = f"HTTP {e.response.status_code}"
+                logger.warning(f"GitHub health check failed: {error_msg}")
+                return ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=latency_ms,
+                    error=error_msg,
+                )
+            except httpx.RequestError as e:
+                latency_ms = ctx.elapsed_ms()
+                logger.warning(f"GitHub health check failed due to request error: {e}")
+                return ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=latency_ms,
+                    error=str(e),
+                )
+
+        # If ctx.result is set, an exception was caught by the context manager
+        assert ctx.result is not None  # Type narrowing for mypy
+        return ctx.result
 
     async def _check_claude(self) -> ServiceHealth:
         """Check Claude API connectivity.
@@ -603,100 +620,50 @@ class HealthChecker:
                 error="Claude API key not configured",
             )
 
-        start_time = time.perf_counter()
-        try:
-            # Use the Claude models list endpoint (lightweight ping)
-            headers = {
-                "x-api-key": self.claude_api_key,
-                "anthropic-version": "2023-06-01",
-            }
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(self.config.timeout),
-            ) as client:
-                response = await client.get(self.CLAUDE_API_URL, headers=headers)
-                response.raise_for_status()
+        ctx = HealthCheckContext("Claude")
+        with ctx.handle_exceptions():
+            try:
+                # Use the Claude models list endpoint (lightweight ping)
+                headers = {
+                    "x-api-key": self.claude_api_key,
+                    "anthropic-version": "2023-06-01",
+                }
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(self.config.timeout),
+                ) as client:
+                    response = await client.get(self.CLAUDE_API_URL, headers=headers)
+                    response.raise_for_status()
 
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.debug(f"Claude health check succeeded in {latency_ms:.2f}ms")
-            return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
+                latency_ms = ctx.elapsed_ms()
+                logger.debug(f"Claude health check succeeded in {latency_ms:.2f}ms")
+                return ServiceHealth(status=HealthStatus.UP, latency_ms=latency_ms)
 
-        except httpx.TimeoutException:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"Claude health check timed out after {latency_ms:.2f}ms")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error="Connection timed out",
-            )
-        except httpx.HTTPStatusError as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            error_msg = f"HTTP {e.response.status_code}"
-            logger.warning(f"Claude health check failed: {error_msg}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=error_msg,
-            )
-        except httpx.RequestError as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"Claude health check failed due to request error: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=str(e),
-            )
-        except AttributeError as e:
-            # Catch AttributeError explicitly for potential None access issues
-            # (e.g., accessing attributes on partially configured clients)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Claude health check failed due to None access: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Configuration error: {e}",
-            )
-        except (TypeError, ValueError, KeyError) as e:
-            # Catch data processing errors (invalid response format, missing fields)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Claude health check failed due to data error: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Data error: {e}",
-            )
-        except OSError as e:
-            # Catch OS-level errors (DNS resolution, socket errors, etc.)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Claude health check failed due to OS error: {e}")
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"OS error: {e}",
-            )
-        except RuntimeError as e:
-            # Catch runtime errors (event loop issues, threading problems)
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(
-                f"Claude health check failed due to runtime error: {e}",
-                extra={"service": "claude", "error_type": "RuntimeError"},
-            )
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Runtime error: {e}",
-            )
-        except Exception as e:
-            # INTENTIONAL BROAD CATCH: Health checks must never crash the application.
-            # All known exception types are caught above; this catches truly unexpected
-            # errors to ensure graceful degradation. Log with full context for debugging.
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(
-                f"Claude health check failed with unexpected error: {type(e).__name__}: {e}",
-                extra={"service": "claude", "error_type": type(e).__name__},
-                exc_info=True,
-            )
-            return ServiceHealth(
-                status=HealthStatus.DOWN,
-                latency_ms=latency_ms,
-                error=f"Unexpected error ({type(e).__name__}): {e}",
-            )
+            except httpx.TimeoutException:
+                latency_ms = ctx.elapsed_ms()
+                logger.warning(f"Claude health check timed out after {latency_ms:.2f}ms")
+                return ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=latency_ms,
+                    error="Connection timed out",
+                )
+            except httpx.HTTPStatusError as e:
+                latency_ms = ctx.elapsed_ms()
+                error_msg = f"HTTP {e.response.status_code}"
+                logger.warning(f"Claude health check failed: {error_msg}")
+                return ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=latency_ms,
+                    error=error_msg,
+                )
+            except httpx.RequestError as e:
+                latency_ms = ctx.elapsed_ms()
+                logger.warning(f"Claude health check failed due to request error: {e}")
+                return ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=latency_ms,
+                    error=str(e),
+                )
+
+        # If ctx.result is set, an exception was caught by the context manager
+        assert ctx.result is not None  # Type narrowing for mypy
+        return ctx.result
