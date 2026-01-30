@@ -301,6 +301,24 @@ class HealthChecker:
                     latency_ms=0.0,  # No timing context available for result processing errors
                     error=f"Configuration error: {e}",
                 )
+            except (TypeError, ValueError, KeyError) as e:
+                # Catch data processing errors that may occur when handling
+                # health check results (e.g., invalid types, missing keys)
+                logger.error(f"Data processing error in {name} health check: {e}")
+                checks[name] = ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=0.0,  # No timing context available for data errors
+                    error=f"Data error: {e}",
+                )
+            except OSError as e:
+                # Catch OS-level errors (filesystem issues, network socket errors)
+                # that may occur during health check operations
+                logger.error(f"OS error in {name} health check: {e}")
+                checks[name] = ServiceHealth(
+                    status=HealthStatus.DOWN,
+                    latency_ms=0.0,  # No timing context available for OS errors
+                    error=f"OS error: {e}",
+                )
             except Exception as e:
                 # Broad catch intentional for health checks - they should never crash
                 # Log at error level since this is unexpected
@@ -389,6 +407,24 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=f"Configuration error: {e}",
             )
+        except (TypeError, ValueError, KeyError) as e:
+            # Catch data processing errors (invalid response format, missing fields)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Jira health check failed due to data error: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Data error: {e}",
+            )
+        except OSError as e:
+            # Catch OS-level errors (DNS resolution, socket errors, etc.)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Jira health check failed due to OS error: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"OS error: {e}",
+            )
         except Exception as e:
             # Broad catch intentional for health checks - document justification
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -468,6 +504,24 @@ class HealthChecker:
                 latency_ms=latency_ms,
                 error=f"Configuration error: {e}",
             )
+        except (TypeError, ValueError, KeyError) as e:
+            # Catch data processing errors (invalid response format, missing fields)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"GitHub health check failed due to data error: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Data error: {e}",
+            )
+        except OSError as e:
+            # Catch OS-level errors (DNS resolution, socket errors, etc.)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"GitHub health check failed due to OS error: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"OS error: {e}",
+            )
         except Exception as e:
             # Broad catch intentional for health checks - document justification
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -545,6 +599,24 @@ class HealthChecker:
                 status=HealthStatus.DOWN,
                 latency_ms=latency_ms,
                 error=f"Configuration error: {e}",
+            )
+        except (TypeError, ValueError, KeyError) as e:
+            # Catch data processing errors (invalid response format, missing fields)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Claude health check failed due to data error: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"Data error: {e}",
+            )
+        except OSError as e:
+            # Catch OS-level errors (DNS resolution, socket errors, etc.)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Claude health check failed due to OS error: {e}")
+            return ServiceHealth(
+                status=HealthStatus.DOWN,
+                latency_ms=latency_ms,
+                error=f"OS error: {e}",
             )
         except Exception as e:
             # Broad catch intentional for health checks - document justification
