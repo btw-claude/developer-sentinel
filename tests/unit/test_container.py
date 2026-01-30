@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, Mock
 
 from dependency_injector import providers
 
-from sentinel.config import Config
 from sentinel.container import (
     SentinelContainer,
     create_agent_factory,
@@ -22,6 +21,7 @@ from sentinel.container import (
     create_tag_manager,
     create_test_container,
 )
+from tests.helpers import make_config
 
 
 class TestFactoryFunctions:
@@ -29,7 +29,7 @@ class TestFactoryFunctions:
 
     def test_create_jira_rest_client(self) -> None:
         """Test creating Jira REST client."""
-        config = Config(
+        config = make_config(
             jira_base_url="https://example.atlassian.net",
             jira_email="test@example.com",
             jira_api_token="test-token",
@@ -42,7 +42,7 @@ class TestFactoryFunctions:
 
     def test_create_jira_sdk_client(self) -> None:
         """Test creating Jira SDK client."""
-        config = Config()
+        config = make_config()
 
         client = create_jira_sdk_client(config)
 
@@ -51,7 +51,7 @@ class TestFactoryFunctions:
 
     def test_create_jira_rest_tag_client(self) -> None:
         """Test creating Jira REST tag client."""
-        config = Config(
+        config = make_config(
             jira_base_url="https://example.atlassian.net",
             jira_email="test@example.com",
             jira_api_token="test-token",
@@ -65,7 +65,7 @@ class TestFactoryFunctions:
 
     def test_create_jira_sdk_tag_client(self) -> None:
         """Test creating Jira SDK tag client."""
-        config = Config()
+        config = make_config()
 
         client = create_jira_sdk_tag_client(config)
 
@@ -75,7 +75,7 @@ class TestFactoryFunctions:
 
     def test_create_github_rest_client_when_configured(self) -> None:
         """Test creating GitHub REST client when token is configured."""
-        config = Config(github_token="test-token")
+        config = make_config(github_token="test-token")
 
         client = create_github_rest_client(config)
 
@@ -83,7 +83,7 @@ class TestFactoryFunctions:
 
     def test_create_github_rest_client_when_not_configured(self) -> None:
         """Test creating GitHub REST client returns None when not configured."""
-        config = Config()
+        config = make_config()
 
         client = create_github_rest_client(config)
 
@@ -91,7 +91,7 @@ class TestFactoryFunctions:
 
     def test_create_github_rest_tag_client_when_configured(self) -> None:
         """Test creating GitHub REST tag client when token is configured."""
-        config = Config(github_token="test-token")
+        config = make_config(github_token="test-token")
 
         client = create_github_rest_tag_client(config)
 
@@ -99,7 +99,7 @@ class TestFactoryFunctions:
 
     def test_create_github_rest_tag_client_when_not_configured(self) -> None:
         """Test creating GitHub REST tag client returns None when not configured."""
-        config = Config()
+        config = make_config()
 
         client = create_github_rest_tag_client(config)
 
@@ -107,7 +107,7 @@ class TestFactoryFunctions:
 
     def test_create_agent_factory(self) -> None:
         """Test creating agent factory."""
-        config = Config()
+        config = make_config()
 
         factory = create_agent_factory(config)
 
@@ -117,7 +117,7 @@ class TestFactoryFunctions:
 
     def test_create_agent_logger(self) -> None:
         """Test creating agent logger."""
-        config = Config()
+        config = make_config()
 
         logger = create_agent_logger(config)
 
@@ -150,7 +150,7 @@ class TestCreateSentinel:
 
     def test_create_sentinel_with_all_dependencies(self) -> None:
         """Test creating Sentinel with all dependencies (new DI pattern)."""
-        config = Config()
+        config = make_config()
         orchestrations: list = []
         mock_jira_tag = Mock()
         mock_agent_factory = MagicMock()
@@ -175,7 +175,7 @@ class TestCreateSentinel:
 
     def test_create_sentinel_with_github_clients(self) -> None:
         """Test creating Sentinel with GitHub poller (new DI pattern)."""
-        config = Config()
+        config = make_config()
         orchestrations: list = []
         mock_jira_tag = Mock()
         mock_agent_factory = MagicMock()
@@ -218,7 +218,7 @@ class TestSentinelContainer:
     def test_override_config(self) -> None:
         """Test overriding config provider."""
         container = SentinelContainer()
-        config = Config(poll_interval=999)
+        config = make_config(poll_interval=999)
 
         container.config.override(providers.Object(config))
 
@@ -239,7 +239,7 @@ class TestCreateTestContainer:
 
     def test_create_test_container_with_custom_config(self) -> None:
         """Test creating test container with custom config."""
-        config = Config(poll_interval=5)
+        config = make_config(poll_interval=5)
 
         container = create_test_container(config=config)
 
@@ -273,7 +273,7 @@ class TestCreateContainer:
         orch_dir = tmp_path / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
+        config = make_config(
             jira_base_url="https://example.atlassian.net",
             jira_email="test@example.com",
             jira_api_token="test-token",
@@ -294,7 +294,7 @@ class TestCreateContainer:
         orch_dir = tmp_path / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
+        config = make_config(
             orchestrations_dir=orch_dir,
         )
 
@@ -311,7 +311,7 @@ class TestCreateContainer:
         orch_dir = tmp_path / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
+        config = make_config(
             github_token="test-token",
             orchestrations_dir=orch_dir,
         )
@@ -326,7 +326,7 @@ class TestCreateContainer:
         orch_dir = tmp_path / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
+        config = make_config(
             orchestrations_dir=orch_dir,
         )
 
@@ -340,7 +340,7 @@ class TestCreateContainer:
         orch_dir = tmp_path / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
+        config = make_config(
             jira_base_url="https://example.atlassian.net",
             jira_email="test@example.com",
             jira_api_token="test-token",
@@ -369,7 +369,7 @@ class TestContainerIntegration:
         orch_dir = tmp_path / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
+        config = make_config(
             jira_base_url="https://example.atlassian.net",
             jira_email="test@example.com",
             jira_api_token="test-token",
@@ -387,7 +387,7 @@ class TestContainerIntegration:
         orch_dir = tmp_path / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
+        config = make_config(
             jira_base_url="https://example.atlassian.net",
             jira_email="test@example.com",
             jira_api_token="test-token",
@@ -408,7 +408,7 @@ class TestContainerIntegration:
         orch_dir = tmp_path / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
+        config = make_config(
             jira_base_url="https://example.atlassian.net",
             jira_email="test@example.com",
             jira_api_token="test-token",
@@ -428,7 +428,7 @@ class TestContainerIntegration:
         orch_dir = tmp_path / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
+        config = make_config(
             jira_base_url="https://example.atlassian.net",
             jira_email="test@example.com",
             jira_api_token="test-token",

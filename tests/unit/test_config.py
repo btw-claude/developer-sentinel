@@ -12,7 +12,17 @@ from sentinel.config import (
     VALID_AGENT_TYPES,
     VALID_CURSOR_MODES,
     VALID_LOG_LEVELS,
+    CircuitBreakerConfig,
     Config,
+    CursorConfig,
+    DashboardConfig,
+    ExecutionConfig,
+    GitHubConfig,
+    HealthCheckConfig,
+    JiraConfig,
+    LoggingConfig,
+    PollingConfig,
+    RateLimitConfig,
     _parse_bool,
     _parse_non_negative_float,
     _parse_port,
@@ -30,28 +40,131 @@ class TestConfig:
 
     def test_defaults(self) -> None:
         config = Config()
+        # Test backward compatibility properties
         assert config.poll_interval == 60
         assert config.max_issues_per_poll == 50
         assert config.max_concurrent_executions == 1
         assert config.log_level == "INFO"
         assert config.log_json is False
         assert config.orchestrations_dir == Path("./orchestrations")
+        # Test sub-configs directly
+        assert config.polling.interval == 60
+        assert config.polling.max_issues_per_poll == 50
+        assert config.execution.max_concurrent_executions == 1
+        assert config.logging_config.level == "INFO"
+        assert config.logging_config.json is False
+        assert config.execution.orchestrations_dir == Path("./orchestrations")
 
     def test_custom_values(self) -> None:
         config = Config(
-            poll_interval=120,
-            max_issues_per_poll=100,
-            log_level="DEBUG",
+            polling=PollingConfig(interval=120, max_issues_per_poll=100),
+            logging_config=LoggingConfig(level="DEBUG"),
         )
+        # Test backward compatibility properties
         assert config.poll_interval == 120
         assert config.max_issues_per_poll == 100
         assert config.log_level == "DEBUG"
+        # Test sub-configs directly
+        assert config.polling.interval == 120
+        assert config.polling.max_issues_per_poll == 100
+        assert config.logging_config.level == "DEBUG"
 
     def test_frozen_immutable(self) -> None:
         """Config should be immutable after creation."""
         config = Config()
         with pytest.raises(FrozenInstanceError):
-            config.poll_interval = 120  # type: ignore[misc]
+            config.polling = PollingConfig(interval=120)  # type: ignore[misc]
+
+
+class TestSubConfigs:
+    """Tests for sub-config dataclasses."""
+
+    def test_jira_config_defaults(self) -> None:
+        jira = JiraConfig()
+        assert jira.base_url == ""
+        assert jira.email == ""
+        assert jira.api_token == ""
+        assert jira.epic_link_field == "customfield_10014"
+        assert jira.configured is False
+
+    def test_jira_config_configured(self) -> None:
+        jira = JiraConfig(
+            base_url="https://test.atlassian.net",
+            email="test@example.com",
+            api_token="token",
+        )
+        assert jira.configured is True
+
+    def test_github_config_defaults(self) -> None:
+        github = GitHubConfig()
+        assert github.token == ""
+        assert github.api_url == ""
+        assert github.configured is False
+
+    def test_github_config_configured(self) -> None:
+        github = GitHubConfig(token="gh_token")
+        assert github.configured is True
+
+    def test_dashboard_config_defaults(self) -> None:
+        dashboard = DashboardConfig()
+        assert dashboard.enabled is False
+        assert dashboard.port == 8080
+        assert dashboard.host == "127.0.0.1"
+        assert dashboard.toggle_cooldown_seconds == 2.0
+        assert dashboard.rate_limit_cache_ttl == 3600
+        assert dashboard.rate_limit_cache_maxsize == 10000
+
+    def test_rate_limit_config_defaults(self) -> None:
+        rate_limit = RateLimitConfig()
+        assert rate_limit.enabled is True
+        assert rate_limit.per_minute == 60
+        assert rate_limit.per_hour == 1000
+        assert rate_limit.strategy == "queue"
+        assert rate_limit.warning_threshold == 0.2
+
+    def test_circuit_breaker_config_defaults(self) -> None:
+        circuit_breaker = CircuitBreakerConfig()
+        assert circuit_breaker.enabled is True
+        assert circuit_breaker.failure_threshold == 5
+        assert circuit_breaker.recovery_timeout == 30.0
+        assert circuit_breaker.half_open_max_calls == 3
+
+    def test_health_check_config_defaults(self) -> None:
+        health_check = HealthCheckConfig()
+        assert health_check.enabled is True
+        assert health_check.timeout == 5.0
+
+    def test_execution_config_defaults(self) -> None:
+        execution = ExecutionConfig()
+        assert execution.orchestrations_dir == Path("./orchestrations")
+        assert execution.agent_workdir == Path("./workdir")
+        assert execution.agent_logs_dir == Path("./logs")
+        assert execution.orchestration_logs_dir is None
+        assert execution.max_concurrent_executions == 1
+        assert execution.cleanup_workdir_on_success is True
+        assert execution.disable_streaming_logs is False
+        assert execution.subprocess_timeout == 60.0
+        assert execution.default_base_branch == "main"
+        assert execution.attempt_counts_ttl == 3600
+        assert execution.max_queue_size == 100
+        assert execution.inter_message_times_threshold == 100
+
+    def test_cursor_config_defaults(self) -> None:
+        cursor = CursorConfig()
+        assert cursor.default_agent_type == "claude"
+        assert cursor.path == ""
+        assert cursor.default_model == ""
+        assert cursor.default_mode == "agent"
+
+    def test_logging_config_defaults(self) -> None:
+        logging_cfg = LoggingConfig()
+        assert logging_cfg.level == "INFO"
+        assert logging_cfg.json is False
+
+    def test_polling_config_defaults(self) -> None:
+        polling = PollingConfig()
+        assert polling.interval == 60
+        assert polling.max_issues_per_poll == 50
 
 
 class TestParsePositiveInt:
