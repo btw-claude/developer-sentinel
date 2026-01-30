@@ -116,8 +116,9 @@ class CircuitBreakerConfig:
                 "half_open_max_calls must be a positive integer, not a boolean"
             )
         if not isinstance(self.half_open_max_calls, int):
+            type_name = type(self.half_open_max_calls).__name__
             raise CircuitBreakerConfigError(
-                f"half_open_max_calls must be an integer, got {type(self.half_open_max_calls).__name__}"
+                f"half_open_max_calls must be an integer, got {type_name}"
             )
         if self.half_open_max_calls <= 0:
             raise CircuitBreakerConfigError(
@@ -290,9 +291,12 @@ class CircuitBreaker:
 
     def _check_state_transition(self) -> None:
         """Check if circuit should transition state based on timeout."""
-        if self._state == CircuitState.OPEN:
-            if time.time() - self._last_failure_time >= self.config.recovery_timeout:
-                self._transition_to(CircuitState.HALF_OPEN)
+        time_since_failure = time.time() - self._last_failure_time
+        if (
+            self._state == CircuitState.OPEN
+            and time_since_failure >= self.config.recovery_timeout
+        ):
+            self._transition_to(CircuitState.HALF_OPEN)
 
     def _transition_to(self, new_state: CircuitState) -> None:
         """Transition to a new state with logging and metrics."""
@@ -309,7 +313,8 @@ class CircuitBreaker:
             self._failure_count = 0
 
         logger.info(
-            f"[CIRCUIT_BREAKER] {self.service_name}: State changed from {old_state.value} to {new_state.value}"
+            f"[CIRCUIT_BREAKER] {self.service_name}: "
+            f"State changed from {old_state.value} to {new_state.value}"
         )
 
     def allow_request(self) -> bool:
@@ -339,7 +344,8 @@ class CircuitBreaker:
             if self._half_open_calls < self.config.half_open_max_calls:
                 self._half_open_calls += 1
                 logger.debug(
-                    f"[CIRCUIT_BREAKER] {self.service_name}: HALF_OPEN call {self._half_open_calls}/{self.config.half_open_max_calls}"
+                    f"[CIRCUIT_BREAKER] {self.service_name}: "
+                    f"HALF_OPEN call {self._half_open_calls}/{self.config.half_open_max_calls}"
                 )
                 return True
 
@@ -363,7 +369,8 @@ class CircuitBreaker:
                 if self._success_count >= self.config.half_open_max_calls:
                     self._transition_to(CircuitState.CLOSED)
                     logger.info(
-                        f"[CIRCUIT_BREAKER] {self.service_name}: Recovery successful, circuit CLOSED"
+                        f"[CIRCUIT_BREAKER] {self.service_name}: "
+                        "Recovery successful, circuit CLOSED"
                     )
             elif self._state == CircuitState.CLOSED:
                 # Reset failure count on success in closed state
