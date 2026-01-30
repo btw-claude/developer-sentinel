@@ -14,7 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sentinel.agent_clients.base import AgentClientError, AgentTimeoutError
+from sentinel.agent_clients.base import AgentClientError, AgentRunResult, AgentTimeoutError
 from sentinel.branch_validation import validate_runtime_branch_name
 from sentinel.github_poller import GitHubIssue
 from sentinel.logging import get_logger, log_agent_summary
@@ -291,19 +291,6 @@ class TemplateContext:
         )
 
 
-@dataclass
-class AgentRunResult:
-    """Result of running a Claude agent.
-
-    Attributes:
-        response: The agent's response text.
-        workdir: Path to the agent's working directory, if one was created.
-    """
-
-    response: str
-    workdir: Path | None = None
-
-
 def cleanup_workdir(
     workdir: Path | None,
     force: bool = False,
@@ -433,10 +420,16 @@ class ExecutionResult:
         return self.status == ExecutionStatus.SUCCESS
 
 
-# Re-export exception classes for backward compatibility
-# These exceptions are now defined in agent_clients.base but re-exported here
+# Re-export classes from agent_clients.base for backward compatibility
+# These are now defined in agent_clients.base but re-exported here
 # to maintain existing import paths used throughout the codebase
-__all__ = ["AgentClientError", "AgentTimeoutError", "AgentClient", "AgentExecutor"]
+__all__ = [
+    "AgentClientError",
+    "AgentRunResult",
+    "AgentTimeoutError",
+    "AgentClient",
+    "AgentExecutor",
+]
 
 
 class AgentClient(ABC):
