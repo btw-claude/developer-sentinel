@@ -1,11 +1,19 @@
-"""Tests for completed executions tracking functionality (DS-523)."""
+"""Tests for completed executions tracking functionality (DS-523).
+
+Also includes tests for usage data propagation (DS-528):
+- ExecutionResult usage data fields
+- AgentExecutor usage data extraction
+- Sentinel._record_completed_execution usage data handling
+"""
 
 import threading
 import time
 from datetime import datetime
 
+from sentinel.agent_clients.base import UsageInfo
+from sentinel.executor import AgentExecutor, ExecutionResult, ExecutionStatus
 from sentinel.main import Sentinel
-from sentinel.state_tracker import CompletedExecutionInfo, StateTracker
+from sentinel.state_tracker import CompletedExecutionInfo, RunningStepInfo, StateTracker
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
@@ -13,6 +21,7 @@ from tests.conftest import (
     MockJiraPoller,
     MockTagClient,
     make_config,
+    make_issue,
     make_orchestration,
 )
 
@@ -268,3 +277,201 @@ class TestSentinelCompletedExecutions:
         executions = sentinel.get_completed_executions()
         assert len(executions) == 1
         assert executions[0].issue_key == "TEST-1"
+
+
+class TestExecutionResultUsageData:
+    """Tests for ExecutionResult usage data fields (DS-528)."""
+
+    def test_execution_result_has_usage_fields(self) -> None:
+        """Test that ExecutionResult has usage data fields with defaults."""
+        result = ExecutionResult(
+            status=ExecutionStatus.SUCCESS,
+            response="SUCCESS",
+            attempts=1,
+            issue_key="TEST-123",
+            orchestration_name="test-orch",
+        )
+
+        assert result.input_tokens == 0
+        assert result.output_tokens == 0
+        assert result.total_cost_usd == 0.0
+
+    def test_execution_result_with_usage_data(self) -> None:
+        """Test that ExecutionResult can store usage data."""
+        result = ExecutionResult(
+            status=ExecutionStatus.SUCCESS,
+            response="SUCCESS",
+            attempts=1,
+            issue_key="TEST-123",
+            orchestration_name="test-orch",
+            input_tokens=1000,
+            output_tokens=500,
+            total_cost_usd=0.05,
+        )
+
+        assert result.input_tokens == 1000
+        assert result.output_tokens == 500
+        assert result.total_cost_usd == 0.05
+
+
+class TestAgentExecutorUsageDataPropagation:
+    """Tests for AgentExecutor usage data extraction from AgentRunResult (DS-528)."""
+
+    def test_executor_propagates_usage_data_on_success(self) -> None:
+        """Test that executor extracts usage data from AgentRunResult on success."""
+        usage = UsageInfo(
+            input_tokens=1500,
+            output_tokens=750,
+            total_cost_usd=0.075,
+        )
+        agent_client = MockAgentClient(
+            responses=["SUCCESS: Task completed"],
+            usage=usage,
+        )
+        executor = AgentExecutor(agent_client)
+
+        issue = make_issue("TEST-1", "Test summary")
+        orchestration = make_orchestration()
+
+        result = executor.execute(issue, orchestration)
+
+        assert result.succeeded
+        assert result.input_tokens == 1500
+        assert result.output_tokens == 750
+        assert result.total_cost_usd == 0.075
+
+    def test_executor_propagates_usage_data_on_failure(self) -> None:
+        """Test that executor extracts usage data from AgentRunResult even on failure."""
+        usage = UsageInfo(
+            input_tokens=500,
+            output_tokens=250,
+            total_cost_usd=0.025,
+        )
+        agent_client = MockAgentClient(
+            responses=["FAILURE: Task failed"],
+            usage=usage,
+        )
+        executor = AgentExecutor(agent_client)
+
+        orchestration = make_orchestration()
+        # Set max_attempts to 1 to avoid retries
+        orchestration.retry.max_attempts = 1
+        issue = make_issue("TEST-2", "Test summary")
+
+        result = executor.execute(issue, orchestration)
+
+        assert not result.succeeded
+        assert result.input_tokens == 500
+        assert result.output_tokens == 250
+        assert result.total_cost_usd == 0.025
+
+    def test_executor_handles_none_usage(self) -> None:
+        """Test that executor handles None usage data gracefully."""
+        agent_client = MockAgentClient(
+            responses=["SUCCESS: Task completed"],
+            usage=None,  # No usage data
+        )
+        executor = AgentExecutor(agent_client)
+
+        issue = make_issue("TEST-3", "Test summary")
+        orchestration = make_orchestration()
+
+        result = executor.execute(issue, orchestration)
+
+        assert result.succeeded
+        assert result.input_tokens == 0
+        assert result.output_tokens == 0
+        assert result.total_cost_usd == 0.0
+
+
+class TestSentinelRecordCompletedExecutionUsageData:
+    """Tests for Sentinel._record_completed_execution usage data handling (DS-528)."""
+
+    def test_record_completed_execution_uses_usage_data_from_result(self) -> None:
+        """Test that _record_completed_execution extracts usage data from ExecutionResult."""
+        jira_poller = MockJiraPoller(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Create an ExecutionResult with usage data
+        result = ExecutionResult(
+            status=ExecutionStatus.SUCCESS,
+            response="SUCCESS",
+            attempts=1,
+            issue_key="TEST-123",
+            orchestration_name="test-orch",
+            input_tokens=2000,
+            output_tokens=1000,
+            total_cost_usd=0.10,
+        )
+
+        # Create a RunningStepInfo
+        running_step = RunningStepInfo(
+            issue_key="TEST-123",
+            orchestration_name="test-orch",
+            attempt_number=1,
+            started_at=datetime.now(),
+            issue_url="https://jira.example.com/TEST-123",
+        )
+
+        # Record the completed execution
+        sentinel._record_completed_execution(result, running_step)
+
+        # Verify the usage data was captured
+        executions = sentinel.get_completed_executions()
+        assert len(executions) == 1
+        assert executions[0].input_tokens == 2000
+        assert executions[0].output_tokens == 1000
+        assert executions[0].total_cost_usd == 0.10
+
+    def test_record_completed_execution_with_zero_usage(self) -> None:
+        """Test that _record_completed_execution handles zero usage data."""
+        jira_poller = MockJiraPoller(issues=[])
+        agent_client = MockAgentClient()
+        tag_client = MockTagClient()
+        config = make_config()
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_poller=jira_poller,
+            agent_factory=agent_client,
+            tag_client=tag_client,
+        )
+
+        # Create an ExecutionResult with default (zero) usage data
+        result = ExecutionResult(
+            status=ExecutionStatus.SUCCESS,
+            response="SUCCESS",
+            attempts=1,
+            issue_key="TEST-456",
+            orchestration_name="test-orch",
+            # No usage data specified - defaults to 0
+        )
+
+        running_step = RunningStepInfo(
+            issue_key="TEST-456",
+            orchestration_name="test-orch",
+            attempt_number=1,
+            started_at=datetime.now(),
+            issue_url="https://jira.example.com/TEST-456",
+        )
+
+        sentinel._record_completed_execution(result, running_step)
+
+        executions = sentinel.get_completed_executions()
+        assert len(executions) == 1
+        assert executions[0].input_tokens == 0
+        assert executions[0].output_tokens == 0
+        assert executions[0].total_cost_usd == 0.0
