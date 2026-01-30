@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from sentinel.config import Config
     from sentinel.main import QueuedIssueInfo, RunningStepInfo
     from sentinel.orchestration import Orchestration
+    from sentinel.state_tracker import CompletedExecutionInfo
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,26 @@ class QueuedIssueInfoView:
 
 
 @dataclass(frozen=True)
+class CompletedExecutionInfoView:
+    """Read-only completed execution information for the dashboard.
+
+    This provides an immutable view of a completed execution for dashboard
+    display, including computed duration and all usage fields (token counts
+    and cost) from the Claude Agent SDK.
+    """
+
+    issue_key: str
+    orchestration_name: str
+    status: str  # "success" or "failure"
+    duration_seconds: float  # computed from started_at and completed_at
+    input_tokens: int | None
+    output_tokens: int | None
+    total_cost_usd: float | None
+    completed_at: datetime
+    issue_url: str
+
+
+@dataclass(frozen=True)
 class SystemStatusInfo:
     """System status information for the dashboard.
 
@@ -193,6 +214,9 @@ class DashboardState:
 
     # Issue queue - issues waiting for execution slots
     issue_queue: list[QueuedIssueInfoView] = field(default_factory=list)
+
+    # Completed executions - recent completed executions for dashboard display
+    completed_executions: list[CompletedExecutionInfoView] = field(default_factory=list)
 
     # Hot-reload metrics
     hot_reload_metrics: HotReloadMetrics | None = None
@@ -299,6 +323,14 @@ class SentinelStateProvider(Protocol):
 
         This method returns an immutable DTO instead of exposing internal
         threading primitives or Future objects.
+        """
+        ...
+
+    def get_completed_executions(self) -> list[CompletedExecutionInfo]:
+        """Return the list of completed executions.
+
+        This method returns a list of completed execution info for recent
+        executions, ordered with most recent first.
         """
         ...
 
@@ -413,6 +445,23 @@ class SentinelStateAccessor:
             for item in issue_queue_raw
         ]
 
+        # Get completed executions info
+        completed_executions_raw = sentinel.get_completed_executions()
+        completed_execution_views = [
+            CompletedExecutionInfoView(
+                issue_key=item.issue_key,
+                orchestration_name=item.orchestration_name,
+                status=item.status,
+                duration_seconds=(item.completed_at - item.started_at).total_seconds(),
+                input_tokens=item.input_tokens if item.input_tokens > 0 else None,
+                output_tokens=item.output_tokens if item.output_tokens > 0 else None,
+                total_cost_usd=item.total_cost_usd if item.total_cost_usd > 0 else None,
+                completed_at=item.completed_at,
+                issue_url=item.issue_url,
+            )
+            for item in completed_executions_raw
+        ]
+
         # Get system status info
         start_time = sentinel.get_start_time()
         system_status = SystemStatusInfo(
@@ -452,6 +501,7 @@ class SentinelStateAccessor:
             available_slots=available_slots,
             running_steps=running_step_views,
             issue_queue=issue_queue_views,
+            completed_executions=completed_execution_views,
             hot_reload_metrics=hot_reload_metrics,
             shutdown_requested=sentinel.is_shutdown_requested(),
             active_incomplete_tasks=pending_count,

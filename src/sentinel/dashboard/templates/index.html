@@ -113,6 +113,28 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
+         data-collapsible-target="recent-executions-content"
+         hx-get="/partials/recent_executions"
+         hx-target="#recent-executions-content"
+         hx-swap="innerHTML"
+         hx-trigger="click[!isExpanded('recent-executions-content')]"
+         hx-on::after-request="toggleCollapsibleSection(this)">
+        <h2>
+            <span class="collapse-icon">&#9654;</span>
+            Recent Executions
+            <span class="badge">{{ state.completed_executions | length }}</span>
+        </h2>
+    </div>
+    <div id="recent-executions-content" class="collapsible-content"
+         hx-get="/partials/recent_executions"
+         hx-trigger="every 5s[isExpanded('recent-executions-content')]"
+         hx-swap="innerHTML">
+        <!-- Content loaded via HTMX when expanded, auto-refreshes every 5s -->
+    </div>
+</div>
+
+<div class="card collapsible-section">
+    <div class="collapsible-header"
          data-collapsible-target="jira-projects-content"
          hx-get="/partials/orchestrations?source=jira"
          hx-target="#jira-projects-content"

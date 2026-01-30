@@ -1,0 +1,65 @@
+{# Security audit complete - all external links have rel="noopener noreferrer" #}
+{% if state.completed_executions %}
+<table>
+    <tr>
+        <th>Issue Key</th>
+        <th>Orchestration</th>
+        <th>Status</th>
+        <th>Duration</th>
+        <th>Tokens</th>
+        <th>Cost</th>
+        <th>Completed</th>
+    </tr>
+    {% for exec in state.completed_executions %}
+    <tr>
+        <td>
+            {% if exec.issue_url %}
+            <a href="{{ exec.issue_url }}" target="_blank" rel="noopener noreferrer">
+                <strong>{{ exec.issue_key }}</strong>
+            </a>
+            {% else %}
+            <strong>{{ exec.issue_key }}</strong>
+            {% endif %}
+        </td>
+        <td>{{ exec.orchestration_name }}</td>
+        <td>
+            {% if exec.status == "success" %}
+            <span class="status-badge status-success">Success</span>
+            {% else %}
+            <span class="status-badge status-failure">Failure</span>
+            {% endif %}
+        </td>
+        <td>
+            {% set minutes = (exec.duration_seconds // 60) | int %}
+            {% set seconds = (exec.duration_seconds % 60) | int %}
+            {% if minutes > 0 %}
+            {{ minutes }}m {{ seconds }}s
+            {% else %}
+            {{ seconds }}s
+            {% endif %}
+        </td>
+        <td>
+            {% if exec.input_tokens is not none and exec.output_tokens is not none %}
+            <span title="Input tokens">{{ exec.input_tokens }}</span><span class="text-muted">&darr;</span>
+            /
+            <span title="Output tokens">{{ exec.output_tokens }}</span><span class="text-muted">&uarr;</span>
+            {% else %}
+            <span class="text-muted">&mdash;</span>
+            {% endif %}
+        </td>
+        <td>
+            {% if exec.total_cost_usd is not none %}
+            ${{ "%.4f" | format(exec.total_cost_usd) }}
+            {% else %}
+            <span class="text-muted">&mdash;</span>
+            {% endif %}
+        </td>
+        <td>
+            {{ exec.completed_at.strftime('%H:%M:%S') }}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p class="text-muted">No recent executions</p>
+{% endif %}
