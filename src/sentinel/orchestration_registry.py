@@ -347,7 +347,7 @@ class OrchestrationRegistry:
                 extra={"file_path": str(file_path)},
             )
             return 0
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, ValueError) as e:
             logger.error(
                 f"Failed to load orchestration file {file_path} due to data error: {e}",
                 extra={"file_path": str(file_path)},
@@ -378,7 +378,7 @@ class OrchestrationRegistry:
                 extra={"file_path": str(file_path)},
             )
             return 0
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, ValueError) as e:
             logger.error(
                 f"Failed to reload modified orchestration file {file_path} due to data error: {e}",
                 extra={"file_path": str(file_path)},

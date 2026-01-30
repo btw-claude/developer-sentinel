@@ -379,7 +379,7 @@ class Sentinel:
                     f"Failed to apply failure tags due to I/O error: {tag_error}",
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
                 )
-            except (KeyError, TypeError, ValueError) as tag_error:
+            except (KeyError, ValueError) as tag_error:
                 logger.error(
                     f"Failed to apply failure tags due to data error: {tag_error}",
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
@@ -398,7 +398,7 @@ class Sentinel:
                     f"Failed to apply failure tags due to I/O error: {tag_error}",
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
                 )
-            except (KeyError, TypeError, ValueError) as tag_error:
+            except (KeyError, ValueError) as tag_error:
                 logger.error(
                     f"Failed to apply failure tags due to data error: {tag_error}",
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
@@ -418,13 +418,13 @@ class Sentinel:
                     f"Failed to apply failure tags due to I/O error: {tag_error}",
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
                 )
-            except (KeyError, TypeError, ValueError) as tag_error:
+            except (KeyError, ValueError) as tag_error:
                 logger.error(
                     f"Failed to apply failure tags due to data error: {tag_error}",
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
                 )
             return None
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, ValueError) as e:
             self._log_for_orchestration(
                 orchestration.name,
                 logging.ERROR,
@@ -437,7 +437,7 @@ class Sentinel:
                     f"Failed to apply failure tags due to I/O error: {tag_error}",
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
                 )
-            except (KeyError, TypeError, ValueError) as tag_error:
+            except (KeyError, ValueError) as tag_error:
                 logger.error(
                     f"Failed to apply failure tags due to data error: {tag_error}",
                     extra={"issue_key": issue_key, "orchestration": orchestration.name},
@@ -545,7 +545,7 @@ class Sentinel:
                     )
                     try:
                         self.tag_manager.apply_failure_tags(issue_key, matched_orch)
-                    except (OSError, TimeoutError, KeyError, TypeError, ValueError) as tag_error:
+                    except (OSError, TimeoutError, KeyError, ValueError) as tag_error:
                         logger.error(
                             f"Failed to apply failure tags: {tag_error}",
                             extra={"issue_key": issue_key, "orchestration": matched_orch.name},
@@ -561,12 +561,12 @@ class Sentinel:
                     )
                     try:
                         self.tag_manager.apply_failure_tags(issue_key, matched_orch)
-                    except (OSError, TimeoutError, KeyError, TypeError, ValueError) as tag_error:
+                    except (OSError, TimeoutError, KeyError, ValueError) as tag_error:
                         logger.error(
                             f"Failed to apply failure tags: {tag_error}",
                             extra={"issue_key": issue_key, "orchestration": matched_orch.name},
                         )
-                except (KeyError, TypeError, ValueError) as e:
+                except (KeyError, ValueError) as e:
                     if version is not None:
                         version.decrement_executions()
                     self._state_tracker.decrement_per_orch_count(matched_orch.name)
@@ -577,7 +577,7 @@ class Sentinel:
                     )
                     try:
                         self.tag_manager.apply_failure_tags(issue_key, matched_orch)
-                    except (OSError, TimeoutError, KeyError, TypeError, ValueError) as tag_error:
+                    except (OSError, TimeoutError, KeyError, ValueError) as tag_error:
                         logger.error(
                             f"Failed to apply failure tags: {tag_error}",
                             extra={"issue_key": issue_key, "orchestration": matched_orch.name},
@@ -762,7 +762,7 @@ class Sentinel:
                         extra={"error_type": type(e).__name__},
                     )
                     submitted_count = 0
-                except (KeyError, TypeError, ValueError) as e:
+                except (KeyError, ValueError) as e:
                     logger.error(
                         f"Error in polling cycle due to data error: {e}",
                         extra={"error_type": type(e).__name__},

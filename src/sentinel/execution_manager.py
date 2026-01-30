@@ -370,7 +370,7 @@ class ExecutionManager:
                         f"Error collecting result from future due to runtime error: {e}",
                         extra={"description": tracked.description, "error_type": type(e).__name__},
                     )
-                except (KeyError, TypeError, ValueError) as e:
+                except (KeyError, ValueError) as e:
                     logger.error(
                         f"Error collecting result from future due to data error: {e}",
                         extra={"description": tracked.description, "error_type": type(e).__name__},
@@ -560,7 +560,7 @@ class ExecutionManager:
                 extra={"error_type": type(e).__name__},
             )
             return None
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, ValueError) as e:
             logger.error(
                 f"Error in synchronous execution due to data error: {e}",
                 extra={"error_type": type(e).__name__},
@@ -593,7 +593,7 @@ class ExecutionManager:
                                 "error_type": type(e).__name__,
                             },
                         )
-                    except (KeyError, TypeError, ValueError) as e:
+                    except (KeyError, ValueError) as e:
                         logger.error(
                             f"Error in future done callback due to data error: {e}",
                             extra={
