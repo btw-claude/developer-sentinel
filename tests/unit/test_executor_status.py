@@ -5,6 +5,8 @@ This module contains executor tests for:
 - execute method tests
 """
 
+import pytest
+
 from sentinel.executor import AgentExecutor, ExecutionStatus
 from sentinel.orchestration import (
     AgentConfig,
@@ -304,33 +306,34 @@ class TestAgentExecutorDetermineStatusWithOutcomes:
         assert outcome == "other"
 
 
+@pytest.mark.asyncio
 class TestAgentExecutorExecute:
-    """Tests for AgentExecutor.execute."""
+    """Tests for AgentExecutor.execute (async method)."""
 
-    def test_successful_execution(self) -> None:
+    async def test_successful_execution(self) -> None:
         client = MockAgentClient(responses=["SUCCESS: Task completed"])
         executor = AgentExecutor(client)
         issue = make_issue()
         orch = make_orchestration()
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.status == ExecutionStatus.SUCCESS
         assert result.attempts == 1
         assert "SUCCESS" in result.response
 
-    def test_passes_tools_to_client(self) -> None:
+    async def test_passes_tools_to_client(self) -> None:
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue()
         orch = make_orchestration(tools=["jira", "github", "confluence"])
 
-        executor.execute(issue, orch)
+        await executor.execute(issue, orch)
 
         assert client.calls[0][1] == ["jira", "github", "confluence"]
 
-    def test_passes_github_context_to_client(self) -> None:
+    async def test_passes_github_context_to_client(self) -> None:
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue()
@@ -338,7 +341,7 @@ class TestAgentExecutorExecute:
             github=GitHubContext(host="github.example.com", org="myorg", repo="myrepo")
         )
 
-        executor.execute(issue, orch)
+        await executor.execute(issue, orch)
 
         context = client.calls[0][2]
         assert context is not None
@@ -346,7 +349,7 @@ class TestAgentExecutorExecute:
         assert context["github"]["org"] == "myorg"
         assert context["github"]["repo"] == "myrepo"
 
-    def test_retries_on_failure(self) -> None:
+    async def test_retries_on_failure(self) -> None:
         client = MockAgentClient(
             responses=["FAILURE: First attempt", "FAILURE: Second", "SUCCESS: Done"]
         )
@@ -354,25 +357,25 @@ class TestAgentExecutorExecute:
         issue = make_issue()
         orch = make_orchestration(max_attempts=3)
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.attempts == 3
         assert client.call_count == 3
 
-    def test_stops_retrying_after_success(self) -> None:
+    async def test_stops_retrying_after_success(self) -> None:
         client = MockAgentClient(responses=["FAILURE: First", "SUCCESS: Done", "Should not reach"])
         executor = AgentExecutor(client)
         issue = make_issue()
         orch = make_orchestration(max_attempts=3)
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.attempts == 2
         assert client.call_count == 2
 
-    def test_returns_failure_after_max_attempts(self) -> None:
+    async def test_returns_failure_after_max_attempts(self) -> None:
         client = MockAgentClient(
             responses=["FAILURE: Attempt 1", "FAILURE: Attempt 2", "FAILURE: Attempt 3"]
         )
@@ -380,13 +383,13 @@ class TestAgentExecutorExecute:
         issue = make_issue()
         orch = make_orchestration(max_attempts=3)
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is False
         assert result.status == ExecutionStatus.FAILURE
         assert result.attempts == 3
 
-    def test_handles_client_error(self) -> None:
+    async def test_handles_client_error(self) -> None:
         client = MockAgentClient()
         client.should_error = True
         client.max_errors = 10
@@ -394,13 +397,13 @@ class TestAgentExecutorExecute:
         issue = make_issue()
         orch = make_orchestration(max_attempts=2)
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is False
         assert result.status == ExecutionStatus.ERROR
         assert result.attempts == 2
 
-    def test_retries_on_client_error_then_succeeds(self) -> None:
+    async def test_retries_on_client_error_then_succeeds(self) -> None:
         client = MockAgentClient(responses=["SUCCESS: Done"])
         client.should_error = True
         client.max_errors = 1
@@ -408,43 +411,43 @@ class TestAgentExecutorExecute:
         issue = make_issue()
         orch = make_orchestration(max_attempts=3)
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.attempts == 2
 
-    def test_result_includes_issue_key(self) -> None:
+    async def test_result_includes_issue_key(self) -> None:
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue(key="PROJ-999")
         orch = make_orchestration()
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.issue_key == "PROJ-999"
 
-    def test_result_includes_orchestration_name(self) -> None:
+    async def test_result_includes_orchestration_name(self) -> None:
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue()
         orch = make_orchestration(name="code-review")
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.orchestration_name == "code-review"
 
-    def test_passes_timeout_to_client(self) -> None:
+    async def test_passes_timeout_to_client(self) -> None:
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue()
         orch = make_orchestration()
         orch.agent.timeout_seconds = 300
 
-        executor.execute(issue, orch)
+        await executor.execute(issue, orch)
 
         assert client.calls[0][3] == 300
 
-    def test_handles_timeout_error(self) -> None:
+    async def test_handles_timeout_error(self) -> None:
         client = MockAgentClient()
         client.should_timeout = True
         client.max_timeouts = 10
@@ -452,13 +455,13 @@ class TestAgentExecutorExecute:
         issue = make_issue()
         orch = make_orchestration(max_attempts=2)
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is False
         assert result.status == ExecutionStatus.ERROR
         assert result.attempts == 2
 
-    def test_retries_on_timeout_then_succeeds(self) -> None:
+    async def test_retries_on_timeout_then_succeeds(self) -> None:
         client = MockAgentClient(responses=["SUCCESS: Done"])
         client.should_timeout = True
         client.max_timeouts = 1
@@ -466,22 +469,22 @@ class TestAgentExecutorExecute:
         issue = make_issue()
         orch = make_orchestration(max_attempts=3)
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.attempts == 2
 
-    def test_timeout_none_by_default(self) -> None:
+    async def test_timeout_none_by_default(self) -> None:
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue()
         orch = make_orchestration()
 
-        executor.execute(issue, orch)
+        await executor.execute(issue, orch)
 
         assert client.calls[0][3] is None
 
-    def test_passes_model_to_client(self) -> None:
+    async def test_passes_model_to_client(self) -> None:
         """Model from orchestration should be passed to client."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
@@ -489,26 +492,27 @@ class TestAgentExecutorExecute:
         orch = make_orchestration()
         orch.agent.model = "claude-opus-4-5-20251101"
 
-        executor.execute(issue, orch)
+        await executor.execute(issue, orch)
 
         assert client.calls[0][5] == "claude-opus-4-5-20251101"
 
-    def test_model_none_by_default(self) -> None:
+    async def test_model_none_by_default(self) -> None:
         """Model should be None when not specified in orchestration."""
         client = MockAgentClient()
         executor = AgentExecutor(client)
         issue = make_issue()
         orch = make_orchestration()
 
-        executor.execute(issue, orch)
+        await executor.execute(issue, orch)
 
         assert client.calls[0][5] is None
 
 
+@pytest.mark.asyncio
 class TestAgentExecutorExecuteWithOutcomes:
-    """Tests for AgentExecutor.execute with outcomes configured."""
+    """Tests for AgentExecutor.execute with outcomes configured (async method)."""
 
-    def test_successful_execution_with_outcome(self) -> None:
+    async def test_successful_execution_with_outcome(self) -> None:
         """Execute should return matched outcome in result."""
         client = MockAgentClient(responses=["APPROVED: Code looks good"])
         executor = AgentExecutor(client)
@@ -528,12 +532,12 @@ class TestAgentExecutorExecuteWithOutcomes:
             ],
         )
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.matched_outcome == "approved"
 
-    def test_execute_matches_second_outcome(self) -> None:
+    async def test_execute_matches_second_outcome(self) -> None:
         """Execute should match correct outcome from list."""
         client = MockAgentClient(responses=["CHANGES REQUESTED: Please fix the bug"])
         executor = AgentExecutor(client)
@@ -549,12 +553,12 @@ class TestAgentExecutorExecuteWithOutcomes:
             ],
         )
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.matched_outcome == "changes-requested"
 
-    def test_execute_retries_on_failure_with_outcomes(self) -> None:
+    async def test_execute_retries_on_failure_with_outcomes(self) -> None:
         """Execute should retry on failure patterns even with outcomes configured."""
         client = MockAgentClient(
             responses=["ERROR: GitHub API failed", "APPROVED: Code looks good"]
@@ -571,20 +575,20 @@ class TestAgentExecutorExecuteWithOutcomes:
             ],
         )
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.matched_outcome == "approved"
         assert result.attempts == 2
 
-    def test_execute_no_outcome_without_outcomes_config(self) -> None:
+    async def test_execute_no_outcome_without_outcomes_config(self) -> None:
         """Execute should return None for matched_outcome when outcomes not configured."""
         client = MockAgentClient(responses=["SUCCESS: Task completed"])
         executor = AgentExecutor(client)
         issue = make_issue()
         orch = make_orchestration()
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.matched_outcome is None

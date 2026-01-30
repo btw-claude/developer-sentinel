@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 import shutil
 import time
@@ -493,7 +492,21 @@ class AgentClient(ABC):
 
 
 class AgentExecutor:
-    """Executes Claude agents on Jira issues with retry logic."""
+    """Executes Claude agents on Jira issues with retry logic.
+
+    This executor is async-native to enable proper async composition. The execute()
+    method is async and should be awaited. Callers that need sync execution should
+    use asyncio.run() at the top level of their application.
+
+    Architecture Decision (DS-509):
+    The AgentClient.run_agent() method is async because it interacts with async APIs
+    (Claude SDK). Rather than creating a new event loop per execution (which is
+    inefficient and prevents async composition), the executor is designed to be
+    async-native. This means:
+    - AgentExecutor.execute() is an async method
+    - Callers should use asyncio.run() only at application entry points
+    - Multiple executions can be composed with asyncio.gather() etc.
+    """
 
     def __init__(
         self,
@@ -781,12 +794,16 @@ class AgentExecutor:
         status = ExecutionStatus.SUCCESS if default == "SUCCESS" else ExecutionStatus.FAILURE
         return status, None
 
-    def execute(
+    async def execute(
         self,
         issue: AnyIssue,
         orchestration: Orchestration,
     ) -> ExecutionResult:
         """Execute an agent on an issue with retry logic.
+
+        This is an async method to enable proper async composition and avoid
+        creating new event loops per call. Callers should use asyncio.run()
+        at their entry points when needed.
 
         Args:
             issue: The issue to process (Jira or GitHub).
@@ -839,23 +856,20 @@ class AgentExecutor:
                 # Get branch configuration
                 branch = self._expand_branch_pattern(issue, orchestration)
 
-                # Use asyncio.run() to drive the async agent execution
-                # This is the single entry point for async code, avoiding
-                # nested event loops that would occur if run_agent called
-                # asyncio.run() internally for each execution
-                run_result = asyncio.run(
-                    self.client.run_agent(
-                        prompt,
-                        tools,
-                        context,
-                        timeout_seconds,
-                        issue_key=issue.key,
-                        model=model,
-                        orchestration_name=orchestration.name,
-                        branch=branch,
-                        create_branch=github.create_branch if github else False,
-                        base_branch=github.base_branch if github else "main",
-                    )
+                # Await the async agent execution directly
+                # The executor is async-native, avoiding the need to create
+                # new event loops per execution (DS-509)
+                run_result = await self.client.run_agent(
+                    prompt,
+                    tools,
+                    context,
+                    timeout_seconds,
+                    issue_key=issue.key,
+                    model=model,
+                    orchestration_name=orchestration.name,
+                    branch=branch,
+                    create_branch=github.create_branch if github else False,
+                    base_branch=github.base_branch if github else "main",
                 )
                 response = run_result.response
                 last_response = response

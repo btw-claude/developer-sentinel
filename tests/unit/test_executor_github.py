@@ -6,6 +6,8 @@ This module contains tests specific to GitHub issue handling:
 - GitHub template variable handling
 """
 
+import pytest
+
 from sentinel.executor import AgentExecutor, ExecutionStatus
 from sentinel.orchestration import GitHubContext
 from tests.helpers import make_issue, make_orchestration
@@ -264,10 +266,11 @@ class TestAgentExecutorBuildPromptGitHubIssue:
         assert prompt == "Review myorg/myrepo#42: Test Issue"
 
 
+@pytest.mark.asyncio
 class TestAgentExecutorExecuteGitHubIssue:
-    """Tests for AgentExecutor.execute with GitHub Issues."""
+    """Tests for AgentExecutor.execute with GitHub Issues (async method)."""
 
-    def test_successful_execution_with_github_issue(self) -> None:
+    async def test_successful_execution_with_github_issue(self) -> None:
         """Execute should work with GitHub issues."""
         from sentinel.github_poller import GitHubIssue
 
@@ -276,14 +279,14 @@ class TestAgentExecutorExecuteGitHubIssue:
         issue = GitHubIssue(number=42, title="Test PR", is_pull_request=True)
         orch = make_orchestration(prompt="Review GitHub PR #{github_issue_number}")
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.status == ExecutionStatus.SUCCESS
         assert result.issue_key == "#42"
         assert "SUCCESS" in result.response
 
-    def test_github_issue_key_in_result(self) -> None:
+    async def test_github_issue_key_in_result(self) -> None:
         """Result should include GitHub issue key format."""
         from sentinel.github_poller import GitHubIssue
 
@@ -292,11 +295,11 @@ class TestAgentExecutorExecuteGitHubIssue:
         issue = GitHubIssue(number=123, title="Test")
         orch = make_orchestration()
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.issue_key == "#123"
 
-    def test_github_issue_retries_on_failure(self) -> None:
+    async def test_github_issue_retries_on_failure(self) -> None:
         """Execute should retry on failure for GitHub issues."""
         from sentinel.github_poller import GitHubIssue
 
@@ -305,7 +308,7 @@ class TestAgentExecutorExecuteGitHubIssue:
         issue = GitHubIssue(number=42, title="Test")
         orch = make_orchestration(max_attempts=3)
 
-        result = executor.execute(issue, orch)
+        result = await executor.execute(issue, orch)
 
         assert result.succeeded is True
         assert result.attempts == 2

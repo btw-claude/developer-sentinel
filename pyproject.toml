@@ -99,6 +99,10 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# Enable asyncio mode for pytest-asyncio to handle async tests (DS-509)
+asyncio_mode = "auto"
+# Use default asyncio event loop policy
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: marks tests as integration tests requiring external services (deselect with '-m \"not integration\"')",
 ]
