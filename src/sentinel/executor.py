@@ -14,7 +14,12 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 
-from sentinel.agent_clients.base import AgentClientError, AgentRunResult, AgentTimeoutError
+from sentinel.agent_clients.base import (
+    AgentClientError,
+    AgentRunCoroutine,
+    AgentRunResult,
+    AgentTimeoutError,
+)
 from sentinel.branch_validation import validate_runtime_branch_name
 from sentinel.github_poller import GitHubIssue
 from sentinel.logging import get_logger, log_agent_summary
@@ -24,11 +29,8 @@ from sentinel.poller import JiraIssue
 # Type alias for issues from any supported source
 AnyIssue = JiraIssue | GitHubIssue
 
-# Explicit async return type aliases for improved IDE support and documentation (DS-533).
-# These type aliases make the async nature of methods more discoverable and provide
-# better autocomplete and type inference in IDEs.
-AgentRunCoroutine: TypeAlias = Coroutine[Any, Any, AgentRunResult]
-"""Coroutine type for async agent execution methods returning AgentRunResult."""
+# AgentRunCoroutine is imported from sentinel.agent_clients.base for explicit async
+# return type annotations (DS-533, DS-546). Re-exported for backward compatibility.
 
 if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
