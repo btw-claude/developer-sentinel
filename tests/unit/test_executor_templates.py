@@ -972,3 +972,105 @@ class TestUnknownTemplateVariableWarning:
         assert "jira_summary" in caplog.text
         assert "github_org" in caplog.text
         assert "github_repo" in caplog.text
+
+
+class TestStrictTemplateVariablesOrchestrationConfig:
+    """Tests for strict_template_variables config option integration with executor.
+
+    When strict_template_variables is enabled in the orchestration config,
+    the executor should raise ValueError for unknown template variables instead
+    of just logging a warning.
+    """
+
+    @pytest.fixture
+    def mock_client(self) -> MockAgentClient:
+        """Create a MockAgentClient for testing."""
+        return MockAgentClient()
+
+    @pytest.fixture
+    def executor(self, mock_client: MockAgentClient) -> AgentExecutor:
+        """Create an AgentExecutor with a mock client."""
+        return AgentExecutor(mock_client)
+
+    def test_orchestration_config_strict_false_logs_warning(
+        self, executor: AgentExecutor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """When strict_template_variables is False, should log warning not raise."""
+        import logging
+
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(
+            prompt="Issue: {jira_issue_key} - {jira_sumary}",
+            strict_template_variables=False,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            prompt = executor.build_prompt(issue, orch, strict=orch.agent.strict_template_variables)
+
+        # Should not raise, just log warning
+        assert prompt == "Issue: DS-123 - {jira_sumary}"
+        assert "Unknown template variable(s) in prompt" in caplog.text
+
+    def test_orchestration_config_strict_true_raises_error(
+        self, executor: AgentExecutor
+    ) -> None:
+        """When strict_template_variables is True, should raise ValueError."""
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(
+            prompt="Issue: {jira_issue_key} - {jira_sumary}",
+            strict_template_variables=True,
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            executor.build_prompt(issue, orch, strict=orch.agent.strict_template_variables)
+
+        assert "Unknown template variable(s) in prompt" in str(exc_info.value)
+        assert "jira_sumary" in str(exc_info.value)
+
+    def test_orchestration_config_strict_branch_pattern(
+        self, executor: AgentExecutor
+    ) -> None:
+        """When strict_template_variables is True, should raise for branch pattern typos."""
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(
+            prompt="Test",
+            strict_template_variables=True,
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{jira_isue_key}",  # Typo: missing 's'
+            ),
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            executor._expand_branch_pattern(
+                issue, orch, strict=orch.agent.strict_template_variables
+            )
+
+        assert "Unknown template variable(s) in branch pattern" in str(exc_info.value)
+        assert "jira_isue_key" in str(exc_info.value)
+
+    def test_orchestration_config_strict_valid_variables_no_error(
+        self, executor: AgentExecutor
+    ) -> None:
+        """When strict_template_variables is True and all variables valid, no error."""
+        issue = make_issue(key="DS-123", summary="Test summary")
+        orch = make_orchestration(
+            prompt="Issue: {jira_issue_key} - {jira_summary}",
+            strict_template_variables=True,
+        )
+
+        # Should not raise
+        prompt = executor.build_prompt(issue, orch, strict=orch.agent.strict_template_variables)
+        assert prompt == "Issue: DS-123 - Test summary"
+
+    def test_make_orchestration_helper_defaults_strict_false(self) -> None:
+        """Test that make_orchestration helper defaults strict_template_variables to False."""
+        orch = make_orchestration(prompt="Test")
+        assert orch.agent.strict_template_variables is False
+
+    def test_make_orchestration_helper_supports_strict_true(self) -> None:
+        """Test that make_orchestration helper supports strict_template_variables=True."""
+        orch = make_orchestration(prompt="Test", strict_template_variables=True)
+        assert orch.agent.strict_template_variables is True

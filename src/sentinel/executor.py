@@ -927,7 +927,9 @@ class AgentExecutor:
                 "repo": github.repo,
             }
 
-        prompt = self.build_prompt(issue, orchestration)
+        # Build prompt with strict mode from orchestration config
+        strict = orchestration.agent.strict_template_variables
+        prompt = self.build_prompt(issue, orchestration, strict=strict)
         last_response = ""
         last_status = ExecutionStatus.ERROR
         last_matched_outcome: str | None = None
@@ -956,8 +958,8 @@ class AgentExecutor:
             )
 
             try:
-                # Get branch configuration
-                branch = self._expand_branch_pattern(issue, orchestration)
+                # Get branch configuration with strict mode from orchestration config
+                branch = self._expand_branch_pattern(issue, orchestration, strict=strict)
 
                 # Await the async agent execution directly
                 # The executor is async-native, avoiding the need to create
