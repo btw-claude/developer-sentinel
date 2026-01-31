@@ -221,9 +221,9 @@ class _WeakObserverRef:
             self._ref = weakref.WeakMethod(observer)  # type: ignore[arg-type]
             self._is_method = True
         else:
-            # For regular functions, we need to store them strongly since
-            # Python functions are module-level and don't get garbage collected
-            # in the same way as bound methods. We use a ref wrapper for consistency.
+            # For module-level functions, weak references work fine because they
+            # remain alive as long as the module is loaded (unlike bound methods
+            # which can be garbage collected when their instance goes out of scope).
             self._ref = weakref.ref(observer)  # type: ignore[arg-type]
             self._is_method = False
 
