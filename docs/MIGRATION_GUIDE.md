@@ -14,7 +14,7 @@ The following table documents the full deprecation timeline for the removed para
 
 ### Timeline
 
-- **v0.1.0 (Initial Release)**: The original `jira_client`, `github_client`, and `agent_client` parameters were introduced as part of the initial Sentinel implementation.
+- **v0.1.0 (Initial Release)**: The original `jira_client` (DS-4), `github_client` (DS-51), and `agent_client` (DS-8) parameters were introduced as part of the initial Sentinel implementation.
 - **v0.1.0 (DS-296)**: The `AgentClientFactory` pattern was introduced to support per-orchestration agent configuration. Backward compatibility was maintained with deprecation warnings for the legacy parameters.
 - **v1.0 (DS-503)**: The deprecated parameters were removed to reduce maintenance burden and cognitive load. Users must now use the new poller and factory patterns.
 
