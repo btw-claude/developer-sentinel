@@ -42,8 +42,10 @@ class UsageInfo:
         duration_api_ms: Time spent on API calls in milliseconds.
         num_turns: Number of conversation turns in this query.
         _total_tokens_override: Internal field for backward compatibility.
-            If set to a non-None value during initialization, it will be
-            validated against the computed total.
+            - None: No explicit total was provided; total_tokens will be
+              computed from input_tokens + output_tokens.
+            - Non-None: Enables backward compatibility validation; the provided
+              value will be validated against the computed total in __post_init__.
     """
 
     input_tokens: int = 0
