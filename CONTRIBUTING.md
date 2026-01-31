@@ -43,11 +43,20 @@ Use the appropriate logging method based on whether you need the traceback:
 
 ```python
 # For exceptions where you want the full traceback:
-logger.exception("Failed to process %s", issue_key)
+# NOTE: logger.exception() automatically captures exception info from sys.exc_info()
+# and should ONLY be called from within an exception handler (try/except block)
+try:
+    process_issue(issue_key)
+except ProcessingError:
+    logger.exception("Failed to process %s", issue_key)
 
 # For errors without traceback:
 logger.error("Failed to process %s: %s", issue_key, error)
 ```
+
+**Important:** `logger.exception()` automatically includes the current exception's traceback by
+calling `sys.exc_info()` internally. If called outside an exception handler, it will log
+`NoneType: None` instead of useful exception information.
 
 ### Docstring Convention
 
