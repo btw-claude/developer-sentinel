@@ -228,6 +228,10 @@ Our pydocstyle configuration in `pyproject.toml` ignores certain rules to reduce
 - `D102`: Missing docstring in public method - allows simple implementations to omit docstrings
 - `D105`: Missing docstring in magic method - magic methods are self-documenting
 - `D107`: Missing docstring in `__init__` - class docstring is often sufficient
+- `D214`: Section is over-indented - flexible indentation in examples is acceptable
+- `D301`: Use r""" if any backslashes - raw strings not needed for well-escaped content
+- `D402`: First line should not be function's signature - some property docstrings are fine
+- `D403`: First word should be capitalized - false positives for proper nouns (e.g., "GitHub")
 
 These relaxed rules help reduce warnings for inherited and obvious methods while still enforcing
 documentation for public APIs.
