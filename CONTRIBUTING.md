@@ -33,15 +33,19 @@ logger.info("Processing %s", issue_key)
 # Multiple arguments
 logger.info("Found %s issues in project %s", count, project_name)
 
-# Floating point with precision (use f-string for the argument only)
-logger.debug("Operation took %s seconds", f"{elapsed:.2f}")
+# Floating point with precision
+logger.debug("Operation took %.2f seconds", elapsed)
 ```
 
 #### Exception Logging
 
-When logging exceptions, include the exception as an argument:
+Use the appropriate logging method based on whether you need the traceback:
 
 ```python
+# For exceptions where you want the full traceback:
+logger.exception("Failed to process %s", issue_key)
+
+# For errors without traceback:
 logger.error("Failed to process %s: %s", issue_key, error)
 ```
 
