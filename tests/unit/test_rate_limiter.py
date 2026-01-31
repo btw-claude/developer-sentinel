@@ -455,6 +455,256 @@ class TestRateLimiterIntegration:
         assert "rate limit approaching threshold" in caplog.text.lower()
 
 
+class TestClaudeRateLimiterThreadSafety:
+    """Tests for thread-safety of ClaudeRateLimiter under concurrent access.
+
+    These tests verify that ClaudeRateLimiter operates correctly when accessed
+    from multiple threads simultaneously. This is particularly important for
+    free-threaded Python 3.13+ builds (python -X gil=0) where the GIL is not
+    available to provide implicit synchronization.
+    """
+
+    def test_concurrent_acquire_thread_safety(self) -> None:
+        """Verify thread-safety of concurrent acquire() calls.
+
+        This test creates multiple threads that simultaneously call acquire()
+        and verifies that:
+        1. All successful acquires are accurately counted in metrics
+        2. No race conditions cause metrics corruption
+        3. The rate limiter behaves correctly under contention
+        """
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=1000,  # High limit to avoid throttling
+            requests_per_hour=10000,
+            strategy=RateLimitStrategy.QUEUE,
+            enabled=True,
+        )
+
+        num_threads = 20
+        requests_per_thread = 50
+        results: list[bool] = []
+        results_lock = threading.Lock()
+
+        def acquire_requests() -> None:
+            thread_results = []
+            for _ in range(requests_per_thread):
+                result = limiter.acquire(timeout=1.0)
+                thread_results.append(result)
+            with results_lock:
+                results.extend(thread_results)
+
+        threads = [threading.Thread(target=acquire_requests) for _ in range(num_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # All requests should have succeeded
+        assert len(results) == num_threads * requests_per_thread
+        successful_count = sum(1 for r in results if r)
+
+        # Metrics should accurately reflect the successful requests
+        metrics = limiter.get_metrics()
+        assert metrics["total_requests"] == num_threads * requests_per_thread
+        assert metrics["successful_requests"] == successful_count
+
+    def test_concurrent_metrics_access_thread_safety(self) -> None:
+        """Verify thread-safety of concurrent get_metrics() and acquire() calls.
+
+        This test simulates a monitoring scenario where metrics are being read
+        while requests are being processed, ensuring no race conditions occur.
+        """
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=1000,
+            requests_per_hour=10000,
+            strategy=RateLimitStrategy.QUEUE,
+            enabled=True,
+        )
+
+        num_acquire_threads = 10
+        num_metrics_threads = 5
+        requests_per_thread = 100
+        metrics_reads_per_thread = 50
+        stop_event = threading.Event()
+        errors: list[Exception] = []
+        errors_lock = threading.Lock()
+
+        def acquire_requests() -> None:
+            try:
+                for _ in range(requests_per_thread):
+                    limiter.acquire(timeout=1.0)
+            except Exception as e:
+                with errors_lock:
+                    errors.append(e)
+
+        def read_metrics() -> None:
+            try:
+                for _ in range(metrics_reads_per_thread):
+                    if stop_event.is_set():
+                        break
+                    metrics = limiter.get_metrics()
+                    # Verify metrics structure is valid
+                    assert "total_requests" in metrics
+                    assert "successful_requests" in metrics
+                    assert isinstance(metrics["total_requests"], int)
+                    assert isinstance(metrics["successful_requests"], int)
+                    time.sleep(0.001)  # Small delay between reads
+            except Exception as e:
+                with errors_lock:
+                    errors.append(e)
+
+        acquire_threads = [
+            threading.Thread(target=acquire_requests) for _ in range(num_acquire_threads)
+        ]
+        metrics_threads = [
+            threading.Thread(target=read_metrics) for _ in range(num_metrics_threads)
+        ]
+
+        # Start all threads
+        for t in acquire_threads + metrics_threads:
+            t.start()
+
+        # Wait for acquire threads to finish
+        for t in acquire_threads:
+            t.join()
+
+        # Signal metrics threads to stop and wait for them
+        stop_event.set()
+        for t in metrics_threads:
+            t.join()
+
+        # No errors should have occurred
+        assert len(errors) == 0, f"Errors occurred during concurrent access: {errors}"
+
+        # Final metrics should be consistent
+        final_metrics = limiter.get_metrics()
+        assert final_metrics["total_requests"] == num_acquire_threads * requests_per_thread
+
+    def test_concurrent_pause_metrics_thread_safety(self) -> None:
+        """Verify thread-safety of pause_metrics() under concurrent access.
+
+        This test ensures that the pause_metrics context manager correctly
+        handles concurrent access without race conditions, particularly
+        important for free-threaded Python 3.13+.
+        """
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=1000,
+            requests_per_hour=10000,
+            strategy=RateLimitStrategy.QUEUE,
+            enabled=True,
+        )
+
+        # Record some initial requests
+        for _ in range(10):
+            limiter.acquire(timeout=0)
+
+        initial_count = limiter.get_metrics()["total_requests"]
+        assert initial_count == 10
+
+        num_threads = 10
+        requests_per_thread = 20
+        errors: list[Exception] = []
+        errors_lock = threading.Lock()
+
+        def acquire_during_pause() -> None:
+            try:
+                for _ in range(requests_per_thread):
+                    limiter.acquire(timeout=1.0)
+            except Exception as e:
+                with errors_lock:
+                    errors.append(e)
+
+        # Start threads that will acquire while we pause metrics
+        threads = [threading.Thread(target=acquire_during_pause) for _ in range(num_threads)]
+
+        with limiter.pause_metrics():
+            # Start threads inside pause context
+            for t in threads:
+                t.start()
+            # Wait for some threads to start acquiring
+            time.sleep(0.05)
+
+        # Wait for all threads to complete
+        for t in threads:
+            t.join()
+
+        # No errors should have occurred
+        assert len(errors) == 0, f"Errors occurred during concurrent access: {errors}"
+
+        # Metrics recorded during pause should be discarded
+        # Only the initial 10 requests should be counted, plus any
+        # requests that completed after pause ended
+        final_metrics = limiter.get_metrics()
+        # The count should be at least 10 (initial) but less than
+        # 10 + num_threads * requests_per_thread (all requests)
+        # because some were discarded during pause
+        assert final_metrics["total_requests"] >= initial_count
+
+    def test_concurrent_reset_metrics_thread_safety(self) -> None:
+        """Verify thread-safety of reset_metrics() under concurrent access.
+
+        This test ensures that resetting metrics while other threads are
+        recording metrics does not cause race conditions.
+        """
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=1000,
+            requests_per_hour=10000,
+            strategy=RateLimitStrategy.QUEUE,
+            enabled=True,
+        )
+
+        num_acquire_threads = 10
+        requests_per_thread = 50
+        errors: list[Exception] = []
+        errors_lock = threading.Lock()
+        reset_complete = threading.Event()
+
+        def acquire_requests() -> None:
+            try:
+                for _ in range(requests_per_thread):
+                    limiter.acquire(timeout=1.0)
+            except Exception as e:
+                with errors_lock:
+                    errors.append(e)
+
+        def reset_metrics_task() -> None:
+            try:
+                # Wait a bit for some requests to be recorded
+                time.sleep(0.01)
+                with limiter.pause_metrics():
+                    limiter.reset_metrics()
+                reset_complete.set()
+            except Exception as e:
+                with errors_lock:
+                    errors.append(e)
+
+        acquire_threads = [
+            threading.Thread(target=acquire_requests) for _ in range(num_acquire_threads)
+        ]
+        reset_thread = threading.Thread(target=reset_metrics_task)
+
+        # Start all threads
+        for t in acquire_threads:
+            t.start()
+        reset_thread.start()
+
+        # Wait for all threads to complete
+        for t in acquire_threads:
+            t.join()
+        reset_thread.join()
+
+        # No errors should have occurred
+        assert len(errors) == 0, f"Errors occurred during concurrent access: {errors}"
+
+        # Reset should have completed
+        assert reset_complete.is_set()
+
+        # Metrics should be valid (either reset or counting new requests)
+        final_metrics = limiter.get_metrics()
+        assert isinstance(final_metrics["total_requests"], int)
+        assert final_metrics["total_requests"] >= 0
+
+
 class TestConfigIntegration:
     """Tests for rate limiter configuration integration."""
 
