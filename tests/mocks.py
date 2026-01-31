@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import threading
 import time
+import weakref
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -197,6 +198,56 @@ class MockAgentClient(AgentClient):
         return AgentRunResult(response=response, workdir=self.workdir, usage=self.usage)
 
 
+class _WeakObserverRef:
+    """Wrapper for weak references to observer callbacks.
+
+    Handles both bound methods (using WeakMethod) and regular functions/callables
+    (using regular weak references). This allows observers to be automatically
+    garbage collected when they go out of scope.
+
+    Attributes:
+        _ref: The weak reference to the observer callback.
+        _is_method: Whether the observer is a bound method.
+    """
+
+    def __init__(self, observer: Callable[[str, str], None]) -> None:
+        """Create a weak reference to an observer callback.
+
+        Args:
+            observer: The callback function to create a weak reference to.
+        """
+        # Check if observer is a bound method
+        if hasattr(observer, "__self__") and hasattr(observer, "__func__"):
+            self._ref = weakref.WeakMethod(observer)  # type: ignore[arg-type]
+            self._is_method = True
+        else:
+            # For regular functions, we need to store them strongly since
+            # Python functions are module-level and don't get garbage collected
+            # in the same way as bound methods. We use a ref wrapper for consistency.
+            self._ref = weakref.ref(observer)  # type: ignore[arg-type]
+            self._is_method = False
+
+    def __call__(self) -> Callable[[str, str], None] | None:
+        """Dereference the weak reference.
+
+        Returns:
+            The observer callback if still alive, None otherwise.
+        """
+        return self._ref()
+
+    def matches(self, observer: Callable[[str, str], None]) -> bool:
+        """Check if this weak reference points to the given observer.
+
+        Args:
+            observer: The observer to compare against.
+
+        Returns:
+            True if this weak reference points to the observer, False otherwise.
+        """
+        ref_target = self._ref()
+        return ref_target is not None and ref_target is observer
+
+
 class MockTagClient(JiraTagClient):
     """Mock tag client for testing.
 
@@ -204,10 +255,13 @@ class MockTagClient(JiraTagClient):
     Supports an observer pattern to notify interested parties (like MockJiraClient)
     when labels are removed, allowing those mocks to update their own state.
 
+    Uses weak references for observers to automatically clean up when observers
+    go out of scope. This is particularly useful for bound methods on objects
+    that may be garbage collected, preventing potential memory leaks if mocks
+    are reused across multiple tests.
+
     Provides both register_observer() and unregister_observer() methods to allow
-    observers to be added and removed. This completes the observer pattern
-    implementation and prevents potential memory leaks if mocks are reused
-    across multiple tests.
+    observers to be explicitly added and removed when needed.
 
     Attributes:
         labels: Dict mapping issue keys to their current labels.
@@ -222,10 +276,14 @@ class MockTagClient(JiraTagClient):
         self.labels: dict[str, list[str]] = {}
         self.add_calls: list[tuple[str, str]] = []
         self.remove_calls: list[tuple[str, str]] = []
-        self._observers: list[MockTagClient.LabelRemovedObserver] = []
+        self._observers: list[_WeakObserverRef] = []
 
     def register_observer(self, observer: LabelRemovedObserver) -> None:
         """Register an observer to be notified when labels are removed.
+
+        The observer is stored using a weak reference, so it will be automatically
+        cleaned up if the observer object is garbage collected. This is especially
+        useful for bound methods on objects that may go out of scope.
 
         This enables other mocks (like MockJiraClient) to maintain their own state
         based on label removal events, rather than inspecting this client's internals.
@@ -233,14 +291,14 @@ class MockTagClient(JiraTagClient):
         Args:
             observer: Callback function that takes (issue_key, label) parameters.
         """
-        self._observers.append(observer)
+        self._observers.append(_WeakObserverRef(observer))
 
     def unregister_observer(self, observer: LabelRemovedObserver) -> bool:
         """Unregister an observer from label removal notifications.
 
-        This method allows observers to be removed, completing the observer pattern
-        implementation and preventing potential memory leaks if mocks are reused
-        across multiple tests.
+        This method allows observers to be explicitly removed. Note that observers
+        are also automatically cleaned up via weak references when they go out
+        of scope, but explicit unregistration is still useful for immediate removal.
 
         Args:
             observer: The callback function to remove from the observer list.
@@ -248,11 +306,15 @@ class MockTagClient(JiraTagClient):
         Returns:
             True if the observer was found and removed, False otherwise.
         """
-        try:
-            self._observers.remove(observer)
-            return True
-        except ValueError:
-            return False
+        for i, weak_ref in enumerate(self._observers):
+            if weak_ref.matches(observer):
+                del self._observers[i]
+                return True
+        return False
+
+    def _cleanup_dead_observers(self) -> None:
+        """Remove any observers whose weak references have been garbage collected."""
+        self._observers = [ref for ref in self._observers if ref() is not None]
 
     def add_label(self, issue_key: str, label: str) -> None:
         self.add_calls.append((issue_key, label))
@@ -262,9 +324,13 @@ class MockTagClient(JiraTagClient):
 
     def remove_label(self, issue_key: str, label: str) -> None:
         self.remove_calls.append((issue_key, label))
-        # Notify all observers about the label removal
-        for observer in self._observers:
-            observer(issue_key, label)
+        # Clean up any dead observers first
+        self._cleanup_dead_observers()
+        # Notify all live observers about the label removal
+        for weak_ref in self._observers:
+            observer = weak_ref()
+            if observer is not None:
+                observer(issue_key, label)
 
 
 class TrackingAgentClient(AgentClient):

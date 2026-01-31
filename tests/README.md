@@ -96,7 +96,11 @@ assert ("PROJ-123", "needs-review") in tag_client.remove_calls
 
 The `MockTagClient` implements a complete observer pattern for label removal
 notifications. Observers can be registered to receive callbacks when labels
-are removed, and can also be unregistered when no longer needed:
+are removed, and can also be unregistered when no longer needed.
+
+Observers are stored using weak references, so bound methods on objects that
+are garbage collected will be automatically cleaned up. This prevents memory
+leaks when mocks are reused across multiple tests.
 
 ```python
 tag_client = MockTagClient()
@@ -111,8 +115,23 @@ tag_client.register_observer(on_label_removed)
 # The callback will be invoked when labels are removed
 tag_client.remove_label("PROJ-123", "needs-review")
 
-# Unregister when no longer needed (prevents memory leaks in reused mocks)
+# Explicit unregistration (optional - observers are also auto-cleaned via weak refs)
 tag_client.unregister_observer(on_label_removed)
+```
+
+For bound methods, weak references work automatically:
+
+```python
+class MyHandler:
+    def __init__(self, tag_client: MockTagClient) -> None:
+        tag_client.register_observer(self.on_label_removed)
+
+    def on_label_removed(self, issue_key: str, label: str) -> None:
+        print(f"Label {label} removed from {issue_key}")
+
+tag_client = MockTagClient()
+handler = MyHandler(tag_client)
+# When handler is garbage collected, the observer is automatically cleaned up
 ```
 
 #### MockJiraClient
