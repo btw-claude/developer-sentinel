@@ -11,9 +11,10 @@ at their entry points when needed.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 from sentinel.types import AgentTypeLiteral
 
@@ -138,6 +139,13 @@ class AgentTimeoutError(AgentClientError):
     pass
 
 
+# Explicit async return type alias for improved IDE support and documentation (DS-533).
+# This type alias makes the async nature of run_agent more discoverable and provides
+# better autocomplete and type inference in IDEs.
+AgentRunCoroutine: TypeAlias = Coroutine[Any, Any, AgentRunResult]
+"""Coroutine type for async agent execution methods returning AgentRunResult."""
+
+
 class AgentClient(ABC):
     """Abstract interface for agent client operations.
 
@@ -176,6 +184,11 @@ class AgentClient(ABC):
         This is an async method to enable proper async composition and avoid
         creating new event loops per call. Callers should use asyncio.run()
         at their entry points when needed.
+
+        Note:
+            This method returns a coroutine (``Coroutine[Any, Any, AgentRunResult]``).
+            The ``AgentRunCoroutine`` type alias is provided for explicit type
+            annotations where needed (DS-533).
 
         Args:
             prompt: The prompt to send to the agent.
