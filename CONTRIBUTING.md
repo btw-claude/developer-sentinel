@@ -128,6 +128,101 @@ class ExampleClass:
         self.value = 0
 ```
 
+#### Docstring Inheritance
+
+Python supports docstring inheritance through the `__doc__` attribute, but pydocstyle does not
+recognize inherited docstrings when checking for missing documentation. This means you may see
+warnings for methods that intentionally rely on parent class documentation.
+
+**When to add explicit docstrings:**
+
+```python
+class BaseProcessor:
+    """Base class for all processors."""
+
+    def process(self, data: str) -> str:
+        """Process the input data.
+
+        Args:
+            data: The input data to process.
+
+        Returns:
+            The processed data.
+        """
+        raise NotImplementedError
+
+
+class ConcreteProcessor(BaseProcessor):
+    """Concrete implementation of the processor."""
+
+    def process(self, data: str) -> str:
+        """Process the input data by converting to uppercase.
+
+        Args:
+            data: The input data to process.
+
+        Returns:
+            The processed data in uppercase.
+        """
+        # Explicit docstring needed because pydocstyle checks each class independently
+        return data.upper()
+```
+
+**When inheritance applies (but pydocstyle still warns):**
+
+```python
+from abc import ABC, abstractmethod
+
+
+class Repository(ABC):
+    """Abstract repository interface."""
+
+    @abstractmethod
+    def save(self, entity: dict) -> None:
+        """Save an entity to the repository.
+
+        Args:
+            entity: The entity to save.
+        """
+        ...
+
+
+class InMemoryRepository(Repository):
+    """In-memory implementation of Repository."""
+
+    def save(self, entity: dict) -> None:
+        # pydocstyle may warn here, but the docstring is inherited at runtime
+        # Add an explicit docstring if implementation details differ significantly
+        self._storage.append(entity)
+```
+
+**Best practices:**
+
+1. **Always add docstrings for methods with different behavior** - If your implementation has
+   specific behavior, side effects, or exceptions not documented in the parent, add an explicit
+   docstring.
+
+2. **Consider adding brief docstrings for clarity** - Even when inheriting, a short docstring
+   like `"""See base class."""` can satisfy pydocstyle and signal intentional inheritance.
+
+3. **Use `# noqa: D102` sparingly** - If a method truly just implements the parent interface
+   with no additional behavior, you can suppress the warning:
+   ```python
+   def save(self, entity: dict) -> None:  # noqa: D102
+       self._storage.append(entity)
+   ```
+
+**Project configuration:**
+
+Our pydocstyle configuration in `pyproject.toml` ignores certain rules to reduce noise:
+
+- `D102`: Missing docstring in public method - allows simple implementations to omit docstrings
+- `D105`: Missing docstring in magic method - magic methods are self-documenting
+- `D107`: Missing docstring in `__init__` - class docstring is often sufficient
+
+These relaxed rules help reduce warnings for inherited and obvious methods while still enforcing
+documentation for public APIs.
+
 ### Other Conventions
 
 - Follow PEP 8 style guidelines
