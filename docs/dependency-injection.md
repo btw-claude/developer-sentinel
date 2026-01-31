@@ -415,6 +415,15 @@ def teardown_method(self):
 
 The circuit breaker pattern is implemented using dependency injection to avoid global mutable state and enable proper test isolation.
 
+### Thread Safety
+
+The `CircuitBreakerRegistry` is thread-safe and can be safely accessed from multiple threads in an async context. Internally, it uses a `threading.Lock()` to protect the registry of circuit breakers. Individual `CircuitBreaker` instances are also thread-safe, using `threading.RLock()` to protect their state transitions and metrics updates.
+
+This means you can safely:
+- Call `registry.get("service")` from multiple threads concurrently
+- Share the same circuit breaker instance across async tasks
+- Access circuit breaker state and metrics while other threads are recording successes/failures
+
 ### Design Principles
 
 1. **No Global Registry**: Circuit breakers are not stored in a global registry. Instead, a `CircuitBreakerRegistry` is created during bootstrap and passed to components that need it.

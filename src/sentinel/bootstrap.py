@@ -269,7 +269,7 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
 
     # Create circuit breaker registry for centralized management
     circuit_breaker_registry = CircuitBreakerRegistry()
-    logger.debug("Created circuit breaker registry for dependency injection")
+    logger.info("Created circuit breaker registry for dependency injection")
 
     # Initialize clients with shared circuit breakers from registry
     jira_client, tag_client = create_jira_clients(config, circuit_breaker_registry)
