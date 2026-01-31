@@ -296,7 +296,8 @@ class ClaudeRateLimiter:
             warning_threshold=warning_threshold,
         )
         self._metrics = RateLimiterMetrics()
-        self._metrics_lock = threading.Lock()  # Lock for thread-safe metrics access
+        # Lock for thread-safe metrics access (required for free-threaded Python 3.13+)
+        self._metrics_lock = threading.Lock()
         self._requests_per_minute = requests_per_minute
         self._requests_per_hour = requests_per_hour
         self._warning_threshold = warning_threshold
