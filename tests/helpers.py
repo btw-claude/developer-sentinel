@@ -314,6 +314,7 @@ def make_orchestration(
     max_attempts: int = 3,
     success_patterns: list[str] | None = None,
     failure_patterns: list[str] | None = None,
+    strict_template_variables: bool = False,
 ) -> Orchestration:
     """Create an Orchestration instance for testing.
 
@@ -337,6 +338,8 @@ def make_orchestration(
         max_attempts: Maximum retry attempts for the agent.
         success_patterns: Patterns that indicate success in agent response.
         failure_patterns: Patterns that indicate failure in agent response.
+        strict_template_variables: If True, raise ValueError for unknown template
+            variables instead of logging a warning.
 
     Returns:
         An Orchestration instance configured for testing.
@@ -360,6 +363,7 @@ def make_orchestration(
             prompt=prompt,
             tools=tools or ["jira"],
             github=github,
+            strict_template_variables=strict_template_variables,
         ),
         max_concurrent=max_concurrent,
         retry=RetryConfig(

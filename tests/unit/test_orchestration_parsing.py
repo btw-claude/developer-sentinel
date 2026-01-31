@@ -126,6 +126,17 @@ class TestDataclasses:
         assert agent.timeout_seconds is None
         assert agent.agent_type is None
         assert agent.cursor_mode is None
+        assert agent.strict_template_variables is False
+
+    def test_agent_config_strict_template_variables_true(self) -> None:
+        """AgentConfig should support strict_template_variables=True."""
+        agent = AgentConfig(strict_template_variables=True)
+        assert agent.strict_template_variables is True
+
+    def test_agent_config_strict_template_variables_false(self) -> None:
+        """AgentConfig should support strict_template_variables=False."""
+        agent = AgentConfig(strict_template_variables=False)
+        assert agent.strict_template_variables is False
 
     def test_agent_config_with_agent_type_claude(self) -> None:
         """AgentConfig should support agent_type='claude'."""
@@ -723,3 +734,118 @@ orchestrations:
         assert orchestrations[0].agent.github is not None
         assert orchestrations[0].agent.github.branch == "feature/{jira_issue_key}"
         assert orchestrations[0].agent.github.base_branch == "develop"
+
+
+class TestStrictTemplateVariablesConfig:
+    """Tests for strict_template_variables configuration option.
+
+    The strict_template_variables field allows teams to opt-in to stricter
+    validation during development/testing to catch typos in template variables.
+    """
+
+    def test_strict_template_variables_defaults_to_false(self, tmp_path: Path) -> None:
+        """Test that strict_template_variables defaults to False."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.strict_template_variables is False
+
+    def test_strict_template_variables_true(self, tmp_path: Path) -> None:
+        """Test that strict_template_variables can be set to True."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      strict_template_variables: true
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.strict_template_variables is True
+
+    def test_strict_template_variables_false_explicit(self, tmp_path: Path) -> None:
+        """Test that strict_template_variables can be explicitly set to False."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      strict_template_variables: false
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.strict_template_variables is False
+
+    def test_strict_template_variables_invalid_type_raises_error(self, tmp_path: Path) -> None:
+        """Test that invalid strict_template_variables value raises error."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      strict_template_variables: "yes"
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "strict_template_variables" in str(exc_info.value)
+        assert "must be a boolean" in str(exc_info.value)
+
+    def test_strict_template_variables_with_github_context(self, tmp_path: Path) -> None:
+        """Test that strict_template_variables works with GitHub context."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test {jira_issue_key}"
+      tools: []
+      strict_template_variables: true
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        branch: "feature/{jira_issue_key}"
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.strict_template_variables is True
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.branch == "feature/{jira_issue_key}"

@@ -226,6 +226,10 @@ class AgentConfig:
         cursor_mode: Optional cursor mode when agent_type is "cursor".
             Only valid when agent_type is "cursor".
             Valid values: "agent", "plan", "ask"
+        strict_template_variables: If True, raise ValueError for unknown template
+            variables instead of logging a warning. Useful for catching typos in
+            prompts and branch patterns during development/testing.
+            Defaults to False for backwards compatibility.
     """
 
     prompt: str = ""
@@ -235,6 +239,7 @@ class AgentConfig:
     model: str | None = None
     agent_type: AgentTypeLiteral | None = None
     cursor_mode: CursorModeLiteral | None = None
+    strict_template_variables: bool = False
 
 
 @dataclass
@@ -714,6 +719,13 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
                 f"'{AgentType.CURSOR.value}'"
             )
 
+    # Parse strict_template_variables (defaults to False for backwards compatibility)
+    strict_template_variables = data.get("strict_template_variables", False)
+    if not isinstance(strict_template_variables, bool):
+        raise OrchestrationError(
+            f"Invalid strict_template_variables '{strict_template_variables}': must be a boolean"
+        )
+
     return AgentConfig(
         prompt=data.get("prompt", ""),
         tools=data.get("tools", []),
@@ -722,6 +734,7 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
         model=model,
         agent_type=agent_type,
         cursor_mode=cursor_mode,
+        strict_template_variables=strict_template_variables,
     )
 
 
