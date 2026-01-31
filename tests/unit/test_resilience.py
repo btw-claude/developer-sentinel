@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
 
@@ -557,3 +559,114 @@ class TestResilienceWrapperHelpers:
         wrapper = ResilienceWrapper(cb, limiter)
 
         assert wrapper.rate_limiter is limiter
+
+
+class TestResilienceWrapperThreadSafety:
+    """Tests for thread-safety of ResilienceWrapper context manager."""
+
+    def test_concurrent_context_manager_usage(self) -> None:
+        """Test that multiple threads can use the same wrapper as context manager.
+
+        This verifies that the _in_context flag uses thread-local storage,
+        allowing concurrent context manager usage from different threads
+        without interference.
+        """
+        cb = CircuitBreaker("test", CircuitBreakerConfig())
+        limiter = ClaudeRateLimiter(requests_per_minute=100, requests_per_hour=1000)
+        wrapper = ResilienceWrapper(cb, limiter)
+
+        results: list[bool] = []
+        errors: list[Exception] = []
+        lock = threading.Lock()
+
+        def worker(worker_id: int) -> bool:
+            """Worker that uses the wrapper as a context manager."""
+            try:
+                with wrapper:
+                    # Simulate some work inside the context
+                    time.sleep(0.01)
+                    with lock:
+                        results.append(True)
+                    return True
+            except Exception as e:
+                with lock:
+                    errors.append(e)
+                return False
+
+        # Run multiple threads concurrently using the same wrapper
+        num_threads = 5
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = [executor.submit(worker, i) for i in range(num_threads)]
+            completed = [f.result() for f in as_completed(futures)]
+
+        # All workers should succeed
+        assert len(errors) == 0, f"Unexpected errors: {errors}"
+        assert len(results) == num_threads
+        assert all(completed)
+
+    def test_thread_local_in_context_isolation(self) -> None:
+        """Test that _in_context flag is isolated per thread.
+
+        This ensures that one thread entering the context manager
+        does not affect the _in_context state of another thread.
+        """
+        cb = CircuitBreaker("test", CircuitBreakerConfig())
+        limiter = ClaudeRateLimiter(requests_per_minute=100, requests_per_hour=1000)
+        wrapper = ResilienceWrapper(cb, limiter)
+
+        thread1_entered = threading.Event()
+        thread2_can_proceed = threading.Event()
+        thread1_can_exit = threading.Event()
+        thread2_result: dict[str, bool] = {}
+
+        def thread1_worker() -> None:
+            """Thread 1: Enter context and wait."""
+            with wrapper:
+                thread1_entered.set()
+                thread1_can_exit.wait(timeout=5.0)
+
+        def thread2_worker() -> None:
+            """Thread 2: Try to enter context while thread 1 is inside."""
+            thread2_can_proceed.wait(timeout=5.0)
+            try:
+                with wrapper:
+                    thread2_result["success"] = True
+            except RuntimeError:
+                thread2_result["success"] = False
+
+        t1 = threading.Thread(target=thread1_worker)
+        t2 = threading.Thread(target=thread2_worker)
+
+        t1.start()
+        thread1_entered.wait(timeout=5.0)
+
+        # Thread 1 is now inside the context manager
+        # Signal thread 2 to try entering (should succeed with thread-local storage)
+        thread2_can_proceed.set()
+        t2.start()
+        t2.join(timeout=5.0)
+
+        # Let thread 1 exit
+        thread1_can_exit.set()
+        t1.join(timeout=5.0)
+
+        # Thread 2 should have succeeded entering the context
+        # (if _in_context were not thread-local, it would have failed)
+        assert thread2_result.get("success") is True
+
+    def test_nested_usage_still_fails_same_thread(self) -> None:
+        """Verify that nested context manager usage still fails within the same thread.
+
+        Thread-safety should not change the behavior that nested usage
+        is disallowed within a single thread.
+        """
+        cb = CircuitBreaker("test", CircuitBreakerConfig())
+        limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100)
+        wrapper = ResilienceWrapper(cb, limiter)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            with wrapper:
+                with wrapper:  # Nested usage in same thread should fail
+                    pass
+
+        assert "nested context manager usage" in str(exc_info.value)
