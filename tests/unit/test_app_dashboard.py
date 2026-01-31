@@ -251,20 +251,6 @@ class TestStartDashboardGracefulDegradation:
             mock_server.start.assert_called_once()
 
 
-def _simulate_import_error(
-    ctx: BootstrapContext, sentinel: Any, mock_logger: MagicMock
-) -> None:
-    """Helper to simulate import error handling."""
-    try:
-        raise ImportError("Test import error")
-    except ImportError as e:
-        mock_logger.warning(
-            "Dashboard startup failed: dependencies not available. "
-            "Sentinel will continue without dashboard functionality. Error: %s",
-            e,
-        )
-
-
 class TestFormatDurationFilter:
     """Tests for the format_duration Jinja2 filter."""
 
