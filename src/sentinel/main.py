@@ -727,6 +727,11 @@ class Sentinel:
                     # This fixes a race condition where fast-completing tasks on Python 3.13
                     # could finish before we check pending_futures (DS-542).
                     if submitted_count > 0:
+                        logger.debug(
+                            "Tasks completed before pending_futures check, collecting %s "
+                            "submitted results",
+                            submitted_count,
+                        )
                         final_results = self._collect_completed_results()
                         all_results.extend(final_results)
                     break
