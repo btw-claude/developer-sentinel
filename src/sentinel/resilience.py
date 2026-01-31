@@ -163,9 +163,13 @@ class ResilienceWrapper:
                 wrapper.record_failure(e)
                 raise
 
-        # Context manager usage
+        # Context manager usage (sync)
         with wrapper:
             result = call_api()
+
+        # Context manager usage (async)
+        async with wrapper:
+            result = await call_api_async()
     """
 
     def __init__(
@@ -363,7 +367,12 @@ class ResilienceWrapper:
         Raises:
             CircuitBreakerError: If circuit breaker rejects the request.
             RateLimitExceededError: If rate limiter rejects the request.
+            RuntimeError: If nested context manager usage is attempted.
         """
+        if self._in_context:
+            raise RuntimeError(
+                "ResilienceWrapper does not support nested context manager usage"
+            )
         if not self.acquire():
             if self._circuit_breaker.state == CircuitState.OPEN:
                 raise CircuitBreakerError(
@@ -381,6 +390,41 @@ class ResilienceWrapper:
         exc_tb: types.TracebackType | None,
     ) -> None:
         """Context manager exit - record success or failure."""
+        self._in_context = False
+        if exc_type is None:
+            self.record_success()
+        else:
+            self.record_failure(exc_val)
+
+    async def __aenter__(self) -> ResilienceWrapper:
+        """Async context manager entry - acquire permission.
+
+        Raises:
+            CircuitBreakerError: If circuit breaker rejects the request.
+            RateLimitExceededError: If rate limiter rejects the request.
+            RuntimeError: If nested context manager usage is attempted.
+        """
+        if self._in_context:
+            raise RuntimeError(
+                "ResilienceWrapper does not support nested context manager usage"
+            )
+        if not await self.acquire_async():
+            if self._circuit_breaker.state == CircuitState.OPEN:
+                raise CircuitBreakerError(
+                    self._circuit_breaker.service_name,
+                    self._circuit_breaker.state,
+                )
+            raise RateLimitExceededError("Rate limit exceeded in ResilienceWrapper")
+        self._in_context = True
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        """Async context manager exit - record success or failure."""
         self._in_context = False
         if exc_type is None:
             self.record_success()
