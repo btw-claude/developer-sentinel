@@ -7,11 +7,12 @@ import shutil
 import time
 import unicodedata
 from abc import ABC, abstractmethod
+from collections.abc import Coroutine
 from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from sentinel.agent_clients.base import AgentClientError, AgentRunResult, AgentTimeoutError
 from sentinel.branch_validation import validate_runtime_branch_name
@@ -22,6 +23,12 @@ from sentinel.poller import JiraIssue
 
 # Type alias for issues from any supported source
 AnyIssue = JiraIssue | GitHubIssue
+
+# Explicit async return type aliases for improved IDE support and documentation (DS-533).
+# These type aliases make the async nature of methods more discoverable and provide
+# better autocomplete and type inference in IDEs.
+AgentRunCoroutine: TypeAlias = Coroutine[Any, Any, AgentRunResult]
+"""Coroutine type for async agent execution methods returning AgentRunResult."""
 
 if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
@@ -437,6 +444,11 @@ class ExecutionResult:
         return self.status == ExecutionStatus.SUCCESS
 
 
+# Explicit async return type alias for executor methods (DS-533).
+# This type alias makes the async nature of the execute method more discoverable.
+ExecutionCoroutine: TypeAlias = Coroutine[Any, Any, ExecutionResult]
+"""Coroutine type for async execution methods returning ExecutionResult."""
+
 # Re-export classes from agent_clients.base for backward compatibility
 # These are now defined in agent_clients.base but re-exported here
 # to maintain existing import paths used throughout the codebase
@@ -446,6 +458,8 @@ __all__ = [
     "AgentTimeoutError",
     "AgentClient",
     "AgentExecutor",
+    "AgentRunCoroutine",
+    "ExecutionCoroutine",
 ]
 
 
@@ -884,6 +898,11 @@ class AgentExecutor:
         This is an async method to enable proper async composition and avoid
         creating new event loops per call. Callers should use asyncio.run()
         at their entry points when needed.
+
+        Note:
+            This method returns a coroutine (``Coroutine[Any, Any, ExecutionResult]``).
+            The ``ExecutionCoroutine`` type alias is provided for explicit type
+            annotations where needed (DS-533).
 
         Args:
             issue: The issue to process (Jira or GitHub).
