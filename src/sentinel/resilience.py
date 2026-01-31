@@ -136,6 +136,18 @@ class ResilienceWrapper:
     - Context manager and decorator support
     - Both synchronous and asynchronous acquire methods
 
+    Thread Safety:
+        This wrapper is designed to be thread-safe. The context manager's
+        _in_context flag uses threading.local() storage, allowing the same
+        ResilienceWrapper instance to be safely used as a context manager
+        from multiple threads concurrently. Each thread maintains its own
+        independent context state.
+
+        Note: While the context manager is thread-safe, the underlying
+        circuit breaker and rate limiter components have their own
+        thread-safety characteristics. Refer to their respective
+        documentation for details.
+
     Example:
         # Create registry for dependency injection
         registry = CircuitBreakerRegistry()
@@ -170,6 +182,12 @@ class ResilienceWrapper:
         # Context manager usage (async)
         async with wrapper:
             result = await call_api_async()
+
+        # Thread-safe concurrent usage
+        # Multiple threads can safely use the same wrapper as a context manager
+        def worker():
+            with wrapper:
+                result = call_api()
     """
 
     def __init__(
@@ -186,7 +204,10 @@ class ResilienceWrapper:
         self._circuit_breaker = circuit_breaker
         self._rate_limiter = rate_limiter
         self._metrics = ResilienceMetrics()
-        self._in_context = False
+        # Use thread-local storage for _in_context to ensure thread-safety
+        # when the same wrapper instance is used concurrently from multiple threads.
+        # Each thread maintains its own independent context state.
+        self._local = threading.local()
 
     @classmethod
     def from_config(
@@ -208,6 +229,20 @@ class ResilienceWrapper:
             circuit_breaker=circuit_breaker,
             rate_limiter=rate_limiter,
         )
+
+    @property
+    def _in_context(self) -> bool:
+        """Thread-local flag indicating if currently inside a context manager.
+
+        Returns:
+            True if the current thread is inside a context manager, False otherwise.
+        """
+        return getattr(self._local, "in_context", False)
+
+    @_in_context.setter
+    def _in_context(self, value: bool) -> None:
+        """Set the thread-local context flag."""
+        self._local.in_context = value
 
     @property
     def circuit_breaker(self) -> CircuitBreaker:
