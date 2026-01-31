@@ -315,6 +315,19 @@ class TestResilienceWrapperContextManager:
             with wrapper:
                 pass
 
+    def test_context_manager_prevents_nested_usage(self) -> None:
+        """Test context manager raises RuntimeError on nested usage."""
+        cb = CircuitBreaker("test", CircuitBreakerConfig())
+        limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100)
+        wrapper = ResilienceWrapper(cb, limiter)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            with wrapper:
+                with wrapper:  # Nested usage should fail
+                    pass
+
+        assert "nested context manager usage" in str(exc_info.value)
+
 
 class TestResilienceWrapperRecording:
     """Tests for success/failure recording."""
@@ -390,6 +403,90 @@ class TestResilienceWrapperAsync:
 
         with pytest.raises(RateLimitExceededError):
             await wrapper.acquire_async(timeout=0)
+
+
+class TestResilienceWrapperAsyncContextManager:
+    """Tests for async context manager usage."""
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_success(self) -> None:
+        """Test async context manager records success on normal exit."""
+        cb = CircuitBreaker("test", CircuitBreakerConfig())
+        limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100)
+        wrapper = ResilienceWrapper(cb, limiter)
+
+        async with wrapper:
+            pass  # Simulate successful async operation
+
+        metrics = wrapper.get_metrics()
+        assert metrics["wrapper_metrics"]["successful_operations"] == 1
+        assert cb.metrics.successful_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_failure(self) -> None:
+        """Test async context manager records failure on exception."""
+        config = CircuitBreakerConfig(failure_threshold=5)
+        cb = CircuitBreaker("test", config)
+        limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100)
+        wrapper = ResilienceWrapper(cb, limiter)
+
+        with pytest.raises(ValueError):
+            async with wrapper:
+                raise ValueError("test error")
+
+        metrics = wrapper.get_metrics()
+        assert metrics["wrapper_metrics"]["failed_operations"] == 1
+        assert cb.metrics.failed_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_raises_when_circuit_open(self) -> None:
+        """Test async context manager raises CircuitBreakerError when circuit is open."""
+        config = CircuitBreakerConfig(failure_threshold=1)
+        cb = CircuitBreaker("test", config)
+        limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100)
+        wrapper = ResilienceWrapper(cb, limiter)
+
+        # Open the circuit
+        cb.record_failure(Exception("test"))
+
+        with pytest.raises(CircuitBreakerError) as exc_info:
+            async with wrapper:
+                pass
+
+        assert exc_info.value.service_name == "test"
+        assert exc_info.value.state == CircuitState.OPEN
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_raises_when_rate_limited(self) -> None:
+        """Test async context manager raises RateLimitExceededError when rate limited."""
+        cb = CircuitBreaker("test", CircuitBreakerConfig())
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=1,
+            requests_per_hour=100,
+            strategy=RateLimitStrategy.REJECT,
+        )
+        wrapper = ResilienceWrapper(cb, limiter)
+
+        # Exhaust tokens
+        await wrapper.acquire_async(timeout=0)
+
+        with pytest.raises(RateLimitExceededError):
+            async with wrapper:
+                pass
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_prevents_nested_usage(self) -> None:
+        """Test async context manager raises RuntimeError on nested usage."""
+        cb = CircuitBreaker("test", CircuitBreakerConfig())
+        limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100)
+        wrapper = ResilienceWrapper(cb, limiter)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            async with wrapper:
+                async with wrapper:  # Nested usage should fail
+                    pass
+
+        assert "nested context manager usage" in str(exc_info.value)
 
 
 class TestResilienceWrapperMetrics:
