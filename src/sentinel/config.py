@@ -170,6 +170,9 @@ class ExecutionConfig:
         attempt_counts_ttl: TTL for attempt counts cache.
         max_queue_size: Maximum number of issues in the queue.
         inter_message_times_threshold: Threshold for summarizing timing metrics.
+        shutdown_timeout_seconds: Timeout in seconds for graceful shutdown.
+            If executions don't complete within this time, they will be forcefully
+            terminated. Set to 0 to wait indefinitely (not recommended).
     """
 
     orchestrations_dir: Path = field(default_factory=lambda: Path("./orchestrations"))
@@ -184,6 +187,7 @@ class ExecutionConfig:
     attempt_counts_ttl: int = 3600
     max_queue_size: int = 100
     inter_message_times_threshold: int = 100
+    shutdown_timeout_seconds: float = 300.0
 
 
 @dataclass(frozen=True)
@@ -352,6 +356,11 @@ class Config:
     def inter_message_times_threshold(self) -> int:
         """Threshold for summarizing timing metrics."""
         return self.execution.inter_message_times_threshold
+
+    @property
+    def shutdown_timeout_seconds(self) -> float:
+        """Timeout in seconds for graceful shutdown."""
+        return self.execution.shutdown_timeout_seconds
 
     # ==========================================================================
     # Backward compatibility properties - Jira
@@ -1001,6 +1010,13 @@ def load_config(env_file: Path | None = None) -> Config:
         60.0,
     )
 
+    # Parse shutdown timeout
+    shutdown_timeout_seconds = _parse_non_negative_float(
+        os.getenv("SENTINEL_SHUTDOWN_TIMEOUT_SECONDS", "300.0"),
+        "SENTINEL_SHUTDOWN_TIMEOUT_SECONDS",
+        300.0,
+    )
+
     # Create sub-configs
     jira_config = JiraConfig(
         base_url=os.getenv("JIRA_BASE_URL", ""),
@@ -1057,6 +1073,7 @@ def load_config(env_file: Path | None = None) -> Config:
         attempt_counts_ttl=attempt_counts_ttl,
         max_queue_size=max_queue_size,
         inter_message_times_threshold=inter_message_times_threshold,
+        shutdown_timeout_seconds=shutdown_timeout_seconds,
     )
 
     cursor_config = CursorConfig(
@@ -1145,6 +1162,8 @@ def create_config(
     # Health check settings
     health_check_enabled: bool = True,
     health_check_timeout: float = 5.0,
+    # Shutdown settings
+    shutdown_timeout_seconds: float = 300.0,
 ) -> Config:
     """Create a Config instance from flat parameters (backward-compatible factory).
 
@@ -1198,6 +1217,7 @@ def create_config(
         circuit_breaker_half_open_max_calls: Max calls in half-open state.
         health_check_enabled: Enable/disable health checks.
         health_check_timeout: Health check timeout in seconds.
+        shutdown_timeout_seconds: Timeout in seconds for graceful shutdown.
 
     Returns:
         A Config instance with the specified parameters organized into sub-configs.
@@ -1220,6 +1240,7 @@ def create_config(
             subprocess_timeout=subprocess_timeout,
             default_base_branch=default_base_branch,
             inter_message_times_threshold=inter_message_times_threshold,
+            shutdown_timeout_seconds=shutdown_timeout_seconds,
         ),
         logging_config=LoggingConfig(
             level=log_level,
