@@ -271,6 +271,8 @@ If you encounter issues during migration, please:
 2. Review the [dependency-injection.md](dependency-injection.md) for the recommended DI approach
 3. Open an issue on GitHub if you need further assistance
 
+For a complete history of changes, see the [CHANGELOG](../CHANGELOG.md).
+
 ---
 
 # Config Backward Compatibility Properties (Deprecated)
@@ -441,3 +443,5 @@ warnings.filterwarnings(
 ```
 
 **Note:** This is not recommended as a long-term solution. Plan to migrate to the new API before the next major version.
+
+For a complete history of changes and removal timelines, see the [CHANGELOG](../CHANGELOG.md).
