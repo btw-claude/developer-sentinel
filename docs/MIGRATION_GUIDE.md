@@ -271,7 +271,7 @@ If you encounter issues during migration, please:
 2. Review the [dependency-injection.md](dependency-injection.md) for the recommended DI approach
 3. Open an issue on GitHub if you need further assistance
 
-For a complete history of changes, see the [CHANGELOG](../CHANGELOG.md).
+For a complete history of changes and removal timelines, see the [CHANGELOG](../CHANGELOG.md).
 
 ---
 
