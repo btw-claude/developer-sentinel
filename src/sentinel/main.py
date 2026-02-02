@@ -843,11 +843,37 @@ class Sentinel:
                             submitted_count
                         )
 
-            # Wait for active tasks
-            logger.info("Waiting for active executions to complete...")
+            # Wait for active tasks with configurable timeout
             active_count = self._execution_manager.get_active_count()
             if active_count > 0:
-                logger.info("Waiting for %s active execution(s)...", active_count)
+                timeout = self.config.shutdown_timeout_seconds
+                if timeout > 0:
+                    logger.info(
+                        "Waiting for %s active execution(s) to complete "
+                        "(timeout: %.1fs)...",
+                        active_count,
+                        timeout,
+                    )
+                    # Wait with timeout for graceful completion
+                    pending_futures = self._execution_manager.get_pending_futures()
+                    if pending_futures:
+                        done, not_done = wait(pending_futures, timeout=timeout)
+                        if not_done:
+                            logger.warning(
+                                "Shutdown timeout reached after %.1fs. "
+                                "Forcefully terminating %s remaining execution(s)...",
+                                timeout,
+                                len(not_done),
+                            )
+                            # Cancel remaining futures
+                            for future in not_done:
+                                future.cancel()
+                else:
+                    logger.info(
+                        "Waiting for %s active execution(s) to complete "
+                        "(no timeout configured)...",
+                        active_count,
+                    )
 
             final_results = self._collect_completed_results()
             if final_results:
