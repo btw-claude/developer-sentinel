@@ -740,8 +740,13 @@ class AgentExecutor:
                 try:
                     if re.search(regex_pattern, response, re.IGNORECASE):
                         return True
-                except re.error:
+                except re.error as e:
                     # If invalid regex, fall back to substring match
+                    logger.warning(
+                        "Invalid regex pattern '%s': %s. Falling back to substring match.",
+                        regex_pattern,
+                        e,
+                    )
                     if regex_pattern.lower() in response_lower:
                         return True
             else:
