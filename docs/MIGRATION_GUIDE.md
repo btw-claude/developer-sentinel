@@ -1,6 +1,17 @@
-# Migration Guide: Removing Deprecated Sentinel Parameters
+# Migration Guide
 
-This guide helps you migrate from the deprecated `Sentinel.__init__` parameters to the current API.
+This guide helps you migrate from deprecated APIs to current best practices.
+
+## Table of Contents
+
+- [Sentinel Constructor Parameters (Removed in v1.0)](#sentinel-constructor-parameters-removed-in-v10)
+- [Config Backward Compatibility Properties (Deprecated)](#config-backward-compatibility-properties-deprecated)
+
+---
+
+# Sentinel Constructor Parameters (Removed in v1.0)
+
+This section helps you migrate from the deprecated `Sentinel.__init__` parameters to the current API.
 
 ## Deprecation History
 
@@ -259,3 +270,174 @@ If you encounter issues during migration, please:
 1. Check this guide for the correct replacement parameter
 2. Review the [dependency-injection.md](dependency-injection.md) for the recommended DI approach
 3. Open an issue on GitHub if you need further assistance
+
+---
+
+# Config Backward Compatibility Properties (Deprecated)
+
+The `Config` class was refactored to use focused sub-configs for each subsystem (Jira, GitHub, Dashboard, etc.). The old flat property access pattern is deprecated and will be removed in a future major version.
+
+## Why These Changes?
+
+The backward compatibility properties created maintenance burden:
+
+1. **Code duplication**: ~270 lines of properties that simply delegate to sub-configs
+2. **Harder maintenance**: Changes to sub-configs require updating corresponding properties
+3. **Cognitive load**: New contributors must understand both access patterns
+
+The new sub-config pattern provides:
+
+- **Grouped configuration**: Related settings are organized together
+- **Immutable sub-configs**: Each sub-config is a frozen dataclass
+- **Clear namespacing**: `config.jira.base_url` is clearer than `config.jira_base_url`
+
+## Deprecation Timeline
+
+| Version | Status |
+|---------|--------|
+| Current | Deprecated with warnings (DS-559) |
+| Next Major | Removal planned |
+
+## Migration Reference
+
+### Polling Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.poll_interval` | `config.polling.interval` |
+| `config.max_issues_per_poll` | `config.polling.max_issues_per_poll` |
+
+### Logging Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.log_level` | `config.logging_config.level` |
+| `config.log_json` | `config.logging_config.json` |
+
+### Execution Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.max_concurrent_executions` | `config.execution.max_concurrent_executions` |
+| `config.orchestrations_dir` | `config.execution.orchestrations_dir` |
+| `config.agent_workdir` | `config.execution.agent_workdir` |
+| `config.agent_logs_dir` | `config.execution.agent_logs_dir` |
+| `config.orchestration_logs_dir` | `config.execution.orchestration_logs_dir` |
+| `config.cleanup_workdir_on_success` | `config.execution.cleanup_workdir_on_success` |
+| `config.disable_streaming_logs` | `config.execution.disable_streaming_logs` |
+| `config.subprocess_timeout` | `config.execution.subprocess_timeout` |
+| `config.default_base_branch` | `config.execution.default_base_branch` |
+| `config.attempt_counts_ttl` | `config.execution.attempt_counts_ttl` |
+| `config.max_queue_size` | `config.execution.max_queue_size` |
+| `config.inter_message_times_threshold` | `config.execution.inter_message_times_threshold` |
+| `config.shutdown_timeout_seconds` | `config.execution.shutdown_timeout_seconds` |
+
+### Jira Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.jira_base_url` | `config.jira.base_url` |
+| `config.jira_email` | `config.jira.email` |
+| `config.jira_api_token` | `config.jira.api_token` |
+| `config.jira_epic_link_field` | `config.jira.epic_link_field` |
+| `config.jira_configured` | `config.jira.configured` |
+
+### GitHub Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.github_token` | `config.github.token` |
+| `config.github_api_url` | `config.github.api_url` |
+| `config.github_configured` | `config.github.configured` |
+
+### Dashboard Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.dashboard_enabled` | `config.dashboard.enabled` |
+| `config.dashboard_port` | `config.dashboard.port` |
+| `config.dashboard_host` | `config.dashboard.host` |
+| `config.toggle_cooldown_seconds` | `config.dashboard.toggle_cooldown_seconds` |
+| `config.rate_limit_cache_ttl` | `config.dashboard.rate_limit_cache_ttl` |
+| `config.rate_limit_cache_maxsize` | `config.dashboard.rate_limit_cache_maxsize` |
+| `config.max_recent_executions` | `config.dashboard.max_recent_executions` |
+
+### Rate Limiting Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.claude_rate_limit_enabled` | `config.rate_limit.enabled` |
+| `config.claude_rate_limit_per_minute` | `config.rate_limit.per_minute` |
+| `config.claude_rate_limit_per_hour` | `config.rate_limit.per_hour` |
+| `config.claude_rate_limit_strategy` | `config.rate_limit.strategy` |
+| `config.claude_rate_limit_warning_threshold` | `config.rate_limit.warning_threshold` |
+| `config.claude_rate_limit_max_queued` | `config.rate_limit.max_queued` |
+| `config.claude_rate_limit_queue_full_strategy` | `config.rate_limit.queue_full_strategy` |
+
+### Circuit Breaker Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.circuit_breaker_enabled` | `config.circuit_breaker.enabled` |
+| `config.circuit_breaker_failure_threshold` | `config.circuit_breaker.failure_threshold` |
+| `config.circuit_breaker_recovery_timeout` | `config.circuit_breaker.recovery_timeout` |
+| `config.circuit_breaker_half_open_max_calls` | `config.circuit_breaker.half_open_max_calls` |
+
+### Health Check Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.health_check_enabled` | `config.health_check.enabled` |
+| `config.health_check_timeout` | `config.health_check.timeout` |
+
+### Cursor Configuration
+
+| Deprecated Property | New Property |
+|---------------------|--------------|
+| `config.default_agent_type` | `config.cursor.default_agent_type` |
+| `config.cursor_path` | `config.cursor.path` |
+| `config.cursor_default_model` | `config.cursor.default_model` |
+| `config.cursor_default_mode` | `config.cursor.default_mode` |
+
+## Migration Example
+
+**Before (deprecated):**
+```python
+from sentinel.config import load_config
+
+config = load_config()
+
+# Deprecated flat access pattern
+jira_url = config.jira_base_url
+poll_seconds = config.poll_interval
+max_workers = config.max_concurrent_executions
+```
+
+**After (recommended):**
+```python
+from sentinel.config import load_config
+
+config = load_config()
+
+# New sub-config access pattern
+jira_url = config.jira.base_url
+poll_seconds = config.polling.interval
+max_workers = config.execution.max_concurrent_executions
+```
+
+## Suppressing Deprecation Warnings
+
+If you need time to migrate and want to suppress the warnings temporarily, you can use Python's warnings filter:
+
+```python
+import warnings
+
+# Suppress all deprecation warnings from config module
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    module="sentinel.config"
+)
+```
+
+**Note:** This is not recommended as a long-term solution. Plan to migrate to the new API before the next major version.
