@@ -571,6 +571,10 @@ def create_test_container(
         without being overridden first. Test authors must explicitly override all
         providers they intend to use with appropriate mock objects.
 
+        For more information on Dependency() providers and how provider overrides
+        work, see the dependency-injector library documentation:
+        https://python-dependency-injector.ets-labs.org/providers/dependency.html
+
         Providers that need to be overridden before use:
         - container.clients.jira_client
         - container.clients.jira_tag_client
