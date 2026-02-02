@@ -52,7 +52,7 @@ def _deprecation_warning(old_name: str, new_name: str) -> None:
         new_name: The new property path (e.g., "config.jira.base_url").
     """
     warnings.warn(
-        f"'{old_name}' is deprecated and will be removed in a future version. "
+        f"'{old_name}' is deprecated since v2.0.0 and will be removed in v3.0.0. "
         f"Use '{new_name}' instead. See docs/MIGRATION_GUIDE.md for details.",
         DeprecationWarning,
         stacklevel=3,
