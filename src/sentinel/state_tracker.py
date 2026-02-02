@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-@dataclass
+@dataclass(slots=True)
 class AttemptCountEntry:
     """Entry in the attempt counts dictionary tracking count and last access time.
 
