@@ -150,7 +150,7 @@ class MockAgentClient(AgentClient):
         self.usage = usage
         self.call_count = 0
         self.calls: list[
-            tuple[str, list[str], dict[str, Any] | None, int | None, str | None, str | None]
+            tuple[str, dict[str, Any] | None, int | None, str | None, str | None]
         ] = []
         self.should_error = False
         self.error_count = 0
@@ -168,7 +168,6 @@ class MockAgentClient(AgentClient):
     async def run_agent(
         self,
         prompt: str,
-        tools: list[str],
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
@@ -181,7 +180,7 @@ class MockAgentClient(AgentClient):
         """Async mock implementation of run_agent."""
         from sentinel.executor import AgentClientError, AgentTimeoutError
 
-        self.calls.append((prompt, tools, context, timeout_seconds, issue_key, model))
+        self.calls.append((prompt, context, timeout_seconds, issue_key, model))
 
         if self.should_timeout and self.timeout_count < self.max_timeouts:
             self.timeout_count += 1
@@ -383,7 +382,6 @@ class TrackingAgentClient(AgentClient):
     async def run_agent(
         self,
         prompt: str,
-        tools: list[str],
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
         issue_key: str | None = None,

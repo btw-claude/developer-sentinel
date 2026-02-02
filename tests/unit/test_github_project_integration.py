@@ -454,7 +454,6 @@ class TestEndToEndOrchestrationFlow:
             ),
             agent=AgentConfig(
                 prompt="Review the code for issue {github_org}/{github_repo}#{jira_issue_key}",
-                tools=["github"],
                 github=GitHubContext(
                     host="github.com",
                     org="my-org",

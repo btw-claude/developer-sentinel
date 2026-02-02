@@ -43,10 +43,6 @@ orchestrations:
         End your response with SUCCESS after updating documentation,
         or FAILURE if you couldn't complete the task.
 
-      tools:
-        - jira
-        - confluence
-
       timeout_seconds: 300       # 5 minutes
 
     retry:

@@ -46,10 +46,6 @@ orchestrations:
         - "APPROVED: [brief summary]" if the code is ready to merge
         - "CHANGES REQUESTED: [what needs to change]" if revisions are needed
 
-      tools:
-        - jira
-        - github
-
       github:
         host: "github.com"
         org: "your-org"          # Change to your GitHub org

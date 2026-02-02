@@ -309,7 +309,6 @@ def make_orchestration(
     project_filter: str = "",
     labels: list[str] | None = None,
     prompt: str = "Test prompt",
-    tools: list[str] | None = None,
     github: GitHubContext | None = None,
     max_attempts: int = 3,
     success_patterns: list[str] | None = None,
@@ -333,7 +332,6 @@ def make_orchestration(
         project_filter: GitHub project filter expression.
         labels: List of GitHub labels to filter by.
         prompt: The agent prompt template.
-        tools: List of tools to enable for the agent.
         github: GitHub context for the agent (host, org, repo, branch).
         max_attempts: Maximum retry attempts for the agent.
         success_patterns: Patterns that indicate success in agent response.
@@ -361,7 +359,6 @@ def make_orchestration(
         trigger=trigger,
         agent=AgentConfig(
             prompt=prompt,
-            tools=tools or ["jira"],
             github=github,
             strict_template_variables=strict_template_variables,
         ),

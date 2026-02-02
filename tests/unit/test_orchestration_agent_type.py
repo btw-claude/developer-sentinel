@@ -549,7 +549,6 @@ orchestrations:
         assert len(orchestrations) == 1
         orch = orchestrations[0]
         assert orch.agent.prompt == "Review the code"
-        assert orch.agent.tools == ["jira", "github"]
         assert orch.agent.timeout_seconds == 300
         assert orch.agent.model == "claude-sonnet-4-20250514"
         assert orch.agent.agent_type == "cursor"

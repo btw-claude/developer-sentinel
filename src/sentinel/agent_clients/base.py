@@ -171,7 +171,6 @@ class AgentClient(ABC):
     async def run_agent(
         self,
         prompt: str,
-        tools: list[str],
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
@@ -181,7 +180,7 @@ class AgentClient(ABC):
         create_branch: bool = False,
         base_branch: str = "main",
     ) -> AgentRunResult:
-        """Run an agent with the given prompt and tools.
+        """Run an agent with the given prompt.
 
         This is an async method to enable proper async composition and avoid
         creating new event loops per call. Callers should use asyncio.run()
@@ -194,7 +193,6 @@ class AgentClient(ABC):
 
         Args:
             prompt: The prompt to send to the agent.
-            tools: List of tool names the agent can use.
             context: Optional context dict (e.g., GitHub repo info).
             timeout_seconds: Optional timeout in seconds. If None, no timeout is applied.
             issue_key: Optional issue key for creating a unique working directory.

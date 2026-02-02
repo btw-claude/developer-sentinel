@@ -58,10 +58,6 @@ orchestrations:
         End your response with SUCCESS if the review was completed,
         or FAILURE if you encountered blocking issues.
 
-      # Tools the agent can use
-      tools:
-        - jira
-
     # Retry: How to handle failures
     retry:
       max_attempts: 3

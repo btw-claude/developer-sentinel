@@ -213,7 +213,6 @@ class AgentConfig:
 
     Attributes:
         prompt: The prompt template for the agent.
-        tools: List of tool names the agent can use.
         github: Optional GitHub repository context.
         timeout_seconds: Optional timeout in seconds for agent execution.
             If None, no timeout is applied.
@@ -233,7 +232,6 @@ class AgentConfig:
     """
 
     prompt: str = ""
-    tools: list[str] = field(default_factory=list)
     github: GitHubContext | None = None
     timeout_seconds: int | None = None
     model: str | None = None
@@ -728,7 +726,6 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
 
     return AgentConfig(
         prompt=data.get("prompt", ""),
-        tools=data.get("tools", []),
         github=_parse_github_context(data.get("github")),
         timeout_seconds=timeout,
         model=model,
