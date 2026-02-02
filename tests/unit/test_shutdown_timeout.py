@@ -20,10 +20,32 @@ from unittest.mock import patch
 
 import pytest
 
-from sentinel.config import ExecutionConfig, load_config
+from sentinel.config import Config, ExecutionConfig, load_config
 from sentinel.main import Sentinel
 from tests.helpers import make_config, make_orchestration
 from tests.mocks import MockAgentClient, MockJiraPoller, MockTagClient
+
+
+def make_config_with_shutdown_timeout(
+    shutdown_timeout_seconds: float,
+    max_concurrent_executions: int = 1,
+) -> Config:
+    """Create a Config with a custom shutdown_timeout_seconds value.
+
+    This helper simplifies test setup by avoiding the verbose config
+    reconstruction pattern needed to override shutdown_timeout_seconds.
+
+    Args:
+        shutdown_timeout_seconds: The shutdown timeout value to set.
+        max_concurrent_executions: Maximum concurrent executions (default: 1).
+
+    Returns:
+        A Config instance with the specified shutdown timeout.
+    """
+    return make_config(
+        max_concurrent_executions=max_concurrent_executions,
+        shutdown_timeout_seconds=shutdown_timeout_seconds,
+    )
 
 
 class TestShutdownTimeoutConfig:
@@ -37,61 +59,67 @@ class TestShutdownTimeoutConfig:
 
         assert config.execution.shutdown_timeout_seconds == 300.0
 
-    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that shutdown_timeout_seconds loads from environment variable."""
-        monkeypatch.setenv("SENTINEL_SHUTDOWN_TIMEOUT_SECONDS", "60.0")
-
-        config = load_config()
-
-        assert config.execution.shutdown_timeout_seconds == 60.0
-
-    def test_zero_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that timeout=0 is allowed (wait indefinitely)."""
-        monkeypatch.setenv("SENTINEL_SHUTDOWN_TIMEOUT_SECONDS", "0")
-
-        config = load_config()
-
-        assert config.execution.shutdown_timeout_seconds == 0.0
-
-    def test_negative_uses_default(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    @pytest.mark.parametrize(
+        ("env_value", "expected"),
+        [
+            ("60.0", 60.0),  # Float string
+            ("120", 120.0),  # Integer string
+            ("45.5", 45.5),  # Decimal float
+            ("0", 0.0),  # Zero (wait indefinitely)
+            ("0.0", 0.0),  # Zero as float string
+            ("1", 1.0),  # Minimum positive integer
+        ],
+        ids=[
+            "float_string",
+            "integer_string",
+            "decimal_float",
+            "zero_integer",
+            "zero_float",
+            "minimum_positive",
+        ],
+    )
+    def test_valid_values(
+        self, monkeypatch: pytest.MonkeyPatch, env_value: str, expected: float
     ) -> None:
-        """Test that negative values use the default."""
-        monkeypatch.setenv("SENTINEL_SHUTDOWN_TIMEOUT_SECONDS", "-10.0")
+        """Test that valid values are correctly parsed from environment variable."""
+        monkeypatch.setenv("SENTINEL_SHUTDOWN_TIMEOUT_SECONDS", env_value)
+
+        config = load_config()
+
+        assert config.execution.shutdown_timeout_seconds == expected
+
+    @pytest.mark.parametrize(
+        ("env_value", "expected_log_fragment"),
+        [
+            ("-10.0", "negative"),  # Negative float
+            ("-1", "negative"),  # Negative integer
+            ("not-a-number", "Invalid SENTINEL_SHUTDOWN_TIMEOUT_SECONDS"),  # Non-numeric
+            ("", "Invalid SENTINEL_SHUTDOWN_TIMEOUT_SECONDS"),  # Empty string
+            ("abc123", "Invalid SENTINEL_SHUTDOWN_TIMEOUT_SECONDS"),  # Alphanumeric
+        ],
+        ids=[
+            "negative_float",
+            "negative_integer",
+            "non_numeric",
+            "empty_string",
+            "alphanumeric",
+        ],
+    )
+    def test_invalid_values_use_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        env_value: str,
+        expected_log_fragment: str,
+    ) -> None:
+        """Test that invalid values use the default and log a warning."""
+        monkeypatch.setenv("SENTINEL_SHUTDOWN_TIMEOUT_SECONDS", env_value)
 
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
         assert config.execution.shutdown_timeout_seconds == 300.0
-        assert "negative" in caplog.text
-
-    def test_invalid_value_uses_default(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Test that invalid values use the default."""
-        monkeypatch.setenv("SENTINEL_SHUTDOWN_TIMEOUT_SECONDS", "not-a-number")
-
-        with caplog.at_level(logging.WARNING):
-            config = load_config()
-
-        assert config.execution.shutdown_timeout_seconds == 300.0
-        assert "Invalid SENTINEL_SHUTDOWN_TIMEOUT_SECONDS" in caplog.text
-
-    def test_integer_string_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that integer strings are accepted."""
-        monkeypatch.setenv("SENTINEL_SHUTDOWN_TIMEOUT_SECONDS", "120")
-
-        config = load_config()
-
-        assert config.execution.shutdown_timeout_seconds == 120.0
-
-    def test_float_string_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that float strings are accepted."""
-        monkeypatch.setenv("SENTINEL_SHUTDOWN_TIMEOUT_SECONDS", "45.5")
-
-        config = load_config()
-
-        assert config.execution.shutdown_timeout_seconds == 45.5
+        assert expected_log_fragment in caplog.text
 
 
 class TestExecutionConfigShutdownTimeout:
@@ -127,27 +155,8 @@ class TestShutdownTimeoutBehavior:
         forceful termination.
         """
         # Create config with a short timeout for testing
-        config = make_config(
-            max_concurrent_executions=1,
-        )
-        # Replace the execution config to set the shutdown timeout
-        config = config.__class__(
-            jira=config.jira,
-            github=config.github,
-            dashboard=config.dashboard,
-            rate_limit=config.rate_limit,
-            circuit_breaker=config.circuit_breaker,
-            health_check=config.health_check,
-            execution=ExecutionConfig(
-                orchestrations_dir=config.execution.orchestrations_dir,
-                agent_workdir=config.execution.agent_workdir,
-                agent_logs_dir=config.execution.agent_logs_dir,
-                max_concurrent_executions=1,
-                shutdown_timeout_seconds=5.0,  # 5 second timeout
-            ),
-            cursor=config.cursor,
-            logging_config=config.logging_config,
-            polling=config.polling,
+        config = make_config_with_shutdown_timeout(
+            shutdown_timeout_seconds=5.0,  # 5 second timeout
         )
 
         orchestration = make_orchestration(name="test-orch", tags=["test"])
@@ -188,24 +197,8 @@ class TestShutdownTimeoutBehavior:
             mock_wait.return_value = (set(), {mock_future})
 
             # Create config with a short timeout
-            config = make_config(max_concurrent_executions=1)
-            config = config.__class__(
-                jira=config.jira,
-                github=config.github,
-                dashboard=config.dashboard,
-                rate_limit=config.rate_limit,
-                circuit_breaker=config.circuit_breaker,
-                health_check=config.health_check,
-                execution=ExecutionConfig(
-                    orchestrations_dir=config.execution.orchestrations_dir,
-                    agent_workdir=config.execution.agent_workdir,
-                    agent_logs_dir=config.execution.agent_logs_dir,
-                    max_concurrent_executions=1,
-                    shutdown_timeout_seconds=0.1,  # Very short timeout
-                ),
-                cursor=config.cursor,
-                logging_config=config.logging_config,
-                polling=config.polling,
+            config = make_config_with_shutdown_timeout(
+                shutdown_timeout_seconds=0.1,  # Very short timeout
             )
 
             orchestration = make_orchestration(name="test-orch", tags=["test"])
@@ -230,24 +223,8 @@ class TestShutdownTimeoutBehavior:
         When shutdown_timeout_seconds is 0, the shutdown process should wait
         without a timeout for all active executions to complete naturally.
         """
-        config = make_config(max_concurrent_executions=1)
-        config = config.__class__(
-            jira=config.jira,
-            github=config.github,
-            dashboard=config.dashboard,
-            rate_limit=config.rate_limit,
-            circuit_breaker=config.circuit_breaker,
-            health_check=config.health_check,
-            execution=ExecutionConfig(
-                orchestrations_dir=config.execution.orchestrations_dir,
-                agent_workdir=config.execution.agent_workdir,
-                agent_logs_dir=config.execution.agent_logs_dir,
-                max_concurrent_executions=1,
-                shutdown_timeout_seconds=0.0,  # Wait indefinitely
-            ),
-            cursor=config.cursor,
-            logging_config=config.logging_config,
-            polling=config.polling,
+        config = make_config_with_shutdown_timeout(
+            shutdown_timeout_seconds=0.0,  # Wait indefinitely
         )
 
         orchestration = make_orchestration(name="test-orch", tags=["test"])
@@ -288,24 +265,8 @@ class TestShutdownTimeoutBehavior:
             # Simulate wait returning with incomplete futures (timeout reached)
             mock_wait.return_value = (set(), {mock_future})
 
-            config = make_config(max_concurrent_executions=1)
-            config = config.__class__(
-                jira=config.jira,
-                github=config.github,
-                dashboard=config.dashboard,
-                rate_limit=config.rate_limit,
-                circuit_breaker=config.circuit_breaker,
-                health_check=config.health_check,
-                execution=ExecutionConfig(
-                    orchestrations_dir=config.execution.orchestrations_dir,
-                    agent_workdir=config.execution.agent_workdir,
-                    agent_logs_dir=config.execution.agent_logs_dir,
-                    max_concurrent_executions=1,
-                    shutdown_timeout_seconds=1.0,
-                ),
-                cursor=config.cursor,
-                logging_config=config.logging_config,
-                polling=config.polling,
+            config = make_config_with_shutdown_timeout(
+                shutdown_timeout_seconds=1.0,
             )
 
             orchestration = make_orchestration(name="test-orch", tags=["test"])

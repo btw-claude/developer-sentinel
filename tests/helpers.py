@@ -106,6 +106,8 @@ def make_config(
     # Health check settings
     health_check_enabled: bool = True,
     health_check_timeout: float = 5.0,
+    # Shutdown settings
+    shutdown_timeout_seconds: float = 300.0,
 ) -> Config:
     """Create a Config instance for testing with sensible defaults.
 
@@ -179,6 +181,11 @@ def make_config(
         health_check_enabled: Enable health checks (default: True).
         health_check_timeout: Health check timeout (default: 5.0s).
 
+    **Shutdown Settings** - Graceful shutdown configuration:
+        shutdown_timeout_seconds: Timeout in seconds for graceful shutdown (default: 300.0).
+            If executions don't complete within this time, they will be forcefully
+            terminated. Set to 0 to wait indefinitely.
+
     Returns:
         A Config instance with the specified parameters organized into sub-configs.
 
@@ -248,6 +255,7 @@ def make_config(
         circuit_breaker_half_open_max_calls=circuit_breaker_half_open_max_calls,
         health_check_enabled=health_check_enabled,
         health_check_timeout=health_check_timeout,
+        shutdown_timeout_seconds=shutdown_timeout_seconds,
     )
 
 
