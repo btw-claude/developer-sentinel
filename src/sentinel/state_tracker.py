@@ -62,7 +62,7 @@ class AttemptCountEntry:
     last_access: float  # time.monotonic() timestamp
 
 
-@dataclass
+@dataclass(slots=True)
 class RunningStepInfo:
     """Metadata about a currently running execution step.
 
@@ -76,7 +76,7 @@ class RunningStepInfo:
     issue_url: str  # URL to Jira or GitHub issue
 
 
-@dataclass
+@dataclass(slots=True)
 class QueuedIssueInfo:
     """Metadata about an issue waiting in queue for an execution slot.
 
@@ -89,7 +89,7 @@ class QueuedIssueInfo:
     queued_at: datetime
 
 
-@dataclass
+@dataclass(slots=True)
 class CompletedExecutionInfo:
     """Metadata about a completed execution with usage data.
 
