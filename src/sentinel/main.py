@@ -318,6 +318,32 @@ class Sentinel:
             orchestration, global_available
         )
 
+    def _apply_failure_tags_safely(self, issue_key: str, orchestration: Orchestration) -> None:
+        """Apply failure tags with standardized exception handling.
+
+        This helper method encapsulates the common pattern of applying failure tags
+        while catching and logging any errors that occur during tag application.
+        This reduces code duplication across multiple exception handlers.
+
+        Args:
+            issue_key: The issue key (e.g., "PROJ-123") being processed.
+            orchestration: The orchestration that failed.
+        """
+        try:
+            self.tag_manager.apply_failure_tags(issue_key, orchestration)
+        except (OSError, TimeoutError) as tag_error:
+            logger.error(
+                "Failed to apply failure tags due to I/O error: %s",
+                tag_error,
+                extra={"issue_key": issue_key, "orchestration": orchestration.name},
+            )
+        except (KeyError, ValueError) as tag_error:
+            logger.error(
+                "Failed to apply failure tags due to data error: %s",
+                tag_error,
+                extra={"issue_key": issue_key, "orchestration": orchestration.name},
+            )
+
     def _handle_execution_failure(
         self,
         issue_key: str,
@@ -346,20 +372,44 @@ class Sentinel:
             f"Failed to execute '{orchestration.name}' for {issue_key} "
             f"due to {error_type.value}: {exception}",
         )
-        try:
-            self.tag_manager.apply_failure_tags(issue_key, orchestration)
-        except (OSError, TimeoutError) as tag_error:
-            logger.error(
-                "Failed to apply failure tags due to I/O error: %s",
-                tag_error,
-                extra={"issue_key": issue_key, "orchestration": orchestration.name},
-            )
-        except (KeyError, ValueError) as tag_error:
-            logger.error(
-                "Failed to apply failure tags due to data error: %s",
-                tag_error,
-                extra={"issue_key": issue_key, "orchestration": orchestration.name},
-            )
+        self._apply_failure_tags_safely(issue_key, orchestration)
+
+    def _handle_submission_failure(
+        self,
+        issue_key: str,
+        orchestration: Orchestration,
+        exception: Exception,
+        error_type: ErrorType,
+        version: OrchestrationVersion | None,
+    ) -> None:
+        """Handle submission failure by cleaning up state, logging, and applying failure tags.
+
+        This helper method encapsulates the common failure handling logic for submission
+        errors in _submit_execution_tasks. It handles:
+        1. Decrementing version execution counts
+        2. Decrementing per-orchestration counts
+        3. Logging the error
+        4. Applying failure tags with error handling
+
+        Args:
+            issue_key: The issue key (e.g., "PROJ-123") being processed.
+            orchestration: The orchestration that failed.
+            exception: The exception that caused the failure.
+            error_type: The type of error for logging, using the ErrorType enum.
+            version: The orchestration version to decrement, or None.
+        """
+        if version is not None:
+            version.decrement_executions()
+        self._state_tracker.decrement_per_orch_count(orchestration.name)
+        logger.error(
+            "Failed to submit '%s' for %s due to %s: %s",
+            orchestration.name,
+            issue_key,
+            error_type.value,
+            exception,
+            extra={"issue_key": issue_key, "orchestration": orchestration.name},
+        )
+        self._apply_failure_tags_safely(issue_key, orchestration)
 
     def _execute_orchestration_task(
         self,
@@ -416,20 +466,7 @@ class Sentinel:
                 logging.INFO,
                 f"Claude process interrupted for {issue_key}",
             )
-            try:
-                self.tag_manager.apply_failure_tags(issue_key, orchestration)
-            except (OSError, TimeoutError) as tag_error:
-                logger.error(
-                    "Failed to apply failure tags due to I/O error: %s",
-                    tag_error,
-                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
-                )
-            except (KeyError, ValueError) as tag_error:
-                logger.error(
-                    "Failed to apply failure tags due to data error: %s",
-                    tag_error,
-                    extra={"issue_key": issue_key, "orchestration": orchestration.name},
-                )
+            self._apply_failure_tags_safely(issue_key, orchestration)
             return None
         except (OSError, TimeoutError) as e:
             self._handle_execution_failure(issue_key, orchestration, e, ErrorType.IO_ERROR)
@@ -532,62 +569,17 @@ class Sentinel:
                             all_results.append(result)
 
                 except (OSError, TimeoutError) as e:
-                    if version is not None:
-                        version.decrement_executions()
-                    self._state_tracker.decrement_per_orch_count(matched_orch.name)
-                    logger.error(
-                        "Failed to submit '%s' for %s due to I/O error: %s",
-                        matched_orch.name,
-                        issue_key,
-                        e,
-                        extra={"issue_key": issue_key, "orchestration": matched_orch.name},
+                    self._handle_submission_failure(
+                        issue_key, matched_orch, e, ErrorType.IO_ERROR, version
                     )
-                    try:
-                        self.tag_manager.apply_failure_tags(issue_key, matched_orch)
-                    except (OSError, TimeoutError, KeyError, ValueError) as tag_error:
-                        logger.error(
-                            "Failed to apply failure tags: %s",
-                            tag_error,
-                            extra={"issue_key": issue_key, "orchestration": matched_orch.name},
-                        )
                 except RuntimeError as e:
-                    if version is not None:
-                        version.decrement_executions()
-                    self._state_tracker.decrement_per_orch_count(matched_orch.name)
-                    logger.error(
-                        "Failed to submit '%s' for %s due to runtime error: %s",
-                        matched_orch.name,
-                        issue_key,
-                        e,
-                        extra={"issue_key": issue_key, "orchestration": matched_orch.name},
+                    self._handle_submission_failure(
+                        issue_key, matched_orch, e, ErrorType.RUNTIME_ERROR, version
                     )
-                    try:
-                        self.tag_manager.apply_failure_tags(issue_key, matched_orch)
-                    except (OSError, TimeoutError, KeyError, ValueError) as tag_error:
-                        logger.error(
-                            "Failed to apply failure tags: %s",
-                            tag_error,
-                            extra={"issue_key": issue_key, "orchestration": matched_orch.name},
-                        )
                 except (KeyError, ValueError) as e:
-                    if version is not None:
-                        version.decrement_executions()
-                    self._state_tracker.decrement_per_orch_count(matched_orch.name)
-                    logger.error(
-                        "Failed to submit '%s' for %s due to data error: %s",
-                        matched_orch.name,
-                        issue_key,
-                        e,
-                        extra={"issue_key": issue_key, "orchestration": matched_orch.name},
+                    self._handle_submission_failure(
+                        issue_key, matched_orch, e, ErrorType.DATA_ERROR, version
                     )
-                    try:
-                        self.tag_manager.apply_failure_tags(issue_key, matched_orch)
-                    except (OSError, TimeoutError, KeyError, ValueError) as tag_error:
-                        logger.error(
-                            "Failed to apply failure tags: %s",
-                            tag_error,
-                            extra={"issue_key": issue_key, "orchestration": matched_orch.name},
-                        )
 
         return submitted_count
 
