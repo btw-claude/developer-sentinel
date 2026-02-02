@@ -20,32 +20,10 @@ from unittest.mock import patch
 
 import pytest
 
-from sentinel.config import Config, ExecutionConfig, load_config
+from sentinel.config import ExecutionConfig, load_config
 from sentinel.main import Sentinel
 from tests.helpers import make_config, make_orchestration
 from tests.mocks import MockAgentClient, MockJiraPoller, MockTagClient
-
-
-def make_config_with_shutdown_timeout(
-    shutdown_timeout_seconds: float,
-    max_concurrent_executions: int = 1,
-) -> Config:
-    """Create a Config with a custom shutdown_timeout_seconds value.
-
-    This helper simplifies test setup by avoiding the verbose config
-    reconstruction pattern needed to override shutdown_timeout_seconds.
-
-    Args:
-        shutdown_timeout_seconds: The shutdown timeout value to set.
-        max_concurrent_executions: Maximum concurrent executions (default: 1).
-
-    Returns:
-        A Config instance with the specified shutdown timeout.
-    """
-    return make_config(
-        max_concurrent_executions=max_concurrent_executions,
-        shutdown_timeout_seconds=shutdown_timeout_seconds,
-    )
 
 
 class TestShutdownTimeoutConfig:
@@ -155,9 +133,7 @@ class TestShutdownTimeoutBehavior:
         forceful termination.
         """
         # Create config with a short timeout for testing
-        config = make_config_with_shutdown_timeout(
-            shutdown_timeout_seconds=5.0,  # 5 second timeout
-        )
+        config = make_config(shutdown_timeout_seconds=5.0)  # 5 second timeout
 
         orchestration = make_orchestration(name="test-orch", tags=["test"])
         tag_client = MockTagClient()
@@ -197,9 +173,7 @@ class TestShutdownTimeoutBehavior:
             mock_wait.return_value = (set(), {mock_future})
 
             # Create config with a short timeout
-            config = make_config_with_shutdown_timeout(
-                shutdown_timeout_seconds=0.1,  # Very short timeout
-            )
+            config = make_config(shutdown_timeout_seconds=0.1)  # Very short timeout
 
             orchestration = make_orchestration(name="test-orch", tags=["test"])
             tag_client = MockTagClient()
@@ -223,9 +197,7 @@ class TestShutdownTimeoutBehavior:
         When shutdown_timeout_seconds is 0, the shutdown process should wait
         without a timeout for all active executions to complete naturally.
         """
-        config = make_config_with_shutdown_timeout(
-            shutdown_timeout_seconds=0.0,  # Wait indefinitely
-        )
+        config = make_config(shutdown_timeout_seconds=0.0)  # Wait indefinitely
 
         orchestration = make_orchestration(name="test-orch", tags=["test"])
         tag_client = MockTagClient()
@@ -265,9 +237,7 @@ class TestShutdownTimeoutBehavior:
             # Simulate wait returning with incomplete futures (timeout reached)
             mock_wait.return_value = (set(), {mock_future})
 
-            config = make_config_with_shutdown_timeout(
-                shutdown_timeout_seconds=1.0,
-            )
+            config = make_config(shutdown_timeout_seconds=1.0)
 
             orchestration = make_orchestration(name="test-orch", tags=["test"])
             tag_client = MockTagClient()
