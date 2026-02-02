@@ -27,9 +27,11 @@ from sentinel.branch_validation import validate_branch_name_core
 from sentinel.types import (
     VALID_AGENT_TYPES,
     VALID_CURSOR_MODES,
+    VALID_QUEUE_FULL_STRATEGIES,
     VALID_RATE_LIMIT_STRATEGIES,
     AgentType,
     CursorMode,
+    QueueFullStrategy,
     RateLimitStrategy,
 )
 
@@ -114,6 +116,12 @@ class RateLimitConfig:
         per_hour: Maximum requests per hour.
         strategy: Strategy when limit reached ("queue" or "reject").
         warning_threshold: Fraction of remaining capacity that triggers warning.
+        max_queued: Maximum number of requests that can wait in the queue.
+            When the queue is full, new requests are handled according to
+            queue_full_strategy. Default is 100.
+        queue_full_strategy: Strategy when queue is full ("reject" or "wait").
+            "reject" immediately rejects new requests when queue is full.
+            "wait" waits for queue space (subject to timeout). Default is "reject".
     """
 
     enabled: bool = True
@@ -121,6 +129,8 @@ class RateLimitConfig:
     per_hour: int = 1000
     strategy: str = "queue"
     warning_threshold: float = 0.2
+    max_queued: int = 100
+    queue_full_strategy: str = "reject"
 
 
 @dataclass(frozen=True)
@@ -478,6 +488,16 @@ class Config:
         """Fraction of remaining capacity that triggers warning."""
         return self.rate_limit.warning_threshold
 
+    @property
+    def claude_rate_limit_max_queued(self) -> int:
+        """Maximum number of requests that can wait in the queue."""
+        return self.rate_limit.max_queued
+
+    @property
+    def claude_rate_limit_queue_full_strategy(self) -> str:
+        """Strategy when queue is full."""
+        return self.rate_limit.queue_full_strategy
+
     # ==========================================================================
     # Backward compatibility properties - Circuit Breaker
     # ==========================================================================
@@ -756,6 +776,33 @@ def _validate_rate_limit_strategy(value: str, default: str = RateLimitStrategy.Q
     return normalized
 
 
+def _validate_queue_full_strategy(
+    value: str, default: str = QueueFullStrategy.REJECT.value
+) -> str:
+    """Validate and normalize a queue full strategy string.
+
+    Args:
+        value: The queue full strategy string to validate.
+        default: The default value to use if invalid.
+
+    Returns:
+        The validated strategy (lowercase), or the default if invalid.
+
+    Logs a warning if the value is invalid.
+    """
+    normalized = value.lower()
+    if not QueueFullStrategy.is_valid(normalized):
+        logging.warning(
+            "Invalid SENTINEL_CLAUDE_RATE_LIMIT_QUEUE_FULL_STRATEGY: '%s' is not valid, "
+            "using default '%s'. Valid values: %s",
+            value,
+            default,
+            ", ".join(sorted(VALID_QUEUE_FULL_STRATEGIES)),
+        )
+        return default
+    return normalized
+
+
 def _parse_warning_threshold(value: str, name: str, default: float) -> float:
     """Parse a string as a warning threshold float (0.0-1.0) with validation.
 
@@ -971,6 +1018,14 @@ def load_config(env_file: Path | None = None) -> Config:
         "SENTINEL_CLAUDE_RATE_LIMIT_WARNING_THRESHOLD",
         0.2,
     )
+    claude_rate_limit_max_queued = _parse_positive_int(
+        os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_MAX_QUEUED", "100"),
+        "SENTINEL_CLAUDE_RATE_LIMIT_MAX_QUEUED",
+        100,
+    )
+    claude_rate_limit_queue_full_strategy = _validate_queue_full_strategy(
+        os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_QUEUE_FULL_STRATEGY", "reject"),
+    )
 
     # Parse circuit breaker configuration
     circuit_breaker_enabled = _parse_bool(os.getenv("SENTINEL_CIRCUIT_BREAKER_ENABLED", "true"))
@@ -1046,6 +1101,8 @@ def load_config(env_file: Path | None = None) -> Config:
         per_hour=claude_rate_limit_per_hour,
         strategy=claude_rate_limit_strategy,
         warning_threshold=claude_rate_limit_warning_threshold,
+        max_queued=claude_rate_limit_max_queued,
+        queue_full_strategy=claude_rate_limit_queue_full_strategy,
     )
 
     circuit_breaker_config = CircuitBreakerConfig(
@@ -1154,6 +1211,8 @@ def create_config(
     claude_rate_limit_per_hour: int = 1000,
     claude_rate_limit_strategy: str = "queue",
     claude_rate_limit_warning_threshold: float = 0.2,
+    claude_rate_limit_max_queued: int = 100,
+    claude_rate_limit_queue_full_strategy: str = "reject",
     # Circuit breaker settings
     circuit_breaker_enabled: bool = True,
     circuit_breaker_failure_threshold: int = 5,
@@ -1211,6 +1270,8 @@ def create_config(
         claude_rate_limit_per_hour: Maximum requests per hour.
         claude_rate_limit_strategy: Strategy when limit reached.
         claude_rate_limit_warning_threshold: Warning threshold fraction.
+        claude_rate_limit_max_queued: Maximum queued requests (backpressure).
+        claude_rate_limit_queue_full_strategy: Strategy when queue is full.
         circuit_breaker_enabled: Enable/disable circuit breakers.
         circuit_breaker_failure_threshold: Failures before opening circuit.
         circuit_breaker_recovery_timeout: Recovery timeout in seconds.
@@ -1277,6 +1338,8 @@ def create_config(
             per_hour=claude_rate_limit_per_hour,
             strategy=claude_rate_limit_strategy,
             warning_threshold=claude_rate_limit_warning_threshold,
+            max_queued=claude_rate_limit_max_queued,
+            queue_full_strategy=claude_rate_limit_queue_full_strategy,
         ),
         circuit_breaker=CircuitBreakerConfig(
             enabled=circuit_breaker_enabled,
