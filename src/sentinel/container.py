@@ -561,16 +561,39 @@ def create_test_container(
 ) -> SentinelContainer:
     """Create a container pre-configured for testing.
 
-    This creates a container with placeholder providers that are easy to
-    override with mocks. Unlike create_container(), this doesn't require
-    valid Jira/GitHub credentials.
+    This creates a container with Dependency() providers that must be
+    overridden with mocks before use. Unlike create_container(), this doesn't
+    require valid Jira/GitHub credentials.
+
+    Important:
+        The container uses Dependency() providers for clients, pollers, services,
+        and the sentinel instance. These providers will raise an error if accessed
+        without being overridden first. Test authors must explicitly override all
+        providers they intend to use with appropriate mock objects.
+
+        Providers that need to be overridden before use:
+        - container.clients.jira_client
+        - container.clients.jira_tag_client
+        - container.clients.github_client
+        - container.clients.github_tag_client
+        - container.pollers.jira_poller
+        - container.pollers.github_poller
+        - container.services.agent_factory
+        - container.services.agent_logger
+        - container.services.tag_manager
+        - container.services.router
+        - container.sentinel
 
     Args:
         config: Optional test configuration.
         orchestrations: Optional list of test orchestrations.
 
     Returns:
-        SentinelContainer configured for testing.
+        SentinelContainer configured for testing with Dependency() providers.
+
+    Raises:
+        dependency_injector.errors.Error: When accessing a Dependency() provider
+            that has not been overridden.
 
     Example:
         from unittest.mock import Mock
@@ -578,6 +601,7 @@ def create_test_container(
         container = create_test_container()
         container.clients.jira_client.override(providers.Object(Mock()))
         container.clients.jira_tag_client.override(providers.Object(Mock()))
+        # ... override other providers as needed for your test ...
         sentinel = container.sentinel()
     """
     from sentinel.config import Config
