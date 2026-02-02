@@ -564,7 +564,7 @@ class ClaudeSdkAgentClient(AgentClient):
     @property
     def agent_type(self) -> AgentType:
         """Return the type of agent this client implements."""
-        return "claude"
+        return AgentType.CLAUDE
 
     @property
     def rate_limiter(self) -> ClaudeRateLimiter:

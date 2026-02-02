@@ -32,7 +32,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from sentinel.agent_clients.base import AgentType, UsageInfo
+from sentinel.agent_clients.base import UsageInfo
 from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.config import Config
 from sentinel.executor import AgentClient, AgentRunResult
@@ -41,6 +41,7 @@ from sentinel.orchestration import Orchestration, TriggerConfig
 from sentinel.poller import JiraClient, JiraIssue
 from sentinel.router import Router, RoutingResult
 from sentinel.tag_manager import JiraTagClient
+from sentinel.types import AgentType
 
 
 class MockJiraClient(JiraClient):
@@ -142,7 +143,7 @@ class MockAgentClient(AgentClient):
         self,
         responses: list[str] | None = None,
         workdir: Path | None = None,
-        agent_type_value: AgentType = "claude",
+        agent_type_value: AgentType = AgentType.CLAUDE,
         usage: UsageInfo | None = None,
     ) -> None:
         self.responses = responses or ["SUCCESS: Task completed"]
@@ -361,7 +362,7 @@ class TrackingAgentClient(AgentClient):
         execution_delay: float = 0.05,
         track_order: bool = False,
         track_per_orch: bool = False,
-        agent_type_value: AgentType = "claude",
+        agent_type_value: AgentType = AgentType.CLAUDE,
     ) -> None:
         self.lock = threading.Lock()
         self.execution_count = 0

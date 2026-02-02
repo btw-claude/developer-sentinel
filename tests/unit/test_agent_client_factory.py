@@ -18,14 +18,14 @@ from sentinel.agent_clients import (
     ClaudeSdkAgentClient,
     create_default_factory,
 )
-from sentinel.agent_clients.base import AgentType
 from sentinel.config import Config, create_config
+from sentinel.types import AgentType
 
 
 class MockAgentClient(AgentClient):
     """Mock agent client for testing."""
 
-    def __init__(self, agent_type_value: AgentType = "claude") -> None:
+    def __init__(self, agent_type_value: AgentType = AgentType.CLAUDE) -> None:
         self._agent_type = agent_type_value
         self.config: Config | None = None
 
