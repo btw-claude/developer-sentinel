@@ -23,7 +23,7 @@ See docs/dependency-injection.md for more patterns and examples.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from dependency_injector import containers, providers
 
@@ -50,24 +50,13 @@ class ClientsContainer(containers.DeclarativeContainer):
     config: providers.Dependency[Config] = providers.Dependency()
 
     # Jira clients - provided lazily to support both REST and SDK implementations
-    # Note: The providers.Callable(lambda: None) pattern creates a placeholder provider
-    # that is overridden at runtime in create_container(). This allows the container
-    # structure to be defined declaratively while deferring the actual implementation
-    # choice (REST vs SDK) until container initialization based on configuration.
-    jira_client = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
-    jira_tag_client = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
+    # Using Dependency() makes it explicit these must be provided at container creation
+    jira_client: providers.Dependency[JiraClient] = providers.Dependency()
+    jira_tag_client: providers.Dependency[JiraTagClient] = providers.Dependency()
 
     # GitHub clients - optional, may be None if not configured
-    github_client = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
-    github_tag_client = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
+    github_client: providers.Dependency[GitHubClient | None] = providers.Dependency()
+    github_tag_client: providers.Dependency[GitHubTagClient | None] = providers.Dependency()
 
 
 class PollersContainer(containers.DeclarativeContainer):
@@ -81,19 +70,11 @@ class PollersContainer(containers.DeclarativeContainer):
     clients = providers.DependenciesContainer()
 
     # JiraPoller - polls Jira for issues matching triggers
-    # Note: The providers.Callable(lambda: None) pattern creates a placeholder provider
-    # that is overridden at runtime in create_container(). This allows the container
-    # structure to be defined declaratively while deferring the actual implementation
-    # until container initialization.
-    jira_poller = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
+    # Using Dependency() makes it explicit these must be provided at container creation
+    jira_poller: providers.Dependency[JiraPoller] = providers.Dependency()
 
     # GitHubPoller - polls GitHub for issues/PRs matching triggers (optional)
-    # Uses factory pattern since it may be None if GitHub is not configured
-    github_poller = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
+    github_poller: providers.Dependency[GitHubPoller | None] = providers.Dependency()
 
 
 class ServicesContainer(containers.DeclarativeContainer):
@@ -107,28 +88,17 @@ class ServicesContainer(containers.DeclarativeContainer):
     clients = providers.DependenciesContainer()
 
     # AgentClientFactory - creates agent clients based on orchestration config
-    # Note: The providers.Callable(lambda: None) pattern creates a placeholder provider
-    # that is overridden at runtime in create_container(). This allows the container
-    # structure to be defined declaratively while deferring the actual implementation
-    # until container initialization.
-    agent_factory = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
+    # Using Dependency() makes it explicit these must be provided at container creation
+    agent_factory: providers.Dependency[AgentClientFactory] = providers.Dependency()
 
     # AgentLogger - logs agent execution output
-    agent_logger = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
+    agent_logger: providers.Dependency[AgentLogger] = providers.Dependency()
 
     # TagManager - manages issue labels/tags
-    tag_manager = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
+    tag_manager: providers.Dependency[TagManager] = providers.Dependency()
 
     # Router - routes issues to matching orchestrations
-    router = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, overridden in create_container()
-    )
+    router: providers.Dependency[Router] = providers.Dependency()
 
 
 class SentinelContainer(containers.DeclarativeContainer):
@@ -190,17 +160,11 @@ class SentinelContainer(containers.DeclarativeContainer):
         ]
     )
 
-    # Core configuration
-    # Type annotation removed due to placeholder incompatibility with Callable[..., Config]
-    config = providers.Singleton(
-        providers.Callable(lambda: None)  # Placeholder, set via factory
-    )
+    # Core configuration - using Dependency() for type safety
+    config: providers.Dependency[Config] = providers.Dependency()
 
-    # Orchestrations list
-    # Using Any type to allow placeholder with incompatible Callable type
-    orchestrations: providers.Singleton[Any] = providers.Singleton(
-        providers.Callable(lambda: [])  # Placeholder, set via factory
-    )
+    # Orchestrations list - using Dependency() for type safety
+    orchestrations: providers.Dependency[list[Orchestration]] = providers.Dependency()
 
     # Sub-containers
     clients = providers.Container(
@@ -221,9 +185,8 @@ class SentinelContainer(containers.DeclarativeContainer):
     )
 
     # Main Sentinel instance - Factory provider allows creating multiple instances
-    sentinel = providers.Factory(
-        providers.Callable(lambda: None)  # Placeholder, overridden at runtime
-    )
+    # Using Dependency() for type safety - overridden at runtime with Factory
+    sentinel: providers.Dependency[Sentinel] = providers.Dependency()
 
 
 def create_jira_rest_client(config: Config) -> JiraClient:
