@@ -216,8 +216,13 @@ class StateTracker:
 
     @property
     def start_time(self) -> datetime:
-        """Get the process start time."""
-        return self._start_time
+        """Get the process start time.
+
+        Thread-safe: Protected by _poll_times_lock for consistency with other
+        datetime properties, even though this value is only set once in __init__.
+        """
+        with self._poll_times_lock:
+            return self._start_time
 
     @property
     def last_jira_poll(self) -> datetime | None:
