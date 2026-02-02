@@ -172,6 +172,42 @@ class RateLimitStrategy(str, Enum):
         return frozenset(member.value for member in cls)
 
 
+class QueueFullStrategy(str, Enum):
+    """Enum for queue full strategies when bounded queue is at capacity.
+
+    Inherits from str to allow direct string comparison and
+    seamless configuration handling.
+
+    Values:
+        REJECT: Reject new requests immediately when queue is full ("reject")
+        WAIT: Wait for queue space (subject to timeout) ("wait")
+    """
+
+    REJECT = "reject"
+    WAIT = "wait"
+
+    @classmethod
+    def is_valid(cls, value: str) -> bool:
+        """Check if a string value is a valid queue full strategy.
+
+        Args:
+            value: The string value to validate.
+
+        Returns:
+            True if the value matches a valid queue full strategy.
+        """
+        return value in cls._value2member_map_
+
+    @classmethod
+    def values(cls) -> frozenset[str]:
+        """Return all valid queue full strategy values as a frozenset.
+
+        Returns:
+            Frozenset of valid queue full strategy string values.
+        """
+        return frozenset(member.value for member in cls)
+
+
 class ErrorType(str, Enum):
     """Enum for execution failure error types.
 
@@ -219,6 +255,7 @@ TriggerSourceLiteral = Literal["jira", "github"]
 AgentTypeLiteral = Literal["claude", "cursor"]
 CursorModeLiteral = Literal["agent", "plan", "ask"]
 RateLimitStrategyLiteral = Literal["queue", "reject"]
+QueueFullStrategyLiteral = Literal["reject", "wait"]
 ErrorTypeLiteral = Literal["I/O error", "runtime error", "data error"]
 
 # Frozen sets for validation (derived from enums for single source of truth)
@@ -226,4 +263,5 @@ VALID_TRIGGER_SOURCES = TriggerSource.values()
 VALID_AGENT_TYPES = AgentType.values()
 VALID_CURSOR_MODES = CursorMode.values()
 VALID_RATE_LIMIT_STRATEGIES = RateLimitStrategy.values()
+VALID_QUEUE_FULL_STRATEGIES = QueueFullStrategy.values()
 VALID_ERROR_TYPES = ErrorType.values()

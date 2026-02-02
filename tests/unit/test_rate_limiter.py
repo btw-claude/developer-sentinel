@@ -9,6 +9,8 @@ import pytest
 from sentinel.config import create_config
 from sentinel.rate_limiter import (
     ClaudeRateLimiter,
+    QueueFullError,
+    QueueFullStrategy,
     RateLimiterMetrics,
     RateLimitExceededError,
     RateLimitStrategy,
@@ -773,3 +775,238 @@ class TestConfigIntegration:
             config = load_config()
         assert config.claude_rate_limit_warning_threshold == 0.2
         assert "Invalid SENTINEL_CLAUDE_RATE_LIMIT_WARNING_THRESHOLD" in caplog.text
+
+    def test_load_config_with_backpressure_settings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Config correctly loads backpressure settings from environment."""
+        from sentinel.config import load_config
+
+        monkeypatch.setenv("SENTINEL_CLAUDE_RATE_LIMIT_MAX_QUEUED", "50")
+        monkeypatch.setenv("SENTINEL_CLAUDE_RATE_LIMIT_QUEUE_FULL_STRATEGY", "wait")
+
+        config = load_config()
+        assert config.claude_rate_limit_max_queued == 50
+        assert config.claude_rate_limit_queue_full_strategy == "wait"
+
+    def test_invalid_queue_full_strategy_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Invalid queue full strategy value uses default."""
+        import logging
+
+        from sentinel.config import load_config
+
+        monkeypatch.setenv("SENTINEL_CLAUDE_RATE_LIMIT_QUEUE_FULL_STRATEGY", "invalid")
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+        assert config.claude_rate_limit_queue_full_strategy == "reject"
+        assert "Invalid SENTINEL_CLAUDE_RATE_LIMIT_QUEUE_FULL_STRATEGY" in caplog.text
+
+
+class TestBoundedQueueBackpressure:
+    """Tests for bounded queue backpressure functionality."""
+
+    def test_queue_properties(self) -> None:
+        """Rate limiter exposes queue properties."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=10,
+            requests_per_hour=100,
+            max_queued=50,
+            queue_full_strategy=QueueFullStrategy.REJECT,
+            enabled=True,
+        )
+        assert limiter.max_queued == 50
+        assert limiter.queued_count == 0
+
+    def test_queue_full_reject_strategy(self) -> None:
+        """Queue full with REJECT strategy raises QueueFullError."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=1,  # Only 1 token
+            requests_per_hour=100,
+            strategy=RateLimitStrategy.QUEUE,
+            max_queued=2,  # Very small queue
+            queue_full_strategy=QueueFullStrategy.REJECT,
+            enabled=True,
+        )
+
+        # First request succeeds (gets the token)
+        assert limiter.acquire(timeout=0) is True
+
+        # Fill the queue with waiting requests (they will be blocked)
+        threads = []
+        errors: list[Exception] = []
+        errors_lock = threading.Lock()
+
+        def waiting_acquire() -> None:
+            try:
+                limiter.acquire(timeout=2.0)
+            except Exception as e:
+                with errors_lock:
+                    errors.append(e)
+
+        # Start threads to fill the queue
+        for _ in range(2):
+            t = threading.Thread(target=waiting_acquire)
+            t.start()
+            threads.append(t)
+
+        # Wait for threads to enter the queue
+        time.sleep(0.1)
+
+        # Now queue should be full, next request should raise QueueFullError
+        with pytest.raises(QueueFullError):
+            limiter.acquire(timeout=0.1)
+
+        # Clean up threads
+        for t in threads:
+            t.join(timeout=3.0)
+
+    def test_queue_metrics_include_queue_full_rejections(self) -> None:
+        """Metrics track queue full rejections."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=1,
+            requests_per_hour=100,
+            strategy=RateLimitStrategy.QUEUE,
+            max_queued=1,
+            queue_full_strategy=QueueFullStrategy.REJECT,
+            enabled=True,
+        )
+
+        # First request succeeds
+        limiter.acquire(timeout=0)
+
+        # Start a thread to fill the queue
+        def waiting_acquire() -> None:
+            import contextlib
+
+            with contextlib.suppress(Exception):
+                limiter.acquire(timeout=1.0)
+
+        t = threading.Thread(target=waiting_acquire)
+        t.start()
+        time.sleep(0.05)
+
+        # Try to acquire when queue is full
+        import contextlib
+
+        with contextlib.suppress(QueueFullError):
+            limiter.acquire(timeout=0.1)
+
+        t.join(timeout=2.0)
+
+        metrics = limiter.get_metrics()
+        assert metrics["queue_full_rejections"] >= 1
+
+    def test_from_config_with_backpressure_settings(self) -> None:
+        """Can create limiter from Config with backpressure settings."""
+        config = create_config(
+            claude_rate_limit_enabled=True,
+            claude_rate_limit_per_minute=30,
+            claude_rate_limit_per_hour=500,
+            claude_rate_limit_strategy="queue",
+            claude_rate_limit_max_queued=75,
+            claude_rate_limit_queue_full_strategy="wait",
+        )
+        limiter = ClaudeRateLimiter.from_config(config)
+        assert limiter.enabled is True
+        assert limiter.max_queued == 75
+        metrics = limiter.get_metrics()
+        assert metrics["queue"]["max_size"] == 75
+        assert metrics["queue"]["full_strategy"] == "wait"
+
+    def test_get_metrics_includes_queue_info(self) -> None:
+        """get_metrics includes queue status."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=10,
+            requests_per_hour=100,
+            max_queued=100,
+            queue_full_strategy=QueueFullStrategy.REJECT,
+            enabled=True,
+        )
+        metrics = limiter.get_metrics()
+        assert "queue" in metrics
+        assert metrics["queue"]["current_size"] == 0
+        assert metrics["queue"]["max_size"] == 100
+        assert metrics["queue"]["full_strategy"] == "reject"
+
+    @pytest.mark.asyncio
+    async def test_queue_full_reject_strategy_async(self) -> None:
+        """Async queue full with REJECT strategy raises QueueFullError."""
+        import asyncio
+        import contextlib
+
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=1,
+            requests_per_hour=100,
+            strategy=RateLimitStrategy.QUEUE,
+            max_queued=2,
+            queue_full_strategy=QueueFullStrategy.REJECT,
+            enabled=True,
+        )
+
+        # First request succeeds
+        assert await limiter.acquire_async(timeout=0) is True
+
+        # Start tasks to fill the queue
+        async def waiting_acquire() -> None:
+            with contextlib.suppress(Exception):
+                await limiter.acquire_async(timeout=2.0)
+
+        tasks = [asyncio.create_task(waiting_acquire()) for _ in range(2)]
+        await asyncio.sleep(0.1)
+
+        # Queue should be full
+        with pytest.raises(QueueFullError):
+            await limiter.acquire_async(timeout=0.1)
+
+        # Cancel pending tasks
+        for task in tasks:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+
+class TestBackpressureThreadSafety:
+    """Tests for thread-safety of backpressure under concurrent access."""
+
+    def test_concurrent_queue_access_thread_safety(self) -> None:
+        """Verify thread-safety of queue enter/exit under concurrent access."""
+        limiter = ClaudeRateLimiter(
+            requests_per_minute=5,
+            requests_per_hour=1000,
+            strategy=RateLimitStrategy.QUEUE,
+            max_queued=10,
+            queue_full_strategy=QueueFullStrategy.REJECT,
+            enabled=True,
+        )
+
+        num_threads = 20
+        results: list[tuple[bool, Exception | None]] = []
+        results_lock = threading.Lock()
+
+        def try_acquire() -> None:
+            try:
+                result = limiter.acquire(timeout=1.0)
+                with results_lock:
+                    results.append((result, None))
+            except Exception as e:
+                with results_lock:
+                    results.append((False, e))
+
+        threads = [threading.Thread(target=try_acquire) for _ in range(num_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # All threads should have completed
+        assert len(results) == num_threads
+
+        # Queue count should be 0 after all threads complete
+        assert limiter.queued_count == 0
+
+        # Some requests may have been rejected due to queue being full
+        # (depending on timing), but the queue should be consistent
+        metrics = limiter.get_metrics()
+        assert metrics["queue"]["current_size"] == 0
