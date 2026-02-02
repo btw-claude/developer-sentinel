@@ -323,16 +323,6 @@ class TestAgentExecutorExecute:
         assert result.attempts == 1
         assert "SUCCESS" in result.response
 
-    async def test_passes_tools_to_client(self) -> None:
-        client = MockAgentClient()
-        executor = AgentExecutor(client)
-        issue = make_issue()
-        orch = make_orchestration(tools=["jira", "github", "confluence"])
-
-        await executor.execute(issue, orch)
-
-        assert client.calls[0][1] == ["jira", "github", "confluence"]
-
     async def test_passes_github_context_to_client(self) -> None:
         client = MockAgentClient()
         executor = AgentExecutor(client)
@@ -343,7 +333,7 @@ class TestAgentExecutorExecute:
 
         await executor.execute(issue, orch)
 
-        context = client.calls[0][2]
+        context = client.calls[0][1]
         assert context is not None
         assert context["github"]["host"] == "github.example.com"
         assert context["github"]["org"] == "myorg"
@@ -445,7 +435,7 @@ class TestAgentExecutorExecute:
 
         await executor.execute(issue, orch)
 
-        assert client.calls[0][3] == 300
+        assert client.calls[0][2] == 300
 
     async def test_handles_timeout_error(self) -> None:
         client = MockAgentClient()
@@ -482,7 +472,7 @@ class TestAgentExecutorExecute:
 
         await executor.execute(issue, orch)
 
-        assert client.calls[0][3] is None
+        assert client.calls[0][2] is None
 
     async def test_passes_model_to_client(self) -> None:
         """Model from orchestration should be passed to client."""
@@ -494,7 +484,7 @@ class TestAgentExecutorExecute:
 
         await executor.execute(issue, orch)
 
-        assert client.calls[0][5] == "claude-opus-4-5-20251101"
+        assert client.calls[0][4] == "claude-opus-4-5-20251101"
 
     async def test_model_none_by_default(self) -> None:
         """Model should be None when not specified in orchestration."""
@@ -505,7 +495,7 @@ class TestAgentExecutorExecute:
 
         await executor.execute(issue, orch)
 
-        assert client.calls[0][5] is None
+        assert client.calls[0][4] is None
 
 
 @pytest.mark.asyncio
@@ -520,7 +510,7 @@ class TestAgentExecutorExecuteWithOutcomes:
         orch = Orchestration(
             name="code-review",
             trigger=TriggerConfig(),
-            agent=AgentConfig(prompt="Review code", tools=["github"]),
+            agent=AgentConfig(prompt="Review code"),
             retry=RetryConfig(failure_patterns=["ERROR"]),
             outcomes=[
                 Outcome(name="approved", patterns=["APPROVED"], add_tag="code-reviewed"),
@@ -545,7 +535,7 @@ class TestAgentExecutorExecuteWithOutcomes:
         orch = Orchestration(
             name="code-review",
             trigger=TriggerConfig(),
-            agent=AgentConfig(prompt="Review code", tools=["github"]),
+            agent=AgentConfig(prompt="Review code"),
             retry=RetryConfig(failure_patterns=["ERROR"]),
             outcomes=[
                 Outcome(name="approved", patterns=["APPROVED"]),
@@ -568,7 +558,7 @@ class TestAgentExecutorExecuteWithOutcomes:
         orch = Orchestration(
             name="code-review",
             trigger=TriggerConfig(),
-            agent=AgentConfig(prompt="Review code", tools=["github"]),
+            agent=AgentConfig(prompt="Review code"),
             retry=RetryConfig(failure_patterns=["ERROR"], max_attempts=3),
             outcomes=[
                 Outcome(name="approved", patterns=["APPROVED"]),

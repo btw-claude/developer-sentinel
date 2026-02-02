@@ -655,7 +655,6 @@ class TestSdkStreamingVsNonStreaming:
             result = asyncio.run(
                 client.run_agent(
                     prompt="test prompt",
-                    tools=[],
                     issue_key="TEST-1",
                     orchestration_name="test_orch",
                 )
@@ -685,7 +684,6 @@ class TestSdkStreamingVsNonStreaming:
             result = asyncio.run(
                 client.run_agent(
                     prompt="test prompt",
-                    tools=[],
                     issue_key="TEST-1",
                     orchestration_name="test_orch",
                 )
@@ -746,7 +744,6 @@ class TestSdkStreamingVsNonStreaming:
             asyncio.run(
                 client.run_agent(
                     prompt="test prompt",
-                    tools=[],
                     issue_key="TEST-1",
                     orchestration_name="test_orch",
                 )
@@ -781,7 +778,6 @@ class TestSdkStreamingVsNonStreaming:
             asyncio.run(
                 client.run_agent(
                     prompt="test prompt",
-                    tools=[],
                     issue_key="TEST-1",
                     orchestration_name="test_orch",
                 )
@@ -819,7 +815,6 @@ class TestSdkStreamingVsNonStreaming:
             asyncio.run(
                 client.run_agent(
                     prompt="test prompt",
-                    tools=[],
                     issue_key="TEST-1",
                     orchestration_name="test_orch",
                 )
@@ -946,7 +941,6 @@ class TestMultipleResponseSimulation:
             result = asyncio.run(
                 client.run_agent(
                     prompt="test prompt",
-                    tools=[],
                     issue_key="TEST-1",
                     orchestration_name="test_orch",
                 )

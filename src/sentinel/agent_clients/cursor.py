@@ -75,7 +75,7 @@ class CursorAgentClient(AgentClient):
     Example:
         config = Config(cursor_path="/usr/local/bin/cursor", cursor_default_mode="agent")
         client = CursorAgentClient(config)
-        result = client.run_agent("Write a hello world function", tools=[])
+        result = client.run_agent("Write a hello world function")
     """
 
     def __init__(
@@ -177,7 +177,6 @@ class CursorAgentClient(AgentClient):
     async def run_agent(
         self,
         prompt: str,
-        tools: list[str],
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
@@ -195,8 +194,6 @@ class CursorAgentClient(AgentClient):
 
         Args:
             prompt: The prompt to send to the agent.
-            tools: List of tool names (not used by Cursor CLI, reserved for interface
-                compatibility).
             context: Optional context dict to append to prompt.
             timeout_seconds: Optional timeout in seconds. If None, no timeout is applied.
             issue_key: Optional issue key for creating a unique working directory.

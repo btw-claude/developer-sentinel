@@ -121,7 +121,6 @@ class TestDataclasses:
         """AgentConfig should have sensible defaults."""
         agent = AgentConfig()
         assert agent.prompt == ""
-        assert agent.tools == []
         assert agent.github is None
         assert agent.timeout_seconds is None
         assert agent.agent_type is None

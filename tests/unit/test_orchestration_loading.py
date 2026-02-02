@@ -47,7 +47,6 @@ orchestrations:
         assert orch.trigger.project == "TEST"
         assert orch.trigger.tags == ["test-tag"]
         assert orch.agent.prompt == "Test prompt"
-        assert orch.agent.tools == ["jira"]
         assert orch.retry.max_attempts == 5
         assert orch.on_complete.remove_tag == "test-tag"
         assert orch.on_complete.add_tag == "processed"

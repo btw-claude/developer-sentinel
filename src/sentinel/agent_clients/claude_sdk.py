@@ -754,7 +754,6 @@ class ClaudeSdkAgentClient(AgentClient):
     async def run_agent(
         self,
         prompt: str,
-        tools: list[str],
         context: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
         issue_key: str | None = None,
@@ -764,7 +763,7 @@ class ClaudeSdkAgentClient(AgentClient):
         create_branch: bool = False,
         base_branch: str = "main",
     ) -> AgentRunResult:
-        """Run a Claude agent with the given prompt and tools.
+        """Run a Claude agent with the given prompt.
 
         This is an async method that properly composes with other async code
         without creating new event loops per call.
@@ -794,11 +793,11 @@ class ClaudeSdkAgentClient(AgentClient):
             assert issue_key is not None
             assert orchestration_name is not None
             response, usage_info = await self._run_with_log(
-                full_prompt, tools, timeout_seconds, workdir, model, issue_key, orchestration_name
+                full_prompt, timeout_seconds, workdir, model, issue_key, orchestration_name
             )
         else:
             response, usage_info = await self._run_simple(
-                full_prompt, tools, timeout_seconds, workdir, model
+                full_prompt, timeout_seconds, workdir, model
             )
             # When streaming is disabled but we have logging params, write full
             # response after completion
@@ -809,7 +808,6 @@ class ClaudeSdkAgentClient(AgentClient):
     async def _run_simple(
         self,
         prompt: str,
-        tools: list[str],
         timeout: int | None,
         workdir: Path | None,
         model: str | None,
@@ -928,7 +926,6 @@ class ClaudeSdkAgentClient(AgentClient):
     async def _run_with_log(
         self,
         prompt: str,
-        tools: list[str],
         timeout: int | None,
         workdir: Path | None,
         model: str | None,

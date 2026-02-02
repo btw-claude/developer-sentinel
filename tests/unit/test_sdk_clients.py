@@ -330,7 +330,7 @@ class TestClaudeSdkAgentClient:
             create_mock_query("Agent completed successfully"),
         ):
             client = ClaudeSdkAgentClient(mock_config)
-            result = asyncio.run(client.run_agent("Do something", ["jira"]))
+            result = asyncio.run(client.run_agent("Do something"))
 
         assert result.response == "Agent completed successfully"
         assert result.workdir is None
@@ -346,7 +346,6 @@ class TestClaudeSdkAgentClient:
             asyncio.run(
                 client.run_agent(
                     "Do something",
-                    ["jira"],
                     context={"repo": "test-repo", "branch": "main"},
                 )
             )
@@ -364,7 +363,7 @@ class TestClaudeSdkAgentClient:
         ):
             client = ClaudeSdkAgentClient(mock_config)
             with pytest.raises(AgentTimeoutError, match="timed out"):
-                asyncio.run(client.run_agent("Do something", [], timeout_seconds=300))
+                asyncio.run(client.run_agent("Do something", timeout_seconds=300))
 
     def test_run_agent_handles_generic_exception(self, mock_config: Config) -> None:
         """Should wrap generic exceptions in AgentClientError."""
@@ -374,7 +373,7 @@ class TestClaudeSdkAgentClient:
         ):
             client = ClaudeSdkAgentClient(mock_config)
             with pytest.raises(AgentClientError, match="unexpected error"):
-                asyncio.run(client.run_agent("Do something", []))
+                asyncio.run(client.run_agent("Do something"))
 
     def test_constructor_accepts_base_workdir(self, tmp_path: Path, mock_config: Config) -> None:
         """Should accept base_workdir in constructor."""
@@ -421,7 +420,7 @@ class TestClaudeSdkAgentClient:
         """Should create workdir when base_workdir and issue_key provided."""
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
-            asyncio.run(client.run_agent("Do something", [], issue_key="DS-100"))
+            asyncio.run(client.run_agent("Do something", issue_key="DS-100"))
 
         # Check that workdir was created
         workdirs = list(tmp_path.glob("DS-100_*"))
@@ -431,7 +430,7 @@ class TestClaudeSdkAgentClient:
         """Should not create workdir when base_workdir not configured."""
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config)
-            asyncio.run(client.run_agent("Do something", [], issue_key="DS-200"))
+            asyncio.run(client.run_agent("Do something", issue_key="DS-200"))
         # No exception should be raised
 
     def test_run_agent_no_workdir_without_issue_key(
@@ -440,7 +439,7 @@ class TestClaudeSdkAgentClient:
         """Should not create workdir when issue_key not provided."""
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path)
-            asyncio.run(client.run_agent("Do something", []))
+            asyncio.run(client.run_agent("Do something"))
 
         # No workdir should be created
         assert len(list(tmp_path.iterdir())) == 0
@@ -452,7 +451,7 @@ class TestClaudeSdkAgentClient:
         with patch("sentinel.agent_clients.claude_sdk.query", create_mock_query("done")):
             client = ClaudeSdkAgentClient(mock_config)
             with pytest.raises(ClaudeProcessInterruptedError):
-                asyncio.run(client.run_agent("Do something", []))
+                asyncio.run(client.run_agent("Do something"))
 
     def test_shutdown_interrupts_agent_with_injected_controller(self, mock_config: Config) -> None:
         """Should raise ClaudeProcessInterruptedError with injected ShutdownController.
@@ -469,7 +468,7 @@ class TestClaudeSdkAgentClient:
             # Inject the controller - no global state needed
             client = ClaudeSdkAgentClient(mock_config, shutdown_controller=controller)
             with pytest.raises(ClaudeProcessInterruptedError):
-                asyncio.run(client.run_agent("Do something", []))
+                asyncio.run(client.run_agent("Do something"))
 
     def test_controller_isolation(self, mock_config: Config) -> None:
         """Test that different controllers are truly isolated.
@@ -1451,7 +1450,7 @@ class TestClaudeSdkAgentClientUsage:
             ),
         ):
             client = ClaudeSdkAgentClient(mock_config)
-            result = asyncio.run(client.run_agent("Do something", ["jira"]))
+            result = asyncio.run(client.run_agent("Do something"))
 
         assert result.response == "Agent completed successfully"
         assert result.usage is not None
@@ -1472,7 +1471,7 @@ class TestClaudeSdkAgentClientUsage:
             create_mock_query("Agent completed without usage"),
         ):
             client = ClaudeSdkAgentClient(mock_config)
-            result = asyncio.run(client.run_agent("Do something", ["jira"]))
+            result = asyncio.run(client.run_agent("Do something"))
 
         assert result.response == "Agent completed without usage"
         assert result.usage is None
