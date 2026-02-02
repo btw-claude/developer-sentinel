@@ -131,7 +131,8 @@ class StateTracker:
             2. _running_steps_lock
             3. _queue_lock
             4. _per_orch_counts_lock
-            5. _completed_executions_lock (lowest priority)
+            5. _completed_executions_lock
+            6. _poll_times_lock (lowest priority)
 
         Rules:
         - When acquiring multiple locks, always acquire them in the order above.
@@ -209,6 +210,9 @@ class StateTracker:
         # Track last poll times
         self._last_jira_poll: datetime | None = None
         self._last_github_poll: datetime | None = None
+        # Lock ordering priority: 6 (lowest) - see class docstring for details
+        # Protects _last_jira_poll and _last_github_poll for thread-safe access
+        self._poll_times_lock = threading.Lock()
 
     @property
     def start_time(self) -> datetime:
@@ -217,23 +221,39 @@ class StateTracker:
 
     @property
     def last_jira_poll(self) -> datetime | None:
-        """Get the last Jira poll time."""
-        return self._last_jira_poll
+        """Get the last Jira poll time.
+
+        Thread-safe: Protected by _poll_times_lock.
+        """
+        with self._poll_times_lock:
+            return self._last_jira_poll
 
     @last_jira_poll.setter
     def last_jira_poll(self, value: datetime) -> None:
-        """Set the last Jira poll time."""
-        self._last_jira_poll = value
+        """Set the last Jira poll time.
+
+        Thread-safe: Protected by _poll_times_lock.
+        """
+        with self._poll_times_lock:
+            self._last_jira_poll = value
 
     @property
     def last_github_poll(self) -> datetime | None:
-        """Get the last GitHub poll time."""
-        return self._last_github_poll
+        """Get the last GitHub poll time.
+
+        Thread-safe: Protected by _poll_times_lock.
+        """
+        with self._poll_times_lock:
+            return self._last_github_poll
 
     @last_github_poll.setter
     def last_github_poll(self, value: datetime) -> None:
-        """Set the last GitHub poll time."""
-        self._last_github_poll = value
+        """Set the last GitHub poll time.
+
+        Thread-safe: Protected by _poll_times_lock.
+        """
+        with self._poll_times_lock:
+            self._last_github_poll = value
 
     # =========================================================================
     # Attempt Count Tracking
