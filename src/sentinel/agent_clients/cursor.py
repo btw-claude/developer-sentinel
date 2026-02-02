@@ -117,7 +117,7 @@ class CursorAgentClient(AgentClient):
     @property
     def agent_type(self) -> AgentType:
         """Return the type of agent this client implements."""
-        return "cursor"
+        return AgentType.CURSOR
 
     def _create_workdir(self, issue_key: str) -> Path:
         """Create a unique working directory for an agent run.

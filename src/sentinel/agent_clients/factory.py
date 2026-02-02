@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 from sentinel.agent_clients.base import AgentClient, AgentType
 from sentinel.config import Config
 from sentinel.logging import get_logger
-from sentinel.types import AgentType as AgentTypeEnum
 
 if TYPE_CHECKING:
     from sentinel.circuit_breaker import CircuitBreakerRegistry
@@ -26,7 +25,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Default agent type used when None is provided to factory methods
-DEFAULT_AGENT_TYPE: AgentType = AgentTypeEnum.CLAUDE.value
+DEFAULT_AGENT_TYPE: AgentType = AgentType.CLAUDE
 
 # Type alias for agent client builder functions
 AgentClientBuilder = Callable[[Config], AgentClient]
@@ -319,13 +318,13 @@ def create_default_factory(
 
     # Register the Claude SDK builder with circuit breaker support
     factory.register(
-        AgentTypeEnum.CLAUDE.value,
+        AgentType.CLAUDE,
         _create_claude_sdk_builder(circuit_breaker_registry),
     )
 
     # Register the Cursor CLI builder
     factory.register(
-        AgentTypeEnum.CURSOR.value,
+        AgentType.CURSOR,
         _create_cursor_builder(circuit_breaker_registry),
     )
 

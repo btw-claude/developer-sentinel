@@ -16,10 +16,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeAlias
 
-from sentinel.types import AgentTypeLiteral
+from sentinel.types import AgentType
 
-# Type alias for supported agent types (re-exported for backward compatibility)
-AgentType = AgentTypeLiteral
+__all__ = [
+    "AgentClient",
+    "AgentClientError",
+    "AgentRunCoroutine",
+    "AgentRunResult",
+    "AgentTimeoutError",
+    "AgentType",
+    "UsageInfo",
+]
 
 
 @dataclass
