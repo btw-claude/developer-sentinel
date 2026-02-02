@@ -84,38 +84,38 @@ class TestHandleExecutionFailure:
             mock_apply.assert_called_once_with("TEST-123", orchestration)
 
     @pytest.mark.parametrize(
-        "tag_exception,expected_log_category",
+        "tag_exception,expected_error_type",
         [
             pytest.param(
                 OSError("Network error"),
-                "I/O error",
+                ErrorType.IO_ERROR,
                 id="oserror",
             ),
             pytest.param(
                 TimeoutError("Request timed out"),
-                "I/O error",
+                ErrorType.IO_ERROR,
                 id="timeout_error",
             ),
             pytest.param(
                 KeyError("issue_key"),
-                "data error",
+                ErrorType.DATA_ERROR,
                 id="keyerror",
             ),
             pytest.param(
                 ValueError("Invalid value"),
-                "data error",
+                ErrorType.DATA_ERROR,
                 id="valueerror",
             ),
         ],
     )
     def test_handles_tag_application_errors(
-        self, tag_exception: Exception, expected_log_category: str
+        self, tag_exception: Exception, expected_error_type: ErrorType
     ) -> None:
         """Test that various exceptions during tag application are caught and logged.
 
         This parametrized test verifies that OSError, TimeoutError, KeyError, and
         ValueError exceptions raised during apply_failure_tags are properly caught,
-        don't propagate, and are logged with the appropriate error category.
+        don't propagate, and are logged with the appropriate ErrorType enum value.
         """
         sentinel, _ = self._create_sentinel()
         orchestration = make_orchestration(name="test-orch")
@@ -132,12 +132,12 @@ class TestHandleExecutionFailure:
                     "TEST-123", orchestration, exception, ErrorType.RUNTIME_ERROR
                 )
 
-                # Verify the tag error was logged with correct category
+                # Verify the tag error was logged with correct ErrorType
                 mock_logger.error.assert_called_once()
                 call_args = mock_logger.error.call_args
-                assert f"Failed to apply failure tags due to {expected_log_category}" in call_args[0][0]
-                # With lazy % formatting, the error is passed as an argument
-                assert str(tag_exception) in str(call_args[0][1]) or str(tag_exception.args[0]) in str(call_args[0][1])
+                # Check format string and ErrorType.value argument
+                assert "Failed to apply failure tags due to %s" in call_args[0][0]
+                assert expected_error_type.value in call_args[0]
 
     @pytest.mark.parametrize(
         "exception,error_type,expected_substring",
@@ -337,38 +337,38 @@ class TestApplyFailureTagsSafely:
             mock_apply.assert_called_once_with("TEST-123", orchestration)
 
     @pytest.mark.parametrize(
-        "tag_exception,expected_log_category",
+        "tag_exception,expected_error_type",
         [
             pytest.param(
                 OSError("Network error"),
-                "I/O error",
+                ErrorType.IO_ERROR,
                 id="oserror",
             ),
             pytest.param(
                 TimeoutError("Request timed out"),
-                "I/O error",
+                ErrorType.IO_ERROR,
                 id="timeout_error",
             ),
             pytest.param(
                 KeyError("issue_key"),
-                "data error",
+                ErrorType.DATA_ERROR,
                 id="keyerror",
             ),
             pytest.param(
                 ValueError("Invalid value"),
-                "data error",
+                ErrorType.DATA_ERROR,
                 id="valueerror",
             ),
         ],
     )
     def test_handles_tag_application_errors(
-        self, tag_exception: Exception, expected_log_category: str
+        self, tag_exception: Exception, expected_error_type: ErrorType
     ) -> None:
         """Test that exceptions during tag application are caught and logged.
 
         This parametrized test verifies that OSError, TimeoutError, KeyError, and
         ValueError exceptions raised during apply_failure_tags are properly caught,
-        don't propagate, and are logged with the appropriate error category.
+        don't propagate, and are logged with the appropriate ErrorType enum value.
         """
         sentinel, _ = self._create_sentinel()
         orchestration = make_orchestration(name="test-orch")
@@ -382,10 +382,12 @@ class TestApplyFailureTagsSafely:
                 # Should not raise
                 sentinel._apply_failure_tags_safely("TEST-123", orchestration)
 
-                # Verify the tag error was logged with correct category
+                # Verify the tag error was logged with correct ErrorType
                 mock_logger.error.assert_called_once()
                 call_args = mock_logger.error.call_args
-                assert f"Failed to apply failure tags due to {expected_log_category}" in call_args[0][0]
+                # Check format string and ErrorType.value argument
+                assert "Failed to apply failure tags due to %s" in call_args[0][0]
+                assert expected_error_type.value in call_args[0]
 
     def test_extra_context_included_in_error_logs(self) -> None:
         """Test that extra context (issue_key, orchestration) is included in error logs."""

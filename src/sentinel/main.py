@@ -325,6 +325,9 @@ class Sentinel:
         while catching and logging any errors that occur during tag application.
         This reduces code duplication across multiple exception handlers.
 
+        Uses the ErrorType enum for consistent error categorization throughout
+        the codebase, matching the pattern used in _handle_submission_failure.
+
         Args:
             issue_key: The issue key (e.g., "PROJ-123") being processed.
             orchestration: The orchestration that failed.
@@ -333,13 +336,15 @@ class Sentinel:
             self.tag_manager.apply_failure_tags(issue_key, orchestration)
         except (OSError, TimeoutError) as tag_error:
             logger.error(
-                "Failed to apply failure tags due to I/O error: %s",
+                "Failed to apply failure tags due to %s: %s",
+                ErrorType.IO_ERROR.value,
                 tag_error,
                 extra={"issue_key": issue_key, "orchestration": orchestration.name},
             )
         except (KeyError, ValueError) as tag_error:
             logger.error(
-                "Failed to apply failure tags due to data error: %s",
+                "Failed to apply failure tags due to %s: %s",
+                ErrorType.DATA_ERROR.value,
                 tag_error,
                 extra={"issue_key": issue_key, "orchestration": orchestration.name},
             )
