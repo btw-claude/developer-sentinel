@@ -16,6 +16,7 @@ from sentinel.poller import JiraPoller
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
+    MockAgentClientFactory,
     MockJiraClient,
     MockJiraPoller,
     MockTagClient,
@@ -103,6 +104,7 @@ class TestSentinelRunOnce:
             tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS: Completed"])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations = [make_orchestration(tags=["review"])]
 
@@ -110,7 +112,7 @@ class TestSentinelRunOnce:
             config=config,
             orchestrations=orchestrations,
             tag_client=tag_client,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             jira_poller=jira_poller,
         )
 
@@ -124,6 +126,7 @@ class TestSentinelRunOnce:
     def test_no_issues_returns_empty(self) -> None:
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -132,7 +135,7 @@ class TestSentinelRunOnce:
             config=config,
             orchestrations=orchestrations,
             tag_client=tag_client,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             jira_poller=jira_poller,
         )
 
@@ -150,6 +153,7 @@ class TestSentinelRunOnce:
             tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS"])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations = [
             make_orchestration(name="orch1", tags=["review"]),
@@ -160,7 +164,7 @@ class TestSentinelRunOnce:
             config=config,
             orchestrations=orchestrations,
             tag_client=tag_client,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             jira_poller=jira_poller,
         )
 
@@ -179,6 +183,7 @@ class TestSentinelRunOnce:
             tag_client=tag_client,
         )
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations = [make_orchestration(tags=["review"])]
 
@@ -186,7 +191,7 @@ class TestSentinelRunOnce:
             config=config,
             orchestrations=orchestrations,
             tag_client=tag_client,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             jira_poller=jira_poller,
         )
 
@@ -212,6 +217,7 @@ class TestSentinelEagerPolling:
             tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS"])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations = [make_orchestration(tags=["review"])]
 
@@ -219,7 +225,7 @@ class TestSentinelEagerPolling:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -234,6 +240,7 @@ class TestSentinelEagerPolling:
         """Test that run_once returns 0 submitted when no issues found."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -242,7 +249,7 @@ class TestSentinelEagerPolling:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -261,6 +268,7 @@ class TestSentinelEagerPolling:
             tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS"])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=1)
         orchestrations = [make_orchestration(tags=["review"])]
 
@@ -268,7 +276,7 @@ class TestSentinelEagerPolling:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -338,6 +346,7 @@ class TestSentinelEagerPolling:
         jira_client = ControlledWorkJiraClient(tag_client=tag_client)
         jira_poller = JiraPoller(jira_client)
         agent_client = MockAgentClient(responses=["SUCCESS: Done"])
+        agent_factory = MockAgentClientFactory(agent_client)
 
         config = make_config(
             poll_interval=2,
@@ -349,7 +358,7 @@ class TestSentinelEagerPolling:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -432,6 +441,7 @@ class TestSentinelEagerPolling:
         jira_client = EmptyJiraClient(issues=[], tag_client=tag_client)
         jira_poller = JiraPoller(jira_client)
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
 
         config = make_config(
             poll_interval=2,
@@ -443,7 +453,7 @@ class TestSentinelEagerPolling:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -499,6 +509,7 @@ class TestSentinelRun:
     def test_runs_until_shutdown(self) -> None:
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -507,7 +518,7 @@ class TestSentinelRun:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -531,6 +542,7 @@ class TestSentinelRun:
         jira_poller = MockJiraPoller()
         jira_poller.poll = MagicMock(side_effect=Exception("API error"))
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -539,7 +551,7 @@ class TestSentinelRun:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 

@@ -13,6 +13,7 @@ from tests.conftest import (
     make_config,
     set_mtime_in_future,
 )
+from tests.mocks import MockAgentClientFactory
 
 
 class TestSentinelHotReloadMetrics:
@@ -26,6 +27,7 @@ class TestSentinelHotReloadMetrics:
         mock_tag_client: MockTagClient,
     ) -> None:
         """Test that get_hot_reload_metrics returns a dict with expected keys."""
+        agent_factory = MockAgentClientFactory(mock_agent_client)
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
 
@@ -33,7 +35,7 @@ class TestSentinelHotReloadMetrics:
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_client,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 
@@ -55,6 +57,7 @@ class TestSentinelHotReloadMetrics:
         mock_tag_client: MockTagClient,
     ) -> None:
         """Test that loaded counter increments when new files are detected."""
+        agent_factory = MockAgentClientFactory(mock_agent_client)
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
 
@@ -62,7 +65,7 @@ class TestSentinelHotReloadMetrics:
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_client,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 
@@ -90,6 +93,7 @@ class TestSentinelHotReloadMetrics:
         mock_tag_client: MockTagClient,
     ) -> None:
         """Test that unloaded counter increments when files are deleted."""
+        agent_factory = MockAgentClientFactory(mock_agent_client)
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
 
@@ -97,7 +101,7 @@ class TestSentinelHotReloadMetrics:
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_client,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 
@@ -141,6 +145,7 @@ class TestSentinelHotReloadMetrics:
 """
         )
 
+        agent_factory = MockAgentClientFactory(mock_agent_client)
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
 
@@ -148,7 +153,7 @@ class TestSentinelHotReloadMetrics:
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_client,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 
@@ -178,6 +183,7 @@ class TestSentinelHotReloadMetrics:
         mock_tag_client: MockTagClient,
     ) -> None:
         """Test that metrics accumulate correctly over multiple operations."""
+        agent_factory = MockAgentClientFactory(mock_agent_client)
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
 
@@ -185,7 +191,7 @@ class TestSentinelHotReloadMetrics:
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_client,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 

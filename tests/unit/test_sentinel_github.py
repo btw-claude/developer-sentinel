@@ -15,6 +15,7 @@ from tests.conftest import (
     make_config,
     make_orchestration,
 )
+from tests.mocks import MockAgentClientFactory
 
 
 class TestExtractRepoFromUrl:
@@ -147,6 +148,7 @@ class TestAddRepoContextFromUrls:
 
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -155,7 +157,7 @@ class TestAddRepoContextFromUrls:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -184,6 +186,7 @@ class TestAddRepoContextFromUrls:
 
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -192,7 +195,7 @@ class TestAddRepoContextFromUrls:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -231,6 +234,7 @@ class TestAddRepoContextFromUrls:
 
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -239,7 +243,7 @@ class TestAddRepoContextFromUrls:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 

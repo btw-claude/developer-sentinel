@@ -26,6 +26,7 @@ from tests.conftest import (
     make_issue,
     make_orchestration,
 )
+from tests.mocks import MockAgentClientFactory
 
 
 class TestCompletedExecutionInfo:
@@ -229,6 +230,7 @@ class TestSentinelCompletedExecutions:
         """Test that Sentinel exposes get_completed_executions method."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -237,7 +239,7 @@ class TestSentinelCompletedExecutions:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -249,6 +251,7 @@ class TestSentinelCompletedExecutions:
         """Test that completed executions are recorded through the state tracker."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -257,7 +260,7 @@ class TestSentinelCompletedExecutions:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -397,6 +400,7 @@ class TestSentinelRecordCompletedExecutionUsageData:
         """Test that _record_completed_execution extracts usage data from ExecutionResult."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -405,7 +409,7 @@ class TestSentinelRecordCompletedExecutionUsageData:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -444,6 +448,7 @@ class TestSentinelRecordCompletedExecutionUsageData:
         """Test that _record_completed_execution handles zero usage data."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -452,7 +457,7 @@ class TestSentinelRecordCompletedExecutionUsageData:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 

@@ -12,6 +12,7 @@ from sentinel.main import Sentinel
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
+    MockAgentClientFactory,
     MockJiraPoller,
     MockTagClient,
     make_config,
@@ -26,6 +27,7 @@ class TestQueueEvictionBehavior:
         """Test that the oldest item is evicted when queue reaches maxlen."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(max_queue_size=3)
         orchestrations = [make_orchestration()]
@@ -34,7 +36,7 @@ class TestQueueEvictionBehavior:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -57,6 +59,7 @@ class TestQueueEvictionBehavior:
         """Test that the queue maintains FIFO ordering as items are added."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(max_queue_size=5)
         orchestrations = [make_orchestration()]
@@ -65,7 +68,7 @@ class TestQueueEvictionBehavior:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -84,6 +87,7 @@ class TestQueueEvictionBehavior:
         """Test that eviction logging includes the evicted item's key."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(max_queue_size=2)
         orchestrations = [make_orchestration()]
@@ -92,7 +96,7 @@ class TestQueueEvictionBehavior:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -133,6 +137,7 @@ class TestQueueEvictionBehavior:
         """Test that get_issue_queue returns most recent items after eviction."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(max_queue_size=3)
         orchestrations = [make_orchestration()]
@@ -141,7 +146,7 @@ class TestQueueEvictionBehavior:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -160,6 +165,7 @@ class TestQueueEvictionBehavior:
         """Test that no eviction log is produced when queue is not full."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(max_queue_size=10)
         orchestrations = [make_orchestration()]
@@ -168,7 +174,7 @@ class TestQueueEvictionBehavior:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -195,6 +201,7 @@ class TestQueueEvictionBehavior:
         """Test that each eviction produces a log with the correct evicted item."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(max_queue_size=2)
         orchestrations = [make_orchestration()]
@@ -203,7 +210,7 @@ class TestQueueEvictionBehavior:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -239,6 +246,7 @@ class TestQueueEvictionBehavior:
         """Test that _clear_issue_queue properly resets the queue."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(max_queue_size=3)
         orchestrations = [make_orchestration()]
@@ -247,7 +255,7 @@ class TestQueueEvictionBehavior:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -269,6 +277,7 @@ class TestQueueEvictionBehavior:
         """Test that queued_at timestamps are preserved and ordered correctly."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(max_queue_size=2)
         orchestrations = [make_orchestration()]
@@ -277,7 +286,7 @@ class TestQueueEvictionBehavior:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -313,6 +322,7 @@ class TestSentinelOrchestrationLogging:
         """Test Sentinel initializes OrchestrationLogManager when configured."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
         config = make_config(orchestration_logs_dir=logs_dir)
@@ -322,7 +332,7 @@ class TestSentinelOrchestrationLogging:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -335,6 +345,7 @@ class TestSentinelOrchestrationLogging:
         """Test Sentinel doesn't initialize OrchestrationLogManager when not set."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         assert config.execution.orchestration_logs_dir is None
@@ -344,7 +355,7 @@ class TestSentinelOrchestrationLogging:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -354,6 +365,7 @@ class TestSentinelOrchestrationLogging:
         """Test that _log_for_orchestration creates log files for orchestrations."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
         config = make_config(orchestration_logs_dir=logs_dir)
@@ -363,7 +375,7 @@ class TestSentinelOrchestrationLogging:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -378,6 +390,7 @@ class TestSentinelOrchestrationLogging:
         """Test orchestration logs contain relevant execution activity."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
         config = make_config(orchestration_logs_dir=logs_dir)
@@ -387,7 +400,7 @@ class TestSentinelOrchestrationLogging:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -412,6 +425,7 @@ class TestSentinelOrchestrationLogging:
         """Test different orchestrations write to separate log files."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
         config = make_config(orchestration_logs_dir=logs_dir)
@@ -424,7 +438,7 @@ class TestSentinelOrchestrationLogging:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -450,6 +464,7 @@ class TestSentinelOrchestrationLogging:
         """Test that run_once_and_wait properly closes the log manager."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
         config = make_config(orchestration_logs_dir=logs_dir)
@@ -459,7 +474,7 @@ class TestSentinelOrchestrationLogging:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -477,6 +492,7 @@ class TestSentinelOrchestrationLogging:
         """Test that _log_for_orchestration logs to the main logger."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -485,7 +501,7 @@ class TestSentinelOrchestrationLogging:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -500,6 +516,7 @@ class TestSentinelOrchestrationLogging:
         """Test _log_for_orchestration logs to both main logger and orch file."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         logs_dir = tmp_path / "orch_logs"
         config = make_config(orchestration_logs_dir=logs_dir)
@@ -509,7 +526,7 @@ class TestSentinelOrchestrationLogging:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 

@@ -22,6 +22,7 @@ from sentinel.main import Sentinel
 from sentinel.types import ErrorType
 from tests.conftest import (
     MockAgentClient,
+    MockAgentClientFactory,
     MockJiraPoller,
     MockTagClient,
     make_config,
@@ -38,6 +39,7 @@ class TestHandleExecutionFailure:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         if tag_client is None:
             tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -47,7 +49,7 @@ class TestHandleExecutionFailure:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
         return sentinel, tag_client
@@ -227,6 +229,7 @@ class TestExecuteOrchestrationTaskUsesHelper:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -235,7 +238,7 @@ class TestExecuteOrchestrationTaskUsesHelper:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
         return sentinel, tag_client
@@ -284,13 +287,15 @@ class TestExecuteOrchestrationTaskUsesHelper:
         TimeoutError, RuntimeError, KeyError, ValueError) raised during execution
         properly trigger _handle_execution_failure with the correct ErrorType enum value.
         """
-        sentinel, _ = self._create_sentinel()
-        orchestration = make_orchestration(name="test-orch")
+        # Patch MockAgentClient.run_agent before creating Sentinel
+        # so the exception is raised during execution
+        with patch.object(MockAgentClient, "run_agent", side_effect=exception):
+            sentinel, _ = self._create_sentinel()
+            orchestration = make_orchestration(name="test-orch")
 
-        mock_issue = MagicMock()
-        mock_issue.key = issue_key
+            mock_issue = MagicMock()
+            mock_issue.key = issue_key
 
-        with patch.object(sentinel.executor, "execute", side_effect=exception):
             with patch.object(sentinel, "_handle_execution_failure") as mock_handler:
                 result = sentinel._execute_orchestration_task(mock_issue, orchestration)
 
@@ -312,6 +317,7 @@ class TestApplyFailureTagsSafely:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         if tag_client is None:
             tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -321,7 +327,7 @@ class TestApplyFailureTagsSafely:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
         return sentinel, tag_client
@@ -418,6 +424,7 @@ class TestHandleSubmissionFailure:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         if tag_client is None:
             tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -427,7 +434,7 @@ class TestHandleSubmissionFailure:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
         return sentinel, tag_client
@@ -556,6 +563,7 @@ class TestClaudeProcessInterruptedUsesHelper:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -564,7 +572,7 @@ class TestClaudeProcessInterruptedUsesHelper:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
         return sentinel, tag_client
@@ -573,15 +581,16 @@ class TestClaudeProcessInterruptedUsesHelper:
         """Test that ClaudeProcessInterruptedError uses _apply_failure_tags_safely."""
         from sentinel.sdk_clients import ClaudeProcessInterruptedError
 
-        sentinel, _ = self._create_sentinel()
-        orchestration = make_orchestration(name="test-orch")
-
-        mock_issue = MagicMock()
-        mock_issue.key = "TEST-999"
-
+        # Patch MockAgentClient.run_agent before creating Sentinel
         with patch.object(
-            sentinel.executor, "execute", side_effect=ClaudeProcessInterruptedError()
+            MockAgentClient, "run_agent", side_effect=ClaudeProcessInterruptedError()
         ):
+            sentinel, _ = self._create_sentinel()
+            orchestration = make_orchestration(name="test-orch")
+
+            mock_issue = MagicMock()
+            mock_issue.key = "TEST-999"
+
             with patch.object(sentinel, "_apply_failure_tags_safely") as mock_apply:
                 result = sentinel._execute_orchestration_task(mock_issue, orchestration)
 
@@ -596,6 +605,7 @@ class TestSubmitExecutionTasksUsesHelper:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -604,7 +614,7 @@ class TestSubmitExecutionTasksUsesHelper:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
         return sentinel, tag_client
