@@ -305,16 +305,26 @@ def create_sentinel_from_context(context: BootstrapContext) -> Sentinel:
     Returns:
         Configured Sentinel instance.
     """
+    from sentinel.github_poller import GitHubPoller
     from sentinel.main import Sentinel
+    from sentinel.poller import JiraPoller
+
+    jira_poller = JiraPoller(
+        context.jira_client,
+        epic_link_field=context.config.jira.epic_link_field,
+    )
+    github_poller = (
+        GitHubPoller(context.github_client) if context.github_client else None
+    )
 
     return Sentinel(
         config=context.config,
         orchestrations=context.orchestrations,
-        jira_client=context.jira_client,
         tag_client=context.tag_client,
         agent_factory=context.agent_factory,
         agent_logger=context.agent_logger,
-        github_client=context.github_client,
+        jira_poller=jira_poller,
+        github_poller=github_poller,
         github_tag_client=context.github_tag_client,
     )
 

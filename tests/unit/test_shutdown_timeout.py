@@ -23,7 +23,7 @@ import pytest
 from sentinel.config import ExecutionConfig, load_config
 from sentinel.main import Sentinel
 from tests.helpers import make_config, make_orchestration
-from tests.mocks import MockAgentClient, MockJiraPoller, MockTagClient
+from tests.mocks import MockAgentClient, MockAgentClientFactory, MockJiraPoller, MockTagClient
 
 
 class TestShutdownTimeoutConfig:
@@ -138,13 +138,14 @@ class TestShutdownTimeoutBehavior:
         orchestration = make_orchestration(name="test-orch", tags=["test"])
         tag_client = MockTagClient()
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         jira_poller = MockJiraPoller(issues=[])
 
         sentinel = Sentinel(
             config=config,
             orchestrations=[orchestration],
             tag_client=tag_client,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             jira_poller=jira_poller,
         )
 
@@ -178,13 +179,14 @@ class TestShutdownTimeoutBehavior:
             orchestration = make_orchestration(name="test-orch", tags=["test"])
             tag_client = MockTagClient()
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             jira_poller = MockJiraPoller(issues=[])
 
             sentinel = Sentinel(
                 config=config,
                 orchestrations=[orchestration],
                 tag_client=tag_client,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 jira_poller=jira_poller,
             )
 
@@ -202,13 +204,14 @@ class TestShutdownTimeoutBehavior:
         orchestration = make_orchestration(name="test-orch", tags=["test"])
         tag_client = MockTagClient()
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         jira_poller = MockJiraPoller(issues=[])
 
         sentinel = Sentinel(
             config=config,
             orchestrations=[orchestration],
             tag_client=tag_client,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             jira_poller=jira_poller,
         )
 
@@ -242,13 +245,14 @@ class TestShutdownTimeoutBehavior:
             orchestration = make_orchestration(name="test-orch", tags=["test"])
             tag_client = MockTagClient()
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             jira_poller = MockJiraPoller(issues=[])
 
             sentinel = Sentinel(
                 config=config,
                 orchestrations=[orchestration],
                 tag_client=tag_client,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 jira_poller=jira_poller,
             )
 

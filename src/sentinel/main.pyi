@@ -15,11 +15,11 @@ from typing import Any
 from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config
-from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
-from sentinel.github_poller import GitHubClient, GitHubIssue, GitHubPoller
+from sentinel.executor import AgentExecutor, ExecutionResult
+from sentinel.github_poller import GitHubIssue, GitHubPoller
 from sentinel.github_rest_client import GitHubTagClient
 from sentinel.orchestration import Orchestration
-from sentinel.poller import JiraClient, JiraPoller
+from sentinel.poller import JiraPoller
 from sentinel.router import Router
 from sentinel.tag_manager import JiraTagClient, TagManager
 
@@ -119,17 +119,12 @@ class Sentinel:
         config: Config,
         orchestrations: list[Orchestration],
         tag_client: JiraTagClient,
-        agent_factory: AgentClientFactory | AgentClient | None = ...,
+        agent_factory: AgentClientFactory,
+        jira_poller: JiraPoller,
         agent_logger: AgentLogger | None = ...,
-        jira_poller: JiraPoller | None = ...,
         router: Router | None = ...,
         github_poller: GitHubPoller | None = ...,
         github_tag_client: GitHubTagClient | None = ...,
-        *,
-        # Deprecated parameters for backward compatibility
-        jira_client: JiraClient | None = ...,
-        github_client: GitHubClient | None = ...,
-        agent_client: AgentClient | None = ...,
     ) -> None: ...
     def request_shutdown(self) -> None: ...
     def get_hot_reload_metrics(self) -> dict[str, int]: ...

@@ -35,7 +35,7 @@ from sentinel.app import main
 from sentinel.cli import parse_args
 from sentinel.config import Config
 from sentinel.execution_manager import ExecutionManager
-from sentinel.executor import AgentClient, AgentExecutor, ExecutionResult
+from sentinel.executor import AgentExecutor, ExecutionResult
 from sentinel.github_poller import GitHubIssueProtocol, GitHubPoller
 from sentinel.github_rest_client import GitHubTagClient
 from sentinel.logging import OrchestrationLogManager, get_logger
@@ -82,7 +82,7 @@ class Sentinel:
         config: Config,
         orchestrations: list[Orchestration],
         tag_client: JiraTagClient,
-        agent_factory: AgentClientFactory | AgentClient,
+        agent_factory: AgentClientFactory,
         jira_poller: JiraPoller,
         agent_logger: AgentLogger | None = None,
         router: Router | None = None,
@@ -97,8 +97,7 @@ class Sentinel:
             config: Application configuration.
             orchestrations: List of orchestration configurations.
             tag_client: Jira client for tag operations.
-            agent_factory: Factory for creating agent clients per-orchestration,
-                or a single AgentClient for all orchestrations.
+            agent_factory: Factory for creating agent clients per-orchestration.
             jira_poller: Poller for fetching Jira issues.
             agent_logger: Logger for agent execution logs.
             router: Router for matching issues to orchestrations.
@@ -119,16 +118,9 @@ class Sentinel:
 
         # Initialize agent factory
         self._agent_logger = agent_logger
-
-        if isinstance(agent_factory, AgentClientFactory):
-            self._agent_factory: AgentClientFactory | None = agent_factory
-            self._legacy_agent_client: AgentClient | None = None
-            default_client = agent_factory.create_for_orchestration(None, config)
-            self.executor = AgentExecutor(default_client, agent_logger)
-        else:
-            self._agent_factory = None
-            self._legacy_agent_client = agent_factory
-            self.executor = AgentExecutor(agent_factory, agent_logger)
+        self._agent_factory = agent_factory
+        default_client = agent_factory.create_for_orchestration(None, config)
+        self.executor = AgentExecutor(default_client, agent_logger)
 
         # Initialize tag manager
         self.tag_manager = TagManager(tag_client, github_client=github_tag_client)
@@ -443,14 +435,11 @@ class Sentinel:
             )
 
             # Get per-orchestration agent client
-            if self._legacy_agent_client is not None or self._agent_factory is None:
-                executor = self.executor
-            else:
-                agent_type = orchestration.agent.agent_type
-                client = self._agent_factory.get_or_create_for_orchestration(
-                    agent_type, self.config
-                )
-                executor = AgentExecutor(client, self._agent_logger)
+            agent_type = orchestration.agent.agent_type
+            client = self._agent_factory.get_or_create_for_orchestration(
+                agent_type, self.config
+            )
+            executor = AgentExecutor(client, self._agent_logger)
 
             # Use asyncio.run() at the thread entry point to drive async execution
             # This is the top-level entry point for async code in each thread,

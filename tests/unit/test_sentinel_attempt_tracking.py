@@ -23,6 +23,7 @@ from tests.conftest import (
     make_issue,
     make_orchestration,
 )
+from tests.mocks import MockAgentClientFactory
 
 # Polling configuration constants for test coordination
 POLLING_INTERVAL = 0.05  # seconds between polls
@@ -37,6 +38,7 @@ class TestAttemptCountTracking:
         """Test that first attempt for an issue/orchestration pair returns 1."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -45,7 +47,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -56,6 +58,7 @@ class TestAttemptCountTracking:
         """Test that subsequent calls increment the attempt count."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -64,7 +67,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -80,6 +83,7 @@ class TestAttemptCountTracking:
         """Test that different issues have separate attempt counts."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -88,7 +92,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -102,6 +106,7 @@ class TestAttemptCountTracking:
         """Test that different orchestrations have separate attempt counts."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -110,7 +115,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -124,6 +129,7 @@ class TestAttemptCountTracking:
         """Test that attempt count incrementing is thread-safe."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -132,7 +138,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -161,6 +167,7 @@ class TestAttemptCountTracking:
             tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS", "SUCCESS"])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=2)
         orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
 
@@ -168,7 +175,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -223,6 +230,7 @@ class TestAttemptCountTracking:
                 return await super().run_agent(*args, **kwargs)
 
         agent_client = BlockingAgentClient(responses=["SUCCESS"])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=2)
         orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
 
@@ -230,7 +238,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -276,6 +284,7 @@ class TestAttemptCountTracking:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[], tag_client=tag_client)
         agent_client = MockAgentClient(responses=[])
+        agent_factory = MockAgentClientFactory(agent_client)
 
         config = make_config(attempt_counts_ttl=1)
         orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
@@ -284,7 +293,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -312,6 +321,7 @@ class TestAttemptCountTracking:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[], tag_client=tag_client)
         agent_client = MockAgentClient(responses=[])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
 
@@ -319,7 +329,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -334,6 +344,7 @@ class TestAttemptCountTracking:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[], tag_client=tag_client)
         agent_client = MockAgentClient(responses=[])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
 
@@ -341,7 +352,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -376,6 +387,7 @@ class TestAttemptCountTracking:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[], tag_client=tag_client)
         agent_client = MockAgentClient(responses=[])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(attempt_counts_ttl=3600)
         orchestrations = [make_orchestration(name="test-orch", tags=["review"])]
 
@@ -383,7 +395,7 @@ class TestAttemptCountTracking:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 

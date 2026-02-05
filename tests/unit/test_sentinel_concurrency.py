@@ -17,6 +17,7 @@ from tests.conftest import (
     make_issue,
     make_orchestration,
 )
+from tests.mocks import MockAgentClientFactory
 
 
 class TestPerOrchestrationConcurrencyLimits:
@@ -33,6 +34,7 @@ class TestPerOrchestrationConcurrencyLimits:
         """Test that orchestrations without max_concurrent use only global limit."""
         # Use shared TrackingAgentClient for concurrent execution tracking
         agent_client = TrackingAgentClient(execution_delay=0.05)
+        agent_factory = MockAgentClientFactory(agent_client)
 
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(
@@ -51,7 +53,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -66,6 +68,7 @@ class TestPerOrchestrationConcurrencyLimits:
         """Test per-orchestration limit is respected when stricter than global."""
         # Use shared TrackingAgentClient for concurrent execution tracking
         agent_client = TrackingAgentClient(execution_delay=0.1)
+        agent_factory = MockAgentClientFactory(agent_client)
 
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(
@@ -86,7 +89,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -100,6 +103,7 @@ class TestPerOrchestrationConcurrencyLimits:
         """Test global limit is respected when stricter than per-orchestration."""
         # Use shared TrackingAgentClient for concurrent execution tracking
         agent_client = TrackingAgentClient(execution_delay=0.1)
+        agent_factory = MockAgentClientFactory(agent_client)
 
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(
@@ -120,7 +124,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -134,6 +138,7 @@ class TestPerOrchestrationConcurrencyLimits:
         """Test multiple orchestrations respect their individual limits."""
         # Use shared TrackingAgentClient with per-orchestration tracking enabled
         agent_client = TrackingAgentClient(execution_delay=0.05, track_per_orch=True)
+        agent_factory = MockAgentClientFactory(agent_client)
 
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(
@@ -158,7 +163,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -175,6 +180,7 @@ class TestPerOrchestrationConcurrencyLimits:
         """Test that per-orchestration counts are properly tracked."""
         # Use shared TrackingAgentClient for consistent test behavior
         agent_client = TrackingAgentClient(execution_delay=0.05)
+        agent_factory = MockAgentClientFactory(agent_client)
 
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(
@@ -190,7 +196,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -209,6 +215,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations: list[Orchestration] = []
 
@@ -216,7 +223,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -241,6 +248,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations: list[Orchestration] = []
 
@@ -248,7 +256,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -273,6 +281,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations: list[Orchestration] = []
 
@@ -280,7 +289,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -298,6 +307,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations: list[Orchestration] = []
 
@@ -305,7 +315,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -324,6 +334,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations: list[Orchestration] = []
 
@@ -331,7 +342,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -353,6 +364,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config()
         orchestrations: list[Orchestration] = []
 
@@ -360,7 +372,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -385,6 +397,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=5)
         orchestrations: list[Orchestration] = []
 
@@ -392,7 +405,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -408,6 +421,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=10)
         orchestrations: list[Orchestration] = []
 
@@ -415,7 +429,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -432,6 +446,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=10)
         orchestrations: list[Orchestration] = []
 
@@ -439,7 +454,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -462,6 +477,7 @@ class TestPerOrchestrationConcurrencyLimits:
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=2)
         orchestrations: list[Orchestration] = []
 
@@ -469,7 +485,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -508,6 +524,7 @@ class TestPerOrchestrationConcurrencyLimits:
             tag_client=tag_client,
         )
         agent_client = FailingAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=5)
         orchestrations = [make_orchestration(name="test-orch", tags=["review"], max_concurrent=2)]
 
@@ -515,7 +532,7 @@ class TestPerOrchestrationConcurrencyLimits:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 

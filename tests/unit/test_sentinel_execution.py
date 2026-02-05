@@ -13,6 +13,7 @@ from sentinel.main import Sentinel
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
     MockAgentClient,
+    MockAgentClientFactory,
     MockJiraPoller,
     MockTagClient,
     SignalHandler,
@@ -31,6 +32,7 @@ class TestSentinelSignalHandling:
 
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -39,7 +41,7 @@ class TestSentinelSignalHandling:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -62,6 +64,7 @@ class TestSentinelSignalHandling:
 
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -70,7 +73,7 @@ class TestSentinelSignalHandling:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -105,6 +108,7 @@ class TestSentinelSignalHandling:
 
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -113,7 +117,7 @@ class TestSentinelSignalHandling:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -193,6 +197,7 @@ class TestSentinelConcurrentExecution:
             tag_client=tag_client,  # Link tag client so it filters processed issues
         )
         agent_client = SlowAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=2)
         orchestrations = [make_orchestration(tags=["review"])]
 
@@ -200,7 +205,7 @@ class TestSentinelConcurrentExecution:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -222,6 +227,7 @@ class TestSentinelConcurrentExecution:
             tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS: Done"])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(max_concurrent_executions=2)
         orchestrations = [make_orchestration(tags=["review"])]
 
@@ -229,7 +235,7 @@ class TestSentinelConcurrentExecution:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -256,6 +262,7 @@ class TestSentinelConcurrentExecution:
             tag_client=tag_client,
         )
         agent_client = MockAgentClient(responses=["SUCCESS: Done"])
+        agent_factory = MockAgentClientFactory(agent_client)
         config = make_config(poll_interval=1, max_concurrent_executions=1)
         orchestrations = [make_orchestration(tags=["review"])]
 
@@ -263,7 +270,7 @@ class TestSentinelConcurrentExecution:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -294,6 +301,7 @@ class TestSentinelConcurrentExecution:
         """Test that run() uses thread pool correctly."""
         # Use shared TrackingAgentClient with order tracking enabled
         agent_client = TrackingAgentClient(execution_delay=0.05, track_order=True)
+        agent_factory = MockAgentClientFactory(agent_client)
 
         tag_client = MockTagClient()
         jira_poller = MockJiraPoller(
@@ -310,7 +318,7 @@ class TestSentinelConcurrentExecution:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 

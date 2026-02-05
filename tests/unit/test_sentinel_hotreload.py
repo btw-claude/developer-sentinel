@@ -16,6 +16,7 @@ from tests.conftest import (
     make_orchestration,
     set_mtime_in_future,
 )
+from tests.mocks import MockAgentClientFactory
 
 
 class TestSentinelOrchestrationHotReload:
@@ -35,6 +36,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations = [make_orchestration()]
@@ -43,7 +45,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -58,6 +60,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -66,7 +69,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -99,6 +102,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -107,7 +111,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -143,6 +147,7 @@ class TestSentinelOrchestrationHotReload:
                 ]
             )
             agent_client = MockAgentClient(responses=["SUCCESS"])
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -151,7 +156,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -181,6 +186,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -189,7 +195,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -207,6 +213,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -215,7 +222,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -258,6 +265,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -266,7 +274,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -282,6 +290,7 @@ class TestSentinelOrchestrationHotReload:
         """Test handling when orchestrations directory doesn't exist."""
         jira_poller = MockJiraPoller(issues=[])
         agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
         tag_client = MockTagClient()
         config = make_config(orchestrations_dir=Path("/nonexistent/path"))
         orchestrations: list[Orchestration] = []
@@ -290,7 +299,7 @@ class TestSentinelOrchestrationHotReload:
             config=config,
             orchestrations=orchestrations,
             jira_poller=jira_poller,
-            agent_factory=agent_client,
+            agent_factory=agent_factory,
             tag_client=tag_client,
         )
 
@@ -317,6 +326,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -325,7 +335,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -374,6 +384,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -382,7 +393,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -439,6 +450,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -447,7 +459,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -493,6 +505,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -501,7 +514,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -553,6 +566,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -561,7 +575,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -575,6 +589,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -583,7 +598,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -618,6 +633,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -626,7 +642,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -663,6 +679,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -671,7 +688,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -704,6 +721,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -712,7 +730,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -749,6 +767,7 @@ class TestSentinelOrchestrationHotReload:
                 ]
             )
             agent_client = MockAgentClient(responses=["SUCCESS"])
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -757,7 +776,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -789,6 +808,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -797,7 +817,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
@@ -840,6 +860,7 @@ class TestSentinelOrchestrationHotReload:
 
             jira_poller = MockJiraPoller(issues=[])
             agent_client = MockAgentClient()
+            agent_factory = MockAgentClientFactory(agent_client)
             tag_client = MockTagClient()
             config = make_config(orchestrations_dir=orch_dir)
             orchestrations: list[Orchestration] = []
@@ -848,7 +869,7 @@ class TestSentinelOrchestrationHotReload:
                 config=config,
                 orchestrations=orchestrations,
                 jira_poller=jira_poller,
-                agent_factory=agent_client,
+                agent_factory=agent_factory,
                 tag_client=tag_client,
             )
 
