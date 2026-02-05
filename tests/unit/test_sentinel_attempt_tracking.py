@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from sentinel.executor import AgentRunResult
+from sentinel.agent_clients.base import AgentRunResult
 from sentinel.main import Sentinel
 
 # Import shared fixtures and helpers from conftest.py

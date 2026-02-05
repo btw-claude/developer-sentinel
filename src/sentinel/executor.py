@@ -6,7 +6,6 @@ import re
 import shutil
 import time
 import unicodedata
-from abc import ABC, abstractmethod
 from collections.abc import Coroutine
 from dataclasses import dataclass, field, fields
 from datetime import datetime
@@ -14,12 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 
-from sentinel.agent_clients.base import (
-    AgentClientError,
-    AgentRunCoroutine,
-    AgentRunResult,
-    AgentTimeoutError,
-)
+from sentinel.agent_clients.base import AgentClient, AgentClientError, AgentTimeoutError
 from sentinel.branch_validation import validate_runtime_branch_name
 from sentinel.github_poller import GitHubIssue
 from sentinel.logging import get_logger, log_agent_summary
@@ -28,9 +22,6 @@ from sentinel.poller import JiraIssue
 
 # Type alias for issues from any supported source
 AnyIssue = JiraIssue | GitHubIssue
-
-# AgentRunCoroutine is imported from sentinel.agent_clients.base for explicit async
-# return type annotations (DS-533, DS-546). Re-exported for backward compatibility.
 
 if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
@@ -451,70 +442,13 @@ class ExecutionResult:
 ExecutionCoroutine: TypeAlias = Coroutine[Any, Any, ExecutionResult]
 """Coroutine type for async execution methods returning ExecutionResult."""
 
-# Re-export classes from agent_clients.base for backward compatibility
-# These are now defined in agent_clients.base but re-exported here
-# to maintain existing import paths used throughout the codebase
 __all__ = [
-    "AgentClientError",
-    "AgentRunResult",
-    "AgentTimeoutError",
     "AgentClient",
     "AgentExecutor",
-    "AgentRunCoroutine",
     "ExecutionCoroutine",
+    "ExecutionResult",
+    "ExecutionStatus",
 ]
-
-
-class AgentClient(ABC):
-    """Abstract interface for Claude Agent SDK operations.
-
-    This allows the executor to work with different implementations:
-    - Real Claude Agent SDK client (production)
-    - Mock client (testing)
-
-    The run_agent method is async to enable proper async composition and avoid
-    creating new event loops per call. The executor uses asyncio.run() at its
-    entry point to drive the async execution.
-    """
-
-    @abstractmethod
-    async def run_agent(
-        self,
-        prompt: str,
-        context: dict[str, Any] | None = None,
-        timeout_seconds: int | None = None,
-        issue_key: str | None = None,
-        model: str | None = None,
-        orchestration_name: str | None = None,
-        branch: str | None = None,
-        create_branch: bool = False,
-        base_branch: str = "main",
-    ) -> AgentRunResult:
-        """Run a Claude agent with the given prompt.
-
-        This is an async method to enable proper async composition and avoid
-        creating new event loops per call. Callers should use asyncio.run()
-        at their entry points when needed.
-
-        Args:
-            prompt: The prompt to send to the agent.
-            context: Optional context dict (e.g., GitHub repo info).
-            timeout_seconds: Optional timeout in seconds. If None, no timeout is applied.
-            issue_key: Optional issue key for creating a unique working directory.
-            model: Optional model identifier. If None, uses the CLI's default model.
-            orchestration_name: Optional orchestration name for streaming log files.
-            branch: Optional branch name to checkout/create before running the agent.
-            create_branch: If True and branch doesn't exist, create it from base_branch.
-            base_branch: Base branch to create new branches from. Defaults to "main".
-
-        Returns:
-            AgentRunResult containing the agent's response text and optional working directory path.
-
-        Raises:
-            AgentClientError: If the agent execution fails.
-            AgentTimeoutError: If the agent execution times out.
-        """
-        pass
 
 
 class AgentExecutor:

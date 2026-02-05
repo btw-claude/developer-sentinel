@@ -3,9 +3,10 @@
 import time
 from typing import Any
 
-from sentinel.executor import AgentClient, AgentRunResult
+from sentinel.agent_clients.base import AgentClient, AgentRunResult
 from sentinel.main import Sentinel
 from sentinel.orchestration import Orchestration
+from sentinel.types import AgentType
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
@@ -500,6 +501,10 @@ class TestPerOrchestrationConcurrencyLimits:
         """Test per-orchestration count is decremented even on execution failure."""
 
         class FailingAgentClient(AgentClient):
+            @property
+            def agent_type(self) -> AgentType:
+                return AgentType.CLAUDE
+
             async def run_agent(
                 self,
                 prompt: str,

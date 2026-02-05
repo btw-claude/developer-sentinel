@@ -6,9 +6,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from sentinel.agent_clients.base import AgentClient, AgentRunResult
 from sentinel.execution_manager import TrackedFuture
-from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.main import Sentinel
+from sentinel.types import AgentType
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
@@ -159,6 +160,10 @@ class TestSentinelConcurrentExecution:
 
         class SlowAgentClient(AgentClient):
             """Agent client that tracks concurrent executions."""
+
+            @property
+            def agent_type(self) -> AgentType:
+                return AgentType.CLAUDE
 
             async def run_agent(
                 self,

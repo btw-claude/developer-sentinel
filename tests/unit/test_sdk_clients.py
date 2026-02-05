@@ -12,10 +12,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sentinel.agent_clients.base import UsageInfo
+from sentinel.agent_clients.base import AgentClientError, AgentTimeoutError, UsageInfo
 from sentinel.agent_clients.claude_sdk import _extract_usage_from_message
 from sentinel.config import Config, create_config
-from sentinel.executor import AgentClientError, AgentTimeoutError
 from sentinel.poller import JiraClientError
 from sentinel.sdk_clients import (
     ClaudeProcessInterruptedError,
