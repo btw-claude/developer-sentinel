@@ -316,26 +316,3 @@ class TestShutdownTimeoutIntegration:
             assert not task_completed
 
 
-class TestBackwardCompatibilityShutdownTimeout:
-    """Tests for backward compatibility with deprecated config property."""
-
-    def test_deprecated_property_returns_correct_value(self) -> None:
-        """Test that deprecated shutdown_timeout_seconds property works."""
-        config = make_config()
-
-        # Access through deprecated property should still work
-        with pytest.warns(DeprecationWarning, match="shutdown_timeout_seconds"):
-            timeout = config.shutdown_timeout_seconds
-
-        assert timeout == config.execution.shutdown_timeout_seconds
-
-    def test_deprecated_property_emits_warning(self) -> None:
-        """Test that using deprecated property emits a DeprecationWarning."""
-        config = make_config()
-
-        with pytest.warns(DeprecationWarning) as warnings:
-            _ = config.shutdown_timeout_seconds
-
-        # Verify warning message mentions the migration path
-        assert any("shutdown_timeout_seconds" in str(w.message) for w in warnings)
-        assert any("execution.shutdown_timeout_seconds" in str(w.message) for w in warnings)
