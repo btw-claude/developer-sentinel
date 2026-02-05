@@ -40,14 +40,7 @@ class TestConfig:
 
     def test_defaults(self) -> None:
         config = Config()
-        # Test backward compatibility properties
-        assert config.polling.interval == 60
-        assert config.polling.max_issues_per_poll == 50
-        assert config.execution.max_concurrent_executions == 1
-        assert config.logging_config.level == "INFO"
-        assert config.logging_config.json is False
-        assert config.execution.orchestrations_dir == Path("./orchestrations")
-        # Test sub-configs directly
+        # Test sub-configs
         assert config.polling.interval == 60
         assert config.polling.max_issues_per_poll == 50
         assert config.execution.max_concurrent_executions == 1
@@ -60,11 +53,7 @@ class TestConfig:
             polling=PollingConfig(interval=120, max_issues_per_poll=100),
             logging_config=LoggingConfig(level="DEBUG"),
         )
-        # Test backward compatibility properties
-        assert config.polling.interval == 120
-        assert config.polling.max_issues_per_poll == 100
-        assert config.logging_config.level == "DEBUG"
-        # Test sub-configs directly
+        # Test sub-configs
         assert config.polling.interval == 120
         assert config.polling.max_issues_per_poll == 100
         assert config.logging_config.level == "DEBUG"
