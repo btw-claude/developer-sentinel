@@ -545,7 +545,7 @@ class ClaudeSdkAgentClient(AgentClient):
         self._disable_streaming_logs = (
             disable_streaming_logs
             if disable_streaming_logs is not None
-            else config.disable_streaming_logs
+            else config.execution.disable_streaming_logs
         )
         # Use provided controller or fall back to default
         self._shutdown_controller = (
@@ -630,7 +630,8 @@ class ClaudeSdkAgentClient(AgentClient):
         logger.info("Setting up branch '%s' in %s", branch, workdir)
 
         # Get timeout from config, or use None for no timeout
-        timeout = self.config.subprocess_timeout if self.config.subprocess_timeout > 0 else None
+        sub_timeout = self.config.execution.subprocess_timeout
+        timeout = sub_timeout if sub_timeout > 0 else None
 
         try:
             # Fetch latest from remote
@@ -961,7 +962,7 @@ class ClaudeSdkAgentClient(AgentClient):
 
         # Initialize timing metrics with configured threshold
         metrics = TimingMetrics(
-            inter_message_times_threshold=self.config.inter_message_times_threshold
+            inter_message_times_threshold=self.config.execution.inter_message_times_threshold
         )
 
         sep = "=" * 80

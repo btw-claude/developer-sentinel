@@ -366,21 +366,21 @@ class ClaudeRateLimiter:
         """
         strategy = (
             RateLimitStrategy.QUEUE
-            if config.claude_rate_limit_strategy == "queue"
+            if config.rate_limit.strategy == "queue"
             else RateLimitStrategy.REJECT
         )
         queue_full_strategy = (
             QueueFullStrategy.WAIT
-            if config.claude_rate_limit_queue_full_strategy == "wait"
+            if config.rate_limit.queue_full_strategy == "wait"
             else QueueFullStrategy.REJECT
         )
         return cls(
-            requests_per_minute=config.claude_rate_limit_per_minute,
-            requests_per_hour=config.claude_rate_limit_per_hour,
+            requests_per_minute=config.rate_limit.per_minute,
+            requests_per_hour=config.rate_limit.per_hour,
             strategy=strategy,
-            warning_threshold=config.claude_rate_limit_warning_threshold,
-            enabled=config.claude_rate_limit_enabled,
-            max_queued=config.claude_rate_limit_max_queued,
+            warning_threshold=config.rate_limit.warning_threshold,
+            enabled=config.rate_limit.enabled,
+            max_queued=config.rate_limit.max_queued,
             queue_full_strategy=queue_full_strategy,
         )
 

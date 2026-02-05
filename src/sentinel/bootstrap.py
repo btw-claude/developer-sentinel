@@ -136,18 +136,18 @@ def create_jira_clients(
         circuit_breaker_registry.get("jira") if circuit_breaker_registry else None
     )
 
-    if config.jira_configured:
+    if config.jira.configured:
         logger.info("Using Jira REST API clients (direct HTTP)")
         jira_client: JiraClient = JiraRestClient(
-            base_url=config.jira_base_url,
-            email=config.jira_email,
-            api_token=config.jira_api_token,
+            base_url=config.jira.base_url,
+            email=config.jira.email,
+            api_token=config.jira.api_token,
             circuit_breaker=jira_circuit_breaker,
         )
         tag_client: JiraTagClient = JiraRestTagClient(
-            base_url=config.jira_base_url,
-            email=config.jira_email,
-            api_token=config.jira_api_token,
+            base_url=config.jira.base_url,
+            email=config.jira.email,
+            api_token=config.jira.api_token,
             circuit_breaker=jira_circuit_breaker,
         )
     else:
@@ -185,16 +185,16 @@ def create_github_clients(
         circuit_breaker_registry.get("github") if circuit_breaker_registry else None
     )
 
-    if config.github_configured:
+    if config.github.configured:
         logger.info("Using GitHub REST API clients (direct HTTP)")
         github_client: GitHubClient | None = GitHubRestClient(
-            token=config.github_token,
-            base_url=config.github_api_url if config.github_api_url else None,
+            token=config.github.token,
+            base_url=config.github.api_url if config.github.api_url else None,
             circuit_breaker=github_circuit_breaker,
         )
         github_tag_client: GitHubTagClient | None = GitHubRestTagClient(
-            token=config.github_token,
-            base_url=config.github_api_url if config.github_api_url else None,
+            token=config.github.token,
+            base_url=config.github.api_url if config.github.api_url else None,
             circuit_breaker=github_circuit_breaker,
         )
     else:
@@ -236,28 +236,28 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
     config = apply_cli_overrides(config, parsed)
 
     # Setup logging
-    setup_logging(config.log_level, json_format=config.log_json)
+    setup_logging(config.logging_config.level, json_format=config.logging_config.json)
 
     # Load orchestrations
-    logger.info("Loading orchestrations from %s", config.orchestrations_dir)
+    logger.info("Loading orchestrations from %s", config.execution.orchestrations_dir)
     try:
-        orchestrations = load_orchestrations(config.orchestrations_dir)
+        orchestrations = load_orchestrations(config.execution.orchestrations_dir)
     except OSError as e:
         logger.error(
             "Failed to load orchestrations due to file system error: %s", e,
-            extra={"orchestrations_dir": str(config.orchestrations_dir)},
+            extra={"orchestrations_dir": str(config.execution.orchestrations_dir)},
         )
         return None
     except (KeyError, ValueError) as e:
         logger.error(
             "Failed to load orchestrations due to configuration error: %s", e,
-            extra={"orchestrations_dir": str(config.orchestrations_dir)},
+            extra={"orchestrations_dir": str(config.execution.orchestrations_dir)},
         )
         return None
     except OrchestrationError as e:
         logger.error(
             "Failed to load orchestrations: %s", e,
-            extra={"orchestrations_dir": str(config.orchestrations_dir)},
+            extra={"orchestrations_dir": str(config.execution.orchestrations_dir)},
         )
         return None
 
@@ -279,7 +279,7 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
 
     # Create agent factory and logger
     agent_factory = create_default_factory(config, circuit_breaker_registry)
-    agent_logger = AgentLogger(base_dir=config.agent_logs_dir)
+    agent_logger = AgentLogger(base_dir=config.execution.agent_logs_dir)
 
     logger.info("Initialized agent factory with types: %s", agent_factory.registered_types)
 

@@ -538,5 +538,5 @@ class TestCursorAgentClientFactoryIntegration:
         assert client._cursor_path == "/custom/cursor"
         assert client._default_model == "custom-model"
         assert client._default_mode == CursorMode.PLAN
-        assert client.base_workdir == config.agent_workdir
-        assert client.log_base_dir == config.agent_logs_dir
+        assert client.base_workdir == config.execution.agent_workdir
+        assert client.log_base_dir == config.execution.agent_logs_dir

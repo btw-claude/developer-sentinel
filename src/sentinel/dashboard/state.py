@@ -404,7 +404,7 @@ class SentinelStateAccessor:
         execution_state = sentinel.get_execution_state()
         active_count = execution_state.active_count
 
-        available_slots = config.max_concurrent_executions - active_count
+        available_slots = config.execution.max_concurrent_executions - active_count
 
         # Get hot-reload metrics
         metrics = sentinel.get_hot_reload_metrics()
@@ -467,10 +467,10 @@ class SentinelStateAccessor:
         start_time = sentinel.get_start_time()
         system_status = SystemStatusInfo(
             used_slots=active_count,
-            max_slots=config.max_concurrent_executions,
+            max_slots=config.execution.max_concurrent_executions,
             last_jira_poll=sentinel.get_last_jira_poll(),
             last_github_poll=sentinel.get_last_github_poll(),
-            poll_interval=config.poll_interval,
+            poll_interval=config.polling.interval,
             start_time=start_time,
             uptime_seconds=(now - start_time).total_seconds(),
         )
@@ -488,9 +488,9 @@ class SentinelStateAccessor:
                     active_github_repos.add(orch.trigger_repo)
 
         return DashboardState(
-            poll_interval=config.poll_interval,
-            max_concurrent_executions=config.max_concurrent_executions,
-            max_issues_per_poll=config.max_issues_per_poll,
+            poll_interval=config.polling.interval,
+            max_concurrent_executions=config.execution.max_concurrent_executions,
+            max_issues_per_poll=config.polling.max_issues_per_poll,
             orchestrations=orchestration_infos,
             active_versions=active_version_infos,
             pending_removal_versions=pending_removal_version_infos,
@@ -606,7 +606,7 @@ class SentinelStateAccessor:
         Returns:
             List of dictionaries with orchestration name and files.
         """
-        logs_dir = self._sentinel.config.agent_logs_dir
+        logs_dir = self._sentinel.config.execution.agent_logs_dir
 
         if not logs_dir.exists():
             return []
@@ -685,7 +685,7 @@ class SentinelStateAccessor:
         Returns:
             Path to the log file, or None if not found.
         """
-        logs_dir = self._sentinel.config.agent_logs_dir
+        logs_dir = self._sentinel.config.execution.agent_logs_dir
         log_path = logs_dir / orchestration / filename
 
         # Security check: ensure path is within logs directory

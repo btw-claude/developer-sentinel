@@ -201,9 +201,9 @@ def create_jira_rest_client(config: Config) -> JiraClient:
     from sentinel.rest_clients import JiraRestClient
 
     return JiraRestClient(
-        base_url=config.jira_base_url,
-        email=config.jira_email,
-        api_token=config.jira_api_token,
+        base_url=config.jira.base_url,
+        email=config.jira.email,
+        api_token=config.jira.api_token,
     )
 
 
@@ -233,9 +233,9 @@ def create_jira_rest_tag_client(config: Config) -> JiraTagClient:
     from sentinel.rest_clients import JiraRestTagClient
 
     return JiraRestTagClient(
-        base_url=config.jira_base_url,
-        email=config.jira_email,
-        api_token=config.jira_api_token,
+        base_url=config.jira.base_url,
+        email=config.jira.email,
+        api_token=config.jira.api_token,
     )
 
 
@@ -262,14 +262,14 @@ def create_github_rest_client(config: Config) -> GitHubClient | None:
     Returns:
         GitHubRestClient instance if GitHub is configured, None otherwise.
     """
-    if not config.github_configured:
+    if not config.github.configured:
         return None
 
     from sentinel.github_rest_client import GitHubRestClient
 
     return GitHubRestClient(
-        token=config.github_token,
-        base_url=config.github_api_url if config.github_api_url else None,
+        token=config.github.token,
+        base_url=config.github.api_url if config.github.api_url else None,
     )
 
 
@@ -282,14 +282,14 @@ def create_github_rest_tag_client(config: Config) -> GitHubTagClient | None:
     Returns:
         GitHubRestTagClient instance if GitHub is configured, None otherwise.
     """
-    if not config.github_configured:
+    if not config.github.configured:
         return None
 
     from sentinel.github_rest_client import GitHubRestTagClient
 
     return GitHubRestTagClient(
-        token=config.github_token,
-        base_url=config.github_api_url if config.github_api_url else None,
+        token=config.github.token,
+        base_url=config.github.api_url if config.github.api_url else None,
     )
 
 
@@ -307,7 +307,7 @@ def create_jira_poller(jira_client: JiraClient, config: Config) -> JiraPoller:
 
     return JiraPoller(
         jira_client,
-        epic_link_field=config.jira_epic_link_field,
+        epic_link_field=config.jira.epic_link_field,
     )
 
 
@@ -369,7 +369,7 @@ def create_agent_logger(config: Config) -> AgentLogger:
     """
     from sentinel.agent_logger import AgentLogger
 
-    return AgentLogger(base_dir=config.agent_logs_dir)
+    return AgentLogger(base_dir=config.execution.agent_logs_dir)
 
 
 def create_tag_manager(
@@ -477,7 +477,7 @@ def create_container(
 
     # Load orchestrations if not provided
     if orchestrations is None:
-        orchestrations = load_orchestrations(config.orchestrations_dir)
+        orchestrations = load_orchestrations(config.execution.orchestrations_dir)
 
     # Create container
     container = SentinelContainer()
@@ -487,7 +487,7 @@ def create_container(
     container.orchestrations.override(providers.Object(orchestrations))
 
     # Configure Jira clients based on configuration
-    if config.jira_configured:
+    if config.jira.configured:
         container.clients.jira_client.override(providers.Singleton(create_jira_rest_client, config))
         container.clients.jira_tag_client.override(
             providers.Singleton(create_jira_rest_tag_client, config)

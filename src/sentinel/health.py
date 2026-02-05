@@ -161,8 +161,8 @@ class HealthCheckConfig:
             HealthCheckConfig with appropriate values.
         """
         return cls(
-            timeout=config.health_check_timeout,
-            enabled=config.health_check_enabled,
+            timeout=config.health_check.timeout,
+            enabled=config.health_check.enabled,
         )
 
 
