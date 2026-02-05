@@ -41,12 +41,12 @@ class TestConfig:
     def test_defaults(self) -> None:
         config = Config()
         # Test backward compatibility properties
-        assert config.poll_interval == 60
-        assert config.max_issues_per_poll == 50
-        assert config.max_concurrent_executions == 1
-        assert config.log_level == "INFO"
-        assert config.log_json is False
-        assert config.orchestrations_dir == Path("./orchestrations")
+        assert config.polling.interval == 60
+        assert config.polling.max_issues_per_poll == 50
+        assert config.execution.max_concurrent_executions == 1
+        assert config.logging_config.level == "INFO"
+        assert config.logging_config.json is False
+        assert config.execution.orchestrations_dir == Path("./orchestrations")
         # Test sub-configs directly
         assert config.polling.interval == 60
         assert config.polling.max_issues_per_poll == 50
@@ -61,9 +61,9 @@ class TestConfig:
             logging_config=LoggingConfig(level="DEBUG"),
         )
         # Test backward compatibility properties
-        assert config.poll_interval == 120
-        assert config.max_issues_per_poll == 100
-        assert config.log_level == "DEBUG"
+        assert config.polling.interval == 120
+        assert config.polling.max_issues_per_poll == 100
+        assert config.logging_config.level == "DEBUG"
         # Test sub-configs directly
         assert config.polling.interval == 120
         assert config.polling.max_issues_per_poll == 100
@@ -247,9 +247,9 @@ class TestLoadConfig:
 
         config = load_config(empty_env_file)
 
-        assert config.poll_interval == 60
-        assert config.max_issues_per_poll == 50
-        assert config.log_level == "INFO"
+        assert config.polling.interval == 60
+        assert config.polling.max_issues_per_poll == 50
+        assert config.logging_config.level == "INFO"
 
     def test_loads_from_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SENTINEL_POLL_INTERVAL", "30")
@@ -259,10 +259,10 @@ class TestLoadConfig:
 
         config = load_config()
 
-        assert config.poll_interval == 30
-        assert config.max_issues_per_poll == 25
-        assert config.log_level == "DEBUG"
-        assert config.orchestrations_dir == Path("/custom/path")
+        assert config.polling.interval == 30
+        assert config.polling.max_issues_per_poll == 25
+        assert config.logging_config.level == "DEBUG"
+        assert config.execution.orchestrations_dir == Path("/custom/path")
 
     def test_loads_from_env_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Clear existing env vars
@@ -275,8 +275,8 @@ class TestLoadConfig:
 
         config = load_config(env_file)
 
-        assert config.poll_interval == 45
-        assert config.log_level == "WARNING"
+        assert config.polling.interval == 45
+        assert config.logging_config.level == "WARNING"
 
     def test_invalid_poll_interval_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -286,7 +286,7 @@ class TestLoadConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.poll_interval == 60
+        assert config.polling.interval == 60
         assert "Invalid SENTINEL_POLL_INTERVAL" in caplog.text
 
     def test_negative_poll_interval_uses_default(
@@ -297,7 +297,7 @@ class TestLoadConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.poll_interval == 60
+        assert config.polling.interval == 60
         assert "not positive" in caplog.text
 
     def test_zero_max_issues_uses_default(
@@ -308,7 +308,7 @@ class TestLoadConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.max_issues_per_poll == 50
+        assert config.polling.max_issues_per_poll == 50
         assert "not positive" in caplog.text
 
     def test_invalid_log_level_uses_default(
@@ -319,7 +319,7 @@ class TestLoadConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.log_level == "INFO"
+        assert config.logging_config.level == "INFO"
         assert "Invalid SENTINEL_LOG_LEVEL" in caplog.text
 
     def test_log_level_normalized_to_uppercase(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -327,7 +327,7 @@ class TestLoadConfig:
 
         config = load_config()
 
-        assert config.log_level == "DEBUG"
+        assert config.logging_config.level == "DEBUG"
 
     def test_log_json_default_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Clear any existing env var
@@ -335,42 +335,42 @@ class TestLoadConfig:
 
         config = load_config()
 
-        assert config.log_json is False
+        assert config.logging_config.json is False
 
     def test_log_json_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SENTINEL_LOG_JSON", "true")
 
         config = load_config()
 
-        assert config.log_json is True
+        assert config.logging_config.json is True
 
     def test_log_json_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SENTINEL_LOG_JSON", "1")
 
         config = load_config()
 
-        assert config.log_json is True
+        assert config.logging_config.json is True
 
     def test_log_json_yes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SENTINEL_LOG_JSON", "yes")
 
         config = load_config()
 
-        assert config.log_json is True
+        assert config.logging_config.json is True
 
     def test_log_json_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SENTINEL_LOG_JSON", "TRUE")
 
         config = load_config()
 
-        assert config.log_json is True
+        assert config.logging_config.json is True
 
     def test_log_json_false_for_other_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SENTINEL_LOG_JSON", "false")
 
         config = load_config()
 
-        assert config.log_json is False
+        assert config.logging_config.json is False
 
 
 class TestParseNonNegativeFloat:
@@ -522,7 +522,7 @@ class TestDashboardPortConfig:
 
         config = load_config()
 
-        assert config.dashboard_port == 8080
+        assert config.dashboard.port == 8080
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that dashboard_port loads from environment variable."""
@@ -530,7 +530,7 @@ class TestDashboardPortConfig:
 
         config = load_config()
 
-        assert config.dashboard_port == 3000
+        assert config.dashboard.port == 3000
 
     def test_invalid_port_zero_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -541,7 +541,7 @@ class TestDashboardPortConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.dashboard_port == 8080
+        assert config.dashboard.port == 8080
         assert f"not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_port_negative_uses_default(
@@ -553,7 +553,7 @@ class TestDashboardPortConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.dashboard_port == 8080
+        assert config.dashboard.port == 8080
         assert f"not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_port_too_high_uses_default(
@@ -565,7 +565,7 @@ class TestDashboardPortConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.dashboard_port == 8080
+        assert config.dashboard.port == 8080
         assert f"not a valid port (must be {MIN_PORT}-{MAX_PORT})" in caplog.text
 
     def test_invalid_non_numeric_uses_default(
@@ -577,7 +577,7 @@ class TestDashboardPortConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.dashboard_port == 8080
+        assert config.dashboard.port == 8080
         assert "Invalid SENTINEL_DASHBOARD_PORT" in caplog.text
 
     def test_valid_port_boundary_low(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -586,7 +586,7 @@ class TestDashboardPortConfig:
 
         config = load_config()
 
-        assert config.dashboard_port == MIN_PORT
+        assert config.dashboard.port == MIN_PORT
 
     def test_valid_port_boundary_high(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that MAX_PORT is accepted."""
@@ -594,7 +594,7 @@ class TestDashboardPortConfig:
 
         config = load_config()
 
-        assert config.dashboard_port == MAX_PORT
+        assert config.dashboard.port == MAX_PORT
 
 
 class TestAttemptCountsTtlConfig:
@@ -606,7 +606,7 @@ class TestAttemptCountsTtlConfig:
 
         config = load_config()
 
-        assert config.attempt_counts_ttl == 3600
+        assert config.execution.attempt_counts_ttl == 3600
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that attempt_counts_ttl loads from environment variable."""
@@ -614,7 +614,7 @@ class TestAttemptCountsTtlConfig:
 
         config = load_config()
 
-        assert config.attempt_counts_ttl == 7200
+        assert config.execution.attempt_counts_ttl == 7200
 
     def test_invalid_value_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -625,7 +625,7 @@ class TestAttemptCountsTtlConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.attempt_counts_ttl == 3600
+        assert config.execution.attempt_counts_ttl == 3600
         assert "Invalid SENTINEL_ATTEMPT_COUNTS_TTL" in caplog.text
 
     def test_zero_uses_default(
@@ -637,7 +637,7 @@ class TestAttemptCountsTtlConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.attempt_counts_ttl == 3600
+        assert config.execution.attempt_counts_ttl == 3600
         assert "not positive" in caplog.text
 
     def test_negative_uses_default(
@@ -649,7 +649,7 @@ class TestAttemptCountsTtlConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.attempt_counts_ttl == 3600
+        assert config.execution.attempt_counts_ttl == 3600
         assert "not positive" in caplog.text
 
 
@@ -662,7 +662,7 @@ class TestMaxQueueSizeConfig:
 
         config = load_config()
 
-        assert config.max_queue_size == 100
+        assert config.execution.max_queue_size == 100
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that max_queue_size loads from environment variable."""
@@ -670,7 +670,7 @@ class TestMaxQueueSizeConfig:
 
         config = load_config()
 
-        assert config.max_queue_size == 200
+        assert config.execution.max_queue_size == 200
 
     def test_invalid_value_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -681,7 +681,7 @@ class TestMaxQueueSizeConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.max_queue_size == 100
+        assert config.execution.max_queue_size == 100
         assert "Invalid SENTINEL_MAX_QUEUE_SIZE" in caplog.text
 
     def test_zero_uses_default(
@@ -693,7 +693,7 @@ class TestMaxQueueSizeConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.max_queue_size == 100
+        assert config.execution.max_queue_size == 100
         assert "not positive" in caplog.text
 
     def test_negative_uses_default(
@@ -705,7 +705,7 @@ class TestMaxQueueSizeConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.max_queue_size == 100
+        assert config.execution.max_queue_size == 100
         assert "not positive" in caplog.text
 
 
@@ -718,7 +718,7 @@ class TestDisableStreamingLogsConfig:
 
         config = load_config()
 
-        assert config.disable_streaming_logs is False
+        assert config.execution.disable_streaming_logs is False
 
     def test_enabled_with_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that disable_streaming_logs can be enabled with 'true'."""
@@ -726,7 +726,7 @@ class TestDisableStreamingLogsConfig:
 
         config = load_config()
 
-        assert config.disable_streaming_logs is True
+        assert config.execution.disable_streaming_logs is True
 
     def test_enabled_with_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that disable_streaming_logs can be enabled with '1'."""
@@ -734,7 +734,7 @@ class TestDisableStreamingLogsConfig:
 
         config = load_config()
 
-        assert config.disable_streaming_logs is True
+        assert config.execution.disable_streaming_logs is True
 
     def test_enabled_with_yes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that disable_streaming_logs can be enabled with 'yes'."""
@@ -742,7 +742,7 @@ class TestDisableStreamingLogsConfig:
 
         config = load_config()
 
-        assert config.disable_streaming_logs is True
+        assert config.execution.disable_streaming_logs is True
 
     def test_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that disable_streaming_logs parsing is case-insensitive."""
@@ -750,7 +750,7 @@ class TestDisableStreamingLogsConfig:
 
         config = load_config()
 
-        assert config.disable_streaming_logs is True
+        assert config.execution.disable_streaming_logs is True
 
     def test_false_for_other_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that disable_streaming_logs is False for other values."""
@@ -758,7 +758,7 @@ class TestDisableStreamingLogsConfig:
 
         config = load_config()
 
-        assert config.disable_streaming_logs is False
+        assert config.execution.disable_streaming_logs is False
 
     def test_false_for_empty_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that disable_streaming_logs is False for empty value."""
@@ -766,7 +766,7 @@ class TestDisableStreamingLogsConfig:
 
         config = load_config()
 
-        assert config.disable_streaming_logs is False
+        assert config.execution.disable_streaming_logs is False
 
 
 class TestValidateAgentType:
@@ -835,7 +835,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.default_agent_type == "claude"
+        assert config.cursor.default_agent_type == "claude"
 
     def test_default_agent_type_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that default_agent_type loads from environment variable."""
@@ -843,7 +843,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.default_agent_type == "cursor"
+        assert config.cursor.default_agent_type == "cursor"
 
     def test_cursor_path_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that cursor_path defaults to empty string."""
@@ -851,7 +851,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.cursor_path == ""
+        assert config.cursor.path == ""
 
     def test_cursor_path_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that cursor_path loads from environment variable."""
@@ -859,7 +859,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.cursor_path == "/usr/local/bin/cursor"
+        assert config.cursor.path == "/usr/local/bin/cursor"
 
     def test_cursor_default_model_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that cursor_default_model defaults to empty string."""
@@ -867,7 +867,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.cursor_default_model == ""
+        assert config.cursor.default_model == ""
 
     def test_cursor_default_model_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that cursor_default_model loads from environment variable."""
@@ -875,7 +875,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.cursor_default_model == "gpt-4"
+        assert config.cursor.default_model == "gpt-4"
 
     def test_cursor_default_mode_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that cursor_default_mode defaults to 'agent'."""
@@ -883,7 +883,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.cursor_default_mode == "agent"
+        assert config.cursor.default_mode == "agent"
 
     def test_cursor_default_mode_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that cursor_default_mode loads from environment variable."""
@@ -891,7 +891,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.cursor_default_mode == "plan"
+        assert config.cursor.default_mode == "plan"
 
     def test_cursor_default_mode_ask(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that cursor_default_mode can be set to 'ask'."""
@@ -899,7 +899,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.cursor_default_mode == "ask"
+        assert config.cursor.default_mode == "ask"
 
     def test_cursor_default_mode_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that cursor_default_mode parsing is case-insensitive."""
@@ -907,7 +907,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.cursor_default_mode == "plan"
+        assert config.cursor.default_mode == "plan"
 
     def test_cursor_default_mode_invalid_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -918,7 +918,7 @@ class TestCursorConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.cursor_default_mode == "agent"
+        assert config.cursor.default_mode == "agent"
         assert "Invalid SENTINEL_CURSOR_DEFAULT_MODE" in caplog.text
 
     def test_default_agent_type_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -927,7 +927,7 @@ class TestCursorConfig:
 
         config = load_config()
 
-        assert config.default_agent_type == "cursor"
+        assert config.cursor.default_agent_type == "cursor"
 
     def test_default_agent_type_invalid_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -938,7 +938,7 @@ class TestCursorConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.default_agent_type == "claude"
+        assert config.cursor.default_agent_type == "claude"
         assert "Invalid SENTINEL_DEFAULT_AGENT_TYPE" in caplog.text
 
 
@@ -951,7 +951,7 @@ class TestInterMessageTimesThresholdConfig:
 
         config = load_config()
 
-        assert config.inter_message_times_threshold == 100
+        assert config.execution.inter_message_times_threshold == 100
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that inter_message_times_threshold loads from environment variable."""
@@ -959,7 +959,7 @@ class TestInterMessageTimesThresholdConfig:
 
         config = load_config()
 
-        assert config.inter_message_times_threshold == 200
+        assert config.execution.inter_message_times_threshold == 200
 
     def test_invalid_value_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -970,7 +970,7 @@ class TestInterMessageTimesThresholdConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.inter_message_times_threshold == 100
+        assert config.execution.inter_message_times_threshold == 100
         assert "Invalid SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD" in caplog.text
 
     def test_zero_uses_default(
@@ -982,7 +982,7 @@ class TestInterMessageTimesThresholdConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.inter_message_times_threshold == 100
+        assert config.execution.inter_message_times_threshold == 100
         assert "not positive" in caplog.text
 
 
@@ -995,7 +995,7 @@ class TestToggleCooldownConfig:
 
         config = load_config()
 
-        assert config.toggle_cooldown_seconds == 2.0
+        assert config.dashboard.toggle_cooldown_seconds == 2.0
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that toggle_cooldown_seconds loads from environment variable."""
@@ -1003,7 +1003,7 @@ class TestToggleCooldownConfig:
 
         config = load_config()
 
-        assert config.toggle_cooldown_seconds == 5.0
+        assert config.dashboard.toggle_cooldown_seconds == 5.0
 
     def test_zero_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that zero is allowed (to disable cooldown)."""
@@ -1011,7 +1011,7 @@ class TestToggleCooldownConfig:
 
         config = load_config()
 
-        assert config.toggle_cooldown_seconds == 0.0
+        assert config.dashboard.toggle_cooldown_seconds == 0.0
 
     def test_negative_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1022,7 +1022,7 @@ class TestToggleCooldownConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.toggle_cooldown_seconds == 2.0
+        assert config.dashboard.toggle_cooldown_seconds == 2.0
         assert "negative" in caplog.text
 
     def test_invalid_value_uses_default(
@@ -1034,7 +1034,7 @@ class TestToggleCooldownConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.toggle_cooldown_seconds == 2.0
+        assert config.dashboard.toggle_cooldown_seconds == 2.0
         assert "Invalid SENTINEL_TOGGLE_COOLDOWN" in caplog.text
 
 
@@ -1047,7 +1047,7 @@ class TestRateLimitCacheTtlConfig:
 
         config = load_config()
 
-        assert config.rate_limit_cache_ttl == 3600
+        assert config.dashboard.rate_limit_cache_ttl == 3600
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that rate_limit_cache_ttl loads from environment variable."""
@@ -1055,7 +1055,7 @@ class TestRateLimitCacheTtlConfig:
 
         config = load_config()
 
-        assert config.rate_limit_cache_ttl == 7200
+        assert config.dashboard.rate_limit_cache_ttl == 7200
 
     def test_zero_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1066,7 +1066,7 @@ class TestRateLimitCacheTtlConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.rate_limit_cache_ttl == 3600
+        assert config.dashboard.rate_limit_cache_ttl == 3600
         assert "not positive" in caplog.text
 
 
@@ -1079,7 +1079,7 @@ class TestRateLimitCacheMaxsizeConfig:
 
         config = load_config()
 
-        assert config.rate_limit_cache_maxsize == 10000
+        assert config.dashboard.rate_limit_cache_maxsize == 10000
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that rate_limit_cache_maxsize loads from environment variable."""
@@ -1087,7 +1087,7 @@ class TestRateLimitCacheMaxsizeConfig:
 
         config = load_config()
 
-        assert config.rate_limit_cache_maxsize == 50000
+        assert config.dashboard.rate_limit_cache_maxsize == 50000
 
     def test_zero_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1098,7 +1098,7 @@ class TestRateLimitCacheMaxsizeConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.rate_limit_cache_maxsize == 10000
+        assert config.dashboard.rate_limit_cache_maxsize == 10000
         assert "not positive" in caplog.text
 
 
@@ -1270,7 +1270,7 @@ class TestDefaultBaseBranchConfig:
 
         config = load_config()
 
-        assert config.default_base_branch == "main"
+        assert config.execution.default_base_branch == "main"
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that default_base_branch loads from environment variable."""
@@ -1278,7 +1278,7 @@ class TestDefaultBaseBranchConfig:
 
         config = load_config()
 
-        assert config.default_base_branch == "develop"
+        assert config.execution.default_base_branch == "develop"
 
     def test_master_branch_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that 'master' is a valid branch name."""
@@ -1286,7 +1286,7 @@ class TestDefaultBaseBranchConfig:
 
         config = load_config()
 
-        assert config.default_base_branch == "master"
+        assert config.execution.default_base_branch == "master"
 
     def test_feature_branch_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that feature branch names are valid."""
@@ -1294,7 +1294,7 @@ class TestDefaultBaseBranchConfig:
 
         config = load_config()
 
-        assert config.default_base_branch == "feature/test"
+        assert config.execution.default_base_branch == "feature/test"
 
     def test_invalid_branch_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1305,7 +1305,7 @@ class TestDefaultBaseBranchConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.default_base_branch == "main"
+        assert config.execution.default_base_branch == "main"
         assert "Invalid SENTINEL_DEFAULT_BASE_BRANCH" in caplog.text
 
     def test_empty_uses_default(
@@ -1317,7 +1317,7 @@ class TestDefaultBaseBranchConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.default_base_branch == "main"
+        assert config.execution.default_base_branch == "main"
         assert "cannot be empty" in caplog.text
 
     def test_whitespace_trimmed(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1326,7 +1326,7 @@ class TestDefaultBaseBranchConfig:
 
         config = load_config()
 
-        assert config.default_base_branch == "develop"
+        assert config.execution.default_base_branch == "develop"
 
 
 class TestJiraEpicLinkFieldConfig:
@@ -1338,7 +1338,7 @@ class TestJiraEpicLinkFieldConfig:
 
         config = load_config()
 
-        assert config.jira_epic_link_field == "customfield_10014"
+        assert config.jira.epic_link_field == "customfield_10014"
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that jira_epic_link_field loads from environment variable."""
@@ -1346,7 +1346,7 @@ class TestJiraEpicLinkFieldConfig:
 
         config = load_config()
 
-        assert config.jira_epic_link_field == "customfield_12345"
+        assert config.jira.epic_link_field == "customfield_12345"
 
     def test_custom_field_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that any custom field ID can be used."""
@@ -1354,7 +1354,7 @@ class TestJiraEpicLinkFieldConfig:
 
         config = load_config()
 
-        assert config.jira_epic_link_field == "customfield_99999"
+        assert config.jira.epic_link_field == "customfield_99999"
 
     def test_empty_uses_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that empty value falls back to default."""
@@ -1363,4 +1363,4 @@ class TestJiraEpicLinkFieldConfig:
         config = load_config()
 
         # Empty string is valid, just means no fallback to classic epic link
-        assert config.jira_epic_link_field == ""
+        assert config.jira.epic_link_field == ""

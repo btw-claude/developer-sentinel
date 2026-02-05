@@ -234,7 +234,7 @@ class PollCoordinator:
                 )
 
             try:
-                issues = self._jira_poller.poll(trigger, self._config.max_issues_per_poll)
+                issues = self._jira_poller.poll(trigger, self._config.polling.max_issues_per_poll)
                 total_issues_found += len(issues)
 
                 if log_callback:
@@ -323,7 +323,7 @@ class PollCoordinator:
                 )
 
             try:
-                issues = self._github_poller.poll(trigger, self._config.max_issues_per_poll)
+                issues = self._github_poller.poll(trigger, self._config.polling.max_issues_per_poll)
                 total_issues_found += len(issues)
 
                 if log_callback:
@@ -409,8 +409,8 @@ class PollCoordinator:
 
         if trigger_source == TriggerSource.JIRA.value:
             # Construct Jira URL from config base URL and issue key
-            if self._config.jira_base_url:
-                base_url = self._config.jira_base_url.rstrip("/")
+            if self._config.jira.base_url:
+                base_url = self._config.jira.base_url.rstrip("/")
                 return f"{base_url}/browse/{issue.key}"
             return ""
 

@@ -7,11 +7,11 @@ the codebase with type-safe constants.
 Usage:
     from sentinel.types import TriggerSource, AgentType
 
-    # Enum usage - since TriggerSource inherits from str, direct comparison works
+    # Enum usage - since TriggerSource inherits from StrEnum, direct comparison works
     if trigger.source == TriggerSource.JIRA:
         ...
 
-    # String value access - .value is redundant since enum inherits from str
+    # String value access - .value is redundant since enum inherits from StrEnum
     # TriggerSource.JIRA == "jira" and str(TriggerSource.JIRA) == "jira"
     source_str = TriggerSource.JIRA  # Can be used directly as "jira"
 
@@ -22,14 +22,14 @@ Usage:
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 
-class TriggerSource(str, Enum):
+class TriggerSource(StrEnum):
     """Enum for trigger source types.
 
-    Inherits from str to allow direct string comparison and
+    Inherits from StrEnum to allow direct string comparison and
     seamless YAML serialization/deserialization.
 
     Values:
@@ -62,10 +62,10 @@ class TriggerSource(str, Enum):
         return frozenset(member.value for member in cls)
 
 
-class AgentType(str, Enum):
+class AgentType(StrEnum):
     """Enum for agent types.
 
-    Inherits from str to allow direct string comparison and
+    Inherits from StrEnum to allow direct string comparison and
     seamless YAML serialization/deserialization.
 
     Values:
@@ -98,10 +98,10 @@ class AgentType(str, Enum):
         return frozenset(member.value for member in cls)
 
 
-class CursorMode(str, Enum):
+class CursorMode(StrEnum):
     """Enum for Cursor CLI modes.
 
-    Inherits from str to allow direct string comparison and
+    Inherits from StrEnum to allow direct string comparison and
     seamless YAML serialization/deserialization.
 
     Values:
@@ -136,10 +136,10 @@ class CursorMode(str, Enum):
         return frozenset(member.value for member in cls)
 
 
-class RateLimitStrategy(str, Enum):
+class RateLimitStrategy(StrEnum):
     """Enum for rate limit strategies.
 
-    Inherits from str to allow direct string comparison and
+    Inherits from StrEnum to allow direct string comparison and
     seamless configuration handling.
 
     Values:
@@ -172,10 +172,10 @@ class RateLimitStrategy(str, Enum):
         return frozenset(member.value for member in cls)
 
 
-class QueueFullStrategy(str, Enum):
+class QueueFullStrategy(StrEnum):
     """Enum for queue full strategies when bounded queue is at capacity.
 
-    Inherits from str to allow direct string comparison and
+    Inherits from StrEnum to allow direct string comparison and
     seamless configuration handling.
 
     Values:
@@ -208,10 +208,10 @@ class QueueFullStrategy(str, Enum):
         return frozenset(member.value for member in cls)
 
 
-class ErrorType(str, Enum):
+class ErrorType(StrEnum):
     """Enum for execution failure error types.
 
-    Inherits from str to allow direct string comparison and
+    Inherits from StrEnum to allow direct string comparison and
     seamless logging integration.
 
     This enum provides type safety for the error_type parameter in

@@ -254,8 +254,8 @@ class TestCreateDefaultFactory:
         # Circuit breaker is None when no registry is provided
         mock_claude_class.assert_called_once_with(
             config=config,
-            base_workdir=config.agent_workdir,
-            log_base_dir=config.agent_logs_dir,
+            base_workdir=config.execution.agent_workdir,
+            log_base_dir=config.execution.agent_logs_dir,
             circuit_breaker=None,
         )
         assert client is mock_instance
@@ -270,8 +270,8 @@ class TestCreateDefaultFactory:
         assert isinstance(client, ClaudeSdkAgentClient)
         assert client.agent_type == "claude"
         assert client.config is config
-        assert client.base_workdir == config.agent_workdir
-        assert client.log_base_dir == config.agent_logs_dir
+        assert client.base_workdir == config.execution.agent_workdir
+        assert client.log_base_dir == config.execution.agent_logs_dir
 
 
 class TestFactoryCacheKeyBehavior:

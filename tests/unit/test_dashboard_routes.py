@@ -1169,7 +1169,7 @@ class TestToggleRateLimitConfiguration:
         rate_limiter = RateLimiter(config)
 
         # The rate limiter should use the config value
-        assert rate_limiter._toggle_cooldown_seconds == 5.0
+        assert rate_limiter._toggle_cooldown_seconds == config.dashboard.toggle_cooldown_seconds
 
     def test_rate_limiter_uses_config_cache_settings(self) -> None:
         """Test that RateLimiter uses cache TTL and maxsize from Config."""
@@ -1183,8 +1183,8 @@ class TestToggleRateLimitConfiguration:
 
         # The internal cache should use the config values
         assert isinstance(rate_limiter._last_write_times, TTLCache)
-        assert rate_limiter._last_write_times.ttl == 7200
-        assert rate_limiter._last_write_times.maxsize == 5000
+        assert rate_limiter._last_write_times.ttl == config.dashboard.rate_limit_cache_ttl
+        assert rate_limiter._last_write_times.maxsize == config.dashboard.rate_limit_cache_maxsize
 
     def test_rate_limiter_defaults_match_config_defaults(self) -> None:
         """Test that default Config values match expected defaults."""
@@ -1195,9 +1195,9 @@ class TestToggleRateLimitConfiguration:
         rate_limiter = RateLimiter(config)
 
         # Check defaults
-        assert rate_limiter._toggle_cooldown_seconds == 2.0
-        assert rate_limiter._last_write_times.ttl == 3600
-        assert rate_limiter._last_write_times.maxsize == 10000
+        assert rate_limiter._toggle_cooldown_seconds == config.dashboard.toggle_cooldown_seconds
+        assert rate_limiter._last_write_times.ttl == config.dashboard.rate_limit_cache_ttl
+        assert rate_limiter._last_write_times.maxsize == config.dashboard.rate_limit_cache_maxsize
 
     def test_create_routes_uses_config_when_provided(self) -> None:
         """Test that create_routes uses provided Config for rate limiting."""

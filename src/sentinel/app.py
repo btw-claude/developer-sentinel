@@ -60,7 +60,7 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
         failures. The dashboard is considered an optional, non-critical component.
     """
     config = context.config
-    if not config.dashboard_enabled:
+    if not config.dashboard.enabled:
         logger.info("Dashboard is disabled via configuration")
         return None
 
@@ -68,12 +68,12 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
         from sentinel.dashboard import create_app
 
         logger.info(
-            "Starting dashboard server on %s:%s", config.dashboard_host, config.dashboard_port
+            "Starting dashboard server on %s:%s", config.dashboard.host, config.dashboard.port
         )
         dashboard_app = create_app(sentinel)
         dashboard_server = DashboardServer(
-            host=config.dashboard_host,
-            port=config.dashboard_port,
+            host=config.dashboard.host,
+            port=config.dashboard.port,
         )
         dashboard_server.start(dashboard_app)
         return dashboard_server
@@ -82,7 +82,7 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
             "Dashboard startup failed: dependencies not available. "
             "Sentinel will continue without dashboard functionality. Error: %s",
             e,
-            extra={"host": config.dashboard_host, "port": config.dashboard_port},
+            extra={"host": config.dashboard.host, "port": config.dashboard.port},
         )
         return None
     except OSError as e:
@@ -90,7 +90,7 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
             "Dashboard startup failed: network/OS error. "
             "Sentinel will continue without dashboard functionality. Error: %s",
             e,
-            extra={"host": config.dashboard_host, "port": config.dashboard_port},
+            extra={"host": config.dashboard.host, "port": config.dashboard.port},
         )
         return None
     except RuntimeError as e:
@@ -98,7 +98,7 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
             "Dashboard startup failed: runtime error. "
             "Sentinel will continue without dashboard functionality. Error: %s",
             e,
-            extra={"host": config.dashboard_host, "port": config.dashboard_port},
+            extra={"host": config.dashboard.host, "port": config.dashboard.port},
         )
         return None
     except (ValueError, TypeError) as e:
@@ -106,7 +106,7 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
             "Dashboard startup failed: configuration error. "
             "Sentinel will continue without dashboard functionality. Error: %s",
             e,
-            extra={"host": config.dashboard_host, "port": config.dashboard_port},
+            extra={"host": config.dashboard.host, "port": config.dashboard.port},
         )
         return None
     except Exception as e:
@@ -119,8 +119,8 @@ def start_dashboard(context: BootstrapContext, sentinel: Sentinel) -> DashboardS
             type(e).__name__,
             e,
             extra={
-                "host": config.dashboard_host,
-                "port": config.dashboard_port,
+                "host": config.dashboard.host,
+                "port": config.dashboard.port,
                 "error_type": type(e).__name__,
             },
         )

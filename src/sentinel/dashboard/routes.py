@@ -112,10 +112,10 @@ class RateLimiter:
         Args:
             config: Application configuration containing rate limiting settings.
         """
-        self._toggle_cooldown_seconds = config.toggle_cooldown_seconds
+        self._toggle_cooldown_seconds = config.dashboard.toggle_cooldown_seconds
         self._last_write_times: TTLCache[str, float] = TTLCache(
-            maxsize=config.rate_limit_cache_maxsize,
-            ttl=config.rate_limit_cache_ttl,
+            maxsize=config.dashboard.rate_limit_cache_maxsize,
+            ttl=config.dashboard.rate_limit_cache_ttl,
         )
 
     def check_rate_limit(self, file_path: str) -> None:
@@ -218,9 +218,9 @@ def create_routes(
     logger.debug(
         "create_routes using %s Config: toggle_cooldown=%.1fs, " "cache_ttl=%ds, cache_maxsize=%d",
         config_source,
-        effective_config.toggle_cooldown_seconds,
-        effective_config.rate_limit_cache_ttl,
-        effective_config.rate_limit_cache_maxsize,
+        effective_config.dashboard.toggle_cooldown_seconds,
+        effective_config.dashboard.rate_limit_cache_ttl,
+        effective_config.dashboard.rate_limit_cache_maxsize,
     )
 
     # Create rate limiter with config values

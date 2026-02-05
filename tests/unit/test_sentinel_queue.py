@@ -337,7 +337,7 @@ class TestSentinelOrchestrationLogging:
         agent_client = MockAgentClient()
         tag_client = MockTagClient()
         config = make_config()
-        assert config.orchestration_logs_dir is None
+        assert config.execution.orchestration_logs_dir is None
         orchestrations = [make_orchestration()]
 
         sentinel = Sentinel(

@@ -487,8 +487,8 @@ class TestSentinelEagerPolling:
         # When no work is found, the sentinel should sleep for poll_interval (in 1-second chunks)
         # Count total 1-second sleeps which indicates normal poll intervals
         one_second_sleeps = sum(1 for s in sleep_intervals if s == 1)
-        assert one_second_sleeps >= config.poll_interval, (
-            f"Expected at least {config.poll_interval} 1-second sleeps (one full poll interval), "
+        assert one_second_sleeps >= config.polling.interval, (
+            f"Expected at least {config.polling.interval} 1-second sleeps (one full poll interval), "
             f"got {one_second_sleeps}. Sleep intervals: {sleep_intervals}"
         )
 

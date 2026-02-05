@@ -403,7 +403,7 @@ class TestAttemptCountTracking:
             "no stale entries found" in msg for msg in debug_messages
         ), f"Expected debug log about no stale entries, got: {debug_messages}"
 
-        ttl_value = config.attempt_counts_ttl
+        ttl_value = config.execution.attempt_counts_ttl
         all_debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
         assert any(
             f"TTL: {ttl_value}" in msg for msg in all_debug_messages

@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +29,7 @@ from sentinel.logging import get_logger
 logger = get_logger(__name__)
 
 
-class CursorMode(str, Enum):
+class CursorMode(StrEnum):
     """Cursor CLI operation modes."""
 
     AGENT = "agent"
@@ -96,16 +96,16 @@ class CursorAgentClient(AgentClient):
         self.log_base_dir = log_base_dir
 
         # Validate and store cursor path
-        self._cursor_path = config.cursor_path or "cursor"
-        self._default_model = config.cursor_default_model or None
+        self._cursor_path = config.cursor.path or "cursor"
+        self._default_model = config.cursor.default_model or None
 
         # Defensive validation for cursor_default_mode
-        if not config.cursor_default_mode or not config.cursor_default_mode.strip():
+        if not config.cursor.default_mode or not config.cursor.default_mode.strip():
             raise AgentClientError(
                 "cursor_default_mode is not set. Please configure SENTINEL_CURSOR_DEFAULT_MODE "
                 "with a valid mode: agent, plan, or ask"
             )
-        self._default_mode = CursorMode.from_string(config.cursor_default_mode)
+        self._default_mode = CursorMode.from_string(config.cursor.default_mode)
 
         logger.debug(
             "Initialized CursorAgentClient with path=%s, model=%s, mode=%s",
@@ -232,8 +232,8 @@ class CursorAgentClient(AgentClient):
         # Use subprocess_timeout from config as fallback when timeout_seconds is not provided
         # This ensures consistency with other subprocess.run() calls in the codebase
         effective_timeout = timeout_seconds
-        if effective_timeout is None and self.config.subprocess_timeout > 0:
-            effective_timeout = int(self.config.subprocess_timeout)
+        if effective_timeout is None and self.config.execution.subprocess_timeout > 0:
+            effective_timeout = int(self.config.execution.subprocess_timeout)
 
         logger.info(
             "Running Cursor CLI: mode=%s, model=%s, timeout=%ss",

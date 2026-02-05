@@ -263,8 +263,8 @@ def _create_claude_sdk_builder(
 
         return ClaudeSdkAgentClient(
             config=config,
-            base_workdir=config.agent_workdir,
-            log_base_dir=config.agent_logs_dir,
+            base_workdir=config.execution.agent_workdir,
+            log_base_dir=config.execution.agent_logs_dir,
             circuit_breaker=circuit_breaker,
         )
 
@@ -288,8 +288,8 @@ def _create_cursor_builder(
 
         return CursorAgentClient(
             config=config,
-            base_workdir=config.agent_workdir,
-            log_base_dir=config.agent_logs_dir,
+            base_workdir=config.execution.agent_workdir,
+            log_base_dir=config.execution.agent_logs_dir,
         )
 
     return builder

@@ -724,11 +724,11 @@ class TestConfigIntegration:
         monkeypatch.setenv("SENTINEL_CLAUDE_RATE_LIMIT_WARNING_THRESHOLD", "0.25")
 
         config = load_config()
-        assert config.claude_rate_limit_enabled is True
-        assert config.claude_rate_limit_per_minute == 30
-        assert config.claude_rate_limit_per_hour == 500
-        assert config.claude_rate_limit_strategy == "reject"
-        assert config.claude_rate_limit_warning_threshold == 0.25
+        assert config.rate_limit.enabled is True
+        assert config.rate_limit.per_minute == 30
+        assert config.rate_limit.per_hour == 500
+        assert config.rate_limit.strategy == "reject"
+        assert config.rate_limit.warning_threshold == 0.25
 
     def test_config_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Config has sensible defaults for rate limiting."""
@@ -742,11 +742,11 @@ class TestConfigIntegration:
         monkeypatch.delenv("SENTINEL_CLAUDE_RATE_LIMIT_WARNING_THRESHOLD", raising=False)
 
         config = load_config()
-        assert config.claude_rate_limit_enabled is True
-        assert config.claude_rate_limit_per_minute == 60
-        assert config.claude_rate_limit_per_hour == 1000
-        assert config.claude_rate_limit_strategy == "queue"
-        assert config.claude_rate_limit_warning_threshold == 0.2
+        assert config.rate_limit.enabled is True
+        assert config.rate_limit.per_minute == 60
+        assert config.rate_limit.per_hour == 1000
+        assert config.rate_limit.strategy == "queue"
+        assert config.rate_limit.warning_threshold == 0.2
 
     def test_invalid_strategy_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -759,7 +759,7 @@ class TestConfigIntegration:
         monkeypatch.setenv("SENTINEL_CLAUDE_RATE_LIMIT_STRATEGY", "invalid")
         with caplog.at_level(logging.WARNING):
             config = load_config()
-        assert config.claude_rate_limit_strategy == "queue"
+        assert config.rate_limit.strategy == "queue"
         assert "Invalid SENTINEL_CLAUDE_RATE_LIMIT_STRATEGY" in caplog.text
 
     def test_invalid_threshold_uses_default(
@@ -773,7 +773,7 @@ class TestConfigIntegration:
         monkeypatch.setenv("SENTINEL_CLAUDE_RATE_LIMIT_WARNING_THRESHOLD", "1.5")
         with caplog.at_level(logging.WARNING):
             config = load_config()
-        assert config.claude_rate_limit_warning_threshold == 0.2
+        assert config.rate_limit.warning_threshold == 0.2
         assert "Invalid SENTINEL_CLAUDE_RATE_LIMIT_WARNING_THRESHOLD" in caplog.text
 
     def test_load_config_with_backpressure_settings(
@@ -786,8 +786,8 @@ class TestConfigIntegration:
         monkeypatch.setenv("SENTINEL_CLAUDE_RATE_LIMIT_QUEUE_FULL_STRATEGY", "wait")
 
         config = load_config()
-        assert config.claude_rate_limit_max_queued == 50
-        assert config.claude_rate_limit_queue_full_strategy == "wait"
+        assert config.rate_limit.max_queued == 50
+        assert config.rate_limit.queue_full_strategy == "wait"
 
     def test_invalid_queue_full_strategy_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -800,7 +800,7 @@ class TestConfigIntegration:
         monkeypatch.setenv("SENTINEL_CLAUDE_RATE_LIMIT_QUEUE_FULL_STRATEGY", "invalid")
         with caplog.at_level(logging.WARNING):
             config = load_config()
-        assert config.claude_rate_limit_queue_full_strategy == "reject"
+        assert config.rate_limit.queue_full_strategy == "reject"
         assert "Invalid SENTINEL_CLAUDE_RATE_LIMIT_QUEUE_FULL_STRATEGY" in caplog.text
 
 

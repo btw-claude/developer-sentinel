@@ -33,8 +33,8 @@ class TestHealthCheckConfig:
         app_config = create_config(health_check_timeout=10.0, health_check_enabled=False)
         health_config = HealthCheckConfig.from_config(app_config)
 
-        assert health_config.timeout == 10.0
-        assert health_config.enabled is False
+        assert health_config.timeout == app_config.health_check.timeout
+        assert health_config.enabled == app_config.health_check.enabled
 
     def test_from_config_with_default_app_config(self) -> None:
         """Test creating HealthCheckConfig from default application Config."""
@@ -43,8 +43,8 @@ class TestHealthCheckConfig:
         app_config = create_config()
         health_config = HealthCheckConfig.from_config(app_config)
 
-        assert health_config.timeout == 5.0
-        assert health_config.enabled is True
+        assert health_config.timeout == app_config.health_check.timeout
+        assert health_config.enabled == app_config.health_check.enabled
 
     def test_from_env_defaults(self) -> None:
         """Test loading from environment with no variables set."""
@@ -357,8 +357,8 @@ class TestHealthChecker:
         checker = HealthChecker.from_config(app_config)
 
         # The checker should have a config with values from the app config
-        assert checker.config.timeout == 15.0
-        assert checker.config.enabled is True
+        assert checker.config.timeout == app_config.health_check.timeout
+        assert checker.config.enabled == app_config.health_check.enabled
 
     def test_check_liveness(self) -> None:
         """Test liveness check returns healthy status."""

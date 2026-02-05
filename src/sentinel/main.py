@@ -135,13 +135,13 @@ class Sentinel:
 
         # Initialize components
         self._state_tracker = StateTracker(
-            max_queue_size=config.max_queue_size,
-            attempt_counts_ttl=config.attempt_counts_ttl,
-            max_completed_executions=config.max_recent_executions,
+            max_queue_size=config.execution.max_queue_size,
+            attempt_counts_ttl=config.execution.attempt_counts_ttl,
+            max_completed_executions=config.dashboard.max_recent_executions,
         )
-        self._execution_manager = ExecutionManager(config.max_concurrent_executions)
+        self._execution_manager = ExecutionManager(config.execution.max_concurrent_executions)
         self._orchestration_registry = OrchestrationRegistry(
-            config.orchestrations_dir,
+            config.execution.orchestrations_dir,
             router_factory=Router,
         )
         self._poll_coordinator = PollCoordinator(
@@ -160,11 +160,13 @@ class Sentinel:
 
         # Per-orchestration logging manager
         self._orch_log_manager: OrchestrationLogManager | None = None
-        if config.orchestration_logs_dir is not None:
-            self._orch_log_manager = OrchestrationLogManager(config.orchestration_logs_dir)
+        if config.execution.orchestration_logs_dir is not None:
+            self._orch_log_manager = OrchestrationLogManager(
+                config.execution.orchestration_logs_dir
+            )
             logger.info(
                 "Per-orchestration logging enabled, logs will be written to: %s",
-                config.orchestration_logs_dir
+                config.execution.orchestration_logs_dir
             )
 
     def request_shutdown(self) -> None:
@@ -649,7 +651,7 @@ class Sentinel:
         if available_slots <= 0:
             logger.debug(
                 "All %s execution slots busy, skipping polling this cycle",
-                self.config.max_concurrent_executions
+                self.config.execution.max_concurrent_executions
             )
             return all_results, 0
 
@@ -705,7 +707,7 @@ class Sentinel:
         """Run a single polling cycle with concurrent execution and wait for completion."""
         logger.info(
             "Starting single cycle with max %s concurrent executions",
-            self.config.max_concurrent_executions
+            self.config.execution.max_concurrent_executions
         )
 
         self._execution_manager.start()
@@ -768,8 +770,8 @@ class Sentinel:
             "Starting Sentinel with %s orchestrations, polling every %ss, "
             "max concurrent executions: %s",
             len(self.orchestrations),
-            self.config.poll_interval,
-            self.config.max_concurrent_executions
+            self.config.polling.interval,
+            self.config.execution.max_concurrent_executions
         )
 
         self._execution_manager.start()
@@ -829,8 +831,8 @@ class Sentinel:
                                 len(done)
                             )
                     elif submitted_count == 0:
-                        logger.debug("Sleeping for %ss", self.config.poll_interval)
-                        for _ in range(self.config.poll_interval):
+                        logger.debug("Sleeping for %ss", self.config.polling.interval)
+                        for _ in range(self.config.polling.interval):
                             if self._shutdown_requested:
                                 break
                             time.sleep(1)
@@ -843,7 +845,7 @@ class Sentinel:
             # Wait for active tasks with configurable timeout
             active_count = self._execution_manager.get_active_count()
             if active_count > 0:
-                timeout = self.config.shutdown_timeout_seconds
+                timeout = self.config.execution.shutdown_timeout_seconds
                 if timeout > 0:
                     logger.info(
                         "Waiting for %s active execution(s) to complete "

@@ -223,7 +223,7 @@ class TestSentinelContainer:
         container.config.override(providers.Object(config))
 
         assert container.config() is config
-        assert container.config().poll_interval == 999
+        assert container.config().polling.interval == 999
 
 
 class TestCreateTestContainer:
@@ -244,7 +244,7 @@ class TestCreateTestContainer:
         container = create_test_container(config=config)
 
         assert container.config() is config
-        assert container.config().poll_interval == 5
+        assert container.config().polling.interval == 5
 
     def test_create_test_container_with_orchestrations(self) -> None:
         """Test creating test container with orchestrations."""
