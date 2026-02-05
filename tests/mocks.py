@@ -32,10 +32,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from sentinel.agent_clients.base import UsageInfo
+from sentinel.agent_clients.base import (
+    AgentClient,
+    AgentClientError,
+    AgentRunResult,
+    AgentTimeoutError,
+    UsageInfo,
+)
 from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.config import Config
-from sentinel.executor import AgentClient, AgentRunResult
 from sentinel.github_poller import GitHubIssue
 from sentinel.orchestration import Orchestration, TriggerConfig
 from sentinel.poller import JiraClient, JiraIssue
@@ -179,8 +184,6 @@ class MockAgentClient(AgentClient):
         base_branch: str = "main",
     ) -> AgentRunResult:
         """Async mock implementation of run_agent."""
-        from sentinel.executor import AgentClientError, AgentTimeoutError
-
         self.calls.append((prompt, context, timeout_seconds, issue_key, model))
 
         if self.should_timeout and self.timeout_count < self.max_timeouts:

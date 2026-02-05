@@ -15,7 +15,8 @@ from unittest.mock import patch
 
 import pytest
 
-from sentinel.executor import AgentExecutor, AgentRunResult, ExecutionStatus, cleanup_workdir
+from sentinel.agent_clients.base import AgentRunResult
+from sentinel.executor import AgentExecutor, ExecutionStatus, cleanup_workdir
 from tests.helpers import make_issue, make_orchestration
 from tests.mocks import MockAgentClient
 
