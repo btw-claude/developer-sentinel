@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +29,7 @@ from sentinel.logging import get_logger
 logger = get_logger(__name__)
 
 
-class CursorMode(str, Enum):
+class CursorMode(StrEnum):
     """Cursor CLI operation modes."""
 
     AGENT = "agent"
