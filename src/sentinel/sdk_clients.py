@@ -13,18 +13,15 @@ import asyncio
 import json
 from typing import Any
 
-# Backward-compatible re-exports from agent_clients.claude_sdk
-# Note: _run_query is intentionally not re-exported as it's a private function
-# that consumers should import directly from agent_clients.claude_sdk if needed.
+# Re-exports from agent_clients.claude_sdk
+# Note: _run_query is a private function for internal use.
+# Note: request_shutdown and reset_shutdown are internal functions for shutdown coordination.
 from sentinel.agent_clients.claude_sdk import (
     ClaudeProcessInterruptedError,
     ClaudeSdkAgentClient,
     ShutdownController,
     TimingMetrics,
     _run_query,
-    get_default_shutdown_controller,
-    get_shutdown_event,
-    is_shutdown_requested,
     request_shutdown,
     reset_shutdown,
 )
@@ -42,9 +39,6 @@ __all__ = [
     "JiraSdkTagClient",
     "ShutdownController",
     "TimingMetrics",
-    "get_default_shutdown_controller",
-    "get_shutdown_event",
-    "is_shutdown_requested",
     "request_shutdown",
     "reset_shutdown",
 ]

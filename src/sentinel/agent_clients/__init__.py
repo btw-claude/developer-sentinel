@@ -10,18 +10,13 @@ from sentinel.agent_clients.base import (
     AgentRunResult,
     AgentTimeoutError,
     AgentType,
+    UsageInfo,
 )
 from sentinel.agent_clients.claude_sdk import (
-    DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD,
     ClaudeProcessInterruptedError,
     ClaudeSdkAgentClient,
     ShutdownController,
     TimingMetrics,
-    get_default_shutdown_controller,
-    get_shutdown_event,
-    is_shutdown_requested,
-    request_shutdown,
-    reset_shutdown,
 )
 from sentinel.agent_clients.cursor import CursorAgentClient, CursorMode
 from sentinel.agent_clients.factory import AgentClientFactory, create_default_factory
@@ -33,17 +28,12 @@ __all__ = [
     "AgentRunResult",
     "AgentTimeoutError",
     "AgentType",
+    "UsageInfo",
     # Claude SDK client
     "ClaudeProcessInterruptedError",
     "ClaudeSdkAgentClient",
-    "DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD",
     "ShutdownController",
     "TimingMetrics",
-    "get_default_shutdown_controller",
-    "get_shutdown_event",
-    "is_shutdown_requested",
-    "request_shutdown",
-    "reset_shutdown",
     # Cursor CLI client
     "CursorAgentClient",
     "CursorMode",

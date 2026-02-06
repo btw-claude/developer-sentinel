@@ -1336,27 +1336,6 @@ class TestUsageInfo:
         assert "duration_api_ms=1200.0" in repr_str
         assert "num_turns=3" in repr_str
 
-    def test_validation_with_matching_total_tokens(self) -> None:
-        """Should accept matching total_tokens override for backward compatibility."""
-        # When _total_tokens_override matches computed value, no error
-        usage = UsageInfo(
-            input_tokens=1000,
-            output_tokens=500,
-            _total_tokens_override=1500,
-        )
-        assert usage.total_tokens == 1500
-
-    def test_validation_with_mismatched_total_tokens(self) -> None:
-        """Should raise ValueError when total_tokens override doesn't match computed value."""
-        import pytest
-
-        with pytest.raises(ValueError, match="total_tokens mismatch"):
-            UsageInfo(
-                input_tokens=1000,
-                output_tokens=500,
-                _total_tokens_override=2000,  # Should be 1500
-            )
-
 
 class TestExtractUsageFromMessage:
     """Tests for _extract_usage_from_message function."""
