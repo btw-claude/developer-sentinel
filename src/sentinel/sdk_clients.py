@@ -13,8 +13,10 @@ import asyncio
 import json
 from typing import Any
 
-# Re-exports from agent_clients.claude_sdk
-# Note: _run_query is a private function for internal use.
+# Re-exports from agent_clients.claude_sdk for backward compatibility.
+# Note: _run_query is intentionally re-exported for internal use by other
+# modules in this package. It is not part of the public backward-compat API
+# and is excluded from __all__.
 from sentinel.agent_clients.claude_sdk import (
     ClaudeProcessInterruptedError,
     ClaudeSdkAgentClient,
