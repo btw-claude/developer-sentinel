@@ -6,13 +6,24 @@ supporting model selection and working directory configuration.
 The run_agent method is async to conform to the AgentClient interface,
 using asyncio.to_thread() for subprocess operations.
 
+Working directory strategy
+--------------------------
+The ``--cd`` flag is used instead of ``subprocess(cwd=...)`` because Codex CLI
+natively supports ``--cd`` to set its own working directory context. This keeps
+the working-directory concern inside the child process and avoids changing the
+parent process's environment. The ``cwd`` subprocess parameter would achieve the
+same filesystem effect but ``--cd`` makes the intent explicit in the CLI
+invocation and ensures Codex's internal path resolution is consistent with the
+directory it reports. Future maintainers should prefer ``--cd`` for Codex
+commands unless there is a need to override the subprocess-level working
+directory independently.
+
 Reference: https://developers.openai.com/codex/cli/reference
 """
 
 from __future__ import annotations
 
 import asyncio
-import os
 import subprocess
 import tempfile
 from datetime import datetime
@@ -75,6 +86,12 @@ class CodexAgentClient(AgentClient):
         # Validate and store codex path
         self._codex_path = config.codex.path or "codex"
         self._default_model = config.codex.default_model or None
+
+        if not config.codex.path:
+            logger.info(
+                "codex_path not configured; falling back to 'codex' (PATH lookup). "
+                "Set codex.path in config to use an explicit executable path."
+            )
 
         logger.debug(
             "Initialized CodexAgentClient with path=%s, model=%s",
@@ -215,26 +232,27 @@ class CodexAgentClient(AgentClient):
             effective_timeout,
         )
 
-        def _run_subprocess(tmp_path: str) -> subprocess.CompletedProcess[str]:
-            """Run subprocess in a thread to avoid blocking the event loop."""
-            cmd = self._build_command(
-                full_prompt, output_file=tmp_path, model=model, workdir=workdir
-            )
-            logger.debug("Codex command: %s...", " ".join(cmd[:3]))
-            return subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=effective_timeout,
-            )
-
         try:
-            # Create a temporary file path for capturing the last message output
-            fd, tmp_path = tempfile.mkstemp(suffix=".txt")
-            os.close(fd)
+            # Use TemporaryDirectory for automatic cleanup instead of manual
+            # mkstemp/unlink. The directory (and everything inside it) is removed
+            # when the context manager exits, even on exceptions.
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = str(Path(tmp_dir) / "codex_output.txt")
 
-            try:
-                result = await asyncio.to_thread(_run_subprocess, tmp_path)
+                def _run_subprocess() -> subprocess.CompletedProcess[str]:
+                    """Run subprocess in a thread to avoid blocking the event loop."""
+                    cmd = self._build_command(
+                        full_prompt, output_file=tmp_path, model=model, workdir=workdir
+                    )
+                    logger.debug("Codex command: %s...", " ".join(cmd[:3]))
+                    return subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=effective_timeout,
+                    )
+
+                result = await asyncio.to_thread(_run_subprocess)
 
                 if result.returncode != 0:
                     error_msg = result.stderr.strip() or f"Exit code: {result.returncode}"
@@ -252,11 +270,6 @@ class CodexAgentClient(AgentClient):
                 logger.info("Codex execution completed, response length: %s", len(response))
 
                 return AgentRunResult(response=response, workdir=workdir)
-            finally:
-                # Clean up the temporary file
-                tmp_output = Path(tmp_path)
-                if tmp_output.exists():
-                    tmp_output.unlink()
 
         except subprocess.TimeoutExpired:
             logger.debug(
