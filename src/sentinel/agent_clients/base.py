@@ -166,6 +166,53 @@ class AgentClient(ABC):
         """
         pass
 
+    # Truncation limits for context sanitization (DS-675).
+    # Keys are truncated to 200 characters; values to 2000 characters.
+    _CONTEXT_KEY_MAX_LENGTH: int = 200
+    _CONTEXT_VALUE_MAX_LENGTH: int = 2000
+
+    def _build_prompt_with_context(
+        self,
+        prompt: str,
+        context: dict[str, Any] | None,
+    ) -> str:
+        """Build a full prompt by appending a sanitized context section.
+
+        Context values are sanitized to prevent prompt injection from
+        untrusted sources (DS-666): values are converted to strings,
+        truncated to a safe maximum length, and control characters
+        (newlines, carriage returns) are stripped.
+
+        This shared implementation replaces identical sanitization logic
+        that was previously duplicated across ClaudeSdkAgentClient,
+        CodexAgentClient, and CursorAgentClient (DS-675).
+
+        Args:
+            prompt: The base prompt text.
+            context: Optional context dict (e.g., GitHub repo info).
+                If None or empty, the prompt is returned unchanged.
+
+        Returns:
+            The prompt, optionally followed by a sanitized Context section.
+        """
+        if not context:
+            return prompt
+
+        sanitized_items = []
+        for k, v in context.items():
+            safe_key = (
+                str(k)[: self._CONTEXT_KEY_MAX_LENGTH]
+                .replace("\n", " ")
+                .replace("\r", "")
+            )
+            safe_val = (
+                str(v)[: self._CONTEXT_VALUE_MAX_LENGTH]
+                .replace("\n", " ")
+                .replace("\r", "")
+            )
+            sanitized_items.append(f"- {safe_key}: {safe_val}\n")
+        return prompt + "\n\nContext:\n" + "".join(sanitized_items)
+
     def _create_workdir(self, issue_key: str) -> Path:
         """Create a unique working directory for an agent run.
 

@@ -736,19 +736,8 @@ class ClaudeSdkAgentClient(AgentClient):
         if branch and workdir:
             self._setup_branch(workdir, branch, create_branch, base_branch)
 
-        # Build full prompt with context section.
-        # Context values are sanitized to prevent prompt injection from
-        # untrusted sources (DS-666): values are converted to strings,
-        # truncated to a safe maximum length, and control characters
-        # are stripped.
-        full_prompt = prompt
-        if context:
-            sanitized_items = []
-            for k, v in context.items():
-                safe_key = str(k)[:200].replace("\n", " ").replace("\r", "")
-                safe_val = str(v)[:2000].replace("\n", " ").replace("\r", "")
-                sanitized_items.append(f"- {safe_key}: {safe_val}\n")
-            full_prompt += "\n\nContext:\n" + "".join(sanitized_items)
+        # Build full prompt with sanitized context section (DS-675).
+        full_prompt = self._build_prompt_with_context(prompt, context)
 
         # Determine whether to use streaming logs
         # Use streaming if: log_base_dir and issue_key and orchestration_name are all provided
