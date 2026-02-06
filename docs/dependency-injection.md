@@ -6,8 +6,6 @@ This guide explains the dependency injection patterns used in Developer Sentinel
 
 Developer Sentinel uses **constructor injection** via the bootstrap module (`bootstrap.py`) to manage dependencies. The `BootstrapContext` class serves as the composition root, wiring together all dependencies before the application starts running.
 
-> **Note:** The `dependency-injector` library and `container.py` were removed in DS-581 as vestigial code. The application has always used the bootstrap module for dependency wiring. See the [Bootstrap Architecture](#bootstrap-architecture) section for current patterns.
-
 ## Bootstrap Architecture
 
 The bootstrap module (`src/sentinel/bootstrap.py`) acts as the composition root:
