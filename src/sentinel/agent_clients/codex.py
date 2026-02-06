@@ -241,6 +241,15 @@ class CodexAgentClient(AgentClient):
             AgentClientError: If the agent execution fails (non-zero exit code).
             AgentTimeoutError: If the agent execution times out.
         """
+        # Check circuit breaker before attempting the request
+        # This is done first to avoid unnecessary disk I/O from _create_workdir()
+        # when the circuit is open (consistent with ClaudeSdkAgentClient._run_simple)
+        if not self._circuit_breaker.allow_request():
+            raise AgentClientError(
+                f"Codex circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         workdir = None
         if self.base_workdir is not None and issue_key is not None:
             workdir = self._create_workdir(issue_key)
@@ -264,13 +273,6 @@ class CodexAgentClient(AgentClient):
             model or self._default_model or "default",
             effective_timeout,
         )
-
-        # Check circuit breaker before attempting the request
-        if not self._circuit_breaker.allow_request():
-            raise AgentClientError(
-                f"Codex circuit breaker is open - service may be unavailable. "
-                f"State: {self._circuit_breaker.state.value}"
-            )
 
         try:
             # Use TemporaryDirectory for automatic cleanup instead of manual
