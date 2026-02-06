@@ -28,10 +28,7 @@ from tests.helpers import make_config
 
 @pytest.fixture
 def test_config() -> Config:
-    """Create a default test Config with standard cursor settings.
-
-    Uses the centralized make_config() helper from tests/helpers.py.
-    """
+    """Create a default test Config with standard cursor settings."""
     return make_config(
         agent_workdir=Path("/tmp/test-workdir"),
         agent_logs_dir=Path("/tmp/test-logs"),
@@ -43,37 +40,13 @@ def test_config() -> Config:
 
 @pytest.fixture
 def test_config_plan_mode() -> Config:
-    """Create a test Config with plan mode.
-
-    Uses the centralized make_config() helper from tests/helpers.py.
-    """
+    """Create a test Config with plan mode."""
     return make_config(
         agent_workdir=Path("/tmp/test-workdir"),
         agent_logs_dir=Path("/tmp/test-logs"),
         cursor_path="/usr/local/bin/cursor",
         cursor_default_model="claude-3-sonnet",
         cursor_default_mode="plan",
-    )
-
-
-def make_test_config(
-    cursor_path: str = "/usr/local/bin/cursor",
-    cursor_default_model: str = "claude-3-sonnet",
-    cursor_default_mode: str = "agent",
-) -> Config:
-    """Create a Config for testing with customizable cursor parameters.
-
-    Uses the centralized make_config() helper from tests/helpers.py.
-
-    Note: For simple test cases, prefer using the test_config fixture.
-    This helper is useful when specific parameter overrides are needed.
-    """
-    return make_config(
-        agent_workdir=Path("/tmp/test-workdir"),
-        agent_logs_dir=Path("/tmp/test-logs"),
-        cursor_path=cursor_path,
-        cursor_default_model=cursor_default_model,
-        cursor_default_mode=cursor_default_mode,
     )
 
 
@@ -129,7 +102,7 @@ class TestCursorAgentClientInit:
 
     def test_init_with_custom_config(self) -> None:
         """Test initialization with custom config values."""
-        config = make_test_config(
+        config = make_config(
             cursor_path="/custom/path/cursor",
             cursor_default_model="gpt-4",
             cursor_default_mode="plan",
@@ -142,7 +115,10 @@ class TestCursorAgentClientInit:
 
     def test_init_with_workdir_and_logs(self) -> None:
         """Test initialization with workdir and log directories."""
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         base_workdir = Path("/tmp/work")
         log_base_dir = Path("/tmp/logs")
 
@@ -199,7 +175,10 @@ class TestCursorAgentClientBuildCommand:
 
     def test_build_command_basic(self) -> None:
         """Test building a basic command."""
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         cmd = client._build_command("test prompt")
@@ -215,7 +194,10 @@ class TestCursorAgentClientBuildCommand:
 
     def test_build_command_with_model_override(self) -> None:
         """Test building command with model override."""
-        config = make_test_config(cursor_default_model="default-model")
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="default-model",
+        )
         client = CursorAgentClient(config)
 
         cmd = client._build_command("test", model="override-model")
@@ -224,7 +206,11 @@ class TestCursorAgentClientBuildCommand:
 
     def test_build_command_with_mode_override(self) -> None:
         """Test building command with mode override."""
-        config = make_test_config(cursor_default_mode="agent")
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+            cursor_default_mode="agent",
+        )
         client = CursorAgentClient(config)
 
         cmd = client._build_command("test", mode=CursorMode.PLAN)
@@ -233,7 +219,10 @@ class TestCursorAgentClientBuildCommand:
 
     def test_build_command_no_model_when_none(self) -> None:
         """Test that --model flag is omitted when model is None/empty."""
-        config = make_test_config(cursor_default_model="")
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="",
+        )
         client = CursorAgentClient(config)
 
         cmd = client._build_command("test")
@@ -256,7 +245,10 @@ class TestCursorAgentClientRunAgent:
             stderr="",
         )
 
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         result = asyncio.run(client.run_agent("test prompt"))
@@ -274,7 +266,10 @@ class TestCursorAgentClientRunAgent:
             stderr="",
         )
 
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         asyncio.run(
@@ -302,7 +297,10 @@ class TestCursorAgentClientRunAgent:
             stderr="",
         )
 
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         asyncio.run(client.run_agent("prompt", timeout_seconds=60))
@@ -320,7 +318,10 @@ class TestCursorAgentClientRunAgent:
             stderr="",
         )
 
-        config = make_test_config(cursor_default_model="default-model")
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="default-model",
+        )
         client = CursorAgentClient(config)
 
         asyncio.run(client.run_agent("prompt", model="override-model"))
@@ -339,7 +340,10 @@ class TestCursorAgentClientRunAgent:
             stderr="",
         )
 
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config, base_workdir=tmp_path)
 
         result = asyncio.run(client.run_agent("prompt", issue_key="TEST-123"))
@@ -356,7 +360,10 @@ class TestCursorAgentClientRunAgent:
         """Test that timeout raises AgentTimeoutError."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="cursor", timeout=60)
 
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         with pytest.raises(AgentTimeoutError) as exc_info:
@@ -373,7 +380,10 @@ class TestCursorAgentClientRunAgent:
             stderr="Error: something went wrong",
         )
 
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         with pytest.raises(AgentClientError) as exc_info:
@@ -387,7 +397,10 @@ class TestCursorAgentClientRunAgent:
         """Test that FileNotFoundError raises AgentClientError."""
         mock_run.side_effect = FileNotFoundError("cursor not found")
 
-        config = make_test_config(cursor_path="/nonexistent/cursor")
+        config = make_config(
+            cursor_path="/nonexistent/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         with pytest.raises(AgentClientError) as exc_info:
@@ -400,7 +413,10 @@ class TestCursorAgentClientRunAgent:
         """Test that OSError raises AgentClientError."""
         mock_run.side_effect = OSError("Permission denied")
 
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         with pytest.raises(AgentClientError) as exc_info:
@@ -417,7 +433,11 @@ class TestCursorAgentClientRunAgent:
             stderr="",
         )
 
-        config = make_test_config(cursor_default_mode="agent")
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+            cursor_default_mode="agent",
+        )
         client = CursorAgentClient(config)
 
         asyncio.run(client.run_agent("prompt", mode=CursorMode.PLAN))
@@ -435,7 +455,11 @@ class TestCursorAgentClientRunAgent:
             stderr="",
         )
 
-        config = make_test_config(cursor_default_mode="agent")
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+            cursor_default_mode="agent",
+        )
         client = CursorAgentClient(config)
 
         asyncio.run(client.run_agent("prompt", mode="ask"))
@@ -453,7 +477,11 @@ class TestCursorAgentClientRunAgent:
             stderr="",
         )
 
-        config = make_test_config(cursor_default_mode="agent")
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+            cursor_default_mode="agent",
+        )
         client = CursorAgentClient(config)
 
         asyncio.run(client.run_agent("prompt", mode="PLAN"))
@@ -465,7 +493,10 @@ class TestCursorAgentClientRunAgent:
     @patch("sentinel.agent_clients.cursor.subprocess.run")
     def test_run_agent_with_invalid_mode_override_raises_error(self, mock_run: MagicMock) -> None:
         """Test that invalid mode override string raises ValueError."""
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         with pytest.raises(ValueError) as exc_info:
@@ -494,7 +525,10 @@ class TestCursorAgentClientWorkdir:
 
     def test_create_workdir_success(self, tmp_path: Path) -> None:
         """Test successful workdir creation."""
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config, base_workdir=tmp_path)
 
         workdir = client._create_workdir("TEST-456")
@@ -506,7 +540,10 @@ class TestCursorAgentClientWorkdir:
 
     def test_create_workdir_no_base_raises_error(self) -> None:
         """Test that _create_workdir raises error when base_workdir is None."""
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         client = CursorAgentClient(config)
 
         with pytest.raises(AgentClientError) as exc_info:
@@ -520,14 +557,20 @@ class TestCursorAgentClientFactoryIntegration:
 
     def test_factory_creates_cursor_client(self) -> None:
         """Test that create_default_factory registers cursor builder."""
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         factory = create_default_factory(config)
 
         assert "cursor" in factory.registered_types
 
     def test_factory_creates_cursor_instance(self) -> None:
         """Test that factory creates CursorAgentClient instance."""
-        config = make_test_config()
+        config = make_config(
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+        )
         factory = create_default_factory(config)
 
         client = factory.create("cursor", config)
@@ -538,7 +581,7 @@ class TestCursorAgentClientFactoryIntegration:
 
     def test_factory_cursor_client_has_correct_settings(self) -> None:
         """Test that factory-created client has correct settings from config."""
-        config = make_test_config(
+        config = make_config(
             cursor_path="/custom/cursor",
             cursor_default_model="custom-model",
             cursor_default_mode="plan",
