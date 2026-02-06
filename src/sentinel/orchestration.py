@@ -417,6 +417,49 @@ class OrchestrationVersion:
             return self.active_executions > 0
 
 
+def _validate_string_field(
+    value: Any,
+    field_name: str,
+    *,
+    allow_empty: bool = False,
+) -> None:
+    """Validate that a value is a string and not whitespace-only.
+
+    Centralises the isinstance check and whitespace-only rejection that was
+    previously repeated for host, org, and repo in _parse_github_context().
+
+    Args:
+        value: The raw value to validate (may be None, a string, or another type).
+        field_name: Dot-qualified field name used in error messages
+            (e.g. ``"github.host"``).
+        allow_empty: When ``True`` the empty string ``""`` is accepted without
+            error.  When ``False`` (the default) an empty string is treated the
+            same as a whitespace-only string and rejected.
+
+    Raises:
+        OrchestrationError: If *value* is not ``None`` and fails validation.
+            ``None`` is always accepted (callers fall back to a default).
+    """
+    if value is None:
+        return
+
+    if not isinstance(value, str):
+        raise OrchestrationError(
+            f"Invalid {field_name} '{value}': must be a string. "
+            f"Please provide a valid value or omit the field."
+        )
+
+    # Reject whitespace-only strings (and optionally empty strings).
+    if allow_empty and value == "":
+        return
+    if value.strip() == "":
+        label = "empty string" if value == "" else "whitespace-only string"
+        raise OrchestrationError(
+            f"Invalid {field_name}: {label} is not a valid value. "
+            f"Please provide a valid value or omit the field to use the default."
+        )
+
+
 def _validate_string_list(value: Any, field_name: str) -> None:
     """Validate that a value is a list of non-empty strings.
 
@@ -573,47 +616,14 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
     org = data.get("org")
     repo = data.get("repo")
 
-    # Validate host before resolving the default (DS-631, DS-632).
-    # None is acceptable (falls back to default "github.com"), but an explicit
-    # empty or whitespace-only string indicates a misconfiguration.
-    if host is not None and not isinstance(host, str):
-        raise OrchestrationError(
-            f"Invalid github.host '{host}': must be a string. "
-            "Please provide a valid host (e.g., 'github.com') or omit the field."
-        )
-    if host is not None and isinstance(host, str) and host.strip() == "":
-        raise OrchestrationError(
-            "Invalid github.host: empty string is not a valid GitHub host. "
-            "Please provide a valid host (e.g., 'github.com') or omit the field "
-            "to use the default."
-        )
+    # Validate host, org, and repo using the shared helper (DS-634).
+    # None is always acceptable (falls back to a field-specific default).
+    # Host rejects both empty and whitespace-only strings (DS-631, DS-632).
+    # Org and repo allow empty strings but reject whitespace-only (DS-633).
+    _validate_string_field(host, "github.host")
+    _validate_string_field(org, "github.org", allow_empty=True)
+    _validate_string_field(repo, "github.repo", allow_empty=True)
     resolved_host = host if host is not None else "github.com"
-
-    # Validate org and repo for type consistency (DS-633).
-    # None is acceptable (falls back to default ""), but a non-string value
-    # indicates a misconfiguration.  Whitespace-only strings are also rejected
-    # for org/repo since they would be invalid in GitHub API calls.
-    if org is not None and not isinstance(org, str):
-        raise OrchestrationError(
-            f"Invalid github.org '{org}': must be a string. "
-            "Please provide a valid GitHub organization name or omit the field."
-        )
-    if org is not None and isinstance(org, str) and org != "" and org.strip() == "":
-        raise OrchestrationError(
-            "Invalid github.org: whitespace-only string is not a valid GitHub organization. "
-            "Please provide a valid organization name or omit the field."
-        )
-
-    if repo is not None and not isinstance(repo, str):
-        raise OrchestrationError(
-            f"Invalid github.repo '{repo}': must be a string. "
-            "Please provide a valid GitHub repository name or omit the field."
-        )
-    if repo is not None and isinstance(repo, str) and repo != "" and repo.strip() == "":
-        raise OrchestrationError(
-            "Invalid github.repo: whitespace-only string is not a valid GitHub repository. "
-            "Please provide a valid repository name or omit the field."
-        )
 
     return GitHubContext(
         host=resolved_host,
