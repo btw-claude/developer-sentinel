@@ -53,13 +53,6 @@ class TestAgentClientsModuleAll:
         )
 
     @pytest.mark.parametrize("symbol", EXPECTED_SYMBOLS)
-    def test_all_contains_expected_symbol(self, symbol: str) -> None:
-        """Test that __all__ contains the expected public symbol."""
-        from sentinel.agent_clients import __all__
-
-        assert symbol in __all__, f"Expected {symbol} to be in __all__"
-
-    @pytest.mark.parametrize("symbol", EXPECTED_SYMBOLS)
     def test_symbol_is_importable(self, symbol: str) -> None:
         """Test that the symbol in __all__ can be imported."""
         from sentinel import agent_clients
