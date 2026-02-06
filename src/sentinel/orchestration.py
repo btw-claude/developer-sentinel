@@ -567,10 +567,16 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
             "when create_branch is enabled."
         )
 
+    # Use explicit None checks instead of or-coalescing so that empty string
+    # is preserved as a distinct value from None (future-proofing).
+    host = data.get("host")
+    org = data.get("org")
+    repo = data.get("repo")
+
     return GitHubContext(
-        host=data.get("host") or "github.com",
-        org=data.get("org") or "",
-        repo=data.get("repo") or "",
+        host=host if host is not None else "github.com",
+        org=org if org is not None else "",
+        repo=repo if repo is not None else "",
         branch=branch,
         create_branch=create_branch,
         base_branch=base_branch,
