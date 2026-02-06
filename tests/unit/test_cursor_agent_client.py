@@ -243,7 +243,9 @@ class TestCursorAgentClientRunAgent:
     """
 
     @patch("sentinel.agent_clients.cursor.subprocess.run")
-    def test_run_agent_success(self, mock_run: MagicMock, cursor_config: Config) -> None:
+    def test_run_agent_success(
+        self, mock_run: MagicMock, cursor_config: Config
+    ) -> None:
         """Test successful agent execution."""
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -260,7 +262,9 @@ class TestCursorAgentClientRunAgent:
         mock_run.assert_called_once()
 
     @patch("sentinel.agent_clients.cursor.subprocess.run")
-    def test_run_agent_with_context(self, mock_run: MagicMock, cursor_config: Config) -> None:
+    def test_run_agent_with_context(
+        self, mock_run: MagicMock, cursor_config: Config
+    ) -> None:
         """Test agent execution with context dict."""
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -287,7 +291,9 @@ class TestCursorAgentClientRunAgent:
         assert "- another: context" in full_prompt
 
     @patch("sentinel.agent_clients.cursor.subprocess.run")
-    def test_run_agent_with_timeout(self, mock_run: MagicMock, cursor_config: Config) -> None:
+    def test_run_agent_with_timeout(
+        self, mock_run: MagicMock, cursor_config: Config
+    ) -> None:
         """Test agent execution with timeout."""
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -348,7 +354,9 @@ class TestCursorAgentClientRunAgent:
         assert call_kwargs["cwd"] == str(result.workdir)
 
     @patch("sentinel.agent_clients.cursor.subprocess.run")
-    def test_run_agent_timeout_raises_error(self, mock_run: MagicMock, cursor_config: Config) -> None:
+    def test_run_agent_timeout_raises_error(
+        self, mock_run: MagicMock, cursor_config: Config
+    ) -> None:
         """Test that timeout raises AgentTimeoutError."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="cursor", timeout=60)
 
@@ -395,7 +403,9 @@ class TestCursorAgentClientRunAgent:
         assert "Cursor CLI executable not found" in str(exc_info.value)
 
     @patch("sentinel.agent_clients.cursor.subprocess.run")
-    def test_run_agent_os_error_raises_error(self, mock_run: MagicMock, cursor_config: Config) -> None:
+    def test_run_agent_os_error_raises_error(
+        self, mock_run: MagicMock, cursor_config: Config
+    ) -> None:
         """Test that OSError raises AgentClientError."""
         mock_run.side_effect = OSError("Permission denied")
 
@@ -485,7 +495,9 @@ class TestCursorAgentClientRunAgent:
         assert "Invalid Cursor mode: 'invalid_mode'" in str(exc_info.value)
 
     @patch("sentinel.agent_clients.cursor.subprocess.run")
-    def test_run_agent_uses_fixture(self, mock_run: MagicMock, test_config: Config) -> None:
+    def test_run_agent_uses_fixture(
+        self, mock_run: MagicMock, test_config: Config
+    ) -> None:
         """Test run_agent using pytest fixture for config."""
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -503,7 +515,9 @@ class TestCursorAgentClientRunAgent:
 class TestCursorAgentClientWorkdir:
     """Tests for working directory creation."""
 
-    def test_create_workdir_success(self, tmp_path: Path, cursor_config: Config) -> None:
+    def test_create_workdir_success(
+        self, tmp_path: Path, cursor_config: Config
+    ) -> None:
         """Test successful workdir creation."""
         client = CursorAgentClient(cursor_config, base_workdir=tmp_path)
 
@@ -514,7 +528,9 @@ class TestCursorAgentClientWorkdir:
         assert "TEST-456" in workdir.name
         assert workdir.parent == tmp_path
 
-    def test_create_workdir_no_base_raises_error(self, cursor_config: Config) -> None:
+    def test_create_workdir_no_base_raises_error(
+        self, cursor_config: Config
+    ) -> None:
         """Test that _create_workdir raises error when base_workdir is None."""
         client = CursorAgentClient(cursor_config)
 
@@ -527,13 +543,17 @@ class TestCursorAgentClientWorkdir:
 class TestCursorAgentClientFactoryIntegration:
     """Tests for factory integration."""
 
-    def test_factory_creates_cursor_client(self, cursor_config: Config) -> None:
+    def test_factory_creates_cursor_client(
+        self, cursor_config: Config
+    ) -> None:
         """Test that create_default_factory registers cursor builder."""
         factory = create_default_factory(cursor_config)
 
         assert "cursor" in factory.registered_types
 
-    def test_factory_creates_cursor_instance(self, cursor_config: Config) -> None:
+    def test_factory_creates_cursor_instance(
+        self, cursor_config: Config
+    ) -> None:
         """Test that factory creates CursorAgentClient instance."""
         factory = create_default_factory(cursor_config)
 
