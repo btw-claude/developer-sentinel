@@ -123,6 +123,10 @@ class TagManager:
             - client: The appropriate tag client, or None if not available
             - parsed_info: For GitHub, a tuple of (owner, repo, issue_number).
                           For Jira, None.
+
+        Raises:
+            ValueError: If the issue key doesn't match any known format
+                (Jira or GitHub). An explicit source type must be specified.
         """
         # Try GitHub format first: org/repo#123
         github_match = GITHUB_ISSUE_PATTERN.match(issue_key)
@@ -134,13 +138,13 @@ class TagManager:
         if JIRA_ISSUE_PATTERN.match(issue_key):
             return ("jira", self.client, None)
 
-        # Default to Jira for backwards compatibility
-        logger.warning(
-            "Issue key '%s' doesn't match known formats. "
-            "Assuming Jira format for backwards compatibility.",
-            issue_key
+        # Require explicit source type - ambiguous keys are a configuration error
+        raise ValueError(
+            f"Issue key '{issue_key}' doesn't match any known format. "
+            f"Expected Jira format (e.g., 'PROJ-123') or "
+            f"GitHub format (e.g., 'org/repo#123'). "
+            f"Please specify an explicit source type."
         )
-        return ("jira", self.client, None)
 
     def _add_label(self, issue_key: str, label: str) -> None:
         """Add a label to an issue using the appropriate client.

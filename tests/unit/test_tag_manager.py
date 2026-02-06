@@ -782,16 +782,15 @@ class TestTagManagerGitHubIssueKeyDetection:
         assert client is jira_client
         assert info is None
 
-    def test_falls_back_to_jira_for_unknown_format(self) -> None:
+    def test_raises_error_for_unknown_format(self) -> None:
+        import pytest
+
         jira_client = MockJiraTagClient()
         github_client = MockGitHubTagClient()
         manager = TagManager(jira_client, github_client)
 
-        platform, client, info = manager._get_client_for_issue("unknown-format")
-
-        assert platform == "jira"
-        assert client is jira_client
-        assert info is None
+        with pytest.raises(ValueError, match="doesn't match any known format"):
+            manager._get_client_for_issue("unknown-format")
 
     def test_github_client_none_when_not_provided(self) -> None:
         jira_client = MockJiraTagClient()
