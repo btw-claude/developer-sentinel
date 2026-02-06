@@ -263,13 +263,13 @@ The components receive configuration through the `Config` object and its sub-con
 | CircuitBreaker         | `CircuitBreakerConfig`                 | `enabled`, `failure_threshold`, `recovery_timeout`, `half_open_max_calls`        |
 | ClaudeRateLimiter      | `RateLimitConfig`†                     | `enabled`, `per_minute`, `per_hour`, `strategy`, `warning_threshold`             |
 | ResilienceWrapper      | `RateLimitConfig`†                     | Coordinates `CircuitBreaker` + `ClaudeRateLimiter`                               |
-| HealthChecker          | `HealthCheckConfig`                    | `enabled`, `timeout`                                                             |
+| HealthChecker          | `HealthCheckConfig`†                   | `enabled`, `timeout`                                                             |
 | AgentClientFactory     | `CursorConfig`†                        | `default_agent_type`                                                             |
 | CursorAgentClient      | `CursorConfig`†                        | `path`, `default_model`, `default_mode`                                          |
 | ClaudeSdkAgentClient   | `ExecutionConfig`                      | `inter_message_times_threshold`                                                  |
-| setup_logging          | `LoggingConfig`                        | `level`, `json`                                                                  |
+| setup_logging          | `LoggingConfig`†                       | `level`, `json`                                                                  |
 
-> **†** Config sections marked with † (`DashboardConfig`, `RateLimitConfig`, `CursorConfig`) are sub-configs embedded as fields in the main `Config` dataclass (via `field(default_factory=...)`) rather than standalone top-level classes. See `sentinel/config.py` for the full composition hierarchy.
+> **†** Config sections marked with † (`DashboardConfig`, `RateLimitConfig`, `CursorConfig`, `HealthCheckConfig`, `LoggingConfig`) are sub-configs embedded as fields in the main `Config` dataclass (via `field(default_factory=...)`) rather than standalone top-level classes. See `sentinel/config.py` for the full composition hierarchy.
 
 ---
 
