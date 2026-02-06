@@ -22,9 +22,9 @@ from sentinel.main import Sentinel
 from sentinel.types import ErrorType
 from tests.conftest import (
     MockAgentClient,
-    MockAgentClientFactory,
     MockJiraPoller,
     MockTagClient,
+    make_agent_factory,
     make_config,
     make_orchestration,
 )
@@ -38,8 +38,7 @@ class TestHandleExecutionFailure:
     ) -> tuple[Sentinel, MockTagClient]:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         if tag_client is None:
             tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -228,8 +227,7 @@ class TestExecuteOrchestrationTaskUsesHelper:
     def _create_sentinel(self) -> tuple[Sentinel, MockTagClient]:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -316,8 +314,7 @@ class TestApplyFailureTagsSafely:
     ) -> tuple[Sentinel, MockTagClient]:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         if tag_client is None:
             tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -423,8 +420,7 @@ class TestHandleSubmissionFailure:
     ) -> tuple[Sentinel, MockTagClient]:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         if tag_client is None:
             tag_client = MockTagClient()
         config = make_config(poll_interval=1)
@@ -562,8 +558,7 @@ class TestClaudeProcessInterruptedUsesHelper:
     def _create_sentinel(self) -> tuple[Sentinel, MockTagClient]:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -604,8 +599,7 @@ class TestSubmitExecutionTasksUsesHelper:
     def _create_sentinel(self) -> tuple[Sentinel, MockTagClient]:
         """Create a Sentinel instance for testing."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]

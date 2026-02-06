@@ -37,8 +37,9 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from unittest.mock import _Call
 
+    from sentinel.agent_clients.base import UsageInfo
     from sentinel.router import Router
-    from tests.mocks import MockJiraPoller, MockRouter
+    from tests.mocks import MockAgentClient, MockAgentClientFactory, MockJiraPoller, MockRouter
 
 from sentinel.config import (
     CircuitBreakerConfig,
@@ -61,6 +62,7 @@ from sentinel.orchestration import (
     TriggerConfig,
 )
 from sentinel.poller import JiraIssue
+from sentinel.types import AgentType
 
 
 def make_config(
@@ -522,3 +524,45 @@ def make_mock_router(
     from tests.mocks import MockRouter
 
     return MockRouter(orchestrations=orchestrations, route_results=route_results)
+
+
+def make_agent_factory(
+    responses: list[str] | None = None,
+    workdir: Path | None = None,
+    agent_type_value: AgentType = AgentType.CLAUDE,
+    usage: UsageInfo | None = None,
+) -> tuple[MockAgentClientFactory, MockAgentClient]:
+    """Create a MockAgentClientFactory with a wrapped MockAgentClient for testing.
+
+    This helper consolidates the common 2-line pattern::
+
+        agent_client = MockAgentClient()
+        agent_factory = MockAgentClientFactory(agent_client)
+
+    Into a single call::
+
+        agent_factory, agent_client = make_agent_factory()
+
+    For tests that don't need access to the underlying client::
+
+        agent_factory, _ = make_agent_factory()
+
+    Args:
+        responses: List of response strings for MockAgentClient.
+        workdir: Optional workdir path for MockAgentClient.
+        agent_type_value: The agent type to use (default: AgentType.CLAUDE).
+        usage: Optional UsageInfo for MockAgentClient.
+
+    Returns:
+        A tuple of (MockAgentClientFactory, MockAgentClient) for use in tests.
+    """
+    from tests.mocks import MockAgentClient, MockAgentClientFactory
+
+    agent_client = MockAgentClient(
+        responses=responses,
+        workdir=workdir,
+        agent_type_value=agent_type_value,
+        usage=usage,
+    )
+    agent_factory = MockAgentClientFactory(agent_client)
+    return agent_factory, agent_client
