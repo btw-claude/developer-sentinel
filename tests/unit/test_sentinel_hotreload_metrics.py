@@ -16,6 +16,8 @@ class TestSentinelHotReloadMetrics:
 
     def setup_method(self) -> None:
         """Set up test fixtures shared across all test methods."""
+        # agent_client is retained for future test convenience; it is not
+        # currently referenced by any test methods in this class.
         self.agent_factory, self.agent_client = make_agent_factory()
 
     def test_get_hot_reload_metrics_returns_dict(
