@@ -249,12 +249,25 @@ When acquiring multiple locks, they must always be acquired in this order to pre
 
 The components receive configuration through the `Config` object and its sub-configs:
 
-| Component | Config Section | Key Config Parameters |
-|-----------|---------------|----------------------|
-| StateTracker | `ExecutionConfig` | `max_queue_size`, `attempt_counts_ttl`, `max_recent_executions` |
-| ExecutionManager | `ExecutionConfig` | `max_concurrent_executions` |
-| OrchestrationRegistry | `ExecutionConfig` | `orchestrations_dir` |
-| PollCoordinator | `PollingConfig`, `JiraConfig` | `max_issues_per_poll`, `base_url` |
+| Component              | Config Section                         | Key Config Parameters                                                            |
+|------------------------|----------------------------------------|----------------------------------------------------------------------------------|
+| StateTracker           | `ExecutionConfig`                      | `max_queue_size`, `attempt_counts_ttl`, `max_recent_executions`                  |
+| ExecutionManager       | `ExecutionConfig`                      | `max_concurrent_executions`                                                      |
+| OrchestrationRegistry  | `ExecutionConfig`                      | `orchestrations_dir`                                                             |
+| PollCoordinator        | `PollingConfig`, `JiraConfig`          | `max_issues_per_poll`, `base_url`                                                |
+| Sentinel               | `ExecutionConfig`, `PollingConfig`     | `polling.interval`, delegates sub-configs to components                          |
+| DashboardServer        | `DashboardConfig`                      | `host`, `port`, `enabled`                                                        |
+| Dashboard Routes       | `DashboardConfig`                      | `toggle_cooldown_seconds`, `rate_limit_cache_ttl`, `rate_limit_cache_maxsize`    |
+| JiraRestClient         | `JiraConfig`, `CircuitBreakerConfig`   | `base_url`, `email`, `api_token`, `epic_link_field`                              |
+| GitHubRestClient       | `GitHubConfig`, `CircuitBreakerConfig` | `token`, `api_url`                                                               |
+| CircuitBreaker         | `CircuitBreakerConfig`                 | `enabled`, `failure_threshold`, `recovery_timeout`, `half_open_max_calls`        |
+| ClaudeRateLimiter      | `RateLimitConfig`                      | `enabled`, `per_minute`, `per_hour`, `strategy`, `warning_threshold`             |
+| ResilienceWrapper      | `RateLimitConfig`                      | Delegates to `ClaudeRateLimiter`                                                 |
+| HealthChecker          | `HealthCheckConfig`                    | `enabled`, `timeout`                                                             |
+| AgentClientFactory     | `CursorConfig`                         | `default_agent_type`                                                             |
+| CursorAgentClient      | `CursorConfig`                         | `path`, `default_model`, `default_mode`                                          |
+| ClaudeSdkAgentClient   | `ExecutionConfig`                      | `inter_message_times_threshold`                                                  |
+| setup_logging          | `LoggingConfig`                        | `level`, `json`                                                                  |
 
 ---
 
