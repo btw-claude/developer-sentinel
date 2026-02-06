@@ -16,6 +16,7 @@ from sentinel.agent_clients import (
     AgentClientFactory,
     AgentRunResult,
     ClaudeSdkAgentClient,
+    CodexAgentClient,
     create_default_factory,
 )
 from sentinel.config import Config
@@ -821,3 +822,102 @@ class TestEmptyKwargsEdgeCases:
         assert (
             creation_count == 2
         ), "Empty kwargs and kwargs-with-None should create separate instances"
+
+
+class TestCodexFactoryRegistration:
+    """Tests for Codex agent client factory registration.
+
+    These tests verify that the Codex agent type is properly registered
+    in the default factory and that it creates correct CodexAgentClient
+    instances with the expected configuration.
+    """
+
+    def test_default_factory_registers_codex(self, factory_config: Config) -> None:
+        """Test that create_default_factory registers 'codex' type."""
+        factory = create_default_factory(factory_config)
+
+        assert "codex" in factory.registered_types
+
+    def test_default_factory_creates_codex_client(self, factory_config: Config) -> None:
+        """Test that the factory creates CodexAgentClient for 'codex' type."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+            agent_workdir=Path("/tmp/test-workdir"),
+            agent_logs_dir=Path("/tmp/test-logs"),
+        )
+        factory = create_default_factory(config)
+
+        client = factory.create("codex", config)
+
+        assert isinstance(client, CodexAgentClient)
+        assert client.agent_type == "codex"
+        assert client.config is config
+
+    def test_default_factory_codex_has_correct_settings(self) -> None:
+        """Test that factory-created codex client has correct settings from config."""
+        config = make_config(
+            codex_path="/custom/codex",
+            codex_default_model="custom-model",
+            agent_workdir=Path("/tmp/custom-workdir"),
+            agent_logs_dir=Path("/tmp/custom-logs"),
+        )
+        factory = create_default_factory(config)
+
+        client = factory.create("codex", config)
+
+        assert isinstance(client, CodexAgentClient)
+        assert client._codex_path == "/custom/codex"
+        assert client._default_model == "custom-model"
+        assert client.base_workdir == config.execution.agent_workdir
+        assert client.log_base_dir == config.execution.agent_logs_dir
+
+    def test_default_factory_registers_all_three_types(self, factory_config: Config) -> None:
+        """Test that create_default_factory registers claude, codex, and cursor types."""
+        factory = create_default_factory(factory_config)
+
+        assert set(factory.registered_types) == {"claude", "codex", "cursor"}
+
+    def test_codex_and_cursor_are_different_instances(self, factory_config: Config) -> None:
+        """Test that codex and cursor factory create different client instances."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+            cursor_path="/usr/local/bin/cursor",
+            cursor_default_model="claude-3-sonnet",
+            cursor_default_mode="agent",
+        )
+        factory = create_default_factory(config)
+
+        codex_client = factory.create("codex", config)
+        cursor_client = factory.create("cursor", config)
+
+        assert codex_client is not cursor_client
+        assert codex_client.agent_type == "codex"
+        assert cursor_client.agent_type == "cursor"
+
+    def test_codex_get_or_create_caches(self, factory_config: Config) -> None:
+        """Test that get_or_create caches codex client instances."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        factory = create_default_factory(config)
+
+        client1 = factory.get_or_create("codex", config)
+        client2 = factory.get_or_create("codex", config)
+
+        assert client1 is client2
+
+    def test_codex_get_or_create_for_orchestration(self, factory_config: Config) -> None:
+        """Test that get_or_create_for_orchestration works with codex type."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        factory = create_default_factory(config)
+
+        client = factory.get_or_create_for_orchestration("codex", config)
+
+        assert isinstance(client, CodexAgentClient)
+        assert client.agent_type == "codex"
