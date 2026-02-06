@@ -23,7 +23,7 @@ Usage:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, get_args
 
 
 class TriggerSource(StrEnum):
@@ -252,13 +252,66 @@ class ErrorType(StrEnum):
         return frozenset(member.value for member in cls)
 
 
-# Type aliases for Literal types (for backward compatibility with type hints)
+# Type aliases for Literal types (for backward compatibility with type hints).
+#
+# These Literal types must stay in sync with their corresponding StrEnum classes.
+# Static type checkers (mypy) require explicit Literal values and cannot resolve
+# dynamically-constructed types, so we keep the Literal definitions explicit here.
+# The _validate_literal_matches_enum() calls below enforce at import time that
+# each Literal alias matches its enum, preventing silent drift when new members
+# are added to an enum. See DS-649 for context.
 TriggerSourceLiteral = Literal["jira", "github"]
 AgentTypeLiteral = Literal["claude", "codex", "cursor"]
 CursorModeLiteral = Literal["agent", "plan", "ask"]
 RateLimitStrategyLiteral = Literal["queue", "reject"]
 QueueFullStrategyLiteral = Literal["reject", "wait"]
 ErrorTypeLiteral = Literal["I/O error", "runtime error", "data error"]
+
+
+def _validate_literal_matches_enum(
+    literal_type: object,
+    enum_cls: type[StrEnum],
+    alias_name: str,
+) -> None:
+    """Validate that a Literal type alias matches its corresponding StrEnum.
+
+    Compares the values in a Literal type alias against the values of a StrEnum
+    class, raising TypeError at import time if they diverge. This prevents
+    silent drift when new members are added to an enum but the Literal alias
+    is not updated.
+
+    Args:
+        literal_type: The Literal type alias to validate (e.g., AgentTypeLiteral).
+        enum_cls: The StrEnum class that is the source of truth (e.g., AgentType).
+        alias_name: Human-readable name of the Literal alias for error messages.
+
+    Raises:
+        TypeError: If the Literal values do not exactly match the enum values.
+    """
+    literal_values = set(get_args(literal_type))
+    enum_values = {member.value for member in enum_cls}
+    if literal_values != enum_values:
+        missing_from_literal = enum_values - literal_values
+        extra_in_literal = literal_values - enum_values
+        parts: list[str] = [f"{alias_name} is out of sync with {enum_cls.__name__}"]
+        if missing_from_literal:
+            parts.append(f"missing from Literal: {missing_from_literal}")
+        if extra_in_literal:
+            parts.append(f"extra in Literal: {extra_in_literal}")
+        raise TypeError("; ".join(parts))
+
+
+# Import-time validation: ensure every Literal alias matches its enum (DS-649).
+_validate_literal_matches_enum(TriggerSourceLiteral, TriggerSource, "TriggerSourceLiteral")
+_validate_literal_matches_enum(AgentTypeLiteral, AgentType, "AgentTypeLiteral")
+_validate_literal_matches_enum(CursorModeLiteral, CursorMode, "CursorModeLiteral")
+_validate_literal_matches_enum(
+    RateLimitStrategyLiteral, RateLimitStrategy, "RateLimitStrategyLiteral"
+)
+_validate_literal_matches_enum(
+    QueueFullStrategyLiteral, QueueFullStrategy, "QueueFullStrategyLiteral"
+)
+_validate_literal_matches_enum(ErrorTypeLiteral, ErrorType, "ErrorTypeLiteral")
 
 # Frozen sets for validation (derived from enums for single source of truth)
 VALID_TRIGGER_SOURCES = TriggerSource.values()
