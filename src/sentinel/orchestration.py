@@ -449,7 +449,7 @@ def _validate_string_field(
             f"Please provide a valid value or omit the field."
         )
 
-    # Reject whitespace-only strings (and optionally empty strings).
+    # Reject whitespace-only strings (and empty strings when reject_empty=True).
     if not reject_empty and value == "":
         return
     if value.strip() == "":
