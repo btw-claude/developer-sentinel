@@ -13,10 +13,15 @@ import asyncio
 import json
 from typing import Any
 
-# Re-exports from agent_clients.claude_sdk for backward compatibility.
-# Note: _run_query is intentionally re-exported for internal use by other
-# modules in this package. It is not part of the public backward-compat API
-# and is excluded from __all__.
+# Re-exports from agent_clients.claude_sdk.
+#
+# Public backward-compat API (included in __all__):
+#   ClaudeProcessInterruptedError, ClaudeSdkAgentClient,
+#   ShutdownController, TimingMetrics
+#
+# Internal re-exports (not part of public API):
+#   _run_query – used by other modules in this package; excluded from __all__
+#   and should not be relied upon by external consumers.
 from sentinel.agent_clients.claude_sdk import (
     ClaudeProcessInterruptedError,
     ClaudeSdkAgentClient,
