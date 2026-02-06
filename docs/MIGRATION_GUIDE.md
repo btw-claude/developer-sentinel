@@ -214,22 +214,30 @@ sentinel = Sentinel(
 )
 ```
 
-## Using the DI Container (Recommended)
+## Using the Bootstrap Module (Recommended)
 
-For new projects, we recommend using the dependency injection container which handles all wiring automatically:
+For new projects, we recommend using the bootstrap module which handles all dependency wiring automatically:
 
 ```python
-from sentinel.container import create_container
+from sentinel.app import main
 
-# Container handles all dependency wiring
-container = create_container()
-sentinel = container.sentinel()
+# main() handles bootstrap and running
+exit_code = main()
+```
 
-# Run the sentinel
+Or for more control:
+
+```python
+from sentinel.bootstrap import bootstrap, create_sentinel_from_context
+from sentinel.cli import parse_args
+
+parsed = parse_args()
+context = bootstrap(parsed)
+sentinel = create_sentinel_from_context(context)
 sentinel.run()
 ```
 
-See [dependency-injection.md](dependency-injection.md) for more details on using the DI container.
+See [dependency-injection.md](dependency-injection.md) for more details on dependency injection patterns.
 
 ## Troubleshooting
 
