@@ -5,7 +5,7 @@ This guide helps you migrate from deprecated APIs to current best practices.
 ## Table of Contents
 
 - [Sentinel Constructor Parameters (Removed in v1.0)](#sentinel-constructor-parameters-removed-in-v10)
-- [Config Backward Compatibility Properties (Deprecated)](#config-backward-compatibility-properties-deprecated)
+- [Config Sub-Config Migration (Completed)](#config-sub-config-migration-completed)
 
 ---
 
@@ -80,7 +80,7 @@ from sentinel.main import Sentinel
 jira_client = JiraClient(base_url, email, api_token)
 jira_poller = JiraPoller(
     jira_client,
-    epic_link_field=config.jira_epic_link_field,
+    epic_link_field=config.jira.epic_link_field,
 )
 
 sentinel = Sentinel(
@@ -196,7 +196,7 @@ config = Config.from_env()
 
 # Create pollers from clients
 jira_client = JiraClient(...)
-jira_poller = JiraPoller(jira_client, epic_link_field=config.jira_epic_link_field)
+jira_poller = JiraPoller(jira_client, epic_link_field=config.jira.epic_link_field)
 
 github_client = GitHubClient(...)
 github_poller = GitHubPoller(github_client)
@@ -247,7 +247,7 @@ You're using a removed parameter. Update your code to use `jira_poller` instead:
 
 ```python
 # Instead of jira_client=..., use:
-jira_poller = JiraPoller(jira_client, epic_link_field=config.jira_epic_link_field)
+jira_poller = JiraPoller(jira_client, epic_link_field=config.jira.epic_link_field)
 sentinel = Sentinel(..., jira_poller=jira_poller)
 ```
 
@@ -283,173 +283,67 @@ For a complete history of changes and removal timelines, see the [CHANGELOG](../
 
 ---
 
-# Config Backward Compatibility Properties (Deprecated)
+# Config Sub-Config Migration (Completed)
 
-The `Config` class was refactored to use focused sub-configs for each subsystem (Jira, GitHub, Dashboard, etc.). The old flat property access pattern is deprecated and will be removed in a future major version.
+The `Config` class was refactored to use focused sub-configs for each subsystem (Jira, GitHub, Dashboard, etc.). The old flat property access pattern (e.g., `config.jira_base_url`) and the backward-compatibility `@property` shim layer have been **removed** as of DS-573.
 
-## Why These Changes?
+## Migration History
 
-The backward compatibility properties created maintenance burden:
+| Ticket | Change |
+|--------|--------|
+| DS-559 | Deprecated flat properties with warnings, introduced sub-config access |
+| DS-572 | Migrated all internal callers to sub-config paths |
+| DS-573 | Removed all deprecated `@property` shims from the `Config` class |
+| DS-584 | Documentation cleanup (this update) |
 
-1. **Code duplication**: ~270 lines of properties that simply delegate to sub-configs
-2. **Harder maintenance**: Changes to sub-configs require updating corresponding properties
-3. **Cognitive load**: New contributors must understand both access patterns
+## Current API
 
-The new sub-config pattern provides:
+All configuration access uses the sub-config pattern. Each sub-config is a frozen dataclass grouping related settings:
 
-- **Grouped configuration**: Related settings are organized together
-- **Immutable sub-configs**: Each sub-config is a frozen dataclass
-- **Clear namespacing**: `config.jira.base_url` is clearer than `config.jira_base_url`
-
-## Deprecation Timeline
-
-| Version | Status |
-|---------|--------|
-| Current | Deprecated with warnings (DS-559) |
-| Next Major | Removal planned |
-
-## Migration Reference
-
-### Polling Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.poll_interval` | `config.polling.interval` |
-| `config.max_issues_per_poll` | `config.polling.max_issues_per_poll` |
-
-### Logging Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.log_level` | `config.logging_config.level` |
-| `config.log_json` | `config.logging_config.json` |
-
-### Execution Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.max_concurrent_executions` | `config.execution.max_concurrent_executions` |
-| `config.orchestrations_dir` | `config.execution.orchestrations_dir` |
-| `config.agent_workdir` | `config.execution.agent_workdir` |
-| `config.agent_logs_dir` | `config.execution.agent_logs_dir` |
-| `config.orchestration_logs_dir` | `config.execution.orchestration_logs_dir` |
-| `config.cleanup_workdir_on_success` | `config.execution.cleanup_workdir_on_success` |
-| `config.disable_streaming_logs` | `config.execution.disable_streaming_logs` |
-| `config.subprocess_timeout` | `config.execution.subprocess_timeout` |
-| `config.default_base_branch` | `config.execution.default_base_branch` |
-| `config.attempt_counts_ttl` | `config.execution.attempt_counts_ttl` |
-| `config.max_queue_size` | `config.execution.max_queue_size` |
-| `config.inter_message_times_threshold` | `config.execution.inter_message_times_threshold` |
-| `config.shutdown_timeout_seconds` | `config.execution.shutdown_timeout_seconds` |
-| `config.max_recent_executions` | `config.execution.max_recent_executions` |
-
-### Jira Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.jira_base_url` | `config.jira.base_url` |
-| `config.jira_email` | `config.jira.email` |
-| `config.jira_api_token` | `config.jira.api_token` |
-| `config.jira_epic_link_field` | `config.jira.epic_link_field` |
-| `config.jira_configured` | `config.jira.configured` |
-
-### GitHub Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.github_token` | `config.github.token` |
-| `config.github_api_url` | `config.github.api_url` |
-| `config.github_configured` | `config.github.configured` |
-
-### Dashboard Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.dashboard_enabled` | `config.dashboard.enabled` |
-| `config.dashboard_port` | `config.dashboard.port` |
-| `config.dashboard_host` | `config.dashboard.host` |
-| `config.toggle_cooldown_seconds` | `config.dashboard.toggle_cooldown_seconds` |
-| `config.rate_limit_cache_ttl` | `config.dashboard.rate_limit_cache_ttl` |
-| `config.rate_limit_cache_maxsize` | `config.dashboard.rate_limit_cache_maxsize` |
-
-### Rate Limiting Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.claude_rate_limit_enabled` | `config.rate_limit.enabled` |
-| `config.claude_rate_limit_per_minute` | `config.rate_limit.per_minute` |
-| `config.claude_rate_limit_per_hour` | `config.rate_limit.per_hour` |
-| `config.claude_rate_limit_strategy` | `config.rate_limit.strategy` |
-| `config.claude_rate_limit_warning_threshold` | `config.rate_limit.warning_threshold` |
-| `config.claude_rate_limit_max_queued` | `config.rate_limit.max_queued` |
-| `config.claude_rate_limit_queue_full_strategy` | `config.rate_limit.queue_full_strategy` |
-
-### Circuit Breaker Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.circuit_breaker_enabled` | `config.circuit_breaker.enabled` |
-| `config.circuit_breaker_failure_threshold` | `config.circuit_breaker.failure_threshold` |
-| `config.circuit_breaker_recovery_timeout` | `config.circuit_breaker.recovery_timeout` |
-| `config.circuit_breaker_half_open_max_calls` | `config.circuit_breaker.half_open_max_calls` |
-
-### Health Check Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.health_check_enabled` | `config.health_check.enabled` |
-| `config.health_check_timeout` | `config.health_check.timeout` |
-
-### Cursor Configuration
-
-| Deprecated Property | New Property |
-|---------------------|--------------|
-| `config.default_agent_type` | `config.cursor.default_agent_type` |
-| `config.cursor_path` | `config.cursor.path` |
-| `config.cursor_default_model` | `config.cursor.default_model` |
-| `config.cursor_default_mode` | `config.cursor.default_mode` |
-
-## Migration Example
-
-**Before (deprecated):**
 ```python
 from sentinel.config import load_config
 
 config = load_config()
 
-# Deprecated flat access pattern
-jira_url = config.jira_base_url
-poll_seconds = config.poll_interval
-max_workers = config.max_concurrent_executions
-```
-
-**After (recommended):**
-```python
-from sentinel.config import load_config
-
-config = load_config()
-
-# New sub-config access pattern
+# Sub-config access (the only supported pattern)
 jira_url = config.jira.base_url
 poll_seconds = config.polling.interval
 max_workers = config.execution.max_concurrent_executions
 ```
 
-## Suppressing Deprecation Warnings
+### Available Sub-Configs
 
-If you need time to migrate and want to suppress the warnings temporarily, you can use Python's warnings filter:
+| Sub-Config | Description | Example Access |
+|------------|-------------|----------------|
+| `config.jira` | Jira REST API settings | `config.jira.base_url` |
+| `config.github` | GitHub REST API settings | `config.github.token` |
+| `config.dashboard` | Dashboard server settings | `config.dashboard.port` |
+| `config.rate_limit` | Claude API rate limiting | `config.rate_limit.per_minute` |
+| `config.circuit_breaker` | Circuit breaker settings | `config.circuit_breaker.enabled` |
+| `config.health_check` | Health check settings | `config.health_check.timeout` |
+| `config.execution` | Agent execution settings | `config.execution.max_concurrent_executions` |
+| `config.cursor` | Cursor CLI settings | `config.cursor.default_agent_type` |
+| `config.logging_config` | Logging settings | `config.logging_config.level` |
+| `config.polling` | Polling settings | `config.polling.interval` |
 
-```python
-import warnings
+## Troubleshooting
 
-# Suppress all deprecation warnings from config module
-warnings.filterwarnings(
-    "ignore",
-    category=DeprecationWarning,
-    module="sentinel.config"
-)
+### AttributeError when accessing flat config properties
+
+If you encounter an `AttributeError` such as:
+
+```
+AttributeError: 'Config' object has no attribute 'jira_base_url'
 ```
 
-**Note:** This is not recommended as a long-term solution. Plan to migrate to the new API before the next major version.
+This means your code is using the old flat property access pattern, which has been removed. Update to the sub-config path:
+
+```python
+# Old (removed):
+# jira_url = config.jira_base_url
+
+# New:
+jira_url = config.jira.base_url
+```
 
 For a complete history of changes and removal timelines, see the [CHANGELOG](../CHANGELOG.md).
