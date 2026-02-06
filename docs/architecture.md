@@ -249,27 +249,27 @@ When acquiring multiple locks, they must always be acquired in this order to pre
 
 The components receive configuration through the `Config` object and its sub-configs:
 
-| Component              | Config Section                         | Key Config Parameters                                                            |
-|------------------------|----------------------------------------|----------------------------------------------------------------------------------|
-| StateTracker           | `ExecutionConfig`                      | `max_queue_size`, `attempt_counts_ttl`, `max_recent_executions`                  |
-| ExecutionManager       | `ExecutionConfig`                      | `max_concurrent_executions`                                                      |
-| OrchestrationRegistry  | `ExecutionConfig`                      | `orchestrations_dir`                                                             |
-| PollCoordinator        | `PollingConfig`, `JiraConfig`          | `max_issues_per_poll`, `base_url`                                                |
-| Sentinel               | `ExecutionConfig`, `PollingConfig`     | `polling.interval`, delegates sub-configs to components                          |
-| DashboardServer        | `DashboardConfig`†                     | `host`, `port`, `enabled`                                                        |
-| DashboardRoutes        | `DashboardConfig`†                     | `toggle_cooldown_seconds`, `rate_limit_cache_ttl`, `rate_limit_cache_maxsize`    |
-| JiraRestClient         | `JiraConfig`, `CircuitBreakerConfig`   | `base_url`, `email`, `api_token`, `epic_link_field`                              |
-| GitHubRestClient       | `GitHubConfig`, `CircuitBreakerConfig` | `token`, `api_url`                                                               |
-| CircuitBreaker         | `CircuitBreakerConfig`                 | `enabled`, `failure_threshold`, `recovery_timeout`, `half_open_max_calls`        |
-| ClaudeRateLimiter      | `RateLimitConfig`†                     | `enabled`, `per_minute`, `per_hour`, `strategy`, `warning_threshold`             |
-| ResilienceWrapper      | `RateLimitConfig`†                     | Coordinates `CircuitBreaker` + `ClaudeRateLimiter`                               |
-| HealthChecker          | `HealthCheckConfig`†                   | `enabled`, `timeout`                                                             |
-| AgentClientFactory     | `CursorConfig`†                        | `default_agent_type`                                                             |
-| CursorAgentClient      | `CursorConfig`†                        | `path`, `default_model`, `default_mode`                                          |
-| ClaudeSdkAgentClient   | `ExecutionConfig`                      | `inter_message_times_threshold`                                                  |
-| setup_logging          | `LoggingConfig`†                       | `level`, `json`                                                                  |
+| Component              | Config Section                           | Key Config Parameters                                                            |
+|------------------------|------------------------------------------|----------------------------------------------------------------------------------|
+| StateTracker           | `ExecutionConfig`†                       | `max_queue_size`, `attempt_counts_ttl`, `max_recent_executions`                  |
+| ExecutionManager       | `ExecutionConfig`†                       | `max_concurrent_executions`                                                      |
+| OrchestrationRegistry  | `ExecutionConfig`†                       | `orchestrations_dir`                                                             |
+| PollCoordinator        | `PollingConfig`†, `JiraConfig`†          | `max_issues_per_poll`, `base_url`                                                |
+| Sentinel               | `ExecutionConfig`†, `PollingConfig`†     | `polling.interval`, delegates sub-configs to components                          |
+| DashboardServer        | `DashboardConfig`†                       | `host`, `port`, `enabled`                                                        |
+| DashboardRoutes        | `DashboardConfig`†                       | `toggle_cooldown_seconds`, `rate_limit_cache_ttl`, `rate_limit_cache_maxsize`    |
+| JiraRestClient         | `JiraConfig`†, `CircuitBreakerConfig`†   | `base_url`, `email`, `api_token`, `epic_link_field`                              |
+| GitHubRestClient       | `GitHubConfig`†, `CircuitBreakerConfig`† | `token`, `api_url`                                                               |
+| CircuitBreaker         | `CircuitBreakerConfig`†                  | `enabled`, `failure_threshold`, `recovery_timeout`, `half_open_max_calls`        |
+| ClaudeRateLimiter      | `RateLimitConfig`†                       | `enabled`, `per_minute`, `per_hour`, `strategy`, `warning_threshold`             |
+| ResilienceWrapper      | `RateLimitConfig`†                       | Coordinates `CircuitBreaker` + `ClaudeRateLimiter`                               |
+| HealthChecker          | `HealthCheckConfig`†                     | `enabled`, `timeout`                                                             |
+| AgentClientFactory     | `CursorConfig`†                          | `default_agent_type`                                                             |
+| CursorAgentClient      | `CursorConfig`†                          | `path`, `default_model`, `default_mode`                                          |
+| ClaudeSdkAgentClient   | `ExecutionConfig`†                       | `inter_message_times_threshold`                                                  |
+| setup_logging          | `LoggingConfig`†                         | `level`, `json`                                                                  |
 
-> **†** Config sections marked with † (`DashboardConfig`, `RateLimitConfig`, `CursorConfig`, `HealthCheckConfig`, `LoggingConfig`) are sub-configs embedded as fields in the main `Config` dataclass (via `field(default_factory=...)`) rather than standalone top-level classes. See `sentinel/config.py` for the full composition hierarchy.
+> **†** All config sections are sub-configs embedded as fields in the main `Config` dataclass via `field(default_factory=...)`. Each sub-config class (`JiraConfig`, `GitHubConfig`, `DashboardConfig`, `RateLimitConfig`, `CircuitBreakerConfig`, `HealthCheckConfig`, `ExecutionConfig`, `CursorConfig`, `LoggingConfig`, `PollingConfig`) is instantiated through this pattern, providing default values when not explicitly configured. See `sentinel/config.py` for the full composition hierarchy.
 
 ---
 
