@@ -15,13 +15,6 @@ dashboard component is running and accessible. This is useful for monitoring
 dashboard availability separately from the core Sentinel health, especially
 since the dashboard can fail to start while Sentinel continues operating
 in dashboard-less mode.
-
-Deprecated module-level constants:
-    The following constants have been deprecated and moved to Config class.
-    Accessing them will emit a DeprecationWarning:
-    - _DEFAULT_TOGGLE_COOLDOWN: Use Config.toggle_cooldown_seconds instead
-    - _DEFAULT_RATE_LIMIT_CACHE_TTL: Use Config.rate_limit_cache_ttl instead
-    - _DEFAULT_RATE_LIMIT_CACHE_MAXSIZE: Use Config.rate_limit_cache_maxsize instead
 """
 
 from __future__ import annotations
@@ -30,7 +23,6 @@ import asyncio
 import json
 import logging
 import time
-import warnings
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -55,44 +47,6 @@ logger = logging.getLogger(__name__)
 # Sunset date for the deprecated /health endpoint (RFC 8594 HTTP-date format)
 # Used in both Deprecation and Sunset headers
 HEALTH_ENDPOINT_SUNSET_DATE = "Sat, 01 Jun 2026 00:00:00 GMT"
-
-
-# Legacy module-level constants (deprecated)
-# These are kept for backward compatibility but will emit deprecation warnings
-# when accessed. New code should use Config class values instead.
-_DEPRECATED_CONSTANTS = {
-    "_DEFAULT_TOGGLE_COOLDOWN": (2.0, "Config.toggle_cooldown_seconds"),
-    "_DEFAULT_RATE_LIMIT_CACHE_TTL": (3600, "Config.rate_limit_cache_ttl"),
-    "_DEFAULT_RATE_LIMIT_CACHE_MAXSIZE": (10000, "Config.rate_limit_cache_maxsize"),
-}
-
-
-def __getattr__(name: str) -> Any:
-    """Emit deprecation warning when accessing legacy module-level constants.
-
-    This function intercepts attribute access on the module and emits a
-    DeprecationWarning when accessing the deprecated constants while still
-    returning their values for backward compatibility.
-
-    Args:
-        name: The attribute name being accessed.
-
-    Returns:
-        The deprecated constant value if it exists.
-
-    Raises:
-        AttributeError: If the attribute is not a deprecated constant.
-    """
-    if name in _DEPRECATED_CONSTANTS:
-        value, replacement = _DEPRECATED_CONSTANTS[name]
-        warnings.warn(
-            f"{name} is deprecated and will be removed in a future release. "
-            f"Use {replacement} instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return value
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class RateLimiter:
