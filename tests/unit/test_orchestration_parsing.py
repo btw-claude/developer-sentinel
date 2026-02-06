@@ -988,6 +988,119 @@ orchestrations:
         assert orchestrations[0].agent.github.branch == ""
         assert orchestrations[0].agent.github.base_branch == "main"
 
+    def test_null_host_defaults_to_github_com(self, tmp_path: Path) -> None:
+        """Test that explicit null host is coalesced to 'github.com' without error.
+
+        When YAML sets host to null, data.get() returns None. The None-coalescing
+        logic (using 'or') should replace None with the default 'github.com' so that
+        downstream consumers don't receive None unexpectedly.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: null
+        org: myorg
+        repo: myrepo
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.host == "github.com"
+
+    def test_null_org_defaults_to_empty_string(self, tmp_path: Path) -> None:
+        """Test that explicit null org is coalesced to empty string without error.
+
+        When YAML sets org to null, data.get() returns None. The None-coalescing
+        logic (using 'or') should replace None with the default empty string so that
+        downstream consumers don't receive None unexpectedly.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: null
+        repo: myrepo
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.org == ""
+
+    def test_null_repo_defaults_to_empty_string(self, tmp_path: Path) -> None:
+        """Test that explicit null repo is coalesced to empty string without error.
+
+        When YAML sets repo to null, data.get() returns None. The None-coalescing
+        logic (using 'or') should replace None with the default empty string so that
+        downstream consumers don't receive None unexpectedly.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: null
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.repo == ""
+
+    def test_null_host_org_repo_together(self, tmp_path: Path) -> None:
+        """Test that host, org, and repo all set to null are handled correctly."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: null
+        org: null
+        repo: null
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.host == "github.com"
+        assert orchestrations[0].agent.github.org == ""
+        assert orchestrations[0].agent.github.repo == ""
+
 
 class TestStrictTemplateVariablesConfig:
     """Tests for strict_template_variables configuration option.
