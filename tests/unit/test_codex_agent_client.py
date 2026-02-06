@@ -56,6 +56,45 @@ def codex_config() -> Config:
 
 
 @pytest.fixture
+def codex_config_with_timeout(request: pytest.FixtureRequest) -> Config:
+    """Provide a Config with a custom subprocess_timeout for codex tests.
+
+    Uses indirect parametrization to accept a timeout value via
+    ``@pytest.mark.parametrize("codex_config_with_timeout", [120.0], indirect=True)``.
+    The fixture creates a Config with codex_path="/usr/local/bin/codex",
+    codex_default_model="o3-mini", and the requested subprocess_timeout.
+
+    This reduces boilerplate in tests that need non-default timeout values
+    while keeping the intent explicit through parametrize markers.
+    """
+    timeout: float = request.param
+    return make_config(
+        codex_path="/usr/local/bin/codex",
+        codex_default_model="o3-mini",
+        subprocess_timeout=timeout,
+    )
+
+
+@pytest.fixture
+def codex_config_with_model(request: pytest.FixtureRequest) -> Config:
+    """Provide a Config with a custom codex_default_model for codex tests.
+
+    Uses indirect parametrization to accept a model name via
+    ``@pytest.mark.parametrize("codex_config_with_model", ["gpt-4"], indirect=True)``.
+    The fixture creates a Config with codex_path="/usr/local/bin/codex"
+    and the requested codex_default_model.
+
+    This reduces boilerplate in tests that need non-default model values
+    while keeping the intent explicit through parametrize markers.
+    """
+    model: str = request.param
+    return make_config(
+        codex_path="/usr/local/bin/codex",
+        codex_default_model=model,
+    )
+
+
+@pytest.fixture
 def test_config() -> Config:
     """Create a default test Config with standard codex settings."""
     return make_config(
@@ -302,9 +341,11 @@ class TestCodexAgentClientRunAgent:
         call_kwargs = mock_codex_subprocess.run.call_args[1]
         assert call_kwargs["timeout"] == 120
 
+    @pytest.mark.parametrize("codex_config_with_timeout", [120.0], indirect=True)
     def test_run_agent_uses_config_subprocess_timeout(
         self,
         mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config_with_timeout: Config,
     ) -> None:
         """Test that run_agent falls back to subprocess_timeout from config.
 
@@ -315,21 +356,18 @@ class TestCodexAgentClientRunAgent:
         mock_codex_subprocess.output_path.read_text.return_value = "Response"
         mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
 
-        config = make_config(
-            codex_path="/usr/local/bin/codex",
-            codex_default_model="o3-mini",
-            subprocess_timeout=120.0,
-        )
-        client = CodexAgentClient(config)
+        client = CodexAgentClient(codex_config_with_timeout)
 
         asyncio.run(client.run_agent("prompt"))
 
         call_kwargs = mock_codex_subprocess.run.call_args[1]
         assert call_kwargs["timeout"] == 120
 
+    @pytest.mark.parametrize("codex_config_with_timeout", [0], indirect=True)
     def test_run_agent_no_timeout_when_subprocess_timeout_zero(
         self,
         mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config_with_timeout: Config,
     ) -> None:
         """Test that no timeout is applied when subprocess_timeout is zero.
 
@@ -340,32 +378,25 @@ class TestCodexAgentClientRunAgent:
         mock_codex_subprocess.output_path.read_text.return_value = "Response"
         mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
 
-        config = make_config(
-            codex_path="/usr/local/bin/codex",
-            codex_default_model="o3-mini",
-            subprocess_timeout=0,
-        )
-        client = CodexAgentClient(config)
+        client = CodexAgentClient(codex_config_with_timeout)
 
         asyncio.run(client.run_agent("prompt"))
 
         call_kwargs = mock_codex_subprocess.run.call_args[1]
         assert call_kwargs["timeout"] is None
 
+    @pytest.mark.parametrize("codex_config_with_model", ["default-model"], indirect=True)
     def test_run_agent_with_model_override(
         self,
         mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config_with_model: Config,
     ) -> None:
         """Test agent execution with model override."""
         mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
         mock_codex_subprocess.output_path.read_text.return_value = "Response"
         mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
 
-        config = make_config(
-            codex_path="/usr/local/bin/codex",
-            codex_default_model="default-model",
-        )
-        client = CodexAgentClient(config)
+        client = CodexAgentClient(codex_config_with_model)
 
         asyncio.run(client.run_agent("prompt", model="override-model"))
 
