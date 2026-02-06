@@ -193,19 +193,8 @@ class CursorAgentClient(AgentClient):
         if self.base_workdir is not None and issue_key is not None:
             workdir = self._create_workdir(issue_key)
 
-        # Build full prompt with context section.
-        # Context values are sanitized to prevent prompt injection from
-        # untrusted sources (DS-666): values are converted to strings,
-        # truncated to a safe maximum length, and control characters
-        # are stripped.
-        full_prompt = prompt
-        if context:
-            sanitized_items = []
-            for k, v in context.items():
-                safe_key = str(k)[:200].replace("\n", " ").replace("\r", "")
-                safe_val = str(v)[:2000].replace("\n", " ").replace("\r", "")
-                sanitized_items.append(f"- {safe_key}: {safe_val}\n")
-            full_prompt += "\n\nContext:\n" + "".join(sanitized_items)
+        # Build full prompt with sanitized context section (DS-675).
+        full_prompt = self._build_prompt_with_context(prompt, context)
 
         # Convert string mode to CursorMode if provided
         effective_mode: CursorMode | None = None
