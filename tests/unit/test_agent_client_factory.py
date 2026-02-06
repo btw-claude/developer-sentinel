@@ -121,13 +121,10 @@ class TestAgentClientFactory:
         assert call_count == 1  # Builder not called again
         assert client1 is client2  # Same instance
 
-    def test_get_or_create_different_configs_not_cached(self) -> None:
+    def test_get_or_create_different_configs_not_cached(self, factory_config: Config) -> None:
         """Test that different configs get different cached instances."""
         factory = AgentClientFactory()
-        config1 = make_config(
-            agent_workdir=Path("/tmp/test-workdir"),
-            agent_logs_dir=Path("/tmp/test-logs"),
-        )
+        # Create a second config with the same values but as a distinct object
         config2 = make_config(
             agent_workdir=Path("/tmp/test-workdir"),
             agent_logs_dir=Path("/tmp/test-logs"),
@@ -140,11 +137,11 @@ class TestAgentClientFactory:
 
         factory.register("claude", mock_builder)
 
-        client1 = factory.get_or_create("claude", config1)
+        client1 = factory.get_or_create("claude", factory_config)
         client2 = factory.get_or_create("claude", config2)
 
         assert client1 is not client2
-        assert client1.config is config1
+        assert client1.config is factory_config
         assert client2.config is config2
 
     def test_get_or_create_defaults_to_claude(self, factory_config: Config) -> None:
