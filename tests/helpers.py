@@ -178,7 +178,7 @@ def make_config(
         github_api_url: GitHub Enterprise API URL (default: "").
 
     **Cursor Settings** - Cursor CLI configuration:
-        default_agent_type: Agent type - "claude", "codex", or "cursor" (default: "claude").
+        default_agent_type: Agent type - "claude" or "cursor" (default: "claude").
         cursor_path: Path to Cursor CLI executable (default: "").
         cursor_default_model: Default Cursor model (default: "").
         cursor_default_mode: Cursor mode - agent, plan, ask (default: "agent").
