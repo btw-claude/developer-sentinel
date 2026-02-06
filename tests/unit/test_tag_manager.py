@@ -994,11 +994,22 @@ class TestTagManagerUnrecognizedKeyIntegration:
     as uncaught exceptions.
     """
 
-    def test_start_processing_records_error_for_unrecognized_key(self) -> None:
-        """start_processing should catch ValueError for unrecognized key and record in errors."""
+    @pytest.fixture()
+    def tag_clients(
+        self,
+    ) -> tuple[MockJiraTagClient, MockGitHubTagClient, TagManager]:
+        """Create shared mock clients and TagManager for unrecognized key tests."""
         jira_client = MockJiraTagClient()
         github_client = MockGitHubTagClient()
         manager = TagManager(jira_client, github_client)
+        return jira_client, github_client, manager
+
+    def test_start_processing_records_error_for_unrecognized_key(
+        self,
+        tag_clients: tuple[MockJiraTagClient, MockGitHubTagClient, TagManager],
+    ) -> None:
+        """start_processing should catch ValueError for unrecognized key and record in errors."""
+        _jira_client, _github_client, manager = tag_clients
 
         orch = make_orchestration(
             trigger_tags=["needs-review"],
@@ -1015,11 +1026,12 @@ class TestTagManagerUnrecognizedKeyIntegration:
         assert result.added_tags == []
         assert result.removed_tags == []
 
-    def test_update_tags_records_error_for_unrecognized_key(self) -> None:
+    def test_update_tags_records_error_for_unrecognized_key(
+        self,
+        tag_clients: tuple[MockJiraTagClient, MockGitHubTagClient, TagManager],
+    ) -> None:
         """update_tags should catch ValueError for unrecognized key and record in errors."""
-        jira_client = MockJiraTagClient()
-        github_client = MockGitHubTagClient()
-        manager = TagManager(jira_client, github_client)
+        _jira_client, _github_client, manager = tag_clients
 
         exec_result = make_result(
             status=ExecutionStatus.SUCCESS,
@@ -1037,11 +1049,12 @@ class TestTagManagerUnrecognizedKeyIntegration:
         assert len(result.errors) > 0
         assert any("doesn't match any known format" in err for err in result.errors)
 
-    def test_update_tags_failure_status_records_error_for_unrecognized_key(self) -> None:
+    def test_update_tags_failure_status_records_error_for_unrecognized_key(
+        self,
+        tag_clients: tuple[MockJiraTagClient, MockGitHubTagClient, TagManager],
+    ) -> None:
         """update_tags with FAILURE status should catch ValueError for unrecognized key."""
-        jira_client = MockJiraTagClient()
-        github_client = MockGitHubTagClient()
-        manager = TagManager(jira_client, github_client)
+        _jira_client, _github_client, manager = tag_clients
 
         exec_result = make_result(
             status=ExecutionStatus.FAILURE,
@@ -1059,11 +1072,12 @@ class TestTagManagerUnrecognizedKeyIntegration:
         assert len(result.errors) > 0
         assert any("doesn't match any known format" in err for err in result.errors)
 
-    def test_apply_failure_tags_records_error_for_unrecognized_key(self) -> None:
+    def test_apply_failure_tags_records_error_for_unrecognized_key(
+        self,
+        tag_clients: tuple[MockJiraTagClient, MockGitHubTagClient, TagManager],
+    ) -> None:
         """apply_failure_tags should catch ValueError for unrecognized key."""
-        jira_client = MockJiraTagClient()
-        github_client = MockGitHubTagClient()
-        manager = TagManager(jira_client, github_client)
+        _jira_client, _github_client, manager = tag_clients
 
         orch = make_orchestration(
             on_start_tag="sentinel-processing",
