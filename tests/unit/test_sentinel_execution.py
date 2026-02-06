@@ -13,12 +13,12 @@ from sentinel.types import AgentType
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    MockAgentClient,
     MockAgentClientFactory,
     MockJiraPoller,
     MockTagClient,
     SignalHandler,
     TrackingAgentClient,
+    make_agent_factory,
     make_config,
     make_issue,
     make_orchestration,
@@ -32,8 +32,7 @@ class TestSentinelSignalHandling:
         from unittest.mock import patch
 
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -64,8 +63,7 @@ class TestSentinelSignalHandling:
         from unittest.mock import patch
 
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -108,8 +106,7 @@ class TestSentinelSignalHandling:
         from unittest.mock import patch
 
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config(poll_interval=1)
         orchestrations = [make_orchestration()]
@@ -231,8 +228,7 @@ class TestSentinelConcurrentExecution:
             ],
             tag_client=tag_client,
         )
-        agent_client = MockAgentClient(responses=["SUCCESS: Done"])
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory(responses=["SUCCESS: Done"])
         config = make_config(max_concurrent_executions=2)
         orchestrations = [make_orchestration(tags=["review"])]
 
@@ -266,8 +262,7 @@ class TestSentinelConcurrentExecution:
             issues=[make_issue(key="TEST-1", summary="Issue 1", labels=["review"])],
             tag_client=tag_client,
         )
-        agent_client = MockAgentClient(responses=["SUCCESS: Done"])
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory(responses=["SUCCESS: Done"])
         config = make_config(poll_interval=1, max_concurrent_executions=1)
         orchestrations = [make_orchestration(tags=["review"])]
 
