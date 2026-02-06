@@ -369,7 +369,7 @@ class TestCodexAgentClientRunAgent:
         call_kwargs = mock_codex_subprocess.run.call_args[1]
         assert call_kwargs["timeout"] == 120
 
-    @pytest.mark.parametrize("codex_config_with_timeout", [0], indirect=True)
+    @pytest.mark.parametrize("codex_config_with_timeout", [0.0], indirect=True)
     def test_run_agent_no_timeout_when_subprocess_timeout_zero(
         self,
         mock_codex_subprocess: CodexSubprocessMocks,
