@@ -581,6 +581,80 @@ class TestCodexAgentClientRunAgent:
 
         assert result.response == ""
 
+    def test_run_agent_context_sanitizes_newlines(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test that context values with newlines are sanitized.
+
+        Verifies that newline and carriage return characters in context
+        keys and values are replaced with spaces to prevent prompt
+        injection from untrusted sources (DS-666).
+        """
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+
+        client = CodexAgentClient(codex_config)
+
+        asyncio.run(
+            client.run_agent(
+                "test prompt",
+                context={"key\ninjected": "value\r\nwith\nnewlines"},
+            )
+        )
+
+        call_args = mock_codex_subprocess.run.call_args
+        cmd = call_args[0][0]
+        full_prompt = cmd[2]
+        assert "\n\nContext:\n" in full_prompt
+        # Newlines in keys/values should be replaced with spaces
+        assert "key injected" in full_prompt
+        assert "value with newlines" in full_prompt
+        # No raw newlines in context values (only the structural ones)
+        context_section = full_prompt.split("Context:\n")[1]
+        lines = context_section.strip().split("\n")
+        assert len(lines) == 1  # Only one context entry
+
+    def test_run_agent_context_truncates_long_values(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test that overly long context values are truncated.
+
+        Verifies that context keys are truncated to 200 characters and
+        values to 2000 characters to prevent excessive prompt size from
+        untrusted sources (DS-666).
+        """
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+
+        client = CodexAgentClient(codex_config)
+
+        long_key = "k" * 500
+        long_value = "v" * 5000
+
+        asyncio.run(
+            client.run_agent(
+                "test prompt",
+                context={long_key: long_value},
+            )
+        )
+
+        call_args = mock_codex_subprocess.run.call_args
+        cmd = call_args[0][0]
+        full_prompt = cmd[2]
+        context_section = full_prompt.split("Context:\n")[1]
+        # Key should be truncated to 200 chars
+        assert "k" * 200 in context_section
+        assert "k" * 201 not in context_section
+        # Value should be truncated to 2000 chars
+        assert "v" * 2000 in context_section
+        assert "v" * 2001 not in context_section
+
 
 class TestCodexAgentClientWorkdir:
     """Tests for working directory creation."""

@@ -553,16 +553,6 @@ class ClaudeSdkAgentClient(AgentClient):
         """
         return self._circuit_breaker.get_status()
 
-    def _create_workdir(self, issue_key: str) -> Path:
-        if self.base_workdir is None:
-            raise AgentClientError("base_workdir not configured")
-        self.base_workdir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        workdir = self.base_workdir / f"{issue_key}_{timestamp}"
-        workdir.mkdir(parents=True, exist_ok=True)
-        logger.info("Created agent working directory: %s", workdir)
-        return workdir
-
     def _setup_branch(
         self,
         workdir: Path,
@@ -746,10 +736,19 @@ class ClaudeSdkAgentClient(AgentClient):
         if branch and workdir:
             self._setup_branch(workdir, branch, create_branch, base_branch)
 
-        # Build full prompt with context section
+        # Build full prompt with context section.
+        # Context values are sanitized to prevent prompt injection from
+        # untrusted sources (DS-666): values are converted to strings,
+        # truncated to a safe maximum length, and control characters
+        # are stripped.
         full_prompt = prompt
         if context:
-            full_prompt += "\n\nContext:\n" + "".join(f"- {k}: {v}\n" for k, v in context.items())
+            sanitized_items = []
+            for k, v in context.items():
+                safe_key = str(k)[:200].replace("\n", " ").replace("\r", "")
+                safe_val = str(v)[:2000].replace("\n", " ").replace("\r", "")
+                sanitized_items.append(f"- {safe_key}: {safe_val}\n")
+            full_prompt += "\n\nContext:\n" + "".join(sanitized_items)
 
         # Determine whether to use streaming logs
         # Use streaming if: log_base_dir and issue_key and orchestration_name are all provided
