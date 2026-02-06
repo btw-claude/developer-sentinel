@@ -120,15 +120,16 @@ sentinel = Sentinel(
 
 ### Step 3: Update Agent Client Usage
 
-**Before:**
+**Before (removed — this import path no longer works):**
 ```python
-from sentinel.executor import AgentClient
+# OLD: from sentinel.executor import AgentClient  # removed in DS-586
+from sentinel.agent_clients.base import AgentClient  # canonical import path
 
 agent_client = MyAgentClient()
 
 sentinel = Sentinel(
     # ...
-    agent_client=agent_client,  # Deprecated!
+    agent_client=agent_client,  # Removed!
 )
 ```
 
@@ -160,13 +161,14 @@ factory = AgentClientFactory()
 
 ## Complete Example
 
-**Before (deprecated):**
+**Before (removed — these parameters and import path no longer work):**
 ```python
 from sentinel.main import Sentinel
 from sentinel.config import Config
 from sentinel.poller import JiraClient
 from sentinel.github_poller import GitHubClient
-from sentinel.executor import AgentClient
+# OLD: from sentinel.executor import AgentClient  # removed in DS-586
+from sentinel.agent_clients.base import AgentClient  # canonical import path
 
 config = Config.from_env()
 jira_client = JiraClient(...)
