@@ -247,14 +247,14 @@ When acquiring multiple locks, they must always be acquired in this order to pre
 
 ## Configuration Integration
 
-The components receive configuration through the `Config` object:
+The components receive configuration through the `Config` object and its sub-configs:
 
-| Component | Key Config Parameters |
-|-----------|----------------------|
-| StateTracker | `max_queue_size`, `attempt_counts_ttl`, `max_recent_executions` |
-| ExecutionManager | `max_concurrent_executions` |
-| OrchestrationRegistry | `orchestrations_dir` |
-| PollCoordinator | `max_issues_per_poll`, `jira_base_url` |
+| Component | Config Section | Key Config Parameters |
+|-----------|---------------|----------------------|
+| StateTracker | `ExecutionConfig` | `max_queue_size`, `attempt_counts_ttl`, `max_recent_executions` |
+| ExecutionManager | `ExecutionConfig` | `max_concurrent_executions` |
+| OrchestrationRegistry | `ExecutionConfig` | `orchestrations_dir` |
+| PollCoordinator | `PollingConfig`, `JiraConfig` | `max_issues_per_poll`, `base_url` |
 
 ---
 
