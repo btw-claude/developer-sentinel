@@ -553,7 +553,7 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
 
     # Validate base_branch if provided
     base_branch = data.get("base_branch", "main")
-    if base_branch:
+    if base_branch.strip():
         result = _validate_branch_name(base_branch)
         if not result.is_valid:
             raise OrchestrationError(f"Invalid base_branch '{base_branch}': {result.error_message}")
