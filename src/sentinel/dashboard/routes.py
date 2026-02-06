@@ -53,8 +53,8 @@ class RateLimiter:
     """Rate limiter for file write operations.
 
     This class provides rate limiting for toggle endpoints to prevent rapid
-    file writes. It uses Config values for configuration instead of module-level
-    constants.
+    file writes. It reads configuration from the ``Config`` object (cooldown
+    interval, cache TTL, and cache max-size).
 
     The rate limiter tracks the last write time per file path using a TTLCache
     to automatically clean up stale entries.
