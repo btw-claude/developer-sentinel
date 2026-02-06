@@ -6,6 +6,7 @@ Minor enhancements from code review.
 """
 
 import fcntl
+import logging
 import os
 import threading
 import time
@@ -1150,8 +1151,6 @@ class TestLoggingEnhancements:
 
     def test_toggle_by_project_logs_debug_at_start(self, tmp_path: Path, caplog) -> None:
         """toggle_by_project should log debug message at start."""
-        import logging
-
         caplog.set_level(logging.DEBUG, logger="sentinel.yaml_writer")
 
         yaml_content = """
@@ -1181,8 +1180,6 @@ orchestrations:
 
     def test_toggle_by_project_warns_on_unknown_source_type(self, tmp_path: Path, caplog) -> None:
         """toggle_by_project should log warning for unrecognized source types."""
-        import logging
-
         caplog.set_level(logging.WARNING, logger="sentinel.yaml_writer")
 
         yaml_content = """
@@ -1217,8 +1214,6 @@ orchestrations:
         self, tmp_path: Path, caplog
     ) -> None:
         """toggle_by_project should not warn for jira and github source types."""
-        import logging
-
         caplog.set_level(logging.WARNING, logger="sentinel.yaml_writer")
 
         yaml_content = """
@@ -1252,8 +1247,6 @@ orchestrations:
 
     def test_toggle_by_project_warns_unnamed_orchestration(self, tmp_path: Path, caplog) -> None:
         """toggle_by_project should handle unnamed orchestrations in warning log."""
-        import logging
-
         caplog.set_level(logging.WARNING, logger="sentinel.yaml_writer")
 
         yaml_content = """
