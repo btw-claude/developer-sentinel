@@ -374,8 +374,6 @@ orchestrations:
 - Can be combined with `project_filter` for more precise filtering
 - Similar to Jira's `tags` field for users familiar with Jira triggers
 
-See [docs/GITHUB_TRIGGER_MIGRATION.md](docs/GITHUB_TRIGGER_MIGRATION.md) for the migration guide from deprecated GitHub trigger fields.
-
 ## Dynamic Orchestration Management
 
 ### Hot-Reload

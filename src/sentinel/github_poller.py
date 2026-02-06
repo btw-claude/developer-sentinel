@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
@@ -463,50 +462,6 @@ class GitHubPoller:
 
         logger.debug("Filter '%s' matched %s/%s items", filter_expr, len(filtered), len(items))
         return filtered
-
-    def build_query(self, trigger: TriggerConfig) -> str:
-        """Build a GitHub search query from trigger configuration.
-
-        .. deprecated::
-            This method is deprecated for GitHub triggers. Use project-based
-            configuration (project_number, project_scope, project_owner,
-            project_filter) instead. This method will be removed in a future version.
-
-        Args:
-            trigger: Trigger configuration from orchestration.
-
-        Returns:
-            GitHub search query string.
-        """
-        warnings.warn(
-            "build_query() is deprecated for GitHub triggers. "
-            "Use project-based polling with project_number, project_scope, "
-            "project_owner, and project_filter instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        conditions: list[str] = []
-
-        # Repository filter
-        if trigger.repo:
-            conditions.append(f"repo:{trigger.repo}")
-
-        # Tag/label filter - must have ALL specified tags
-        for tag in trigger.tags:
-            conditions.append(f'label:"{tag}"')
-
-        # Custom query filter (appended as-is)
-        if trigger.query_filter:
-            conditions.append(trigger.query_filter)
-
-        # Default: only open issues/PRs
-        if not any(
-            "state:" in c.lower() or "is:open" in c.lower() or "is:closed" in c.lower()
-            for c in conditions
-        ):
-            conditions.append("state:open")
-
-        return " ".join(conditions) if conditions else ""
 
     def poll(self, trigger: TriggerConfig, max_results: int = 50) -> list[GitHubIssue]:
         """Poll GitHub for issues/PRs matching the trigger configuration.

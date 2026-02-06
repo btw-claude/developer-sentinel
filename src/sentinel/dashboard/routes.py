@@ -885,7 +885,7 @@ def create_routes(
             elif (
                 request_body.source == TriggerSource.GITHUB.value
                 and orch.trigger_source == TriggerSource.GITHUB.value
-                and orch.trigger_repo == request_body.identifier
+                and orch.trigger_project_owner == request_body.identifier
             ):
                 orch_files[orch.name] = source_file
 
@@ -906,14 +906,9 @@ def create_routes(
         try:
             writer = OrchestrationYamlWriter()
 
-            if request_body.source == "jira":
-                toggled_count = writer.toggle_by_project(
-                    orch_files, request_body.identifier, request_body.enabled
-                )
-            else:  # github
-                toggled_count = writer.toggle_by_repo(
-                    orch_files, request_body.identifier, request_body.enabled
-                )
+            toggled_count = writer.toggle_by_project(
+                orch_files, request_body.identifier, request_body.enabled
+            )
 
             # Record successful writes for rate limiting
             for file_path in unique_files:

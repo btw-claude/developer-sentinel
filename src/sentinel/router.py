@@ -61,8 +61,8 @@ class Router:
         An issue matches if:
         1. The issue source type matches the trigger source
         2. For Jira: The issue is in the specified project (if specified)
-        3. For GitHub: The issue is in the specified repo (if specified)
-        4. The issue has ALL tags specified in the trigger (if any)
+        3. For GitHub: The issue has ALL labels specified in the trigger (if any)
+        4. The issue has ALL tags specified in the trigger (Jira only)
 
         Tag matching is case-insensitive for both platforms.
 
@@ -92,12 +92,6 @@ class Router:
         elif isinstance(issue, GitHubIssueProtocol):
             if trigger.source != TriggerSource.GITHUB.value:
                 return False
-
-            # Check repo filter for GitHub
-            # Note: repo filter matching is handled during polling via search query,
-            # but we validate here for direct routing if repo info is available
-            # The GitHubIssue doesn't store repo info directly, so we skip repo
-            # validation here - it's enforced during polling via the search query
 
             # For GitHub triggers, check labels field (in addition to existing tags check)
             if trigger.labels:

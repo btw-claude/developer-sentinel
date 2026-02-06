@@ -670,7 +670,7 @@ orchestrations:
             enabled=True,
             trigger_source="jira",
             trigger_project="TEST",
-            trigger_repo=None,
+            trigger_project_owner=None,
             trigger_tags=[],
             agent_prompt_preview="Test prompt",
             source_file=str(orch_file),
@@ -716,7 +716,7 @@ orchestrations:
             enabled=False,
             trigger_source="jira",
             trigger_project="TEST",
-            trigger_repo=None,
+            trigger_project_owner=None,
             trigger_tags=[],
             agent_prompt_preview="Test",
             source_file=str(orch_file),
@@ -769,7 +769,7 @@ orchestrations:
             enabled=True,
             trigger_source="jira",
             trigger_project="TEST",
-            trigger_repo=None,
+            trigger_project_owner=None,
             trigger_tags=[],
             agent_prompt_preview="Test",
             source_file="/nonexistent/path.yaml",
@@ -839,7 +839,7 @@ orchestrations:
                 enabled=True,
                 trigger_source="jira",
                 trigger_project="TEST",
-                trigger_repo=None,
+                trigger_project_owner=None,
                 trigger_tags=[],
                 agent_prompt_preview="First",
                 source_file=str(orch_file),
@@ -849,7 +849,7 @@ orchestrations:
                 enabled=True,
                 trigger_source="jira",
                 trigger_project="TEST",
-                trigger_repo=None,
+                trigger_project_owner=None,
                 trigger_tags=[],
                 agent_prompt_preview="Second",
                 source_file=str(orch_file),
@@ -859,7 +859,7 @@ orchestrations:
                 enabled=True,
                 trigger_source="jira",
                 trigger_project="OTHER",
-                trigger_repo=None,
+                trigger_project_owner=None,
                 trigger_tags=[],
                 agent_prompt_preview="Other project",
                 source_file=str(orch_file),
@@ -889,7 +889,7 @@ orchestrations:
             assert "enabled: true" in updated_content
 
     def test_bulk_toggle_github_orchestrations_success(self, temp_logs_dir: Path) -> None:
-        """Test bulk toggling GitHub orchestrations by repo."""
+        """Test bulk toggling GitHub orchestrations by project owner."""
         orch_file = temp_logs_dir / "github-orchestrations.yaml"
         orch_file.write_text("""
 orchestrations:
@@ -897,14 +897,16 @@ orchestrations:
     enabled: true
     trigger:
       source: github
-      repo: "org/repo"
+      project_number: 42
+      project_owner: "my-org"
     agent:
       prompt: "First"
   - name: "github-orch-2"
     enabled: true
     trigger:
       source: github
-      repo: "org/repo"
+      project_number: 42
+      project_owner: "my-org"
     agent:
       prompt: "Second"
 """)
@@ -918,7 +920,7 @@ orchestrations:
                 enabled=True,
                 trigger_source="github",
                 trigger_project=None,
-                trigger_repo="org/repo",
+                trigger_project_owner="my-org",
                 trigger_tags=[],
                 agent_prompt_preview="First",
                 source_file=str(orch_file),
@@ -928,7 +930,7 @@ orchestrations:
                 enabled=True,
                 trigger_source="github",
                 trigger_project=None,
-                trigger_repo="org/repo",
+                trigger_project_owner="my-org",
                 trigger_tags=[],
                 agent_prompt_preview="Second",
                 source_file=str(orch_file),
@@ -941,7 +943,7 @@ orchestrations:
         with TestClient(app) as client:
             response = client.post(
                 "/api/orchestrations/bulk-toggle",
-                json={"source": "github", "identifier": "org/repo", "enabled": False},
+                json={"source": "github", "identifier": "my-org", "enabled": False},
             )
 
             assert response.status_code == 200
@@ -1024,7 +1026,7 @@ orchestrations:
             enabled=True,
             trigger_source="jira",
             trigger_project="TEST",
-            trigger_repo=None,
+            trigger_project_owner=None,
             trigger_tags=[],
             agent_prompt_preview="Test prompt",
             source_file=str(orch_file),
@@ -1075,7 +1077,7 @@ orchestrations:
             enabled=True,
             trigger_source="jira",
             trigger_project="TEST",
-            trigger_repo=None,
+            trigger_project_owner=None,
             trigger_tags=[],
             agent_prompt_preview="Test",
             source_file=str(orch_file),
@@ -1125,7 +1127,7 @@ orchestrations:
                 enabled=True,
                 trigger_source="jira",
                 trigger_project="TEST",
-                trigger_repo=None,
+                trigger_project_owner=None,
                 trigger_tags=[],
                 agent_prompt_preview="First",
                 source_file=str(orch_file),

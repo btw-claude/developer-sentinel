@@ -361,9 +361,6 @@ orchestrations:
   # This example shows how to use GitHub Projects (v2) as a trigger source.
   # Instead of polling Jira, this orchestration polls a GitHub Project board
   # and processes items matching the filter criteria.
-  #
-  # MIGRATION NOTE: This replaces the deprecated repo/tags/query_filter fields.
-  # See docs/GITHUB_TRIGGER_MIGRATION.md for migration guide.
   - name: "github-project-code-review"
 
     trigger:

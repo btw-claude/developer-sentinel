@@ -3,7 +3,6 @@
 This module contains tests for:
 - GitHub Project trigger configuration
 - Validation of GitHub-specific trigger fields
-- Deprecation warnings for legacy GitHub fields
 """
 
 from pathlib import Path
@@ -16,13 +15,11 @@ from sentinel.orchestration import OrchestrationError, load_orchestration_file
 class TestGitHubProjectTrigger:
     """Tests for GitHub Project-based trigger configuration.
 
-    These tests verify the new GitHub Project-based polling fields:
+    These tests verify the GitHub Project-based polling fields:
     - project_number: Required positive integer for GitHub triggers
     - project_scope: "org" or "user" scope for the project
     - project_owner: Required organization name or username
     - project_filter: JQL-like query for filtering by project field values
-
-    Also tests deprecation warnings for legacy GitHub fields (repo, query_filter, tags).
     """
 
     def test_github_trigger_with_project_config(self, tmp_path: Path) -> None:
@@ -222,82 +219,6 @@ orchestrations:
 
         assert len(orchestrations) == 1
         assert orchestrations[0].trigger.project_scope == "org"
-
-    def test_github_trigger_with_deprecated_repo_logs_warning(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Should log deprecation warning when using deprecated repo field."""
-        yaml_content = """
-orchestrations:
-  - name: "deprecated-repo"
-    trigger:
-      source: github
-      project_number: 42
-      project_owner: "my-org"
-      repo: "my-org/old-repo"
-    agent:
-      prompt: "Test"
-"""
-        file_path = tmp_path / "deprecated_repo.yaml"
-        file_path.write_text(yaml_content)
-
-        orchestrations = load_orchestration_file(file_path)
-
-        assert len(orchestrations) == 1
-        # Check that deprecation warning was logged
-        assert "repo" in caplog.text
-        assert "deprecated" in caplog.text.lower()
-
-    def test_github_trigger_with_deprecated_query_filter_logs_warning(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Should log deprecation warning when using deprecated query_filter field."""
-        yaml_content = """
-orchestrations:
-  - name: "deprecated-query-filter"
-    trigger:
-      source: github
-      project_number: 42
-      project_owner: "my-org"
-      query_filter: "is:issue is:open"
-    agent:
-      prompt: "Test"
-"""
-        file_path = tmp_path / "deprecated_query_filter.yaml"
-        file_path.write_text(yaml_content)
-
-        orchestrations = load_orchestration_file(file_path)
-
-        assert len(orchestrations) == 1
-        # Check that deprecation warning was logged
-        assert "query_filter" in caplog.text
-        assert "deprecated" in caplog.text.lower()
-
-    def test_github_trigger_with_deprecated_tags_logs_warning(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Should log deprecation warning when using deprecated tags field for GitHub."""
-        yaml_content = """
-orchestrations:
-  - name: "deprecated-tags"
-    trigger:
-      source: github
-      project_number: 42
-      project_owner: "my-org"
-      tags:
-        - "old-style-tag"
-    agent:
-      prompt: "Test"
-"""
-        file_path = tmp_path / "deprecated_tags.yaml"
-        file_path.write_text(yaml_content)
-
-        orchestrations = load_orchestration_file(file_path)
-
-        assert len(orchestrations) == 1
-        # Check that deprecation warning was logged
-        assert "tags" in caplog.text
-        assert "deprecated" in caplog.text.lower()
 
     def test_jira_trigger_does_not_require_project_number(self, tmp_path: Path) -> None:
         """Jira triggers should not require GitHub project fields."""

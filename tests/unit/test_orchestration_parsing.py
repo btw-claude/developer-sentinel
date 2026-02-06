@@ -37,9 +37,7 @@ class TestDataclasses:
         assert trigger.project == ""
         assert trigger.jql_filter == ""
         assert trigger.tags == []
-        assert trigger.repo == ""
-        assert trigger.query_filter == ""
-        # New GitHub Project-based fields
+        # GitHub Project-based fields
         assert trigger.project_number is None
         assert trigger.project_scope == "org"
         assert trigger.project_owner == ""
@@ -101,21 +99,6 @@ class TestDataclasses:
         assert trigger.project_scope == "user"
         assert trigger.project_owner == "myusername"
         assert trigger.project_filter == "Priority = 'High'"
-
-    def test_trigger_config_github_legacy_fields(self) -> None:
-        """TriggerConfig should still support legacy GitHub fields."""
-        trigger = TriggerConfig(
-            source="github",
-            repo="org/repo-name",
-            query_filter="is:issue is:open label:bug",
-            tags=["needs-triage"],
-            project_number=1,
-            project_owner="org",
-        )
-        assert trigger.source == "github"
-        assert trigger.repo == "org/repo-name"
-        assert trigger.query_filter == "is:issue is:open label:bug"
-        assert trigger.tags == ["needs-triage"]
 
     def test_agent_config_defaults(self) -> None:
         """AgentConfig should have sensible defaults."""

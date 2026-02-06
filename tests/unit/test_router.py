@@ -42,22 +42,15 @@ def make_orchestration(
     name: str = "test-orch",
     source: Literal["jira", "github"] = "jira",
     project: str = "",
-    repo: str = "",
     tags: list[str] | None = None,
     labels: list[str] | None = None,
 ) -> Orchestration:
-    """Helper to create an Orchestration for testing.
-
-    Note: This router-specific version supports both tags and labels
-    simultaneously for testing deprecation of tags field. The generic
-    make_orchestration in tests/helpers.py has different semantics.
-    """
+    """Helper to create an Orchestration for testing."""
     return Orchestration(
         name=name,
         trigger=TriggerConfig(
             source=source,
             project=project,
-            repo=repo,
             tags=tags or [],
             labels=labels or [],
         ),
@@ -428,36 +421,6 @@ class TestGitHubLabelsFieldRouting:
         assert result.matched is True
         assert len(result.orchestrations) == 1
         assert result.orchestrations[0].name == "bug-triage"
-
-    def test_github_labels_and_tags_can_be_used_together(self) -> None:
-        """Test that both labels (new) and tags (deprecated) fields are checked.
-
-        Note: The 'tags' field is DEPRECATED and will be removed in a future release.
-        New code should use 'labels' exclusively. This test ensures backward
-        compatibility during the deprecation period where both fields may be used
-        together. When 'tags' is removed, this test should be updated to only
-        test 'labels' functionality.
-        """
-        router = Router([])
-        issue = make_github_issue(labels=["bug", "urgent", "team-a"])
-        orch = make_orchestration(
-            source="github",
-            tags=["team-a"],  # Deprecated tags field - will be removed in future release
-            labels=["bug"],  # New labels field - preferred approach
-        )
-        # Both must match
-        assert router._matches_trigger(issue, orch) is True
-
-    def test_github_labels_rejected_when_tags_missing(self) -> None:
-        """Issue should be rejected if labels match but tags don't."""
-        router = Router([])
-        issue = make_github_issue(labels=["bug", "urgent"])
-        orch = make_orchestration(
-            source="github",
-            tags=["team-a"],  # Issue doesn't have this
-            labels=["bug"],  # Issue has this
-        )
-        assert router._matches_trigger(issue, orch) is False
 
     def test_routes_to_multiple_orchestrations_with_labels(self) -> None:
         """Issue should route to all matching orchestrations based on labels."""
