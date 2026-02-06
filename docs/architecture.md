@@ -256,18 +256,20 @@ The components receive configuration through the `Config` object and its sub-con
 | OrchestrationRegistry  | `ExecutionConfig`                      | `orchestrations_dir`                                                             |
 | PollCoordinator        | `PollingConfig`, `JiraConfig`          | `max_issues_per_poll`, `base_url`                                                |
 | Sentinel               | `ExecutionConfig`, `PollingConfig`     | `polling.interval`, delegates sub-configs to components                          |
-| DashboardServer        | `DashboardConfig`                      | `host`, `port`, `enabled`                                                        |
-| Dashboard Routes       | `DashboardConfig`                      | `toggle_cooldown_seconds`, `rate_limit_cache_ttl`, `rate_limit_cache_maxsize`    |
+| DashboardServer        | `DashboardConfig`†                     | `host`, `port`, `enabled`                                                        |
+| DashboardRoutes        | `DashboardConfig`†                     | `toggle_cooldown_seconds`, `rate_limit_cache_ttl`, `rate_limit_cache_maxsize`    |
 | JiraRestClient         | `JiraConfig`, `CircuitBreakerConfig`   | `base_url`, `email`, `api_token`, `epic_link_field`                              |
 | GitHubRestClient       | `GitHubConfig`, `CircuitBreakerConfig` | `token`, `api_url`                                                               |
 | CircuitBreaker         | `CircuitBreakerConfig`                 | `enabled`, `failure_threshold`, `recovery_timeout`, `half_open_max_calls`        |
-| ClaudeRateLimiter      | `RateLimitConfig`                      | `enabled`, `per_minute`, `per_hour`, `strategy`, `warning_threshold`             |
-| ResilienceWrapper      | `RateLimitConfig`                      | Delegates to `ClaudeRateLimiter`                                                 |
+| ClaudeRateLimiter      | `RateLimitConfig`†                     | `enabled`, `per_minute`, `per_hour`, `strategy`, `warning_threshold`             |
+| ResilienceWrapper      | `RateLimitConfig`†                     | Coordinates `CircuitBreaker` + `ClaudeRateLimiter`                               |
 | HealthChecker          | `HealthCheckConfig`                    | `enabled`, `timeout`                                                             |
-| AgentClientFactory     | `CursorConfig`                         | `default_agent_type`                                                             |
-| CursorAgentClient      | `CursorConfig`                         | `path`, `default_model`, `default_mode`                                          |
+| AgentClientFactory     | `CursorConfig`†                        | `default_agent_type`                                                             |
+| CursorAgentClient      | `CursorConfig`†                        | `path`, `default_model`, `default_mode`                                          |
 | ClaudeSdkAgentClient   | `ExecutionConfig`                      | `inter_message_times_threshold`                                                  |
 | setup_logging          | `LoggingConfig`                        | `level`, `json`                                                                  |
+
+> **†** Config sections marked with † (`DashboardConfig`, `RateLimitConfig`, `CursorConfig`) are sub-configs embedded as fields in the main `Config` dataclass (via `field(default_factory=...)`) rather than standalone top-level classes. See `sentinel/config.py` for the full composition hierarchy.
 
 ---
 
