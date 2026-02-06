@@ -68,7 +68,7 @@ sentinel = Sentinel(
     config=config,
     orchestrations=orchestrations,
     tag_client=tag_client,
-    jira_client=jira_client,  # Deprecated!
+    jira_client=jira_client,  # Removed!
 )
 ```
 
@@ -101,7 +101,7 @@ github_client = GitHubClient(token)
 
 sentinel = Sentinel(
     # ...
-    github_client=github_client,  # Deprecated!
+    github_client=github_client,  # Removed!
 )
 ```
 
@@ -128,7 +128,7 @@ agent_client = MyAgentClient()
 
 sentinel = Sentinel(
     # ...
-    agent_client=agent_client,  # Deprecated!
+    agent_client=agent_client,  # Removed!
 )
 ```
 
