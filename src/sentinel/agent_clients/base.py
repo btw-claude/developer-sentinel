@@ -154,6 +154,11 @@ class AgentClient(ABC):
     working directory creation via :meth:`_create_workdir`.
     """
 
+    # Truncation limits for context sanitization (DS-675).
+    # Keys are truncated to 200 characters; values to 2000 characters.
+    _CONTEXT_KEY_MAX_LENGTH: int = 200
+    _CONTEXT_VALUE_MAX_LENGTH: int = 2000
+
     base_workdir: Path | None = None
 
     @property
@@ -165,11 +170,6 @@ class AgentClient(ABC):
             The agent type identifier ('claude' or 'cursor').
         """
         pass
-
-    # Truncation limits for context sanitization (DS-675).
-    # Keys are truncated to 200 characters; values to 2000 characters.
-    _CONTEXT_KEY_MAX_LENGTH: int = 200
-    _CONTEXT_VALUE_MAX_LENGTH: int = 2000
 
     def _build_prompt_with_context(
         self,
