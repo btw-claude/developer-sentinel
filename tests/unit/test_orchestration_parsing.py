@@ -1101,6 +1101,125 @@ orchestrations:
         assert orchestrations[0].agent.github.org == ""
         assert orchestrations[0].agent.github.repo == ""
 
+    def test_empty_string_host_preserved(self, tmp_path: Path) -> None:
+        """Test that explicit empty-string host is preserved, not replaced with default.
+
+        With explicit None checks (value if value is not None else default), an
+        empty string is a distinct value from None and should be kept as-is.
+        This distinguishes the behavior from or-coalescing, where empty string
+        would have been replaced with 'github.com'.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: ""
+        org: myorg
+        repo: myrepo
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.host == ""
+
+    def test_empty_string_org_preserved(self, tmp_path: Path) -> None:
+        """Test that explicit empty-string org is preserved, not replaced with default.
+
+        With explicit None checks, an empty string is a distinct value from None
+        and should be kept as-is. This is a no-op since the default is already
+        empty string, but it validates the None-check pattern.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: ""
+        repo: myrepo
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.org == ""
+
+    def test_empty_string_repo_preserved(self, tmp_path: Path) -> None:
+        """Test that explicit empty-string repo is preserved, not replaced with default.
+
+        With explicit None checks, an empty string is a distinct value from None
+        and should be kept as-is. This is a no-op since the default is already
+        empty string, but it validates the None-check pattern.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: ""
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.repo == ""
+
+    def test_empty_string_host_org_repo_together(self, tmp_path: Path) -> None:
+        """Test that all three fields set to empty string are preserved.
+
+        This validates the explicit None-check pattern preserves empty strings
+        across all fields simultaneously, unlike the previous or-coalescing
+        pattern which would have replaced empty host with 'github.com'.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: ""
+        org: ""
+        repo: ""
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.host == ""
+        assert orchestrations[0].agent.github.org == ""
+        assert orchestrations[0].agent.github.repo == ""
+
 
 class TestStrictTemplateVariablesConfig:
     """Tests for strict_template_variables configuration option.
