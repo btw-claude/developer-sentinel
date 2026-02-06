@@ -656,7 +656,10 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
         if not CursorMode.is_valid(cursor_mode):
             valid_modes = ", ".join(f"'{m}'" for m in sorted(CursorMode.values()))
             raise OrchestrationError(f"Invalid cursor_mode '{cursor_mode}': must be {valid_modes}")
-        # cursor_mode is only valid when agent_type is 'cursor'
+        # cursor_mode is only valid when agent_type is 'cursor'.
+        # NOTE: This uses an include-list approach (DS-646). When adding new
+        # agent types to the AgentType enum that do NOT support cursor_mode,
+        # you must add them to the tuple below so the validation rejects them.
         if agent_type is not None and agent_type in (
             AgentType.CLAUDE.value,
             AgentType.CODEX.value,
