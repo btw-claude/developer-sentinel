@@ -88,15 +88,21 @@ line-length = 100
 # selector below. This eliminates the risk of surprise lint failures from new
 # preview rules being introduced in future ruff upgrades.
 #
-# Rule stability audit (DS-617): All enabled rule categories have been audited
-# against the ruff>=0.9.0 lower bound. Since preview mode is NOT enabled, only
-# stable rules are enforced. Categories E, F, I, N, W, G have all rules stable
-# since well before 0.9.0. Categories UP, B, C4, SIM have gained new stable rules
-# in versions after 0.9.0 (e.g., UP044-UP050, B911-B912, C420, SIM905), but these
-# are purely additive — they do not exist in 0.9.0 and are silently skipped.
-# Preview-only rules (e.g., B901, B903, B909, various E1xx/E2xx/E3xx whitespace
-# rules) are never applied because preview mode is off. No version bump is needed;
-# the ruff>=0.9.0 constraint is sound for all currently selected rules.
+# Rule stability audit (DS-617, as of ruff 0.9.x / Feb 2026): All enabled rule
+# categories have been audited against the ruff>=0.9.0 lower bound. Since preview
+# mode is NOT enabled, only stable rules are enforced. Categories E, F, I, N, W, G
+# have all rules stable since well before 0.9.0. Categories UP, B, C4, SIM have
+# gained new stable rules in versions after 0.9.0 (e.g., UP044-UP050, B911-B912,
+# C420, SIM905), but these are purely additive — they do not exist in 0.9.0 and are
+# silently skipped. Preview-only rules (e.g., B901, B903, B909, various
+# E1xx/E2xx/E3xx whitespace rules) are never applied because preview mode is off.
+# No version bump is needed; the ruff>=0.9.0 constraint is sound for all currently
+# selected rules.
+#
+# NOTE: The silent-skip behavior for unknown rule selectors (i.e., rules that do not
+# exist in the installed ruff version are quietly ignored) relies on current ruff
+# convention. If ruff introduces a strict validation mode in the future, unknown
+# selectors could produce errors. Re-audit if upgrading to a new ruff major version.
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "G"]
