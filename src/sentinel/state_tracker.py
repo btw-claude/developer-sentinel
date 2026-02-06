@@ -9,8 +9,7 @@ This module provides the StateTracker class which manages:
 This is part of the Sentinel refactoring to split the God Object into focused,
 composable components (DS-384).
 
-Component Boundaries
---------------------
+Component Boundaries:
 StateTracker is responsible for all runtime state that needs to persist across
 polling cycles but is not related to orchestration definitions or thread pool
 management.
@@ -23,8 +22,7 @@ The Sentinel class delegates to StateTracker for:
 - ``_get_available_slots_for_orchestration()`` ->
   ``StateTracker.get_available_slots_for_orchestration()``
 
-See Also
---------
+See Also:
 - docs/architecture.md : Full architecture documentation
 - sentinel.execution_manager : Thread pool and future management
 - sentinel.orchestration_registry : Orchestration loading and hot-reload

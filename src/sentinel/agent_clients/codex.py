@@ -9,8 +9,7 @@ using asyncio.to_thread() for subprocess operations.
 Circuit breaker pattern is implemented to prevent cascading failures
 when the Codex CLI is experiencing issues.
 
-Working directory strategy
---------------------------
+Working directory strategy:
 The ``--cd`` flag is used instead of ``subprocess(cwd=...)`` because Codex CLI
 natively supports ``--cd`` to set its own working directory context. This keeps
 the working-directory concern inside the child process and avoids changing the

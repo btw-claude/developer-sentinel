@@ -9,8 +9,7 @@ This module provides the ExecutionManager class which manages:
 This is part of the Sentinel refactoring to split the God Object into focused,
 composable components (DS-384).
 
-Component Boundaries
---------------------
+Component Boundaries:
 ExecutionManager is responsible for all thread pool and concurrent execution
 concerns. It is the only component that directly interacts with
 ``concurrent.futures.ThreadPoolExecutor``.
@@ -22,8 +21,7 @@ The Sentinel class delegates to ExecutionManager for:
 - ``_execution_manager.get_active_count()`` : Getting number of running tasks
 - ``_execution_manager.collect_completed_results()`` : Harvesting results
 
-See Also
---------
+See Also:
 - docs/architecture.md : Full architecture documentation
 - sentinel.state_tracker : State and metrics management
 - sentinel.orchestration_registry : Orchestration loading and hot-reload

@@ -9,8 +9,7 @@ This module provides the PollCoordinator class which manages:
 This is part of the Sentinel refactoring to split the God Object into focused,
 composable components (DS-384).
 
-Component Boundaries
---------------------
+Component Boundaries:
 PollCoordinator is responsible for all polling logic and issue routing. It
 coordinates with JiraPoller and GitHubPoller to fetch issues, then routes
 them through the Router to find matching orchestrations.
@@ -23,8 +22,7 @@ The Sentinel class delegates to PollCoordinator for:
 - ``check_and_mark_submitted()`` : Deduplication check and marking
 - ``construct_issue_url()`` : Build URLs for dashboard display
 
-See Also
---------
+See Also:
 - docs/architecture.md : Full architecture documentation
 - sentinel.poller : JiraPoller for Jira issue fetching
 - sentinel.github_poller : GitHubPoller for GitHub issue/PR fetching
