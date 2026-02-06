@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Coroutine
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -38,8 +38,7 @@ class UsageInfo:
     costs, monitoring usage patterns, and optimizing agent operations.
 
     The total_tokens property is computed from input_tokens + output_tokens to
-    guarantee consistency. If an explicit total_tokens value is provided during
-    initialization, it will be validated against the computed value.
+    guarantee consistency.
 
     Attributes:
         input_tokens: Number of input tokens consumed.
@@ -48,11 +47,6 @@ class UsageInfo:
         duration_ms: Total duration in milliseconds.
         duration_api_ms: Time spent on API calls in milliseconds.
         num_turns: Number of conversation turns in this query.
-        _total_tokens_override: Internal field for backward compatibility.
-            - None: No explicit total was provided; total_tokens will be
-              computed from input_tokens + output_tokens.
-            - Non-None: Enables backward compatibility validation; the provided
-              value will be validated against the computed total in __post_init__.
     """
 
     input_tokens: int = 0
@@ -61,18 +55,6 @@ class UsageInfo:
     duration_ms: float = 0.0
     duration_api_ms: float = 0.0
     num_turns: int = 0
-    _total_tokens_override: int | None = field(default=None, repr=False)
-
-    def __post_init__(self) -> None:
-        """Validate total_tokens consistency if explicitly provided."""
-        if self._total_tokens_override is not None:
-            computed = self.input_tokens + self.output_tokens
-            if self._total_tokens_override != computed:
-                raise ValueError(
-                    f"total_tokens mismatch: provided {self._total_tokens_override}, "
-                    f"but input_tokens ({self.input_tokens}) + output_tokens "
-                    f"({self.output_tokens}) = {computed}"
-                )
 
     @property
     def total_tokens(self) -> int:

@@ -41,11 +41,6 @@ from sentinel.rate_limiter import ClaudeRateLimiter, RateLimitExceededError
 logger = get_logger(__name__)
 
 
-# Default threshold for summarizing inter_message_times
-# Kept for backward compatibility - prefer using Config.inter_message_times_threshold
-DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD: int = 100
-
-
 @dataclass
 class TimingMetrics:
     """Timing metrics for performance instrumentation.
@@ -76,7 +71,7 @@ class TimingMetrics:
     api_wait_time: float = 0.0
     # Threshold for summarizing inter_message_times
     # When message count exceeds this, store statistical summary instead of raw data
-    inter_message_times_threshold: int = DEFAULT_INTER_MESSAGE_TIMES_THRESHOLD
+    inter_message_times_threshold: int = 100
 
     def start_query(self) -> None:
         """Mark the start of a query call."""
@@ -308,40 +303,16 @@ class ShutdownController:
         return f"ShutdownController(state={state})"
 
 
-# Default shared shutdown controller for backward compatibility.
-# New code should inject a ShutdownController instance for better testability.
+# Shared shutdown controller for internal use.
+# External code should inject a ShutdownController instance for better testability.
 _default_shutdown_controller = ShutdownController()
-
-
-def get_default_shutdown_controller() -> ShutdownController:
-    """Get the default shared shutdown controller.
-
-    This is provided for backward compatibility. New code should create
-    and inject ShutdownController instances for better testability.
-
-    Returns:
-        The default shared ShutdownController instance.
-    """
-    return _default_shutdown_controller
-
-
-def get_shutdown_event() -> asyncio.Event:
-    """Get or create the shutdown event for async operations.
-
-    This is a backward-compatible wrapper around the default shutdown controller.
-    New code should use ShutdownController.get_shutdown_event() directly.
-
-    Returns:
-        The asyncio.Event used for shutdown signaling.
-    """
-    return _default_shutdown_controller.get_shutdown_event()
 
 
 def request_shutdown() -> None:
     """Request shutdown of any running Claude agent operations.
 
-    This is a backward-compatible wrapper around the default shutdown controller.
-    New code should use ShutdownController.request_shutdown() directly.
+    Internal function for shutdown coordination. External code should use
+    ShutdownController.request_shutdown() directly via dependency injection.
     """
     _default_shutdown_controller.request_shutdown()
 
@@ -349,22 +320,10 @@ def request_shutdown() -> None:
 def reset_shutdown() -> None:
     """Reset the shutdown flag. Used for testing.
 
-    This is a backward-compatible wrapper around the default shutdown controller.
-    New code should use ShutdownController.reset() directly.
+    Internal function for test utilities. External code should use
+    ShutdownController.reset() directly via dependency injection.
     """
     _default_shutdown_controller.reset()
-
-
-def is_shutdown_requested() -> bool:
-    """Check if shutdown has been requested.
-
-    This is a backward-compatible wrapper around the default shutdown controller.
-    New code should use ShutdownController.is_shutdown_requested() directly.
-
-    Returns:
-        True if shutdown has been requested, False otherwise.
-    """
-    return _default_shutdown_controller.is_shutdown_requested()
 
 
 class ClaudeProcessInterruptedError(Exception):
@@ -459,7 +418,7 @@ async def _run_query(
         setting_sources=["project", "user"],  # Load skills from project and ~/.claude/skills
     )
 
-    # Use provided controller or fall back to default
+    # Use provided controller or fall back to shared default
     controller = (
         shutdown_controller if shutdown_controller is not None else _default_shutdown_controller
     )
@@ -547,7 +506,7 @@ class ClaudeSdkAgentClient(AgentClient):
             if disable_streaming_logs is not None
             else config.execution.disable_streaming_logs
         )
-        # Use provided controller or fall back to default
+        # Use provided controller or fall back to shared default
         self._shutdown_controller = (
             shutdown_controller if shutdown_controller is not None else _default_shutdown_controller
         )
