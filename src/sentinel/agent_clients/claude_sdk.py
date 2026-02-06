@@ -729,6 +729,15 @@ class ClaudeSdkAgentClient(AgentClient):
         This is an async method that properly composes with other async code
         without creating new event loops per call.
         """
+        # Check circuit breaker before attempting the request
+        # This is done first to avoid unnecessary disk I/O from _create_workdir()
+        # when the circuit is open (consistent with CodexAgentClient.run_agent)
+        if not self._circuit_breaker.allow_request():
+            raise AgentClientError(
+                f"Claude circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         workdir = None
         if self.base_workdir is not None and issue_key is not None:
             workdir = self._create_workdir(issue_key)

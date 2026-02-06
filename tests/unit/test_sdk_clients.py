@@ -18,6 +18,7 @@ from sentinel.agent_clients.claude_sdk import (
     request_shutdown,
     reset_shutdown,
 )
+from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from sentinel.config import Config
 from sentinel.poller import JiraClientError
 from sentinel.sdk_clients import (
@@ -448,6 +449,50 @@ class TestClaudeSdkAgentClient:
 
         # No workdir should be created
         assert len(list(tmp_path.iterdir())) == 0
+
+    def test_run_agent_rejects_when_circuit_open(
+        self,
+        mock_config: Config,
+    ) -> None:
+        """Test that run_agent raises error when circuit breaker is open."""
+        cb = CircuitBreaker(
+            service_name="claude",
+            config=CircuitBreakerConfig(failure_threshold=1),
+        )
+        # Force circuit breaker to open state
+        cb.record_failure(Exception("test failure"))
+
+        client = ClaudeSdkAgentClient(mock_config, circuit_breaker=cb)
+        with pytest.raises(AgentClientError) as exc_info:
+            asyncio.run(client.run_agent("prompt"))
+
+        assert "circuit breaker is open" in str(exc_info.value)
+        assert "Claude" in str(exc_info.value)
+
+    def test_run_agent_circuit_open_skips_workdir_creation(
+        self,
+        tmp_path: Path,
+        mock_config: Config,
+    ) -> None:
+        """Test that circuit breaker check happens before workdir creation.
+
+        When the circuit breaker is open, run_agent() should reject immediately
+        without creating a working directory. This avoids unnecessary disk I/O
+        when the service is unavailable (DS-670).
+        """
+        cb = CircuitBreaker(
+            service_name="claude",
+            config=CircuitBreakerConfig(failure_threshold=1),
+        )
+        cb.record_failure(Exception("test failure"))
+
+        client = ClaudeSdkAgentClient(mock_config, base_workdir=tmp_path, circuit_breaker=cb)
+
+        with pytest.raises(AgentClientError, match="circuit breaker is open"):
+            asyncio.run(client.run_agent("prompt", issue_key="TEST-123"))
+
+        # Verify no workdir was created - the directory should be empty
+        assert list(tmp_path.iterdir()) == []
 
     def test_shutdown_interrupts_agent(self, mock_config: Config) -> None:
         """Should raise ClaudeProcessInterruptedError when shutdown is requested."""
