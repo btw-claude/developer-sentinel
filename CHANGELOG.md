@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maintenance burden and cognitive load. See the [Migration Guide](docs/MIGRATION_GUIDE.md)
   for upgrade instructions.
 
+- **BREAKING**: Removed all deprecated `@property` shims from the `Config` class (DS-573).
+  The flat property access pattern (e.g., `config.jira_base_url`) is no longer supported.
+  All configuration access must use the sub-config pattern (e.g., `config.jira.base_url`).
+  See the [Config Sub-Config Migration](docs/MIGRATION_GUIDE.md#config-sub-config-migration-completed)
+  section of the Migration Guide for details.
+
 ### Changed
 
 - Cleaned up `__all__` exports in `sentinel.main` module to remove re-exports that
@@ -52,7 +58,7 @@ from sentinel.github_poller import GitHubPoller
 from sentinel.agent_clients.factory import AgentClientFactory
 
 # Create pollers from clients
-jira_poller = JiraPoller(jira_client, epic_link_field=config.jira_epic_link_field)
+jira_poller = JiraPoller(jira_client, epic_link_field=config.jira.epic_link_field)
 github_poller = GitHubPoller(github_client)
 
 # Use the factory for agent clients
