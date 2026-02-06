@@ -1622,15 +1622,15 @@ class TestValidateStringField:
         assert "must be a string" in str(exc_info.value)
 
     def test_empty_string_rejected_by_default(self) -> None:
-        """An empty string should be rejected when allow_empty is False (default)."""
+        """An empty string should be rejected when reject_empty is True (default)."""
         with pytest.raises(OrchestrationError) as exc_info:
             _validate_string_field("", "github.host")
         assert "Invalid github.host" in str(exc_info.value)
         assert "empty string" in str(exc_info.value)
 
-    def test_empty_string_accepted_when_allow_empty_true(self) -> None:
-        """An empty string should be accepted when allow_empty is True."""
-        _validate_string_field("", "github.org", allow_empty=True)  # Should not raise
+    def test_empty_string_accepted_when_reject_empty_false(self) -> None:
+        """An empty string should be accepted when reject_empty is False."""
+        _validate_string_field("", "github.org", reject_empty=False)  # Should not raise
 
     def test_whitespace_only_rejected(self) -> None:
         """A whitespace-only string should be rejected."""
@@ -1639,10 +1639,10 @@ class TestValidateStringField:
         assert "Invalid github.host" in str(exc_info.value)
         assert "whitespace-only string" in str(exc_info.value)
 
-    def test_whitespace_only_rejected_even_with_allow_empty(self) -> None:
-        """A whitespace-only string should be rejected even when allow_empty is True."""
+    def test_whitespace_only_rejected_even_with_reject_empty_false(self) -> None:
+        """A whitespace-only string should be rejected even when reject_empty is False."""
         with pytest.raises(OrchestrationError) as exc_info:
-            _validate_string_field("   ", "github.org", allow_empty=True)
+            _validate_string_field("   ", "github.org", reject_empty=False)
         assert "Invalid github.org" in str(exc_info.value)
         assert "whitespace-only string" in str(exc_info.value)
 

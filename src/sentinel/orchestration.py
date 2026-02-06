@@ -421,7 +421,7 @@ def _validate_string_field(
     value: Any,
     field_name: str,
     *,
-    allow_empty: bool = False,
+    reject_empty: bool = True,
 ) -> None:
     """Validate that a value is a string and not whitespace-only.
 
@@ -432,9 +432,9 @@ def _validate_string_field(
         value: The raw value to validate (may be None, a string, or another type).
         field_name: Dot-qualified field name used in error messages
             (e.g. ``"github.host"``).
-        allow_empty: When ``True`` the empty string ``""`` is accepted without
-            error.  When ``False`` (the default) an empty string is treated the
-            same as a whitespace-only string and rejected.
+        reject_empty: When ``True`` (the default) an empty string ``""`` is
+            treated the same as a whitespace-only string and rejected.
+            When ``False`` the empty string is accepted without error.
 
     Raises:
         OrchestrationError: If *value* is not ``None`` and fails validation.
@@ -450,7 +450,7 @@ def _validate_string_field(
         )
 
     # Reject whitespace-only strings (and optionally empty strings).
-    if allow_empty and value == "":
+    if not reject_empty and value == "":
         return
     if value.strip() == "":
         label = "empty string" if value == "" else "whitespace-only string"
@@ -621,8 +621,8 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
     # Host rejects both empty and whitespace-only strings (DS-631, DS-632).
     # Org and repo allow empty strings but reject whitespace-only (DS-633).
     _validate_string_field(host, "github.host")
-    _validate_string_field(org, "github.org", allow_empty=True)
-    _validate_string_field(repo, "github.repo", allow_empty=True)
+    _validate_string_field(org, "github.org", reject_empty=False)
+    _validate_string_field(repo, "github.repo", reject_empty=False)
     resolved_host = host if host is not None else "github.com"
 
     return GitHubContext(
