@@ -20,8 +20,8 @@ from typing import Any
 #   ShutdownController, TimingMetrics
 #
 # Internal re-exports (not part of public API):
-#   _run_query – used by other modules in this package; excluded from __all__
-#   and should not be relied upon by external consumers.
+#   _run_query - used by other modules in this package;
+#   excluded from __all__ and should not be relied upon by external consumers.
 from sentinel.agent_clients.claude_sdk import (
     ClaudeProcessInterruptedError,
     ClaudeSdkAgentClient,
