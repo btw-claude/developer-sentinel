@@ -1069,7 +1069,10 @@ orchestrations:
 """)
 
         # Use a very short cooldown for testing
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir), dashboard=DashboardConfig(toggle_cooldown_seconds=0.1))
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+            dashboard=DashboardConfig(toggle_cooldown_seconds=0.1),
+        )
         sentinel = MockSentinelWithOrchestrations(config, [])
 
         orch_info = OrchestrationInfo(
@@ -1180,7 +1183,12 @@ class TestToggleRateLimitConfiguration:
         from sentinel.dashboard.routes import RateLimiter
 
         # Create config with custom cache settings
-        config = Config(dashboard=DashboardConfig(rate_limit_cache_ttl=7200, rate_limit_cache_maxsize=5000))
+        config = Config(
+            dashboard=DashboardConfig(
+                rate_limit_cache_ttl=7200,
+                rate_limit_cache_maxsize=5000,
+            ),
+        )
         rate_limiter = RateLimiter(config)
 
         # The internal cache should use the config values
@@ -1300,7 +1308,11 @@ class TestCreateRoutesLogging:
         """Test that create_routes logs debug message when Config is provided."""
         config = Config(
             execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
-            dashboard=DashboardConfig(toggle_cooldown_seconds=5.0, rate_limit_cache_ttl=7200, rate_limit_cache_maxsize=5000),
+            dashboard=DashboardConfig(
+                toggle_cooldown_seconds=5.0,
+                rate_limit_cache_ttl=7200,
+                rate_limit_cache_maxsize=5000,
+            ),
         )
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
@@ -1343,7 +1355,10 @@ class TestCreateRoutesLogging:
 
     def test_create_routes_logs_toggle_cooldown_value(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs toggle_cooldown_seconds value."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir), dashboard=DashboardConfig(toggle_cooldown_seconds=3.5))
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+            dashboard=DashboardConfig(toggle_cooldown_seconds=3.5),
+        )
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -1357,7 +1372,10 @@ class TestCreateRoutesLogging:
 
     def test_create_routes_logs_cache_ttl_value(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs rate_limit_cache_ttl value."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir), dashboard=DashboardConfig(rate_limit_cache_ttl=1800))
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+            dashboard=DashboardConfig(rate_limit_cache_ttl=1800),
+        )
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
@@ -1371,7 +1389,10 @@ class TestCreateRoutesLogging:
 
     def test_create_routes_logs_cache_maxsize_value(self, temp_logs_dir: Path) -> None:
         """Test that create_routes logs rate_limit_cache_maxsize value."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir), dashboard=DashboardConfig(rate_limit_cache_maxsize=20000))
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+            dashboard=DashboardConfig(rate_limit_cache_maxsize=20000),
+        )
         sentinel = MockSentinel(config)
         accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
