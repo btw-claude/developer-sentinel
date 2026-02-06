@@ -85,9 +85,7 @@ This means you can safely:
 
 ### How It Works
 
-The bootstrap process creates a `CircuitBreakerRegistry` and passes it to components:
-
-The bootstrap process creates and injects circuit breakers into each client, ensuring all components share a single registry:
+The bootstrap process creates a `CircuitBreakerRegistry` and injects circuit breakers into each client, ensuring all components share a single registry:
 
 ```python
 from sentinel.circuit_breaker import CircuitBreakerRegistry
@@ -115,9 +113,7 @@ agent_factory = create_default_factory(config, circuit_breaker_registry)
 
 ### Testing with Circuit Breakers
 
-For unit tests, create isolated registries to avoid test pollution:
-
-Each unit test creates its own `CircuitBreakerRegistry` to ensure complete test isolation and prevent state leakage between tests:
+For unit tests, each test creates its own `CircuitBreakerRegistry` to ensure complete isolation and prevent state leakage between tests:
 
 ```python
 class TestMyComponent:
@@ -137,9 +133,7 @@ class TestMyComponent:
         assert client.circuit_breaker.state == CircuitState.CLOSED
 ```
 
-For integration tests that need to share circuit breaker state:
-
-Integration tests use a shared registry in `setUp` so multiple clients reference the same circuit breaker instance:
+For integration tests that need to share circuit breaker state, use a shared registry in `setUp` so multiple clients reference the same circuit breaker instance:
 
 ```python
 class TestIntegration:
@@ -168,9 +162,7 @@ class TestIntegration:
 
 ### Default Behavior
 
-When no circuit breaker is provided, components create their own default circuit breaker:
-
-Omitting the `circuit_breaker` parameter falls back to a default instance, preserving backward compatibility:
+When no `circuit_breaker` is provided, the parameter falls back to a default instance, preserving backward compatibility:
 
 ```python
 # Without explicit injection, creates default circuit breaker
