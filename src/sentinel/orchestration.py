@@ -560,7 +560,7 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
 
     # Validate that create_branch=True requires a non-empty branch pattern
     create_branch = data.get("create_branch", False)
-    if create_branch and not branch:
+    if create_branch and not branch.strip():
         raise OrchestrationError(
             "create_branch is True but no branch pattern is specified. "
             "Please provide a branch pattern (e.g., 'feature/{jira_issue_key}') "
