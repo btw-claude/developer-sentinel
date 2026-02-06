@@ -772,16 +772,11 @@ class ClaudeSdkAgentClient(AgentClient):
     ) -> tuple[str, UsageInfo | None]:
         """Run agent without streaming logs.
 
+        Note: Circuit breaker is checked in run_agent() before this method is called.
+
         Returns:
             A tuple of (response_text, usage_info).
         """
-        # Check circuit breaker before attempting the request
-        if not self._circuit_breaker.allow_request():
-            raise AgentClientError(
-                f"Claude circuit breaker is open - service may be unavailable. "
-                f"State: {self._circuit_breaker.state.value}"
-            )
-
         try:
             # Acquire rate limit permit before making API call
             if not await self._rate_limiter.acquire_async(timeout=timeout):
@@ -892,17 +887,12 @@ class ClaudeSdkAgentClient(AgentClient):
     ) -> tuple[str, UsageInfo | None]:
         """Run agent with streaming logs.
 
+        Note: Circuit breaker is checked in run_agent() before this method is called.
+
         Returns:
             A tuple of (response_text, usage_info).
         """
         assert self.log_base_dir is not None
-
-        # Check circuit breaker before attempting the request
-        if not self._circuit_breaker.allow_request():
-            raise AgentClientError(
-                f"Claude circuit breaker is open - service may be unavailable. "
-                f"State: {self._circuit_breaker.state.value}"
-            )
 
         # Acquire rate limit permit before making API call
         try:
