@@ -6,6 +6,9 @@ supporting model selection and working directory configuration.
 The run_agent method is async to conform to the AgentClient interface,
 using asyncio.to_thread() for subprocess operations.
 
+Circuit breaker pattern is implemented to prevent cascading failures
+when the Codex CLI is experiencing issues.
+
 Working directory strategy
 --------------------------
 The ``--cd`` flag is used instead of ``subprocess(cwd=...)`` because Codex CLI
@@ -37,6 +40,7 @@ from sentinel.agent_clients.base import (
     AgentTimeoutError,
     AgentType,
 )
+from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from sentinel.config import Config
 from sentinel.logging import get_logger
 
@@ -71,6 +75,7 @@ class CodexAgentClient(AgentClient):
         config: Config,
         base_workdir: Path | None = None,
         log_base_dir: Path | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         """Initialize the Codex agent client.
 
@@ -78,10 +83,17 @@ class CodexAgentClient(AgentClient):
             config: Configuration object with Codex settings.
             base_workdir: Base directory for creating agent working directories.
             log_base_dir: Base directory for agent execution logs (reserved for future use).
+            circuit_breaker: Circuit breaker instance for resilience. If not provided,
+                creates a default circuit breaker for the "codex" service.
         """
         self.config = config
         self.base_workdir = base_workdir
         self.log_base_dir = log_base_dir
+        # Use provided circuit breaker or create a default one for the codex service
+        self._circuit_breaker = circuit_breaker or CircuitBreaker(
+            service_name="codex",
+            config=CircuitBreakerConfig.from_env("codex"),
+        )
 
         # Validate and store codex path
         self._codex_path = config.codex.path or "codex"
@@ -103,6 +115,19 @@ class CodexAgentClient(AgentClient):
     def agent_type(self) -> AgentType:
         """Return the type of agent this client implements."""
         return AgentType.CODEX
+
+    @property
+    def circuit_breaker(self) -> CircuitBreaker:
+        """Get the circuit breaker for this client."""
+        return self._circuit_breaker
+
+    def get_circuit_breaker_status(self) -> dict[str, Any]:
+        """Get current circuit breaker status.
+
+        Returns:
+            Dictionary with circuit breaker state, config, and metrics.
+        """
+        return self._circuit_breaker.get_status()
 
     def _create_workdir(self, issue_key: str) -> Path:
         """Create a unique working directory for an agent run.
@@ -232,6 +257,13 @@ class CodexAgentClient(AgentClient):
             effective_timeout,
         )
 
+        # Check circuit breaker before attempting the request
+        if not self._circuit_breaker.allow_request():
+            raise AgentClientError(
+                f"Codex circuit breaker is open - service may be unavailable. "
+                f"State: {self._circuit_breaker.state.value}"
+            )
+
         try:
             # Use TemporaryDirectory for automatic cleanup instead of manual
             # mkstemp/unlink. The directory (and everything inside it) is removed
@@ -257,7 +289,9 @@ class CodexAgentClient(AgentClient):
                 if result.returncode != 0:
                     error_msg = result.stderr.strip() or f"Exit code: {result.returncode}"
                     logger.error("Codex CLI failed: %s", error_msg)
-                    raise AgentClientError(f"Codex CLI execution failed: {error_msg}")
+                    error = AgentClientError(f"Codex CLI execution failed: {error_msg}")
+                    self._circuit_breaker.record_failure(error)
+                    raise error
 
                 # Read the response from the output file
                 output_path = Path(tmp_path)
@@ -267,6 +301,7 @@ class CodexAgentClient(AgentClient):
                     # Fall back to stdout if output file is empty
                     response = result.stdout.strip()
 
+                self._circuit_breaker.record_success()
                 logger.info("Codex execution completed, response length: %s", len(response))
 
                 return AgentRunResult(response=response, workdir=workdir)
@@ -279,11 +314,16 @@ class CodexAgentClient(AgentClient):
             )
             logger.error("Codex CLI timed out after %ss", effective_timeout)
             msg = f"Codex agent execution timed out after {effective_timeout}s"
-            raise AgentTimeoutError(msg) from None
+            timeout_error = AgentTimeoutError(msg)
+            self._circuit_breaker.record_failure(timeout_error)
+            raise timeout_error from None
         except FileNotFoundError:
             logger.error("Codex CLI not found at path: %s", self._codex_path)
             msg = f"Codex CLI executable not found: {self._codex_path}"
-            raise AgentClientError(msg) from None
+            not_found_error = AgentClientError(msg)
+            self._circuit_breaker.record_failure(not_found_error)
+            raise not_found_error from None
         except OSError as e:
             logger.error("Failed to execute Codex CLI: %s", e)
+            self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Failed to execute Codex CLI: {e}") from e
