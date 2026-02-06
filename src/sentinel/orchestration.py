@@ -568,9 +568,9 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
         )
 
     return GitHubContext(
-        host=data.get("host", "github.com"),
-        org=data.get("org", ""),
-        repo=data.get("repo", ""),
+        host=data.get("host") or "github.com",
+        org=data.get("org") or "",
+        repo=data.get("repo") or "",
         branch=branch,
         create_branch=create_branch,
         base_branch=base_branch,
