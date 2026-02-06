@@ -23,7 +23,7 @@ Usage:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal, get_args
+from typing import Literal, TypeAlias, get_args
 
 
 class TriggerSource(StrEnum):
@@ -267,9 +267,17 @@ RateLimitStrategyLiteral = Literal["queue", "reject"]
 QueueFullStrategyLiteral = Literal["reject", "wait"]
 ErrorTypeLiteral = Literal["I/O error", "runtime error", "data error"]
 
+# Type alias for Literal type forms passed to validation helpers (DS-659).
+# Python does not provide a clean runtime type for Literal[...] annotations;
+# at runtime they are typing._GenericAlias instances, but that is a private API.
+# mypy represents them as ``<typing special form>``, which is only assignable to
+# ``object``.  We define a named TypeAlias so that call-sites are self-documenting
+# (``literal_type: LiteralForm`` reads better than ``literal_type: object``).
+LiteralForm: TypeAlias = object
+
 
 def _validate_literal_matches_enum(
-    literal_type: object,
+    literal_type: LiteralForm,
     enum_cls: type[StrEnum],
     alias_name: str,
 ) -> None:
@@ -282,6 +290,8 @@ def _validate_literal_matches_enum(
 
     Args:
         literal_type: The Literal type alias to validate (e.g., AgentTypeLiteral).
+            Typed as ``LiteralForm`` (an ``object`` alias) for self-documentation;
+            at runtime Literal forms are ``typing._GenericAlias`` instances.
         enum_cls: The StrEnum class that is the source of truth (e.g., AgentType).
         alias_name: Human-readable name of the Literal alias for error messages.
 
@@ -295,9 +305,9 @@ def _validate_literal_matches_enum(
         extra_in_literal = literal_values - enum_values
         parts: list[str] = [f"{alias_name} is out of sync with {enum_cls.__name__}"]
         if missing_from_literal:
-            parts.append(f"missing from Literal: {missing_from_literal}")
+            parts.append(f"missing from Literal: {sorted(missing_from_literal)}")
         if extra_in_literal:
-            parts.append(f"extra in Literal: {extra_in_literal}")
+            parts.append(f"extra in Literal: {sorted(extra_in_literal)}")
         raise TypeError("; ".join(parts))
 
 

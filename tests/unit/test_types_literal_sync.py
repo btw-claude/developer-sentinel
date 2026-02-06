@@ -1,4 +1,4 @@
-"""Tests for Literal type alias and StrEnum synchronization (DS-649).
+"""Tests for Literal type alias and StrEnum synchronization (DS-649, DS-659).
 
 Validates that every Literal type alias in sentinel.types stays in sync
 with its corresponding StrEnum class. These tests complement the import-time
@@ -19,6 +19,7 @@ from sentinel.types import (
     CursorModeLiteral,
     ErrorType,
     ErrorTypeLiteral,
+    LiteralForm,
     QueueFullStrategy,
     QueueFullStrategyLiteral,
     RateLimitStrategy,
@@ -45,7 +46,7 @@ class TestLiteralEnumSync:
     )
     def test_literal_values_match_enum_values(
         self,
-        literal_type: object,
+        literal_type: LiteralForm,
         enum_cls: type[StrEnum],
         alias_name: str,
     ) -> None:
@@ -70,7 +71,7 @@ class TestLiteralEnumSync:
     )
     def test_literal_count_matches_enum_count(
         self,
-        literal_type: object,
+        literal_type: LiteralForm,
         enum_cls: type[StrEnum],
         alias_name: str,
     ) -> None:
@@ -126,3 +127,29 @@ class TestValidateLiteralMatchesEnum:
         message = str(exc_info.value)
         assert "missing from Literal" in message
         assert "extra in Literal" in message
+
+    def test_missing_values_are_sorted_in_error_message(self) -> None:
+        """Missing values in the error message are sorted for reproducibility (DS-659)."""
+        IncompleteAgentLiteral = Literal["claude"]  # noqa: N806
+        with pytest.raises(TypeError) as exc_info:
+            _validate_literal_matches_enum(
+                IncompleteAgentLiteral, AgentType, "IncompleteAgentLiteral"
+            )
+        message = str(exc_info.value)
+        assert "['codex', 'cursor']" in message
+
+    def test_extra_values_are_sorted_in_error_message(self) -> None:
+        """Extra values in the error message are sorted for reproducibility (DS-659)."""
+        ExtraLiteral = Literal["claude", "codex", "cursor", "gemini", "aardvark"]  # noqa: N806
+        with pytest.raises(TypeError) as exc_info:
+            _validate_literal_matches_enum(ExtraLiteral, AgentType, "ExtraLiteral")
+        message = str(exc_info.value)
+        assert "['aardvark', 'gemini']" in message
+
+
+class TestLiteralFormTypeAlias:
+    """Tests for the LiteralForm type alias (DS-659)."""
+
+    def test_literal_form_is_object(self) -> None:
+        """LiteralForm is a TypeAlias for object, providing self-documenting intent."""
+        assert LiteralForm is object
