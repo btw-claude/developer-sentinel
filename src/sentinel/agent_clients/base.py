@@ -13,10 +13,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Coroutine
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from sentinel.logging import get_logger
 from sentinel.types import AgentType
+
+logger = get_logger(__name__)
 
 __all__ = [
     "AgentClient",
@@ -142,9 +146,15 @@ class AgentClient(ABC):
 
     This allows the executor to work with different agent implementations:
     - Claude Agent SDK client
+    - Codex CLI client
     - Cursor CLI client
     - Mock client (testing)
+
+    Subclasses must set ``base_workdir`` in their ``__init__`` to enable
+    working directory creation via :meth:`_create_workdir`.
     """
+
+    base_workdir: Path | None = None
 
     @property
     @abstractmethod
@@ -155,6 +165,36 @@ class AgentClient(ABC):
             The agent type identifier ('claude' or 'cursor').
         """
         pass
+
+    def _create_workdir(self, issue_key: str) -> Path:
+        """Create a unique working directory for an agent run.
+
+        This shared implementation is used by all agent clients (Claude SDK,
+        Codex, Cursor) to create timestamped working directories for agent
+        executions. Extracted to the base class to eliminate duplication
+        across concrete implementations (DS-666).
+
+        The directory name format is ``{issue_key}_{YYYYMMDD_HHMMSS}``, created
+        under the ``base_workdir`` directory.
+
+        Args:
+            issue_key: The issue key to include in the directory name.
+
+        Returns:
+            Path to the created working directory.
+
+        Raises:
+            AgentClientError: If ``base_workdir`` is not configured (i.e., is None).
+        """
+        if self.base_workdir is None:
+            raise AgentClientError("base_workdir not configured")
+
+        self.base_workdir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        workdir = self.base_workdir / f"{issue_key}_{timestamp}"
+        workdir.mkdir(parents=True, exist_ok=True)
+        logger.info("Created agent working directory: %s", workdir)
+        return workdir
 
     @abstractmethod
     async def run_agent(

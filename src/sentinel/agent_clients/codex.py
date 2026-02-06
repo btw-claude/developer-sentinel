@@ -29,7 +29,6 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -128,32 +127,6 @@ class CodexAgentClient(AgentClient):
             Dictionary with circuit breaker state, config, and metrics.
         """
         return self._circuit_breaker.get_status()
-
-    def _create_workdir(self, issue_key: str) -> Path:
-        """Create a unique working directory for an agent run.
-
-        .. todo:: DS-656: This method is identical to
-           ``CursorAgentClient._create_workdir``. Consider extracting to
-           a shared base class method or mixin to reduce duplication.
-
-        Args:
-            issue_key: The issue key to include in the directory name.
-
-        Returns:
-            Path to the created working directory.
-
-        Raises:
-            AgentClientError: If base_workdir is not configured.
-        """
-        if self.base_workdir is None:
-            raise AgentClientError("base_workdir not configured")
-
-        self.base_workdir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        workdir = self.base_workdir / f"{issue_key}_{timestamp}"
-        workdir.mkdir(parents=True, exist_ok=True)
-        logger.info("Created agent working directory: %s", workdir)
-        return workdir
 
     def _build_command(
         self,
@@ -254,14 +227,19 @@ class CodexAgentClient(AgentClient):
         if self.base_workdir is not None and issue_key is not None:
             workdir = self._create_workdir(issue_key)
 
-        # Build full prompt with context section
-        # TODO(DS-656): Context dict values are concatenated directly into the
-        # prompt string. This is consistent with the cursor client pattern, but
-        # should be hardened (e.g. input sanitization) if context could ever
-        # originate from untrusted sources.
+        # Build full prompt with context section.
+        # Context values are sanitized to prevent prompt injection from
+        # untrusted sources (DS-666): values are converted to strings,
+        # truncated to a safe maximum length, and control characters
+        # are stripped.
         full_prompt = prompt
         if context:
-            full_prompt += "\n\nContext:\n" + "".join(f"- {k}: {v}\n" for k, v in context.items())
+            sanitized_items = []
+            for k, v in context.items():
+                safe_key = str(k)[:200].replace("\n", " ").replace("\r", "")
+                safe_val = str(v)[:2000].replace("\n", " ").replace("\r", "")
+                sanitized_items.append(f"- {safe_key}: {safe_val}\n")
+            full_prompt += "\n\nContext:\n" + "".join(sanitized_items)
 
         # Use subprocess_timeout from config as fallback when timeout_seconds is not provided
         effective_timeout = timeout_seconds
