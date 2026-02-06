@@ -93,7 +93,6 @@ class DashboardConfig:
         toggle_cooldown_seconds: Cooldown period between writes to the same file.
         rate_limit_cache_ttl: TTL in seconds for rate limit cache entries.
         rate_limit_cache_maxsize: Maximum number of entries in the rate limit cache.
-        max_recent_executions: Maximum number of recent executions to display.
     """
 
     enabled: bool = False
@@ -102,7 +101,6 @@ class DashboardConfig:
     toggle_cooldown_seconds: float = 2.0
     rate_limit_cache_ttl: int = 3600
     rate_limit_cache_maxsize: int = 10000
-    max_recent_executions: int = 10
 
 
 @dataclass(frozen=True)
@@ -182,6 +180,7 @@ class ExecutionConfig:
         shutdown_timeout_seconds: Timeout in seconds for graceful shutdown.
             If executions don't complete within this time, they will be forcefully
             terminated. Set to 0 to wait indefinitely (not recommended).
+        max_recent_executions: Maximum number of recent completed executions to retain.
     """
 
     orchestrations_dir: Path = field(default_factory=lambda: Path("./orchestrations"))
@@ -197,6 +196,7 @@ class ExecutionConfig:
     max_queue_size: int = 100
     inter_message_times_threshold: int = 100
     shutdown_timeout_seconds: float = 300.0
+    max_recent_executions: int = 10
 
 
 @dataclass(frozen=True)
@@ -805,7 +805,6 @@ def load_config(env_file: Path | None = None) -> Config:
         toggle_cooldown_seconds=toggle_cooldown_seconds,
         rate_limit_cache_ttl=rate_limit_cache_ttl,
         rate_limit_cache_maxsize=rate_limit_cache_maxsize,
-        max_recent_executions=max_recent_executions,
     )
 
     rate_limit_config = RateLimitConfig(
@@ -844,6 +843,7 @@ def load_config(env_file: Path | None = None) -> Config:
         max_queue_size=max_queue_size,
         inter_message_times_threshold=inter_message_times_threshold,
         shutdown_timeout_seconds=shutdown_timeout_seconds,
+        max_recent_executions=max_recent_executions,
     )
 
     cursor_config = CursorConfig(

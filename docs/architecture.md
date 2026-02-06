@@ -251,7 +251,7 @@ The components receive configuration through the `Config` object:
 
 | Component | Key Config Parameters |
 |-----------|----------------------|
-| StateTracker | `max_queue_size`, `attempt_counts_ttl` |
+| StateTracker | `max_queue_size`, `attempt_counts_ttl`, `max_recent_executions` |
 | ExecutionManager | `max_concurrent_executions` |
 | OrchestrationRegistry | `orchestrations_dir` |
 | PollCoordinator | `max_issues_per_poll`, `jira_base_url` |

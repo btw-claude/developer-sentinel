@@ -341,6 +341,7 @@ The new sub-config pattern provides:
 | `config.max_queue_size` | `config.execution.max_queue_size` |
 | `config.inter_message_times_threshold` | `config.execution.inter_message_times_threshold` |
 | `config.shutdown_timeout_seconds` | `config.execution.shutdown_timeout_seconds` |
+| `config.max_recent_executions` | `config.execution.max_recent_executions` |
 
 ### Jira Configuration
 
@@ -370,7 +371,6 @@ The new sub-config pattern provides:
 | `config.toggle_cooldown_seconds` | `config.dashboard.toggle_cooldown_seconds` |
 | `config.rate_limit_cache_ttl` | `config.dashboard.rate_limit_cache_ttl` |
 | `config.rate_limit_cache_maxsize` | `config.dashboard.rate_limit_cache_maxsize` |
-| `config.max_recent_executions` | `config.dashboard.max_recent_executions` |
 
 ### Rate Limiting Configuration
 

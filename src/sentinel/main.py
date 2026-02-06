@@ -129,7 +129,7 @@ class Sentinel:
         self._state_tracker = StateTracker(
             max_queue_size=config.execution.max_queue_size,
             attempt_counts_ttl=config.execution.attempt_counts_ttl,
-            max_completed_executions=config.dashboard.max_recent_executions,
+            max_completed_executions=config.execution.max_recent_executions,
         )
         self._execution_manager = ExecutionManager(config.execution.max_concurrent_executions)
         self._orchestration_registry = OrchestrationRegistry(
