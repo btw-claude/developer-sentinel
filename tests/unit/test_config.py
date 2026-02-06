@@ -102,7 +102,6 @@ class TestSubConfigs:
         assert dashboard.toggle_cooldown_seconds == 2.0
         assert dashboard.rate_limit_cache_ttl == 3600
         assert dashboard.rate_limit_cache_maxsize == 10000
-        assert dashboard.max_recent_executions == 10
 
     def test_rate_limit_config_defaults(self) -> None:
         rate_limit = RateLimitConfig()
@@ -138,6 +137,7 @@ class TestSubConfigs:
         assert execution.attempt_counts_ttl == 3600
         assert execution.max_queue_size == 100
         assert execution.inter_message_times_threshold == 100
+        assert execution.max_recent_executions == 10
 
     def test_cursor_config_defaults(self) -> None:
         cursor = CursorConfig()
