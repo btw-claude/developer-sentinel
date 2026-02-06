@@ -196,9 +196,10 @@ class AgentConfig:
             Examples: "claude-opus-4-5-20251101", "claude-sonnet-4-20250514"
         agent_type: Optional agent type to use for this agent.
             If None, defaults to config.default_agent_type.
-            Valid values: "claude", "cursor"
+            Valid values: "claude", "codex", "cursor"
         cursor_mode: Optional cursor mode when agent_type is "cursor".
             Only valid when agent_type is "cursor".
+            Not valid when agent_type is "claude" or "codex".
             Valid values: "agent", "plan", "ask"
         strict_template_variables: If True, raise ValueError for unknown template
             variables instead of logging a warning. Useful for catching typos in
@@ -656,7 +657,10 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
             valid_modes = ", ".join(f"'{m}'" for m in sorted(CursorMode.values()))
             raise OrchestrationError(f"Invalid cursor_mode '{cursor_mode}': must be {valid_modes}")
         # cursor_mode is only valid when agent_type is 'cursor'
-        if agent_type is not None and agent_type != AgentType.CURSOR.value:
+        if agent_type is not None and agent_type in (
+            AgentType.CLAUDE.value,
+            AgentType.CODEX.value,
+        ):
             raise OrchestrationError(
                 f"cursor_mode '{cursor_mode}' is only valid when agent_type is "
                 f"'{AgentType.CURSOR.value}'"
