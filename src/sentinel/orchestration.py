@@ -573,17 +573,16 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
     org = data.get("org")
     repo = data.get("repo")
 
-    # Validate that host is not an empty string (DS-631).
-    # An empty string host would be invalid for downstream GitHub API calls.
+    # Validate host before resolving the default (DS-631, DS-632).
     # None is acceptable (falls back to default "github.com"), but an explicit
-    # empty string indicates a misconfiguration.
-    resolved_host = host if host is not None else "github.com"
-    if isinstance(resolved_host, str) and resolved_host.strip() == "" and host is not None:
+    # empty or whitespace-only string indicates a misconfiguration.
+    if host is not None and isinstance(host, str) and host.strip() == "":
         raise OrchestrationError(
             "Invalid github.host: empty string is not a valid GitHub host. "
             "Please provide a valid host (e.g., 'github.com') or omit the field "
             "to use the default."
         )
+    resolved_host = host if host is not None else "github.com"
 
     return GitHubContext(
         host=resolved_host,
