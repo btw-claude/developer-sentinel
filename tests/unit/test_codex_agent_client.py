@@ -358,19 +358,13 @@ class TestCodexAgentClientRunAgent:
         cmd = call_args[0][0]
         assert "--cd" in cmd
 
-    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
-    @patch("sentinel.agent_clients.codex.subprocess.run")
     def test_run_agent_timeout_raises_error(
         self,
-        mock_run: MagicMock,
-        mock_tmpdir_cls: MagicMock,
+        mock_codex_subprocess: tuple,
         codex_config: Config,
     ) -> None:
         """Test that timeout raises AgentTimeoutError."""
-        mock_tmpdir_ctx = MagicMock()
-        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
-        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
-        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
 
         client = CodexAgentClient(codex_config)
@@ -402,18 +396,12 @@ class TestCodexAgentClientRunAgent:
         assert "Codex CLI execution failed" in str(exc_info.value)
         assert "something went wrong" in str(exc_info.value)
 
-    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
-    @patch("sentinel.agent_clients.codex.subprocess.run")
     def test_run_agent_file_not_found_raises_error(
         self,
-        mock_run: MagicMock,
-        mock_tmpdir_cls: MagicMock,
+        mock_codex_subprocess: tuple,
     ) -> None:
         """Test that FileNotFoundError raises AgentClientError."""
-        mock_tmpdir_ctx = MagicMock()
-        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
-        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
-        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_run.side_effect = FileNotFoundError("codex not found")
 
         config = make_config(
@@ -427,19 +415,13 @@ class TestCodexAgentClientRunAgent:
 
         assert "Codex CLI executable not found" in str(exc_info.value)
 
-    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
-    @patch("sentinel.agent_clients.codex.subprocess.run")
     def test_run_agent_os_error_raises_error(
         self,
-        mock_run: MagicMock,
-        mock_tmpdir_cls: MagicMock,
+        mock_codex_subprocess: tuple,
         codex_config: Config,
     ) -> None:
         """Test that OSError raises AgentClientError."""
-        mock_tmpdir_ctx = MagicMock()
-        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
-        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
-        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_run.side_effect = OSError("Permission denied")
 
         client = CodexAgentClient(codex_config)
@@ -662,19 +644,13 @@ class TestCodexCircuitBreaker:
         assert cb.metrics.failed_calls == 1
         assert cb.metrics.successful_calls == 0
 
-    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
-    @patch("sentinel.agent_clients.codex.subprocess.run")
     def test_run_agent_records_failure_on_timeout(
         self,
-        mock_run: MagicMock,
-        mock_tmpdir_cls: MagicMock,
+        mock_codex_subprocess: tuple,
         codex_config: Config,
     ) -> None:
         """Test that timeout records failure on circuit breaker."""
-        mock_tmpdir_ctx = MagicMock()
-        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
-        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
-        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
 
         cb = CircuitBreaker(service_name="codex")
@@ -685,18 +661,12 @@ class TestCodexCircuitBreaker:
 
         assert cb.metrics.failed_calls == 1
 
-    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
-    @patch("sentinel.agent_clients.codex.subprocess.run")
     def test_run_agent_records_failure_on_file_not_found(
         self,
-        mock_run: MagicMock,
-        mock_tmpdir_cls: MagicMock,
+        mock_codex_subprocess: tuple,
     ) -> None:
         """Test that FileNotFoundError records failure on circuit breaker."""
-        mock_tmpdir_ctx = MagicMock()
-        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
-        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
-        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_run.side_effect = FileNotFoundError("codex not found")
 
         cb = CircuitBreaker(service_name="codex")
@@ -711,19 +681,13 @@ class TestCodexCircuitBreaker:
 
         assert cb.metrics.failed_calls == 1
 
-    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
-    @patch("sentinel.agent_clients.codex.subprocess.run")
     def test_run_agent_records_failure_on_os_error(
         self,
-        mock_run: MagicMock,
-        mock_tmpdir_cls: MagicMock,
+        mock_codex_subprocess: tuple,
         codex_config: Config,
     ) -> None:
         """Test that OSError records failure on circuit breaker."""
-        mock_tmpdir_ctx = MagicMock()
-        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
-        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
-        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_run.side_effect = OSError("Permission denied")
 
         cb = CircuitBreaker(service_name="codex")
