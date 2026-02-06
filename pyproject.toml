@@ -82,10 +82,18 @@ where = ["src"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+# Enable preview mode to enforce UP042 (replace-str-enum) which catches
+# the deprecated (str, Enum) pattern and requires StrEnum instead.
+# This prevents regressions after the DS-582 migration (see DS-582).
+preview = true
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "G"]
 # G004: Logging statement uses f-string - enforces lazy % formatting for performance
+# B903: Preview rule suggesting dataclass/namedtuple for simple __init__-only classes.
+#       Ignored because test MockMessage classes are intentionally simple and converting
+#       them to dataclasses could affect mock behavior in tests.
+ignore = ["B903"]
 
 [tool.ruff.lint.per-file-ignores]
 # Relax line length and nested-with rules in tests for readability

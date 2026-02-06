@@ -617,6 +617,7 @@ orchestrations:
         # First should still be enabled
         assert updated_content.count("enabled: true") == 1
 
+
 class TestFileLockTimeout:
     """Tests for file lock timeout functionality."""
 
