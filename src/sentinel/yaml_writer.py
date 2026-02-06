@@ -518,7 +518,10 @@ class OrchestrationYamlWriter:
                     if not isinstance(trigger, dict):
                         continue
 
-                    if trigger.get("project") == project or trigger.get("project_owner") == project:
+                    source = trigger.get("source", "jira")
+                    if (source == "jira" and trigger.get("project") == project) or (
+                        source == "github" and trigger.get("project_owner") == project
+                    ):
                         orch["enabled"] = enabled
                         file_count += 1
 

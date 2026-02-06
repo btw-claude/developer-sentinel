@@ -62,7 +62,7 @@ class Router:
         1. The issue source type matches the trigger source
         2. For Jira: The issue is in the specified project (if specified)
         3. For GitHub: The issue has ALL labels specified in the trigger (if any)
-        4. The issue has ALL tags specified in the trigger (Jira only)
+        4. The issue has ALL tags specified in the trigger (both Jira and GitHub)
 
         Tag matching is case-insensitive for both platforms.
 
