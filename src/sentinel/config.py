@@ -289,16 +289,6 @@ class Config:
     logging_config: LoggingConfig = field(default_factory=LoggingConfig)
     polling: PollingConfig = field(default_factory=PollingConfig)
 
-    @property
-    def codex_path(self) -> str:
-        """Backward-compatible accessor for codex.path."""
-        return self.codex.path
-
-    @property
-    def codex_default_model(self) -> str:
-        """Backward-compatible accessor for codex.default_model."""
-        return self.codex.default_model
-
 
 def _parse_positive_int(value: str, name: str, default: int) -> int:
     """Parse a string as a positive integer with validation.

@@ -972,24 +972,6 @@ class TestCodexConfig:
 
         assert config.codex.default_model == "o3-mini"
 
-    def test_backward_compat_codex_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that Config.codex_path property returns codex.path."""
-        monkeypatch.setenv("SENTINEL_CODEX_PATH", "/opt/codex")
-
-        config = load_config()
-
-        assert config.codex_path == "/opt/codex"
-        assert config.codex_path == config.codex.path
-
-    def test_backward_compat_codex_default_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that Config.codex_default_model property returns codex.default_model."""
-        monkeypatch.setenv("SENTINEL_CODEX_DEFAULT_MODEL", "o3-mini")
-
-        config = load_config()
-
-        assert config.codex_default_model == "o3-mini"
-        assert config.codex_default_model == config.codex.default_model
-
 
 class TestInterMessageTimesThresholdConfig:
     """Tests for inter_message_times_threshold configuration."""
