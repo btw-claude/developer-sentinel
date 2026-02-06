@@ -302,7 +302,8 @@ def _create_codex_builder(
 
     Args:
         circuit_breaker_registry: Optional registry to get circuit breakers from.
-            Reserved for future use when Codex client supports circuit breakers.
+            If provided, the Codex circuit breaker will be retrieved from this
+            registry and injected into the client.
 
     Returns:
         A builder function that creates CodexAgentClient instances.
@@ -310,10 +311,16 @@ def _create_codex_builder(
     def builder(config: Config) -> AgentClient:
         from sentinel.agent_clients.codex import CodexAgentClient
 
+        # Get circuit breaker from registry if available
+        circuit_breaker = (
+            circuit_breaker_registry.get("codex") if circuit_breaker_registry else None
+        )
+
         return CodexAgentClient(
             config=config,
             base_workdir=config.execution.agent_workdir,
             log_base_dir=config.execution.agent_logs_dir,
+            circuit_breaker=circuit_breaker,
         )
 
     return builder
@@ -346,7 +353,7 @@ def create_default_factory(
         _create_claude_sdk_builder(circuit_breaker_registry),
     )
 
-    # Register the Codex CLI builder
+    # Register the Codex CLI builder with circuit breaker support
     factory.register(
         AgentType.CODEX,
         _create_codex_builder(circuit_breaker_registry),

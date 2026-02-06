@@ -20,6 +20,7 @@ from sentinel.agent_clients import (
     CodexAgentClient,
     create_default_factory,
 )
+from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitState
 from sentinel.config import CodexConfig, Config
 from tests.helpers import make_config
 
@@ -561,3 +562,247 @@ class TestCodexAgentClientFactoryIntegration:
         assert client._default_model == "custom-model"
         assert client.base_workdir == config.execution.agent_workdir
         assert client.log_base_dir == config.execution.agent_logs_dir
+
+
+class TestCodexCircuitBreaker:
+    """Tests for CodexAgentClient circuit breaker integration."""
+
+    def test_init_creates_default_circuit_breaker(self, codex_config: Config) -> None:
+        """Test that init creates a default circuit breaker when none is provided."""
+        client = CodexAgentClient(codex_config)
+
+        assert client.circuit_breaker is not None
+        assert client.circuit_breaker.service_name == "codex"
+        assert client.circuit_breaker.state == CircuitState.CLOSED
+
+    def test_init_accepts_injected_circuit_breaker(self, codex_config: Config) -> None:
+        """Test that init uses the injected circuit breaker."""
+        cb = CircuitBreaker(
+            service_name="codex-custom",
+            config=CircuitBreakerConfig(failure_threshold=10),
+        )
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        assert client.circuit_breaker is cb
+        assert client.circuit_breaker.service_name == "codex-custom"
+
+    def test_get_circuit_breaker_status(self, codex_config: Config) -> None:
+        """Test that get_circuit_breaker_status returns status dict."""
+        client = CodexAgentClient(codex_config)
+
+        status = client.get_circuit_breaker_status()
+
+        assert isinstance(status, dict)
+        assert status["service_name"] == "codex"
+        assert status["state"] == "closed"
+        assert "config" in status
+        assert "metrics" in status
+
+    def test_circuit_breaker_property(self, codex_config: Config) -> None:
+        """Test that the circuit_breaker property returns the circuit breaker."""
+        cb = CircuitBreaker(service_name="codex")
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        assert client.circuit_breaker is cb
+
+    def test_run_agent_rejects_when_circuit_open(
+        self,
+        codex_config: Config,
+    ) -> None:
+        """Test that run_agent raises error when circuit breaker is open."""
+        cb = CircuitBreaker(
+            service_name="codex",
+            config=CircuitBreakerConfig(failure_threshold=1),
+        )
+        # Force circuit breaker to open state
+        cb.record_failure(Exception("test failure"))
+
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        with pytest.raises(AgentClientError) as exc_info:
+            asyncio.run(client.run_agent("prompt"))
+
+        assert "circuit breaker is open" in str(exc_info.value)
+        assert "codex" in str(exc_info.value).lower()
+
+    def test_run_agent_records_success(
+        self,
+        mock_codex_subprocess: tuple,
+        codex_config: Config,
+    ) -> None:
+        """Test that successful execution records success on circuit breaker."""
+        cb = CircuitBreaker(service_name="codex")
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        asyncio.run(client.run_agent("test prompt"))
+
+        assert cb.metrics.successful_calls == 1
+        assert cb.metrics.failed_calls == 0
+
+    def test_run_agent_records_failure_on_nonzero_exit(
+        self,
+        mock_codex_subprocess: tuple,
+        codex_config: Config,
+    ) -> None:
+        """Test that non-zero exit code records failure on circuit breaker."""
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        mock_output_path.exists.return_value = False
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Error: something went wrong",
+        )
+
+        cb = CircuitBreaker(service_name="codex")
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        with pytest.raises(AgentClientError):
+            asyncio.run(client.run_agent("prompt"))
+
+        assert cb.metrics.failed_calls == 1
+        assert cb.metrics.successful_calls == 0
+
+    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
+    @patch("sentinel.agent_clients.codex.subprocess.run")
+    def test_run_agent_records_failure_on_timeout(
+        self,
+        mock_run: MagicMock,
+        mock_tmpdir_cls: MagicMock,
+        codex_config: Config,
+    ) -> None:
+        """Test that timeout records failure on circuit breaker."""
+        mock_tmpdir_ctx = MagicMock()
+        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
+
+        cb = CircuitBreaker(service_name="codex")
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        with pytest.raises(AgentTimeoutError):
+            asyncio.run(client.run_agent("prompt", timeout_seconds=60))
+
+        assert cb.metrics.failed_calls == 1
+
+    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
+    @patch("sentinel.agent_clients.codex.subprocess.run")
+    def test_run_agent_records_failure_on_file_not_found(
+        self,
+        mock_run: MagicMock,
+        mock_tmpdir_cls: MagicMock,
+    ) -> None:
+        """Test that FileNotFoundError records failure on circuit breaker."""
+        mock_tmpdir_ctx = MagicMock()
+        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+        mock_run.side_effect = FileNotFoundError("codex not found")
+
+        cb = CircuitBreaker(service_name="codex")
+        config = make_config(
+            codex_path="/nonexistent/codex",
+            codex_default_model="o3-mini",
+        )
+        client = CodexAgentClient(config, circuit_breaker=cb)
+
+        with pytest.raises(AgentClientError):
+            asyncio.run(client.run_agent("prompt"))
+
+        assert cb.metrics.failed_calls == 1
+
+    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
+    @patch("sentinel.agent_clients.codex.subprocess.run")
+    def test_run_agent_records_failure_on_os_error(
+        self,
+        mock_run: MagicMock,
+        mock_tmpdir_cls: MagicMock,
+        codex_config: Config,
+    ) -> None:
+        """Test that OSError records failure on circuit breaker."""
+        mock_tmpdir_ctx = MagicMock()
+        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+        mock_run.side_effect = OSError("Permission denied")
+
+        cb = CircuitBreaker(service_name="codex")
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        with pytest.raises(AgentClientError):
+            asyncio.run(client.run_agent("prompt"))
+
+        assert cb.metrics.failed_calls == 1
+
+    def test_repeated_failures_open_circuit(
+        self,
+        mock_codex_subprocess: tuple,
+        codex_config: Config,
+    ) -> None:
+        """Test that repeated failures cause the circuit to open."""
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        mock_output_path.exists.return_value = False
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Error: service unavailable",
+        )
+
+        cb = CircuitBreaker(
+            service_name="codex",
+            config=CircuitBreakerConfig(failure_threshold=2),
+        )
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        # First failure
+        with pytest.raises(AgentClientError):
+            asyncio.run(client.run_agent("prompt"))
+
+        # Second failure - should open the circuit
+        with pytest.raises(AgentClientError):
+            asyncio.run(client.run_agent("prompt"))
+
+        assert cb.state == CircuitState.OPEN
+
+        # Third call should be rejected by circuit breaker
+        with pytest.raises(AgentClientError) as exc_info:
+            asyncio.run(client.run_agent("prompt"))
+
+        assert "circuit breaker is open" in str(exc_info.value)
+
+
+class TestCodexFactoryCircuitBreakerIntegration:
+    """Tests for factory integration with circuit breaker."""
+
+    def test_factory_creates_codex_with_circuit_breaker_from_registry(self) -> None:
+        """Test that factory injects circuit breaker from registry."""
+        from sentinel.circuit_breaker import CircuitBreakerRegistry
+
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        registry = CircuitBreakerRegistry()
+        factory = create_default_factory(config, circuit_breaker_registry=registry)
+
+        client = factory.create("codex", config)
+
+        assert isinstance(client, CodexAgentClient)
+        # The circuit breaker should be from the registry
+        assert client.circuit_breaker is registry.get("codex")
+        assert client.circuit_breaker.service_name == "codex"
+
+    def test_factory_creates_codex_without_circuit_breaker_registry(self) -> None:
+        """Test that factory creates codex with default circuit breaker when no registry."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        factory = create_default_factory(config)
+
+        client = factory.create("codex", config)
+
+        assert isinstance(client, CodexAgentClient)
+        # Should have a default circuit breaker
+        assert client.circuit_breaker is not None
+        assert client.circuit_breaker.service_name == "codex"
