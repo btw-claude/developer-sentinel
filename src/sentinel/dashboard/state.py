@@ -75,7 +75,7 @@ class ProjectOrchestrations:
           or a backport for earlier versions
     """
 
-    identifier: str  # Project key or project owner, e.g., "DS" for Jira or "org/repo" for GitHub
+    identifier: str  # Project key or project owner, e.g., "DS" for Jira or "my-org" for GitHub
     orchestrations: list[OrchestrationInfo]
 
     @property
