@@ -18,7 +18,7 @@ from sentinel.agent_clients.claude_sdk import (
     request_shutdown,
     reset_shutdown,
 )
-from sentinel.config import Config, ExecutionConfig
+from sentinel.config import Config
 from sentinel.poller import JiraClientError
 from sentinel.sdk_clients import (
     ClaudeProcessInterruptedError,
@@ -28,6 +28,7 @@ from sentinel.sdk_clients import (
     ShutdownController,
 )
 from sentinel.tag_manager import JiraTagClientError
+from tests.helpers import make_config
 
 
 @pytest.fixture(autouse=True)
@@ -38,8 +39,11 @@ def reset_shutdown_state() -> None:
 
 @pytest.fixture
 def mock_config() -> Config:
-    """Create a mock config for testing."""
-    return Config()
+    """Create a mock config for testing.
+
+    Uses the centralized make_config() helper from tests/helpers.py.
+    """
+    return make_config()
 
 
 class MockMessage:
@@ -694,7 +698,7 @@ class TestDisableStreamingLogs:
 
     def test_constructor_defaults_to_config_value(self) -> None:
         """Should default to config value when not explicitly provided."""
-        config = Config(execution=ExecutionConfig(disable_streaming_logs=True))
+        config = make_config(disable_streaming_logs=True)
         client = ClaudeSdkAgentClient(config)
         assert client._disable_streaming_logs is True
 
@@ -705,7 +709,7 @@ class TestDisableStreamingLogs:
 
     def test_explicit_param_overrides_config(self) -> None:
         """Should use explicit parameter over config value."""
-        config = Config(execution=ExecutionConfig(disable_streaming_logs=True))
+        config = make_config(disable_streaming_logs=True)
         client = ClaudeSdkAgentClient(config, disable_streaming_logs=False)
         assert client._disable_streaming_logs is False
 
@@ -1139,7 +1143,7 @@ class TestClaudeSdkAgentClientBranchSetup:
         workdir.mkdir()
 
         # Create config with a short timeout for testing
-        config = Config(execution=ExecutionConfig(subprocess_timeout=5.0))
+        config = make_config(subprocess_timeout=5.0)
         client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
 
         def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
@@ -1162,7 +1166,7 @@ class TestClaudeSdkAgentClientBranchSetup:
         workdir = tmp_path / "repo"
         workdir.mkdir()
 
-        config = Config(execution=ExecutionConfig(subprocess_timeout=5.0))
+        config = make_config(subprocess_timeout=5.0)
         client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
 
         def mock_run(cmd: list[str], **kwargs: Any) -> MagicMock:
@@ -1201,7 +1205,7 @@ class TestClaudeSdkAgentClientBranchSetup:
         workdir = tmp_path / "repo"
         workdir.mkdir()
 
-        config = Config(execution=ExecutionConfig(subprocess_timeout=30.0))
+        config = make_config(subprocess_timeout=30.0)
         client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
 
         captured_timeouts: list[float | None] = []
@@ -1235,7 +1239,7 @@ class TestClaudeSdkAgentClientBranchSetup:
         workdir = tmp_path / "repo"
         workdir.mkdir()
 
-        config = Config(execution=ExecutionConfig(subprocess_timeout=0.0))
+        config = make_config(subprocess_timeout=0.0)
         client = ClaudeSdkAgentClient(config, base_workdir=tmp_path)
 
         captured_timeouts: list[float | None] = []
