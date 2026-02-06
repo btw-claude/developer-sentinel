@@ -22,38 +22,37 @@ from sentinel.agent_clients import (
     CursorMode,
     create_default_factory,
 )
-from sentinel.config import Config, CursorConfig, ExecutionConfig
+from sentinel.config import Config, CursorConfig
+from tests.helpers import make_config
 
 
 @pytest.fixture
 def test_config() -> Config:
-    """Create a default test Config with standard cursor settings."""
-    return Config(
-        execution=ExecutionConfig(
-            agent_workdir=Path("/tmp/test-workdir"),
-            agent_logs_dir=Path("/tmp/test-logs"),
-        ),
-        cursor=CursorConfig(
-            path="/usr/local/bin/cursor",
-            default_model="claude-3-sonnet",
-            default_mode="agent",
-        ),
+    """Create a default test Config with standard cursor settings.
+
+    Uses the centralized make_config() helper from tests/helpers.py.
+    """
+    return make_config(
+        agent_workdir=Path("/tmp/test-workdir"),
+        agent_logs_dir=Path("/tmp/test-logs"),
+        cursor_path="/usr/local/bin/cursor",
+        cursor_default_model="claude-3-sonnet",
+        cursor_default_mode="agent",
     )
 
 
 @pytest.fixture
 def test_config_plan_mode() -> Config:
-    """Create a test Config with plan mode."""
-    return Config(
-        execution=ExecutionConfig(
-            agent_workdir=Path("/tmp/test-workdir"),
-            agent_logs_dir=Path("/tmp/test-logs"),
-        ),
-        cursor=CursorConfig(
-            path="/usr/local/bin/cursor",
-            default_model="claude-3-sonnet",
-            default_mode="plan",
-        ),
+    """Create a test Config with plan mode.
+
+    Uses the centralized make_config() helper from tests/helpers.py.
+    """
+    return make_config(
+        agent_workdir=Path("/tmp/test-workdir"),
+        agent_logs_dir=Path("/tmp/test-logs"),
+        cursor_path="/usr/local/bin/cursor",
+        cursor_default_model="claude-3-sonnet",
+        cursor_default_mode="plan",
     )
 
 
@@ -62,21 +61,19 @@ def make_test_config(
     cursor_default_model: str = "claude-3-sonnet",
     cursor_default_mode: str = "agent",
 ) -> Config:
-    """Create a Config for testing with customizable parameters.
+    """Create a Config for testing with customizable cursor parameters.
+
+    Uses the centralized make_config() helper from tests/helpers.py.
 
     Note: For simple test cases, prefer using the test_config fixture.
     This helper is useful when specific parameter overrides are needed.
     """
-    return Config(
-        execution=ExecutionConfig(
-            agent_workdir=Path("/tmp/test-workdir"),
-            agent_logs_dir=Path("/tmp/test-logs"),
-        ),
-        cursor=CursorConfig(
-            path=cursor_path,
-            default_model=cursor_default_model,
-            default_mode=cursor_default_mode,
-        ),
+    return make_config(
+        agent_workdir=Path("/tmp/test-workdir"),
+        agent_logs_dir=Path("/tmp/test-logs"),
+        cursor_path=cursor_path,
+        cursor_default_model=cursor_default_model,
+        cursor_default_mode=cursor_default_mode,
     )
 
 
