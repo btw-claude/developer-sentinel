@@ -70,10 +70,12 @@ class AgentType(StrEnum):
 
     Values:
         CLAUDE: Claude SDK agent ("claude")
+        CODEX: Codex CLI agent ("codex")
         CURSOR: Cursor CLI agent ("cursor")
     """
 
     CLAUDE = "claude"
+    CODEX = "codex"
     CURSOR = "cursor"
 
     @classmethod
@@ -252,7 +254,7 @@ class ErrorType(StrEnum):
 
 # Type aliases for Literal types (for backward compatibility with type hints)
 TriggerSourceLiteral = Literal["jira", "github"]
-AgentTypeLiteral = Literal["claude", "cursor"]
+AgentTypeLiteral = Literal["claude", "codex", "cursor"]
 CursorModeLiteral = Literal["agent", "plan", "ask"]
 RateLimitStrategyLiteral = Literal["queue", "reject"]
 QueueFullStrategyLiteral = Literal["reject", "wait"]
