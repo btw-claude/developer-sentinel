@@ -98,7 +98,7 @@ line-length = 100
 # All rules added since 0.9.0 (UP044-UP050, B911-B912, C420, SIM905, SIM910-SIM911)
 # are confirmed stable in 0.15.0 and are purely additive — they do not exist in older
 # versions and are silently skipped. No version constraint changes needed; the
-# ruff>=0.1.0 lower bound remains sound for all currently selected rules.
+# ruff>=0.9.0 lower bound remains sound for all currently selected rules.
 #
 # NOTE: The silent-skip behavior for unknown rule selectors (i.e., rules that do not
 # exist in the installed ruff version are quietly ignored) relies on current ruff
