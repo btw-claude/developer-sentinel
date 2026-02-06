@@ -89,7 +89,7 @@ line-length = 100
 # preview rules being introduced in future ruff upgrades.
 #
 # Rule stability audit (DS-622, re-audited against ruff 0.15.0 / 2026-02-06):
-# Previous audits: DS-617 (ruff 0.9.10), DS-621 (ruff 0.15.0).
+# Previous audits: DS-617 (ruff 0.9.10), DS-621 (ruff 0.15.0), DS-622 (ruff 0.15.0, re-confirmed).
 # Re-audited for DS-622 as a follow-up from the DS-621 code review. Since preview
 # mode is NOT enabled, only stable rules are enforced. Audit results by category:
 #   Fully stable: F (43), I (2), N (16), UP (47), C4 (19), SIM (30), G (8)
