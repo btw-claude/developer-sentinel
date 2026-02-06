@@ -318,5 +318,3 @@ class TestShutdownTimeoutIntegration:
 
             # The task won't complete since we're shutting down the executor
             assert not task_completed
-
-

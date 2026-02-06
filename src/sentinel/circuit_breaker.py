@@ -587,5 +587,3 @@ class CircuitBreakerRegistry:
             for cb in self._breakers.values():
                 cb.reset()
             logger.info("[CIRCUIT_BREAKER] All circuit breakers reset")
-
-
