@@ -9,6 +9,7 @@ sub-configs for each subsystem:
 - RateLimitConfig: Claude API rate limiting settings
 - CircuitBreakerConfig: Circuit breaker settings for external services
 - ExecutionConfig: Agent execution settings (paths, concurrency, timeouts)
+- CodexConfig: Codex CLI settings
 
 The main Config class composes these sub-configs into a single configuration object.
 """
@@ -217,6 +218,19 @@ class CursorConfig:
 
 
 @dataclass(frozen=True)
+class CodexConfig:
+    """Codex CLI configuration.
+
+    Attributes:
+        path: Path to Codex CLI executable.
+        default_model: Default model for Codex agent.
+    """
+
+    path: str = ""
+    default_model: str = ""
+
+
+@dataclass(frozen=True)
 class LoggingConfig:
     """Logging configuration.
 
@@ -257,6 +271,7 @@ class Config:
         health_check: Health check settings
         execution: Agent execution settings
         cursor: Cursor CLI settings
+        codex: Codex CLI settings
         logging_config: Logging settings
         polling: Polling settings
     """
@@ -270,8 +285,19 @@ class Config:
     health_check: HealthCheckConfig = field(default_factory=HealthCheckConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     cursor: CursorConfig = field(default_factory=CursorConfig)
+    codex: CodexConfig = field(default_factory=CodexConfig)
     logging_config: LoggingConfig = field(default_factory=LoggingConfig)
     polling: PollingConfig = field(default_factory=PollingConfig)
+
+    @property
+    def codex_path(self) -> str:
+        """Backward-compatible accessor for codex.path."""
+        return self.codex.path
+
+    @property
+    def codex_default_model(self) -> str:
+        """Backward-compatible accessor for codex.default_model."""
+        return self.codex.default_model
 
 
 def _parse_positive_int(value: str, name: str, default: int) -> int:
@@ -682,6 +708,10 @@ def load_config(env_file: Path | None = None) -> Config:
         os.getenv("SENTINEL_CURSOR_DEFAULT_MODE", "agent"),
     )
 
+    # Parse Codex CLI configuration
+    codex_path = os.getenv("SENTINEL_CODEX_PATH", "")
+    codex_default_model = os.getenv("SENTINEL_CODEX_DEFAULT_MODEL", "")
+
     # Parse timing metrics threshold
     inter_message_times_threshold = _parse_positive_int(
         os.getenv("SENTINEL_INTER_MESSAGE_TIMES_THRESHOLD", "100"),
@@ -853,6 +883,11 @@ def load_config(env_file: Path | None = None) -> Config:
         default_mode=cursor_default_mode,
     )
 
+    codex_config = CodexConfig(
+        path=codex_path,
+        default_model=codex_default_model,
+    )
+
     logging_cfg = LoggingConfig(
         level=log_level,
         json=log_json,
@@ -872,6 +907,7 @@ def load_config(env_file: Path | None = None) -> Config:
         health_check=health_check_config,
         execution=execution_config,
         cursor=cursor_config,
+        codex=codex_config,
         logging_config=logging_cfg,
         polling=polling_config,
     )

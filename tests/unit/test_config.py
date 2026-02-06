@@ -13,6 +13,7 @@ from sentinel.config import (
     VALID_CURSOR_MODES,
     VALID_LOG_LEVELS,
     CircuitBreakerConfig,
+    CodexConfig,
     Config,
     CursorConfig,
     DashboardConfig,
@@ -145,6 +146,11 @@ class TestSubConfigs:
         assert cursor.path == ""
         assert cursor.default_model == ""
         assert cursor.default_mode == "agent"
+
+    def test_codex_config_defaults(self) -> None:
+        codex = CodexConfig()
+        assert codex.path == ""
+        assert codex.default_model == ""
 
     def test_logging_config_defaults(self) -> None:
         logging_cfg = LoggingConfig()
@@ -929,6 +935,60 @@ class TestCursorConfig:
 
         assert config.cursor.default_agent_type == "claude"
         assert "Invalid SENTINEL_DEFAULT_AGENT_TYPE" in caplog.text
+
+
+class TestCodexConfig:
+    """Tests for Codex CLI configuration."""
+
+    def test_codex_path_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that codex_path defaults to empty string."""
+        monkeypatch.delenv("SENTINEL_CODEX_PATH", raising=False)
+
+        config = load_config()
+
+        assert config.codex.path == ""
+
+    def test_codex_path_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that codex_path loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_CODEX_PATH", "/usr/local/bin/codex")
+
+        config = load_config()
+
+        assert config.codex.path == "/usr/local/bin/codex"
+
+    def test_codex_default_model_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that codex_default_model defaults to empty string."""
+        monkeypatch.delenv("SENTINEL_CODEX_DEFAULT_MODEL", raising=False)
+
+        config = load_config()
+
+        assert config.codex.default_model == ""
+
+    def test_codex_default_model_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that codex_default_model loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_CODEX_DEFAULT_MODEL", "o3-mini")
+
+        config = load_config()
+
+        assert config.codex.default_model == "o3-mini"
+
+    def test_backward_compat_codex_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that Config.codex_path property returns codex.path."""
+        monkeypatch.setenv("SENTINEL_CODEX_PATH", "/opt/codex")
+
+        config = load_config()
+
+        assert config.codex_path == "/opt/codex"
+        assert config.codex_path == config.codex.path
+
+    def test_backward_compat_codex_default_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that Config.codex_default_model property returns codex.default_model."""
+        monkeypatch.setenv("SENTINEL_CODEX_DEFAULT_MODEL", "o3-mini")
+
+        config = load_config()
+
+        assert config.codex_default_model == "o3-mini"
+        assert config.codex_default_model == config.codex.default_model
 
 
 class TestInterMessageTimesThresholdConfig:
