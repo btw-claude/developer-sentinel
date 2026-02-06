@@ -1,7 +1,7 @@
 """Factory pattern for agent client instantiation.
 
 This module provides a factory for creating agent clients, supporting
-multiple agent backends (Claude SDK, Cursor CLI, etc.) with caching
+multiple agent backends (Claude SDK, Codex CLI, Cursor CLI, etc.) with caching
 and orchestration-specific configuration.
 
 Circuit breakers are injected via dependency injection. When a
@@ -295,6 +295,30 @@ def _create_cursor_builder(
     return builder
 
 
+def _create_codex_builder(
+    circuit_breaker_registry: CircuitBreakerRegistry | None = None,
+) -> AgentClientBuilder:
+    """Create a builder function for CodexAgentClient.
+
+    Args:
+        circuit_breaker_registry: Optional registry to get circuit breakers from.
+            Reserved for future use when Codex client supports circuit breakers.
+
+    Returns:
+        A builder function that creates CodexAgentClient instances.
+    """
+    def builder(config: Config) -> AgentClient:
+        from sentinel.agent_clients.codex import CodexAgentClient
+
+        return CodexAgentClient(
+            config=config,
+            base_workdir=config.execution.agent_workdir,
+            log_base_dir=config.execution.agent_logs_dir,
+        )
+
+    return builder
+
+
 def create_default_factory(
     config: Config,
     circuit_breaker_registry: CircuitBreakerRegistry | None = None,
@@ -320,6 +344,12 @@ def create_default_factory(
     factory.register(
         AgentType.CLAUDE,
         _create_claude_sdk_builder(circuit_breaker_registry),
+    )
+
+    # Register the Codex CLI builder
+    factory.register(
+        AgentType.CODEX,
+        _create_codex_builder(circuit_breaker_registry),
     )
 
     # Register the Cursor CLI builder
