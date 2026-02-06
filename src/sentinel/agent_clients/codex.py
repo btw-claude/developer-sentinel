@@ -12,6 +12,7 @@ Reference: https://developers.openai.com/codex/cli/reference
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
 import tempfile
 from datetime import datetime
@@ -228,11 +229,9 @@ class CodexAgentClient(AgentClient):
             )
 
         try:
-            # Create a temporary file for capturing the last message output
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".txt", delete=False
-            ) as tmp:
-                tmp_path = tmp.name
+            # Create a temporary file path for capturing the last message output
+            fd, tmp_path = tempfile.mkstemp(suffix=".txt")
+            os.close(fd)
 
             try:
                 result = await asyncio.to_thread(_run_subprocess, tmp_path)

@@ -555,3 +555,88 @@ orchestrations:
         assert orch.agent.cursor_mode == "agent"
         assert orch.agent.github is not None
         assert orch.agent.github.org == "test-org"
+
+
+class TestCodexAgentType:
+    """Tests for Codex agent type configuration.
+
+    These tests verify that the codex agent type is properly supported:
+    - agent_type: 'codex' loads successfully
+    - cursor_mode is rejected when agent_type is 'codex'
+    """
+
+    def test_load_file_with_agent_type_codex(self, tmp_path: Path) -> None:
+        """Should load orchestration with agent_type='codex'."""
+        yaml_content = """
+orchestrations:
+  - name: "codex-agent"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: codex
+"""
+        file_path = tmp_path / "codex_agent.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_type == "codex"
+        assert orchestrations[0].agent.cursor_mode is None
+
+    def test_cursor_mode_with_codex_agent_type_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when cursor_mode is set with agent_type='codex'."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-codex-combo"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      agent_type: codex
+      cursor_mode: agent
+"""
+        file_path = tmp_path / "invalid_codex_combo.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(
+            OrchestrationError, match="cursor_mode.*only valid when agent_type is 'cursor'"
+        ):
+            load_orchestration_file(file_path)
+
+    def test_agent_type_codex_with_all_options(self, tmp_path: Path) -> None:
+        """Should load codex agent_type along with all other options."""
+        yaml_content = """
+orchestrations:
+  - name: "full-codex-config"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["review"]
+    agent:
+      prompt: "Review the code"
+      timeout_seconds: 300
+      model: "o3-mini"
+      agent_type: codex
+      github:
+        host: "github.com"
+        org: "test-org"
+        repo: "test-repo"
+"""
+        file_path = tmp_path / "full_codex_config.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.prompt == "Review the code"
+        assert orch.agent.timeout_seconds == 300
+        assert orch.agent.model == "o3-mini"
+        assert orch.agent.agent_type == "codex"
+        assert orch.agent.cursor_mode is None
+        assert orch.agent.github is not None
+        assert orch.agent.github.org == "test-org"
+
