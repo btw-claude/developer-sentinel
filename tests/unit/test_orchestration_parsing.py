@@ -23,6 +23,7 @@ from sentinel.orchestration import (
     RetryConfig,
     TriggerConfig,
     _validate_branch_name,
+    _validate_string_field,
     load_orchestration_file,
 )
 
@@ -1243,7 +1244,7 @@ orchestrations:
         with pytest.raises(OrchestrationError) as exc_info:
             load_orchestration_file(orch_file)
         assert "Invalid github.host" in str(exc_info.value)
-        assert "empty string" in str(exc_info.value)
+        assert "whitespace-only string" in str(exc_info.value)
 
     def test_valid_enterprise_host_accepted(self, tmp_path: Path) -> None:
         """Test that a valid GitHub Enterprise host is accepted without error."""
@@ -1581,3 +1582,87 @@ orchestrations:
         assert orchestrations[0].agent.strict_template_variables is True
         assert orchestrations[0].agent.github is not None
         assert orchestrations[0].agent.github.branch == "feature/{jira_issue_key}"
+
+
+class TestValidateStringField:
+    """Tests for _validate_string_field() helper function.
+
+    The _validate_string_field() helper was extracted in DS-634 to eliminate
+    the repeated isinstance + whitespace-only validation pattern that was
+    duplicated across host, org, and repo fields in _parse_github_context().
+    """
+
+    def test_none_value_is_accepted(self) -> None:
+        """None should be accepted without error (callers fall back to a default)."""
+        _validate_string_field(None, "test.field")  # Should not raise
+
+    def test_valid_string_is_accepted(self) -> None:
+        """A normal non-empty string should be accepted without error."""
+        _validate_string_field("github.com", "test.field")  # Should not raise
+
+    def test_non_string_raises_error(self) -> None:
+        """A non-string value (e.g., integer) should raise OrchestrationError."""
+        with pytest.raises(OrchestrationError) as exc_info:
+            _validate_string_field(12345, "github.host")
+        assert "Invalid github.host" in str(exc_info.value)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_non_string_boolean_raises_error(self) -> None:
+        """A boolean value should raise OrchestrationError."""
+        with pytest.raises(OrchestrationError) as exc_info:
+            _validate_string_field(True, "github.org")
+        assert "Invalid github.org" in str(exc_info.value)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_non_string_list_raises_error(self) -> None:
+        """A list value should raise OrchestrationError."""
+        with pytest.raises(OrchestrationError) as exc_info:
+            _validate_string_field(["a", "b"], "github.repo")
+        assert "Invalid github.repo" in str(exc_info.value)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_empty_string_rejected_by_default(self) -> None:
+        """An empty string should be rejected when allow_empty is False (default)."""
+        with pytest.raises(OrchestrationError) as exc_info:
+            _validate_string_field("", "github.host")
+        assert "Invalid github.host" in str(exc_info.value)
+        assert "empty string" in str(exc_info.value)
+
+    def test_empty_string_accepted_when_allow_empty_true(self) -> None:
+        """An empty string should be accepted when allow_empty is True."""
+        _validate_string_field("", "github.org", allow_empty=True)  # Should not raise
+
+    def test_whitespace_only_rejected(self) -> None:
+        """A whitespace-only string should be rejected."""
+        with pytest.raises(OrchestrationError) as exc_info:
+            _validate_string_field("   ", "github.host")
+        assert "Invalid github.host" in str(exc_info.value)
+        assert "whitespace-only string" in str(exc_info.value)
+
+    def test_whitespace_only_rejected_even_with_allow_empty(self) -> None:
+        """A whitespace-only string should be rejected even when allow_empty is True."""
+        with pytest.raises(OrchestrationError) as exc_info:
+            _validate_string_field("   ", "github.org", allow_empty=True)
+        assert "Invalid github.org" in str(exc_info.value)
+        assert "whitespace-only string" in str(exc_info.value)
+
+    def test_tab_whitespace_rejected(self) -> None:
+        """A tab-only string should be rejected as whitespace-only."""
+        with pytest.raises(OrchestrationError) as exc_info:
+            _validate_string_field("\t", "github.repo")
+        assert "Invalid github.repo" in str(exc_info.value)
+        assert "whitespace-only string" in str(exc_info.value)
+
+    def test_field_name_appears_in_error_message(self) -> None:
+        """The field_name parameter should appear in the error message."""
+        with pytest.raises(OrchestrationError) as exc_info:
+            _validate_string_field(42, "custom.field")
+        assert "Invalid custom.field" in str(exc_info.value)
+
+    def test_string_with_leading_trailing_whitespace_accepted(self) -> None:
+        """A string with content and surrounding whitespace should be accepted."""
+        _validate_string_field("  github.com  ", "github.host")  # Should not raise
+
+    def test_single_character_string_accepted(self) -> None:
+        """A single non-whitespace character should be accepted."""
+        _validate_string_field("x", "github.org")  # Should not raise
