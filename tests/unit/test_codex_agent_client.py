@@ -640,6 +640,31 @@ class TestCodexCircuitBreaker:
         assert "circuit breaker is open" in str(exc_info.value)
         assert "codex" in str(exc_info.value).lower()
 
+    def test_run_agent_circuit_open_skips_workdir_creation(
+        self,
+        tmp_path: Path,
+        codex_config: Config,
+    ) -> None:
+        """Test that circuit breaker check happens before workdir creation.
+
+        When the circuit breaker is open, run_agent() should reject immediately
+        without creating a working directory. This avoids unnecessary disk I/O
+        when the service is unavailable (DS-661).
+        """
+        cb = CircuitBreaker(
+            service_name="codex",
+            config=CircuitBreakerConfig(failure_threshold=1),
+        )
+        cb.record_failure(Exception("test failure"))
+
+        client = CodexAgentClient(codex_config, base_workdir=tmp_path, circuit_breaker=cb)
+
+        with pytest.raises(AgentClientError, match="circuit breaker is open"):
+            asyncio.run(client.run_agent("prompt", issue_key="TEST-123"))
+
+        # Verify no workdir was created - the directory should be empty
+        assert list(tmp_path.iterdir()) == []
+
     def test_run_agent_records_success(
         self,
         mock_codex_subprocess: CodexSubprocessMocks,
