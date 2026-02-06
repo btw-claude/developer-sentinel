@@ -102,7 +102,7 @@ def make_config(
     # GitHub settings
     github_token: str = "",
     github_api_url: str = "",
-    # Cursor settings
+    # Agent settings
     default_agent_type: str = "claude",
     cursor_path: str = "",
     cursor_default_model: str = "",
@@ -177,7 +177,7 @@ def make_config(
         github_token: Personal access token (default: "").
         github_api_url: GitHub Enterprise API URL (default: "").
 
-    **Cursor Settings** - Cursor CLI configuration:
+    **Agent Settings** - Agent type and Cursor CLI configuration:
         default_agent_type: Agent type - "claude", "codex", or "cursor" (default: "claude").
         cursor_path: Path to Cursor CLI executable (default: "").
         cursor_default_model: Default Cursor model (default: "").
