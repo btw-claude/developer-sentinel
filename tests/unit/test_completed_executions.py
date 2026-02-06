@@ -22,11 +22,11 @@ from tests.conftest import (
     MockAgentClient,
     MockJiraPoller,
     MockTagClient,
+    make_agent_factory,
     make_config,
     make_issue,
     make_orchestration,
 )
-from tests.mocks import MockAgentClientFactory
 
 
 class TestCompletedExecutionInfo:
@@ -229,8 +229,7 @@ class TestSentinelCompletedExecutions:
     def test_sentinel_get_completed_executions(self) -> None:
         """Test that Sentinel exposes get_completed_executions method."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -250,8 +249,7 @@ class TestSentinelCompletedExecutions:
     def test_sentinel_completed_execution_recorded(self) -> None:
         """Test that completed executions are recorded through the state tracker."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -399,8 +397,7 @@ class TestSentinelRecordCompletedExecutionUsageData:
     def test_record_completed_execution_uses_usage_data_from_result(self) -> None:
         """Test that _record_completed_execution extracts usage data from ExecutionResult."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -447,8 +444,7 @@ class TestSentinelRecordCompletedExecutionUsageData:
     def test_record_completed_execution_with_zero_usage(self) -> None:
         """Test that _record_completed_execution handles zero usage data."""
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]

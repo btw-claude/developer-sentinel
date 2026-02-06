@@ -8,14 +8,13 @@ from sentinel.main import Sentinel
 
 # Import shared fixtures and helpers from conftest.py
 from tests.conftest import (
-    MockAgentClient,
     MockJiraPoller,
     MockTagClient,
     build_github_trigger_key,
+    make_agent_factory,
     make_config,
     make_orchestration,
 )
-from tests.mocks import MockAgentClientFactory
 
 
 class TestExtractRepoFromUrl:
@@ -147,8 +146,7 @@ class TestAddRepoContextFromUrls:
         from sentinel.github_poller import GitHubIssue
 
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -185,8 +183,7 @@ class TestAddRepoContextFromUrls:
         from sentinel.github_poller import GitHubIssue
 
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
@@ -233,8 +230,7 @@ class TestAddRepoContextFromUrls:
         from sentinel.github_poller import GitHubIssue
 
         jira_poller = MockJiraPoller(issues=[])
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         tag_client = MockTagClient()
         config = make_config()
         orchestrations = [make_orchestration()]
