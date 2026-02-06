@@ -71,6 +71,7 @@ class TimingMetrics:
     api_wait_time: float = 0.0
     # Threshold for summarizing inter_message_times
     # When message count exceeds this, store statistical summary instead of raw data
+    # Default matches Config.execution.inter_message_times_threshold default value
     inter_message_times_threshold: int = 100
 
     def start_query(self) -> None:

@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sentinel.dashboard.state import ExecutionStateSnapshot, OrchestrationVersionSnapshot
 
+from sentinel.agent_clients.claude_sdk import request_shutdown as request_claude_shutdown
 from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.agent_logger import AgentLogger
 
@@ -45,7 +46,6 @@ from sentinel.poll_coordinator import PollCoordinator
 from sentinel.poller import JiraIssue, JiraPoller
 from sentinel.router import Router, RoutingResult
 from sentinel.sdk_clients import ClaudeProcessInterruptedError
-from sentinel.sdk_clients import request_shutdown as request_claude_shutdown
 from sentinel.state_tracker import (
     CompletedExecutionInfo,
     QueuedIssueInfo,
