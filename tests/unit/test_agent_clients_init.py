@@ -36,6 +36,22 @@ EXPECTED_SYMBOLS = [
 class TestAgentClientsModuleAll:
     """Tests for __all__ definition in agent_clients package."""
 
+    def test_expected_symbols_matches_all(self) -> None:
+        """Test that EXPECTED_SYMBOLS matches __all__ exactly (drift detection).
+
+        Catches both symbols missing from EXPECTED_SYMBOLS and symbols
+        added to EXPECTED_SYMBOLS but not present in __all__.
+        """
+        from sentinel.agent_clients import __all__
+
+        expected = set(EXPECTED_SYMBOLS)
+        actual = set(__all__)
+        assert expected == actual, (
+            f"EXPECTED_SYMBOLS and __all__ have drifted apart.\n"
+            f"  In EXPECTED_SYMBOLS but not __all__: {expected - actual}\n"
+            f"  In __all__ but not EXPECTED_SYMBOLS: {actual - expected}"
+        )
+
     @pytest.mark.parametrize("symbol", EXPECTED_SYMBOLS)
     def test_all_contains_expected_symbol(self, symbol: str) -> None:
         """Test that __all__ contains the expected public symbol."""
