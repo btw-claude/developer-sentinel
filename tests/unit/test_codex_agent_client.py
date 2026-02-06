@@ -311,6 +311,32 @@ class TestCodexAgentClientRunAgent:
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs["timeout"] == 120
 
+    def test_run_agent_no_timeout_when_subprocess_timeout_zero(
+        self,
+        mock_codex_subprocess: tuple,
+    ) -> None:
+        """Test that no timeout is applied when subprocess_timeout is zero.
+
+        When timeout_seconds is not provided and config.execution.subprocess_timeout
+        is 0, the effective timeout should remain None (no timeout).
+        """
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        mock_output_path.stat.return_value = MagicMock(st_size=8)
+        mock_output_path.read_text.return_value = "Response"
+        mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+            subprocess_timeout=0,
+        )
+        client = CodexAgentClient(config)
+
+        asyncio.run(client.run_agent("prompt"))
+
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["timeout"] is None
+
     def test_run_agent_with_model_override(
         self,
         mock_codex_subprocess: tuple,
@@ -399,16 +425,13 @@ class TestCodexAgentClientRunAgent:
     def test_run_agent_file_not_found_raises_error(
         self,
         mock_codex_subprocess: tuple,
+        codex_config: Config,
     ) -> None:
         """Test that FileNotFoundError raises AgentClientError."""
         _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_run.side_effect = FileNotFoundError("codex not found")
 
-        config = make_config(
-            codex_path="/nonexistent/codex",
-            codex_default_model="o3-mini",
-        )
-        client = CodexAgentClient(config)
+        client = CodexAgentClient(codex_config)
 
         with pytest.raises(AgentClientError) as exc_info:
             asyncio.run(client.run_agent("prompt"))
@@ -664,17 +687,14 @@ class TestCodexCircuitBreaker:
     def test_run_agent_records_failure_on_file_not_found(
         self,
         mock_codex_subprocess: tuple,
+        codex_config: Config,
     ) -> None:
         """Test that FileNotFoundError records failure on circuit breaker."""
         _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_run.side_effect = FileNotFoundError("codex not found")
 
         cb = CircuitBreaker(service_name="codex")
-        config = make_config(
-            codex_path="/nonexistent/codex",
-            codex_default_model="o3-mini",
-        )
-        client = CodexAgentClient(config, circuit_breaker=cb)
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
 
         with pytest.raises(AgentClientError):
             asyncio.run(client.run_agent("prompt"))
