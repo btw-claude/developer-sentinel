@@ -88,16 +88,17 @@ line-length = 100
 # selector below. This eliminates the risk of surprise lint failures from new
 # preview rules being introduced in future ruff upgrades.
 #
-# Rule stability audit (DS-617, as of ruff 0.9.10 / Feb 2026): All enabled rule
-# categories have been audited against the ruff>=0.9.0 lower bound. Since preview
-# mode is NOT enabled, only stable rules are enforced. Categories E, F, I, N, W, G
-# have all rules stable since well before 0.9.0. Categories UP, B, C4, SIM have
-# gained new stable rules in versions after 0.9.0 (e.g., UP044-UP050, B911-B912,
-# C420, SIM905), but these are purely additive — they do not exist in 0.9.0 and are
-# silently skipped. Preview-only rules (e.g., B901, B903, B909, various
-# E1xx/E2xx/E3xx whitespace rules) are never applied because preview mode is off.
-# No version bump is needed; the ruff>=0.9.0 constraint is sound for all currently
-# selected rules.
+# Rule stability audit (DS-621, re-audited against ruff 0.15.0 / 2026-02-06):
+# Previous audit was DS-617 against ruff 0.9.10. Re-audited against the actually
+# installed version (0.15.0) for documentation accuracy. Since preview mode is NOT
+# enabled, only stable rules are enforced. Audit results by category:
+#   Fully stable: F (43), I (2), N (16), UP (47), C4 (19), SIM (30), G (8)
+#   Stable + preview-only (preview rules inactive): E (19 stable, 41 preview),
+#     W (6 stable, 1 preview), B (39 stable, 3 preview: B901/B903/B909)
+# All rules added since 0.9.0 (UP044-UP050, B911-B912, C420, SIM905, SIM910-SIM911)
+# are confirmed stable in 0.15.0 and are purely additive — they do not exist in older
+# versions and are silently skipped. No version constraint changes needed; the
+# ruff>=0.9.0 lower bound remains sound for all currently selected rules.
 #
 # NOTE: The silent-skip behavior for unknown rule selectors (i.e., rules that do not
 # exist in the installed ruff version are quietly ignored) relies on current ruff
