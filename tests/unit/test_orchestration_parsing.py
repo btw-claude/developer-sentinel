@@ -795,6 +795,33 @@ orchestrations:
             load_orchestration_file(orch_file)
         assert "create_branch is True but no branch pattern is specified" in str(exc_info.value)
 
+    def test_whitespace_only_branch_without_create_branch_skips_validation(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that whitespace-only branch skips validation when create_branch is not set."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        branch: "   "
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.branch == "   "
+
     def test_create_branch_false_without_branch_pattern_succeeds(self, tmp_path: Path) -> None:
         """Test that create_branch=False without a branch pattern is valid."""
         orch_file = tmp_path / "test.yaml"
