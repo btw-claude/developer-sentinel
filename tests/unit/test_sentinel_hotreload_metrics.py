@@ -5,17 +5,18 @@ from pathlib import Path
 from sentinel.main import Sentinel
 from sentinel.orchestration import Orchestration
 from tests.helpers import make_agent_factory, make_config, set_mtime_in_future
-from tests.mocks import MockAgentClientFactory, MockJiraPoller, MockTagClient
+from tests.mocks import MockAgentClient, MockAgentClientFactory, MockJiraPoller, MockTagClient
 
 
 class TestSentinelHotReloadMetrics:
     """Tests for hot-reload observability metrics."""
 
     agent_factory: MockAgentClientFactory
+    agent_client: MockAgentClient
 
     def setup_method(self) -> None:
         """Set up test fixtures shared across all test methods."""
-        self.agent_factory, _ = make_agent_factory()
+        self.agent_factory, self.agent_client = make_agent_factory()
 
     def test_get_hot_reload_metrics_returns_dict(
         self,
