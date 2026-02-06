@@ -92,6 +92,7 @@ class GitHubContext:
         repo: Repository name.
         branch: Branch pattern supporting template variables (e.g., "feature/{jira_issue_key}").
         create_branch: Whether to auto-create the branch if it doesn't exist.
+            Requires a non-empty branch pattern when True.
         base_branch: Base branch for new branch creation (default: "main").
 
     Template Variables:
@@ -557,12 +558,21 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
         if not result.is_valid:
             raise OrchestrationError(f"Invalid base_branch '{base_branch}': {result.error_message}")
 
+    # Validate that create_branch=True requires a non-empty branch pattern
+    create_branch = data.get("create_branch", False)
+    if create_branch and not branch:
+        raise OrchestrationError(
+            "create_branch is True but no branch pattern is specified. "
+            "Please provide a branch pattern (e.g., 'feature/{jira_issue_key}') "
+            "when create_branch is enabled."
+        )
+
     return GitHubContext(
         host=data.get("host", "github.com"),
         org=data.get("org", ""),
         repo=data.get("repo", ""),
         branch=branch,
-        create_branch=data.get("create_branch", False),
+        create_branch=create_branch,
         base_branch=base_branch,
     )
 

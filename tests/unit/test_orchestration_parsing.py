@@ -717,6 +717,109 @@ orchestrations:
         assert orchestrations[0].agent.github.branch == "feature/{jira_issue_key}"
         assert orchestrations[0].agent.github.base_branch == "develop"
 
+    def test_create_branch_true_without_branch_pattern_raises_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that create_branch=True without a branch pattern raises error."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        create_branch: true
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "create_branch is True but no branch pattern is specified" in str(exc_info.value)
+
+    def test_create_branch_true_with_empty_branch_raises_error(self, tmp_path: Path) -> None:
+        """Test that create_branch=True with explicit empty branch raises error."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        branch: ""
+        create_branch: true
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "create_branch is True but no branch pattern is specified" in str(exc_info.value)
+
+    def test_create_branch_false_without_branch_pattern_succeeds(self, tmp_path: Path) -> None:
+        """Test that create_branch=False without a branch pattern is valid."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        create_branch: false
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.create_branch is False
+        assert orchestrations[0].agent.github.branch == ""
+
+    def test_no_create_branch_without_branch_pattern_uses_defaults(self, tmp_path: Path) -> None:
+        """Test that omitting create_branch and branch uses defaults without error."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.create_branch is False
+        assert orchestrations[0].agent.github.branch == ""
+        assert orchestrations[0].agent.github.base_branch == "main"
+
 
 class TestStrictTemplateVariablesConfig:
     """Tests for strict_template_variables configuration option.
