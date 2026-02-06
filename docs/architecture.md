@@ -269,7 +269,7 @@ The components receive configuration through the `Config` object and its sub-con
 | ClaudeSdkAgentClient   | `ExecutionConfig`†                       | `inter_message_times_threshold`                                                  |
 | setup_logging          | `LoggingConfig`†                         | `level`, `json`                                                                  |
 
-> **†** All config sections are sub-configs embedded as fields in the main `Config` dataclass via `field(default_factory=...)`. Each sub-config class (`JiraConfig`, `GitHubConfig`, `DashboardConfig`, `RateLimitConfig`, `CircuitBreakerConfig`, `HealthCheckConfig`, `ExecutionConfig`, `CursorConfig`, `LoggingConfig`, `PollingConfig`) is instantiated through this pattern, providing default values when not explicitly configured. See `sentinel/config.py` for the full composition hierarchy.
+> **†** All config sections are sub-configs embedded as fields in the main `Config` dataclass via `field(default_factory=...)`. Each sub-config class (`ExecutionConfig`, `PollingConfig`, `JiraConfig`, `DashboardConfig`, `CircuitBreakerConfig`, `GitHubConfig`, `RateLimitConfig`, `HealthCheckConfig`, `CursorConfig`, `LoggingConfig`) is instantiated through this pattern, providing default values when not explicitly configured. See `sentinel/config.py` for the full composition hierarchy.
 
 ---
 
