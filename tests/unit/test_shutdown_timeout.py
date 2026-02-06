@@ -22,8 +22,8 @@ import pytest
 
 from sentinel.config import ExecutionConfig, load_config
 from sentinel.main import Sentinel
-from tests.helpers import make_config, make_orchestration
-from tests.mocks import MockAgentClient, MockAgentClientFactory, MockJiraPoller, MockTagClient
+from tests.helpers import make_agent_factory, make_config, make_orchestration
+from tests.mocks import MockJiraPoller, MockTagClient
 
 
 class TestShutdownTimeoutConfig:
@@ -137,8 +137,7 @@ class TestShutdownTimeoutBehavior:
 
         orchestration = make_orchestration(name="test-orch", tags=["test"])
         tag_client = MockTagClient()
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         jira_poller = MockJiraPoller(issues=[])
 
         sentinel = Sentinel(
@@ -178,8 +177,7 @@ class TestShutdownTimeoutBehavior:
 
             orchestration = make_orchestration(name="test-orch", tags=["test"])
             tag_client = MockTagClient()
-            agent_client = MockAgentClient()
-            agent_factory = MockAgentClientFactory(agent_client)
+            agent_factory, _ = make_agent_factory()
             jira_poller = MockJiraPoller(issues=[])
 
             sentinel = Sentinel(
@@ -203,8 +201,7 @@ class TestShutdownTimeoutBehavior:
 
         orchestration = make_orchestration(name="test-orch", tags=["test"])
         tag_client = MockTagClient()
-        agent_client = MockAgentClient()
-        agent_factory = MockAgentClientFactory(agent_client)
+        agent_factory, _ = make_agent_factory()
         jira_poller = MockJiraPoller(issues=[])
 
         sentinel = Sentinel(
@@ -244,8 +241,7 @@ class TestShutdownTimeoutBehavior:
 
             orchestration = make_orchestration(name="test-orch", tags=["test"])
             tag_client = MockTagClient()
-            agent_client = MockAgentClient()
-            agent_factory = MockAgentClientFactory(agent_client)
+            agent_factory, _ = make_agent_factory()
             jira_poller = MockJiraPoller(issues=[])
 
             sentinel = Sentinel(

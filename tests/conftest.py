@@ -56,6 +56,7 @@ from sentinel.deduplication import build_github_trigger_key
 # Re-export helpers for backwards compatibility with existing test imports
 from tests.helpers import (
     assert_call_args_length,
+    make_agent_factory,
     make_config,
     make_issue,
     make_orchestration,
@@ -93,6 +94,7 @@ __all__ = [
     "assert_call_args_length",
     "build_github_trigger_key",
     "create_test_app",
+    "make_agent_factory",
     "make_config",
     "make_issue",
     "make_orchestration",
@@ -122,6 +124,22 @@ def mock_jira_poller() -> MockJiraPoller:
 def mock_agent_client() -> MockAgentClient:
     """Provide a fresh MockAgentClient instance."""
     return MockAgentClient()
+
+
+@pytest.fixture
+def mock_agent_factory(
+    mock_agent_client: MockAgentClient,
+) -> MockAgentClientFactory:
+    """Provide a MockAgentClientFactory wrapping a fresh MockAgentClient.
+
+    This fixture consolidates the common 2-line pattern of creating a
+    MockAgentClient and wrapping it in MockAgentClientFactory. The underlying
+    MockAgentClient is accessible via the mock_agent_client fixture.
+
+    Use this fixture when tests need a factory with default MockAgentClient
+    settings and don't need custom responses or error simulation.
+    """
+    return MockAgentClientFactory(mock_agent_client)
 
 
 @pytest.fixture
