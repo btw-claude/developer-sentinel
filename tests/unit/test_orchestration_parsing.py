@@ -901,6 +901,93 @@ orchestrations:
         assert orchestrations[0].agent.github.branch == ""
         assert orchestrations[0].agent.github.base_branch == "main"
 
+    def test_null_branch_defaults_to_empty_string(self, tmp_path: Path) -> None:
+        """Test that explicit null branch is coalesced to empty string without error.
+
+        When YAML sets branch to null, data.get() returns None. The None-coalescing
+        logic (using 'or') should replace None with the default empty string so that
+        subsequent .strip() calls don't raise AttributeError.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        branch: null
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.branch == ""
+
+    def test_null_base_branch_defaults_to_main(self, tmp_path: Path) -> None:
+        """Test that explicit null base_branch is coalesced to 'main' without error.
+
+        When YAML sets base_branch to null, data.get() returns None. The None-coalescing
+        logic (using 'or') should replace None with the default 'main' so that
+        subsequent .strip() calls don't raise AttributeError.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        base_branch: null
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.base_branch == "main"
+
+    def test_null_branch_and_base_branch_together(self, tmp_path: Path) -> None:
+        """Test that both branch and base_branch set to null are handled correctly."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: myrepo
+        branch: null
+        base_branch: null
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.branch == ""
+        assert orchestrations[0].agent.github.base_branch == "main"
+
 
 class TestStrictTemplateVariablesConfig:
     """Tests for strict_template_variables configuration option.

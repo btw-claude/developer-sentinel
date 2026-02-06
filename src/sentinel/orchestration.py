@@ -545,14 +545,14 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
         return None
 
     # Validate branch pattern if provided
-    branch = data.get("branch", "")
+    branch = data.get("branch") or ""
     if branch.strip():
         result = _validate_branch_name(branch)
         if not result.is_valid:
             raise OrchestrationError(f"Invalid branch pattern '{branch}': {result.error_message}")
 
     # Validate base_branch if provided
-    base_branch = data.get("base_branch", "main")
+    base_branch = data.get("base_branch") or "main"
     if base_branch.strip():
         result = _validate_branch_name(base_branch)
         if not result.is_valid:
