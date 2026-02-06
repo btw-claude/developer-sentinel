@@ -443,7 +443,6 @@ ExecutionCoroutine: TypeAlias = Coroutine[Any, Any, ExecutionResult]
 """Coroutine type for async execution methods returning ExecutionResult."""
 
 __all__ = [
-    "AgentClient",
     "AgentExecutor",
     "ExecutionCoroutine",
     "ExecutionResult",

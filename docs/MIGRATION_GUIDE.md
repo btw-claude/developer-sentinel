@@ -68,7 +68,7 @@ sentinel = Sentinel(
     config=config,
     orchestrations=orchestrations,
     tag_client=tag_client,
-    jira_client=jira_client,  # Deprecated!
+    jira_client=jira_client,  # Removed!
 )
 ```
 
@@ -101,7 +101,7 @@ github_client = GitHubClient(token)
 
 sentinel = Sentinel(
     # ...
-    github_client=github_client,  # Deprecated!
+    github_client=github_client,  # Removed!
 )
 ```
 
@@ -120,15 +120,16 @@ sentinel = Sentinel(
 
 ### Step 3: Update Agent Client Usage
 
-**Before:**
+**Before (removed — this import path no longer works):**
 ```python
-from sentinel.executor import AgentClient
+# OLD: from sentinel.executor import AgentClient  # removed in DS-586
+from sentinel.agent_clients.base import AgentClient  # canonical import path
 
 agent_client = MyAgentClient()
 
 sentinel = Sentinel(
     # ...
-    agent_client=agent_client,  # Deprecated!
+    agent_client=agent_client,  # Removed!
 )
 ```
 
@@ -160,13 +161,14 @@ factory = AgentClientFactory()
 
 ## Complete Example
 
-**Before (deprecated):**
+**Before (removed — these parameters and import path no longer work):**
 ```python
 from sentinel.main import Sentinel
 from sentinel.config import Config
 from sentinel.poller import JiraClient
 from sentinel.github_poller import GitHubClient
-from sentinel.executor import AgentClient
+# OLD: from sentinel.executor import AgentClient  # removed in DS-586
+from sentinel.agent_clients.base import AgentClient  # canonical import path
 
 config = Config.from_env()
 jira_client = JiraClient(...)
@@ -315,16 +317,16 @@ max_workers = config.execution.max_concurrent_executions
 
 | Sub-Config | Description | Example Access |
 |------------|-------------|----------------|
-| `config.jira` | Jira REST API settings | `config.jira.base_url` |
-| `config.github` | GitHub REST API settings | `config.github.token` |
-| `config.dashboard` | Dashboard server settings | `config.dashboard.port` |
-| `config.rate_limit` | Claude API rate limiting | `config.rate_limit.per_minute` |
-| `config.circuit_breaker` | Circuit breaker settings | `config.circuit_breaker.enabled` |
-| `config.health_check` | Health check settings | `config.health_check.timeout` |
-| `config.execution` | Agent execution settings | `config.execution.max_concurrent_executions` |
-| `config.cursor` | Cursor CLI settings | `config.cursor.default_agent_type` |
-| `config.logging_config` | Logging settings | `config.logging_config.level` |
-| `config.polling` | Polling settings | `config.polling.interval` |
+| `config.jira` | Jira REST API settings | `config.jira.base_url`, `config.jira.epic_link_field` |
+| `config.github` | GitHub REST API settings | `config.github.token`, `config.github.api_url` |
+| `config.dashboard` | Dashboard server settings | `config.dashboard.port`, `config.dashboard.enabled` |
+| `config.rate_limit` | Claude API rate limiting | `config.rate_limit.per_minute`, `config.rate_limit.strategy` |
+| `config.circuit_breaker` | Circuit breaker settings | `config.circuit_breaker.enabled`, `config.circuit_breaker.failure_threshold` |
+| `config.health_check` | Health check settings | `config.health_check.timeout`, `config.health_check.enabled` |
+| `config.execution` | Agent execution settings | `config.execution.max_concurrent_executions`, `config.execution.agent_workdir` |
+| `config.cursor` | Cursor CLI settings | `config.cursor.default_agent_type`, `config.cursor.default_mode` |
+| `config.logging_config` | Logging settings | `config.logging_config.level`, `config.logging_config.json` |
+| `config.polling` | Polling settings | `config.polling.interval`, `config.polling.max_issues_per_poll` |
 
 ## Troubleshooting
 

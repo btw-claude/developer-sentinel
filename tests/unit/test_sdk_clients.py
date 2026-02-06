@@ -13,7 +13,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from sentinel.agent_clients.base import AgentClientError, AgentTimeoutError, UsageInfo
-from sentinel.agent_clients.claude_sdk import _extract_usage_from_message
+from sentinel.agent_clients.claude_sdk import (
+    _extract_usage_from_message,
+    request_shutdown,
+    reset_shutdown,
+)
 from sentinel.config import Config, ExecutionConfig
 from sentinel.poller import JiraClientError
 from sentinel.sdk_clients import (
@@ -22,8 +26,6 @@ from sentinel.sdk_clients import (
     JiraSdkClient,
     JiraSdkTagClient,
     ShutdownController,
-    request_shutdown,
-    reset_shutdown,
 )
 from sentinel.tag_manager import JiraTagClientError
 

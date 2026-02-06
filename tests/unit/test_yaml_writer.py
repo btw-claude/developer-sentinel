@@ -1178,3 +1178,106 @@ orchestrations:
             for record in caplog.records
             if record.levelno == logging.DEBUG
         )
+
+    def test_toggle_by_project_warns_on_unknown_source_type(self, tmp_path: Path, caplog) -> None:
+        """toggle_by_project should log warning for unrecognized source types."""
+        import logging
+
+        caplog.set_level(logging.WARNING, logger="sentinel.yaml_writer")
+
+        yaml_content = """
+orchestrations:
+  - name: "unknown-source-orch"
+    enabled: true
+    trigger:
+      source: gitlab
+      project: "PROJ"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        count = writer.toggle_by_project({"test": file_path}, "PROJ", False)
+
+        # The orchestration should not be toggled since source type is unknown
+        assert count == 0
+
+        # Check that warning log was emitted for unrecognized source type
+        assert any(
+            "Unrecognized source type" in record.message
+            and "gitlab" in record.message
+            and "unknown-source-orch" in record.message
+            for record in caplog.records
+            if record.levelno == logging.WARNING
+        )
+
+    def test_toggle_by_project_no_warning_for_known_source_types(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        """toggle_by_project should not warn for jira and github source types."""
+        import logging
+
+        caplog.set_level(logging.WARNING, logger="sentinel.yaml_writer")
+
+        yaml_content = """
+orchestrations:
+  - name: "jira-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "PROJ"
+    agent:
+      prompt: "Jira test"
+  - name: "github-orch"
+    enabled: true
+    trigger:
+      source: github
+      project_owner: "my-org"
+    agent:
+      prompt: "GitHub test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        writer.toggle_by_project({"test": file_path}, "PROJ", False)
+
+        # No warnings about unrecognized source types should be emitted
+        assert not any(
+            "Unrecognized source type" in record.message
+            for record in caplog.records
+        )
+
+    def test_toggle_by_project_warns_unnamed_orchestration(self, tmp_path: Path, caplog) -> None:
+        """toggle_by_project should handle unnamed orchestrations in warning log."""
+        import logging
+
+        caplog.set_level(logging.WARNING, logger="sentinel.yaml_writer")
+
+        yaml_content = """
+orchestrations:
+  - enabled: true
+    trigger:
+      source: bitbucket
+      project: "PROJ"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        count = writer.toggle_by_project({"test": file_path}, "PROJ", False)
+
+        assert count == 0
+
+        # Should still log warning with <unnamed> placeholder
+        assert any(
+            "Unrecognized source type" in record.message
+            and "bitbucket" in record.message
+            and "<unnamed>" in record.message
+            for record in caplog.records
+            if record.levelno == logging.WARNING
+        )

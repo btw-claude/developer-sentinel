@@ -518,9 +518,20 @@ class OrchestrationYamlWriter:
                     if not isinstance(trigger, dict):
                         continue
 
-                    if trigger.get("project") == project or trigger.get("project_owner") == project:
+                    source = trigger.get("source", "jira")
+                    if (source == "jira" and trigger.get("project") == project) or (
+                        source == "github" and trigger.get("project_owner") == project
+                    ):
                         orch["enabled"] = enabled
                         file_count += 1
+                    elif source not in ("jira", "github"):
+                        logger.warning(
+                            "Unrecognized source type '%s' in orchestration '%s' "
+                            "in %s; skipping project match evaluation",
+                            source,
+                            orch.get("name", "<unnamed>"),
+                            file_path,
+                        )
 
                 if file_count > 0:
                     self._save_yaml(file_path, data)

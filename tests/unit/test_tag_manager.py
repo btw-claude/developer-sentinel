@@ -994,18 +994,24 @@ class TestTagManagerUnrecognizedKeyIntegration:
     as uncaught exceptions.
     """
 
-    def test_start_processing_records_error_for_unrecognized_key(self) -> None:
-        """start_processing should catch ValueError for unrecognized key and record in errors."""
+    @pytest.fixture()
+    def tag_manager(self) -> TagManager:
+        """Create a TagManager with mock clients for unrecognized key tests."""
         jira_client = MockJiraTagClient()
         github_client = MockGitHubTagClient()
-        manager = TagManager(jira_client, github_client)
+        return TagManager(jira_client, github_client)
 
+    def test_start_processing_records_error_for_unrecognized_key(
+        self,
+        tag_manager: TagManager,
+    ) -> None:
+        """start_processing should catch ValueError for unrecognized key and record in errors."""
         orch = make_orchestration(
             trigger_tags=["needs-review"],
             on_start_tag="sentinel-processing",
         )
 
-        result = manager.start_processing("invalid-key-format", orch)
+        result = tag_manager.start_processing("invalid-key-format", orch)
 
         # Should NOT raise - errors should be caught and recorded
         assert result.success is False
@@ -1015,12 +1021,11 @@ class TestTagManagerUnrecognizedKeyIntegration:
         assert result.added_tags == []
         assert result.removed_tags == []
 
-    def test_update_tags_records_error_for_unrecognized_key(self) -> None:
+    def test_update_tags_records_error_for_unrecognized_key(
+        self,
+        tag_manager: TagManager,
+    ) -> None:
         """update_tags should catch ValueError for unrecognized key and record in errors."""
-        jira_client = MockJiraTagClient()
-        github_client = MockGitHubTagClient()
-        manager = TagManager(jira_client, github_client)
-
         exec_result = make_result(
             status=ExecutionStatus.SUCCESS,
             issue_key="not_a_valid_key!!",
@@ -1030,19 +1035,18 @@ class TestTagManagerUnrecognizedKeyIntegration:
             add_tag="completed",
         )
 
-        result = manager.update_tags(exec_result, orch)
+        result = tag_manager.update_tags(exec_result, orch)
 
         # Should NOT raise - errors should be caught and recorded
         assert result.success is False
         assert len(result.errors) > 0
         assert any("doesn't match any known format" in err for err in result.errors)
 
-    def test_update_tags_failure_status_records_error_for_unrecognized_key(self) -> None:
+    def test_update_tags_failure_status_records_error_for_unrecognized_key(
+        self,
+        tag_manager: TagManager,
+    ) -> None:
         """update_tags with FAILURE status should catch ValueError for unrecognized key."""
-        jira_client = MockJiraTagClient()
-        github_client = MockGitHubTagClient()
-        manager = TagManager(jira_client, github_client)
-
         exec_result = make_result(
             status=ExecutionStatus.FAILURE,
             issue_key="bad-format-123",
@@ -1052,25 +1056,24 @@ class TestTagManagerUnrecognizedKeyIntegration:
             failure_tag="agent-failed",
         )
 
-        result = manager.update_tags(exec_result, orch)
+        result = tag_manager.update_tags(exec_result, orch)
 
         # Should NOT raise - errors should be caught and recorded
         assert result.success is False
         assert len(result.errors) > 0
         assert any("doesn't match any known format" in err for err in result.errors)
 
-    def test_apply_failure_tags_records_error_for_unrecognized_key(self) -> None:
+    def test_apply_failure_tags_records_error_for_unrecognized_key(
+        self,
+        tag_manager: TagManager,
+    ) -> None:
         """apply_failure_tags should catch ValueError for unrecognized key."""
-        jira_client = MockJiraTagClient()
-        github_client = MockGitHubTagClient()
-        manager = TagManager(jira_client, github_client)
-
         orch = make_orchestration(
             on_start_tag="sentinel-processing",
             failure_tag="review-failed",
         )
 
-        result = manager.apply_failure_tags("weird@key#format", orch)
+        result = tag_manager.apply_failure_tags("weird@key#format", orch)
 
         # Should NOT raise - errors should be caught and recorded
         assert result.success is False

@@ -12,8 +12,8 @@ import signal
 from collections.abc import Callable
 from types import FrameType
 
+from sentinel.agent_clients.claude_sdk import request_shutdown as request_claude_shutdown
 from sentinel.logging import get_logger
-from sentinel.sdk_clients import request_shutdown as request_claude_shutdown
 
 logger = get_logger(__name__)
 
