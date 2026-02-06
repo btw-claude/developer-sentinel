@@ -33,9 +33,14 @@ class CodexSubprocessMocks(NamedTuple):
 
     Using a NamedTuple makes fixture return values self-documenting
     compared to positional tuple destructuring.
+
+    Field naming follows the convention of the fixture variables they
+    mirror (DS-667): ``tmpdir_cls`` matches ``mock_tmpdir_cls`` to
+    clarify that it mocks the ``tempfile.TemporaryDirectory`` *class*,
+    not a directory instance.
     """
 
-    tmpdir: MagicMock
+    tmpdir_cls: MagicMock
     output_path: MagicMock
     run: MagicMock
     path_cls: MagicMock
@@ -109,10 +114,11 @@ def test_config() -> Config:
 def mock_codex_subprocess() -> CodexSubprocessMocks:
     """Set up standard mocks for codex subprocess execution.
 
-    Yields a CodexSubprocessMocks NamedTuple with tmpdir, output_path, run,
-    and path_cls mocks. Common setup for tempfile.TemporaryDirectory, Path,
-    and subprocess.run. The output file defaults to existing with content
-    "Agent response". Tests can customize output_path and run as needed.
+    Yields a CodexSubprocessMocks NamedTuple with tmpdir_cls, output_path,
+    run, and path_cls mocks. Common setup for tempfile.TemporaryDirectory,
+    Path, and subprocess.run. The output file defaults to existing with
+    content "Agent response". Tests can customize output_path and run as
+    needed.
     """
     with (
         patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
@@ -139,7 +145,7 @@ def mock_codex_subprocess() -> CodexSubprocessMocks:
         )
 
         yield CodexSubprocessMocks(
-            tmpdir=mock_tmpdir_cls,
+            tmpdir_cls=mock_tmpdir_cls,
             output_path=mock_output_path,
             run=mock_run,
             path_cls=mock_path_cls,
