@@ -88,7 +88,7 @@ line-length = 100
 # selector below. This eliminates the risk of surprise lint failures from new
 # preview rules being introduced in future ruff upgrades.
 #
-# Rule stability audit (DS-617, as of ruff 0.9.x / Feb 2026): All enabled rule
+# Rule stability audit (DS-617, as of ruff 0.9.10 / Feb 2026): All enabled rule
 # categories have been audited against the ruff>=0.9.0 lower bound. Since preview
 # mode is NOT enabled, only stable rules are enforced. Categories E, F, I, N, W, G
 # have all rules stable since well before 0.9.0. Categories UP, B, C4, SIM have
