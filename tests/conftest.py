@@ -121,28 +121,6 @@ def mock_jira_poller() -> MockJiraPoller:
 
 
 @pytest.fixture
-def mock_agent_client() -> MockAgentClient:
-    """Provide a fresh MockAgentClient instance."""
-    return MockAgentClient()
-
-
-@pytest.fixture
-def mock_agent_factory(
-    mock_agent_client: MockAgentClient,
-) -> MockAgentClientFactory:
-    """Provide a MockAgentClientFactory wrapping a fresh MockAgentClient.
-
-    This fixture consolidates the common 2-line pattern of creating a
-    MockAgentClient and wrapping it in MockAgentClientFactory. The underlying
-    MockAgentClient is accessible via the mock_agent_client fixture.
-
-    Use this fixture when tests need a factory with default MockAgentClient
-    settings and don't need custom responses or error simulation.
-    """
-    return MockAgentClientFactory(mock_agent_client)
-
-
-@pytest.fixture
 def mock_tag_client() -> MockTagClient:
     """Provide a fresh MockTagClient instance."""
     return MockTagClient()

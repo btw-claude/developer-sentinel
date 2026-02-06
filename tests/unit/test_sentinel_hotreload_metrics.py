@@ -4,15 +4,8 @@ from pathlib import Path
 
 from sentinel.main import Sentinel
 from sentinel.orchestration import Orchestration
-
-# Import shared fixtures and helpers from conftest.py
-from tests.conftest import (
-    MockAgentClientFactory,
-    MockJiraPoller,
-    MockTagClient,
-    make_config,
-    set_mtime_in_future,
-)
+from tests.helpers import make_agent_factory, make_config, set_mtime_in_future
+from tests.mocks import MockJiraPoller, MockTagClient
 
 
 class TestSentinelHotReloadMetrics:
@@ -22,18 +15,18 @@ class TestSentinelHotReloadMetrics:
         self,
         temp_orchestrations_dir: Path,
         mock_jira_poller: MockJiraPoller,
-        mock_agent_factory: MockAgentClientFactory,
         mock_tag_client: MockTagClient,
     ) -> None:
         """Test that get_hot_reload_metrics returns a dict with expected keys."""
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
+        agent_factory, _ = make_agent_factory()
 
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_factory,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 
@@ -51,18 +44,18 @@ class TestSentinelHotReloadMetrics:
         self,
         temp_orchestrations_dir: Path,
         mock_jira_poller: MockJiraPoller,
-        mock_agent_factory: MockAgentClientFactory,
         mock_tag_client: MockTagClient,
     ) -> None:
         """Test that loaded counter increments when new files are detected."""
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
+        agent_factory, _ = make_agent_factory()
 
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_factory,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 
@@ -86,18 +79,18 @@ class TestSentinelHotReloadMetrics:
         self,
         temp_orchestrations_dir: Path,
         mock_jira_poller: MockJiraPoller,
-        mock_agent_factory: MockAgentClientFactory,
         mock_tag_client: MockTagClient,
     ) -> None:
         """Test that unloaded counter increments when files are deleted."""
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
+        agent_factory, _ = make_agent_factory()
 
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_factory,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 
@@ -125,7 +118,6 @@ class TestSentinelHotReloadMetrics:
         self,
         temp_orchestrations_dir: Path,
         mock_jira_poller: MockJiraPoller,
-        mock_agent_factory: MockAgentClientFactory,
         mock_tag_client: MockTagClient,
     ) -> None:
         """Test that reloaded counter increments when files are modified."""
@@ -143,12 +135,13 @@ class TestSentinelHotReloadMetrics:
 
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
+        agent_factory, _ = make_agent_factory()
 
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_factory,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 
@@ -174,18 +167,18 @@ class TestSentinelHotReloadMetrics:
         self,
         temp_orchestrations_dir: Path,
         mock_jira_poller: MockJiraPoller,
-        mock_agent_factory: MockAgentClientFactory,
         mock_tag_client: MockTagClient,
     ) -> None:
         """Test that metrics accumulate correctly over multiple operations."""
         config = make_config(orchestrations_dir=temp_orchestrations_dir)
         orchestrations: list[Orchestration] = []
+        agent_factory, _ = make_agent_factory()
 
         sentinel = Sentinel(
             config=config,
             orchestrations=orchestrations,
             jira_poller=mock_jira_poller,
-            agent_factory=mock_agent_factory,
+            agent_factory=agent_factory,
             tag_client=mock_tag_client,
         )
 
