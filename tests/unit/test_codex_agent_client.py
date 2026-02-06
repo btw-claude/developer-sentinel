@@ -53,25 +53,28 @@ def test_config() -> Config:
 def mock_codex_subprocess():
     """Set up standard mocks for codex subprocess execution.
 
-    Yields a tuple of (mock_mkstemp, mock_output_path, mock_run, mock_path_cls)
-    with common setup for tempfile.mkstemp, os.close, Path, and subprocess.run.
+    Yields a tuple of (mock_tmpdir, mock_output_path, mock_run, mock_path_cls)
+    with common setup for tempfile.TemporaryDirectory, Path, and subprocess.run.
     The output file defaults to existing with content "Agent response".
     Tests can customize mock_output_path and mock_run as needed.
     """
     with (
-        patch("sentinel.agent_clients.codex.tempfile.mkstemp") as mock_mkstemp,
-        patch("sentinel.agent_clients.codex.os.close") as _mock_os_close,
+        patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
         patch("sentinel.agent_clients.codex.subprocess.run") as mock_run,
         patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
     ):
-        mock_mkstemp.return_value = (3, "/tmp/codex_output.txt")
+        mock_tmpdir_ctx = MagicMock()
+        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
 
         mock_output_path = MagicMock()
         mock_output_path.exists.return_value = True
         mock_output_path.stat.return_value = MagicMock(st_size=14)
         mock_output_path.read_text.return_value = "Agent response"
-        mock_output_path.unlink = MagicMock()
         mock_path_cls.return_value = mock_output_path
+        # Make Path(tmp_dir) / "codex_output.txt" work
+        mock_path_cls.__truediv__ = MagicMock(return_value=mock_output_path)
 
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -79,7 +82,7 @@ def mock_codex_subprocess():
             stderr="",
         )
 
-        yield mock_mkstemp, mock_output_path, mock_run, mock_path_cls
+        yield mock_tmpdir_cls, mock_output_path, mock_run, mock_path_cls
 
 
 class TestCodexAgentClientInit:
@@ -128,6 +131,27 @@ class TestCodexAgentClientInit:
         assert client.agent_type == "codex"
         assert client._codex_path == "/usr/local/bin/codex"
         assert client._default_model == "o3-mini"
+
+    def test_init_logs_info_when_codex_path_defaults(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that INFO log is emitted when codex_path is not configured."""
+        import logging
+
+        config = Config(codex=CodexConfig())
+        with caplog.at_level(logging.INFO, logger="sentinel.agent_clients.codex"):
+            CodexAgentClient(config)
+
+        assert any("codex_path not configured" in record.message for record in caplog.records)
+        assert any("PATH lookup" in record.message for record in caplog.records)
+
+    def test_init_no_info_log_when_codex_path_set(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that INFO log is NOT emitted when codex_path is explicitly set."""
+        import logging
+
+        config = make_config(codex_path="/usr/local/bin/codex")
+        with caplog.at_level(logging.INFO, logger="sentinel.agent_clients.codex"):
+            CodexAgentClient(config)
+
+        assert not any("codex_path not configured" in record.message for record in caplog.records)
 
 
 class TestCodexAgentClientBuildCommand:
@@ -202,7 +226,7 @@ class TestCodexAgentClientRunAgent:
         codex_config: Config,
     ) -> None:
         """Test successful agent execution."""
-        _mock_tmp, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
 
         client = CodexAgentClient(codex_config)
 
@@ -218,7 +242,7 @@ class TestCodexAgentClientRunAgent:
         codex_config: Config,
     ) -> None:
         """Test agent execution with context dict."""
-        _mock_tmp, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_output_path.stat.return_value = MagicMock(st_size=8)
         mock_output_path.read_text.return_value = "Response"
         mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
@@ -247,7 +271,7 @@ class TestCodexAgentClientRunAgent:
         codex_config: Config,
     ) -> None:
         """Test agent execution with explicit timeout."""
-        _mock_tmp, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_output_path.stat.return_value = MagicMock(st_size=8)
         mock_output_path.read_text.return_value = "Response"
         mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
@@ -269,7 +293,7 @@ class TestCodexAgentClientRunAgent:
         When timeout_seconds is not provided and config.execution.subprocess_timeout
         is set, the config value should be used as the effective timeout.
         """
-        _mock_tmp, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_output_path.stat.return_value = MagicMock(st_size=8)
         mock_output_path.read_text.return_value = "Response"
         mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
@@ -291,7 +315,7 @@ class TestCodexAgentClientRunAgent:
         mock_codex_subprocess: tuple,
     ) -> None:
         """Test agent execution with model override."""
-        _mock_tmp, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_output_path.stat.return_value = MagicMock(st_size=8)
         mock_output_path.read_text.return_value = "Response"
         mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
@@ -316,7 +340,7 @@ class TestCodexAgentClientRunAgent:
         codex_config: Config,
     ) -> None:
         """Test that run_agent creates a working directory when configured."""
-        _mock_tmp, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_output_path.stat.return_value = MagicMock(st_size=8)
         mock_output_path.read_text.return_value = "Response"
         mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
@@ -333,18 +357,19 @@ class TestCodexAgentClientRunAgent:
         cmd = call_args[0][0]
         assert "--cd" in cmd
 
-    @patch("sentinel.agent_clients.codex.os.close")
-    @patch("sentinel.agent_clients.codex.tempfile.mkstemp")
+    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
     @patch("sentinel.agent_clients.codex.subprocess.run")
     def test_run_agent_timeout_raises_error(
         self,
         mock_run: MagicMock,
-        mock_mkstemp: MagicMock,
-        _mock_os_close: MagicMock,
+        mock_tmpdir_cls: MagicMock,
         codex_config: Config,
     ) -> None:
         """Test that timeout raises AgentTimeoutError."""
-        mock_mkstemp.return_value = (3, "/tmp/codex_output.txt")
+        mock_tmpdir_ctx = MagicMock()
+        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
 
         client = CodexAgentClient(codex_config)
@@ -360,7 +385,7 @@ class TestCodexAgentClientRunAgent:
         codex_config: Config,
     ) -> None:
         """Test that non-zero exit code raises AgentClientError."""
-        _mock_tmp, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_output_path.exists.return_value = False
         mock_run.return_value = MagicMock(
             returncode=1,
@@ -376,17 +401,18 @@ class TestCodexAgentClientRunAgent:
         assert "Codex CLI execution failed" in str(exc_info.value)
         assert "something went wrong" in str(exc_info.value)
 
-    @patch("sentinel.agent_clients.codex.os.close")
-    @patch("sentinel.agent_clients.codex.tempfile.mkstemp")
+    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
     @patch("sentinel.agent_clients.codex.subprocess.run")
     def test_run_agent_file_not_found_raises_error(
         self,
         mock_run: MagicMock,
-        mock_mkstemp: MagicMock,
-        _mock_os_close: MagicMock,
+        mock_tmpdir_cls: MagicMock,
     ) -> None:
         """Test that FileNotFoundError raises AgentClientError."""
-        mock_mkstemp.return_value = (3, "/tmp/codex_output.txt")
+        mock_tmpdir_ctx = MagicMock()
+        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
         mock_run.side_effect = FileNotFoundError("codex not found")
 
         config = make_config(
@@ -400,18 +426,19 @@ class TestCodexAgentClientRunAgent:
 
         assert "Codex CLI executable not found" in str(exc_info.value)
 
-    @patch("sentinel.agent_clients.codex.os.close")
-    @patch("sentinel.agent_clients.codex.tempfile.mkstemp")
+    @patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory")
     @patch("sentinel.agent_clients.codex.subprocess.run")
     def test_run_agent_os_error_raises_error(
         self,
         mock_run: MagicMock,
-        mock_mkstemp: MagicMock,
-        _mock_os_close: MagicMock,
+        mock_tmpdir_cls: MagicMock,
         codex_config: Config,
     ) -> None:
         """Test that OSError raises AgentClientError."""
-        mock_mkstemp.return_value = (3, "/tmp/codex_output.txt")
+        mock_tmpdir_ctx = MagicMock()
+        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
         mock_run.side_effect = OSError("Permission denied")
 
         client = CodexAgentClient(codex_config)
@@ -427,7 +454,7 @@ class TestCodexAgentClientRunAgent:
         codex_config: Config,
     ) -> None:
         """Test that response falls back to stdout when output file is empty."""
-        _mock_tmp, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         # Output file exists but is empty
         mock_output_path.stat.return_value = MagicMock(st_size=0)
         mock_run.return_value = MagicMock(
@@ -448,7 +475,7 @@ class TestCodexAgentClientRunAgent:
         test_config: Config,
     ) -> None:
         """Test run_agent using pytest fixture for config."""
-        _mock_tmp, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
+        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         mock_output_path.stat.return_value = MagicMock(st_size=20)
         mock_output_path.read_text.return_value = "Fixture test response"
         mock_run.return_value = MagicMock(
