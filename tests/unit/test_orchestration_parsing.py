@@ -1101,13 +1101,12 @@ orchestrations:
         assert orchestrations[0].agent.github.org == ""
         assert orchestrations[0].agent.github.repo == ""
 
-    def test_empty_string_host_preserved(self, tmp_path: Path) -> None:
-        """Test that explicit empty-string host is preserved, not replaced with default.
+    def test_empty_string_host_raises_error(self, tmp_path: Path) -> None:
+        """Test that explicit empty-string host raises OrchestrationError.
 
-        With explicit None checks (value if value is not None else default), an
-        empty string is a distinct value from None and should be kept as-is.
-        This distinguishes the behavior from or-coalescing, where empty string
-        would have been replaced with 'github.com'.
+        An empty string host would be invalid for downstream GitHub API calls.
+        The validation added in DS-631 ensures this is caught at parse time
+        rather than causing cryptic failures later.
         """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
@@ -1126,10 +1125,10 @@ orchestrations:
         org: myorg
         repo: myrepo
 """)
-        orchestrations = load_orchestration_file(orch_file)
-        assert len(orchestrations) == 1
-        assert orchestrations[0].agent.github is not None
-        assert orchestrations[0].agent.github.host == ""
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid github.host" in str(exc_info.value)
+        assert "empty string" in str(exc_info.value)
 
     def test_empty_string_org_preserved(self, tmp_path: Path) -> None:
         """Test that explicit empty-string org is preserved, not replaced with default.
@@ -1189,12 +1188,11 @@ orchestrations:
         assert orchestrations[0].agent.github is not None
         assert orchestrations[0].agent.github.repo == ""
 
-    def test_empty_string_host_org_repo_together(self, tmp_path: Path) -> None:
-        """Test that all three fields set to empty string are preserved.
+    def test_empty_string_host_org_repo_together_raises_error(self, tmp_path: Path) -> None:
+        """Test that empty-string host raises error even when org and repo are also empty.
 
-        This validates the explicit None-check pattern preserves empty strings
-        across all fields simultaneously, unlike the previous or-coalescing
-        pattern which would have replaced empty host with 'github.com'.
+        The validation catches the invalid empty-string host before considering
+        org and repo, ensuring early failure for misconfigured host values.
         """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
@@ -1213,12 +1211,63 @@ orchestrations:
         org: ""
         repo: ""
 """)
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid github.host" in str(exc_info.value)
+        assert "empty string" in str(exc_info.value)
+
+
+    def test_whitespace_only_host_raises_error(self, tmp_path: Path) -> None:
+        """Test that whitespace-only host raises OrchestrationError.
+
+        A host consisting only of whitespace is functionally equivalent to an
+        empty string and would be invalid for downstream GitHub API calls.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: "   "
+        org: myorg
+        repo: myrepo
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid github.host" in str(exc_info.value)
+        assert "empty string" in str(exc_info.value)
+
+    def test_valid_enterprise_host_accepted(self, tmp_path: Path) -> None:
+        """Test that a valid GitHub Enterprise host is accepted without error."""
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: "github.enterprise.com"
+        org: myorg
+        repo: myrepo
+""")
         orchestrations = load_orchestration_file(orch_file)
         assert len(orchestrations) == 1
         assert orchestrations[0].agent.github is not None
-        assert orchestrations[0].agent.github.host == ""
-        assert orchestrations[0].agent.github.org == ""
-        assert orchestrations[0].agent.github.repo == ""
+        assert orchestrations[0].agent.github.host == "github.enterprise.com"
 
 
 class TestStrictTemplateVariablesConfig:
