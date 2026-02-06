@@ -243,7 +243,7 @@ class CodexAgentClient(AgentClient):
         """
         # Check circuit breaker before attempting the request
         # This is done first to avoid unnecessary disk I/O from _create_workdir()
-        # when the circuit is open (consistent with ClaudeSdkAgentClient._run_simple)
+        # when the circuit is open (consistent with ClaudeSdkAgentClient.run_agent)
         if not self._circuit_breaker.allow_request():
             raise AgentClientError(
                 f"Codex circuit breaker is open - service may be unavailable. "
