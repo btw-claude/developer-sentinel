@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 
 from sentinel.config import (
     CircuitBreakerConfig,
+    CodexConfig,
     Config,
     CursorConfig,
     DashboardConfig,
@@ -106,6 +107,9 @@ def make_config(
     cursor_path: str = "",
     cursor_default_model: str = "",
     cursor_default_mode: str = "agent",
+    # Codex settings
+    codex_path: str = "",
+    codex_default_model: str = "",
     # Rate limit settings
     claude_rate_limit_enabled: bool = True,
     claude_rate_limit_per_minute: int = 60,
@@ -174,10 +178,14 @@ def make_config(
         github_api_url: GitHub Enterprise API URL (default: "").
 
     **Cursor Settings** - Cursor CLI configuration:
-        default_agent_type: Agent type - "claude" or "cursor" (default: "claude").
+        default_agent_type: Agent type - "claude", "codex", or "cursor" (default: "claude").
         cursor_path: Path to Cursor CLI executable (default: "").
         cursor_default_model: Default Cursor model (default: "").
         cursor_default_mode: Cursor mode - agent, plan, ask (default: "agent").
+
+    **Codex Settings** - Codex CLI configuration:
+        codex_path: Path to Codex CLI executable (default: "").
+        codex_default_model: Default Codex model (default: "").
 
     **Rate Limit Settings** - Claude API rate limiting:
         claude_rate_limit_enabled: Enable rate limiting (default: True).
@@ -273,6 +281,10 @@ def make_config(
             path=cursor_path,
             default_model=cursor_default_model,
             default_mode=cursor_default_mode,
+        ),
+        codex=CodexConfig(
+            path=codex_path,
+            default_model=codex_default_model,
         ),
         rate_limit=RateLimitConfig(
             enabled=claude_rate_limit_enabled,
