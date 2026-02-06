@@ -33,20 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If you were using the deprecated parameters, update your code as follows:
 
-### Before (deprecated)
+### Before (removed)
 
 ```python
 from sentinel.poller import JiraClient
 from sentinel.github_poller import GitHubClient
-from sentinel.executor import AgentClient
+from sentinel.agent_clients.base import AgentClient  # canonical import path
 
 sentinel = Sentinel(
     config=config,
     orchestrations=orchestrations,
     tag_client=tag_client,
-    jira_client=jira_client,      # Deprecated
-    github_client=github_client,  # Deprecated
-    agent_client=agent_client,    # Deprecated
+    jira_client=jira_client,      # Removed
+    github_client=github_client,  # Removed
+    agent_client=agent_client,    # Removed
 )
 ```
 
