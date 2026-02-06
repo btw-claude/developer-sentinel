@@ -162,7 +162,7 @@ class TestIntegration:
 
 ### Default Behavior
 
-When no `circuit_breaker` is provided, the parameter falls back to a default instance, preserving backward compatibility:
+When no `circuit_breaker` is provided, components fall back to a default instance, preserving backward compatibility:
 
 ```python
 # Without explicit injection, creates default circuit breaker
