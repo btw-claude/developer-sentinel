@@ -576,6 +576,11 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
     # Validate host before resolving the default (DS-631, DS-632).
     # None is acceptable (falls back to default "github.com"), but an explicit
     # empty or whitespace-only string indicates a misconfiguration.
+    if host is not None and not isinstance(host, str):
+        raise OrchestrationError(
+            f"Invalid github.host '{host}': must be a string. "
+            "Please provide a valid host (e.g., 'github.com') or omit the field."
+        )
     if host is not None and isinstance(host, str) and host.strip() == "":
         raise OrchestrationError(
             "Invalid github.host: empty string is not a valid GitHub host. "
@@ -583,6 +588,32 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
             "to use the default."
         )
     resolved_host = host if host is not None else "github.com"
+
+    # Validate org and repo for type consistency (DS-633).
+    # None is acceptable (falls back to default ""), but a non-string value
+    # indicates a misconfiguration.  Whitespace-only strings are also rejected
+    # for org/repo since they would be invalid in GitHub API calls.
+    if org is not None and not isinstance(org, str):
+        raise OrchestrationError(
+            f"Invalid github.org '{org}': must be a string. "
+            "Please provide a valid GitHub organization name or omit the field."
+        )
+    if org is not None and isinstance(org, str) and org != "" and org.strip() == "":
+        raise OrchestrationError(
+            "Invalid github.org: whitespace-only string is not a valid GitHub organization. "
+            "Please provide a valid organization name or omit the field."
+        )
+
+    if repo is not None and not isinstance(repo, str):
+        raise OrchestrationError(
+            f"Invalid github.repo '{repo}': must be a string. "
+            "Please provide a valid GitHub repository name or omit the field."
+        )
+    if repo is not None and isinstance(repo, str) and repo != "" and repo.strip() == "":
+        raise OrchestrationError(
+            "Invalid github.repo: whitespace-only string is not a valid GitHub repository. "
+            "Please provide a valid repository name or omit the field."
+        )
 
     return GitHubContext(
         host=resolved_host,

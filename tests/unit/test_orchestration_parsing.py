@@ -1269,6 +1269,204 @@ orchestrations:
         assert orchestrations[0].agent.github is not None
         assert orchestrations[0].agent.github.host == "github.enterprise.com"
 
+    def test_non_string_host_raises_error(self, tmp_path: Path) -> None:
+        """Test that non-string host raises OrchestrationError.
+
+        A non-string host (e.g., integer) indicates a misconfiguration in the
+        YAML file. Added in DS-633 for consistent type validation across
+        host, org, and repo fields.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: 12345
+        org: myorg
+        repo: myrepo
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid github.host" in str(exc_info.value)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_non_string_org_raises_error(self, tmp_path: Path) -> None:
+        """Test that non-string org raises OrchestrationError.
+
+        A non-string org (e.g., integer) indicates a misconfiguration in the
+        YAML file. Added in DS-633 for consistent type validation.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: 12345
+        repo: myrepo
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid github.org" in str(exc_info.value)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_non_string_repo_raises_error(self, tmp_path: Path) -> None:
+        """Test that non-string repo raises OrchestrationError.
+
+        A non-string repo (e.g., integer) indicates a misconfiguration in the
+        YAML file. Added in DS-633 for consistent type validation.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: 12345
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid github.repo" in str(exc_info.value)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_whitespace_only_org_raises_error(self, tmp_path: Path) -> None:
+        """Test that whitespace-only org raises OrchestrationError.
+
+        An org consisting only of whitespace would be invalid for downstream
+        GitHub API calls. Added in DS-633 for consistent validation.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: "   "
+        repo: myrepo
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid github.org" in str(exc_info.value)
+        assert "whitespace-only string" in str(exc_info.value)
+
+    def test_whitespace_only_repo_raises_error(self, tmp_path: Path) -> None:
+        """Test that whitespace-only repo raises OrchestrationError.
+
+        A repo consisting only of whitespace would be invalid for downstream
+        GitHub API calls. Added in DS-633 for consistent validation.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: myorg
+        repo: "   "
+""")
+        with pytest.raises(OrchestrationError) as exc_info:
+            load_orchestration_file(orch_file)
+        assert "Invalid github.repo" in str(exc_info.value)
+        assert "whitespace-only string" in str(exc_info.value)
+
+    def test_valid_org_and_repo_accepted(self, tmp_path: Path) -> None:
+        """Test that valid string org and repo are accepted without error.
+
+        Ensures DS-633 validation does not reject legitimate org/repo values.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: my-org
+        repo: my-repo
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.org == "my-org"
+        assert orchestrations[0].agent.github.repo == "my-repo"
+
+    def test_null_org_and_repo_default_to_empty_string(self, tmp_path: Path) -> None:
+        """Test that null org and repo default to empty string.
+
+        Ensures DS-633 validation does not break the existing default behavior
+        where None falls back to empty string.
+        """
+        orch_file = tmp_path / "test.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: test
+    trigger:
+      source: jira
+      project: TEST
+      tags:
+        - test
+    agent:
+      prompt: "Test prompt"
+      tools: []
+      github:
+        host: github.com
+        org: null
+        repo: null
+""")
+        orchestrations = load_orchestration_file(orch_file)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is not None
+        assert orchestrations[0].agent.github.org == ""
+        assert orchestrations[0].agent.github.repo == ""
+
 
 class TestStrictTemplateVariablesConfig:
     """Tests for strict_template_variables configuration option.
