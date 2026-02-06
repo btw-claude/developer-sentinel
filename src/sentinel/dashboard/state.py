@@ -31,7 +31,7 @@ class OrchestrationInfo:
     enabled: bool
     trigger_source: str
     trigger_project: str | None
-    trigger_repo: str | None
+    trigger_project_owner: str | None
     trigger_tags: list[str]
     agent_prompt_preview: str
     source_file: str
@@ -39,10 +39,10 @@ class OrchestrationInfo:
 
 @dataclass(frozen=True)
 class ProjectOrchestrations:
-    """Orchestrations grouped by project or repository.
+    """Orchestrations grouped by project or project owner.
 
     This groups orchestrations by their trigger project (for Jira) or
-    repository (for GitHub) for a more organized dashboard display.
+    project owner (for GitHub) for a more organized dashboard display.
 
     .. note:: API Stability
         This class is currently intended for internal dashboard use only.
@@ -75,7 +75,7 @@ class ProjectOrchestrations:
           or a backport for earlier versions
     """
 
-    identifier: str  # Project key or repo name, e.g., "DS" for Jira or "org/repo" for GitHub
+    identifier: str  # Project key or project owner, e.g., "DS" for Jira or "org/repo" for GitHub
     orchestrations: list[OrchestrationInfo]
 
     @property
@@ -484,8 +484,11 @@ class SentinelStateAccessor:
             if orch.name in active_orchestration_names:
                 if orch.trigger_source == TriggerSource.JIRA.value and orch.trigger_project:
                     active_jira_projects.add(orch.trigger_project)
-                elif orch.trigger_source == TriggerSource.GITHUB.value and orch.trigger_repo:
-                    active_github_repos.add(orch.trigger_repo)
+                elif (
+                    orch.trigger_source == TriggerSource.GITHUB.value
+                    and orch.trigger_project_owner
+                ):
+                    active_github_repos.add(orch.trigger_project_owner)
 
         return DashboardState(
             poll_interval=config.polling.interval,
@@ -522,7 +525,7 @@ class SentinelStateAccessor:
         trigger = orch.trigger
         trigger_source = getattr(trigger, "source", TriggerSource.JIRA.value)
         trigger_project = getattr(trigger, "project", None)
-        trigger_repo = getattr(trigger, "repo", None)
+        trigger_project_owner = getattr(trigger, "project_owner", None) or None
         trigger_tags = list(trigger.tags) if trigger.tags else []
 
         # Create a preview of the agent prompt (first 100 chars)
@@ -535,7 +538,7 @@ class SentinelStateAccessor:
             enabled=orch.enabled,
             trigger_source=trigger_source,
             trigger_project=trigger_project,
-            trigger_repo=trigger_repo,
+            trigger_project_owner=trigger_project_owner,
             trigger_tags=trigger_tags,
             agent_prompt_preview=prompt_preview,
             source_file=source_file,
@@ -563,14 +566,14 @@ class SentinelStateAccessor:
     def _group_orchestrations(
         self, orchestrations: list[OrchestrationInfo]
     ) -> tuple[list[ProjectOrchestrations], list[ProjectOrchestrations]]:
-        """Group orchestrations by Jira project and GitHub repository.
+        """Group orchestrations by Jira project and GitHub project owner.
 
         Args:
             orchestrations: List of orchestration info objects to group.
 
         Returns:
             A tuple of (jira_projects, github_repos) where each is a list of
-            ProjectOrchestrations grouped by project key or repo name.
+            ProjectOrchestrations grouped by project key or project owner.
         """
         jira_groups: dict[str, list[OrchestrationInfo]] = defaultdict(list)
         github_groups: dict[str, list[OrchestrationInfo]] = defaultdict(list)
@@ -578,8 +581,8 @@ class SentinelStateAccessor:
         for orch in orchestrations:
             if orch.trigger_source == TriggerSource.JIRA.value and orch.trigger_project:
                 jira_groups[orch.trigger_project].append(orch)
-            elif orch.trigger_source == TriggerSource.GITHUB.value and orch.trigger_repo:
-                github_groups[orch.trigger_repo].append(orch)
+            elif orch.trigger_source == TriggerSource.GITHUB.value and orch.trigger_project_owner:
+                github_groups[orch.trigger_project_owner].append(orch)
 
         # Convert to sorted lists of ProjectOrchestrations
         jira_projects = [

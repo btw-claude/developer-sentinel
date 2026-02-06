@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -24,26 +23,6 @@ from sentinel.types import (
 )
 
 logger = get_logger(__name__)
-
-
-# Deprecation warning message template for GitHub trigger fields
-_GITHUB_FIELD_DEPRECATION_MSG = (
-    "The '{field}' field is deprecated for GitHub triggers. "
-    "Use project-based configuration (project_number, project_scope, project_owner, "
-    "project_filter) instead. This field will be removed in a future version."
-)
-
-
-# Pre-compiled regex patterns for GitHub repository validation
-# These are compiled at module level to avoid overhead on each validation call
-# See _validate_github_repo_format() for usage and format documentation
-
-# Owner pattern: starts with alphanumeric, ends with alphanumeric,
-# middle can have alphanumeric or single hyphens (no consecutive hyphens)
-_GITHUB_OWNER_PATTERN = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9]|-(?!-))*[a-zA-Z0-9]$|^[a-zA-Z0-9]$")
-
-# Repo name pattern: alphanumeric, hyphens, underscores, periods
-_GITHUB_REPO_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$|^[a-zA-Z0-9]$")
 
 # Note: Branch validation is now handled by the shared branch_validation module
 
@@ -89,18 +68,13 @@ class TriggerConfig:
         The jql_filter field accepts raw JQL fragments and provides defense-in-depth
         validation. However, it should only be configured by trusted administrators
         as it directly influences the JQL query sent to Jira.
-
-    Note: repo, query_filter, and tags are DEPRECATED for GitHub triggers.
     """
 
     source: TriggerSourceLiteral = "jira"
     project: str = ""
     jql_filter: str = ""
     tags: list[str] = field(default_factory=list)
-    # Deprecated GitHub fields (still supported for backwards compatibility)
-    repo: str = ""
-    query_filter: str = ""
-    # New GitHub Project-based fields
+    # GitHub Project-based fields
     project_number: int | None = None
     project_scope: Literal["org", "user"] = "org"
     project_owner: str = ""
@@ -460,83 +434,6 @@ def _validate_string_list(value: Any, field_name: str) -> None:
                 raise OrchestrationError(f"{field_name} must contain non-empty strings")
 
 
-def _validate_github_repo_format(repo: str) -> ValidationResult:
-    """Validate that a GitHub repo string is in 'owner/repo-name' format.
-
-    Enforces GitHub naming rules:
-    - Owner: max 39 chars, alphanumeric/hyphens, no leading/trailing/consecutive hyphens
-    - Repo: max 100 chars, alphanumeric/hyphens/underscores/periods, no leading period,
-      cannot end with .git
-
-    Returns ValidationResult.success() for valid or empty strings,
-    ValidationResult.failure(message) otherwise.
-    """
-    if not repo:
-        return ValidationResult.success()  # Empty is valid (optional field)
-
-    parts = repo.split("/")
-    if len(parts) != 2:
-        return ValidationResult.failure(
-            "must be in 'owner/repo-name' format (e.g., 'octocat/hello-world')"
-        )
-
-    owner, repo_name = parts
-
-    # Basic check for non-empty parts
-    if not owner.strip():
-        return ValidationResult.failure("owner cannot be empty")
-
-    if not repo_name.strip():
-        return ValidationResult.failure("repository name cannot be empty")
-
-    # Reserved names check (both owner and repo cannot be "." or "..")
-    if owner in (".", ".."):
-        return ValidationResult.failure(f"owner '{owner}' is a reserved name")
-
-    if repo_name in (".", ".."):
-        return ValidationResult.failure(f"repository name '{repo_name}' is a reserved name")
-
-    # Validate owner (username/organization)
-    # - Max 39 characters
-    # - Alphanumeric and hyphens only
-    # - Cannot start or end with hyphen
-    # - Cannot have consecutive hyphens
-    if len(owner) > 39:
-        return ValidationResult.failure(
-            f"owner exceeds maximum length of 39 characters (got {len(owner)})"
-        )
-
-    if not _GITHUB_OWNER_PATTERN.match(owner):
-        return ValidationResult.failure(
-            f"owner '{owner}' contains invalid characters or format "
-            "(must be alphanumeric with single hyphens, cannot start/end with hyphen)"
-        )
-
-    # Validate repo name
-    # - Max 100 characters
-    # - Alphanumeric, hyphens, underscores, periods
-    # - Cannot start with a period
-    # - Cannot end with .git
-    if len(repo_name) > 100:
-        return ValidationResult.failure(
-            f"repository name exceeds maximum length of 100 characters (got {len(repo_name)})"
-        )
-
-    if repo_name.startswith("."):
-        return ValidationResult.failure("repository name cannot start with a period")
-
-    if repo_name.lower().endswith(".git"):
-        return ValidationResult.failure("repository name cannot end with '.git'")
-
-    if not _GITHUB_REPO_PATTERN.match(repo_name):
-        return ValidationResult.failure(
-            f"repository name '{repo_name}' contains invalid characters "
-            "(allowed: alphanumeric, hyphens, underscores, periods)"
-        )
-
-    return ValidationResult.success()
-
-
 def _validate_branch_name(branch: str) -> ValidationResult:
     """Validate that a branch name follows git branch naming rules.
 
@@ -570,9 +467,7 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     Supports both Jira and GitHub triggers:
     - Jira triggers use: source="jira", project, jql_filter, tags
     - GitHub triggers use: source="github", project_number, project_scope,
-      project_owner, project_filter (preferred)
-    - Legacy GitHub triggers use: source="github", repo, query_filter, tags
-      (deprecated, will log warnings)
+      project_owner, project_filter
 
     Raises:
         OrchestrationError: If trigger configuration is invalid.
@@ -582,11 +477,9 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
         valid_sources = ", ".join(f"'{s}'" for s in sorted(TriggerSource.values()))
         raise OrchestrationError(f"Invalid trigger source '{source}': must be {valid_sources}")
 
-    repo = data.get("repo", "")
-    query_filter = data.get("query_filter", "")
     tags = data.get("tags", [])
 
-    # New GitHub Project-based fields
+    # GitHub Project-based fields
     project_number = data.get("project_number")
     project_scope = data.get("project_scope", "org")
     project_owner = data.get("project_owner", "")
@@ -628,27 +521,11 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
                 "(organization name or username)"
             )
 
-        # Log deprecation warnings for legacy GitHub fields
-        if repo:
-            logger.warning(_GITHUB_FIELD_DEPRECATION_MSG.format(field="repo"))
-        if query_filter:
-            logger.warning(_GITHUB_FIELD_DEPRECATION_MSG.format(field="query_filter"))
-        if tags:
-            logger.warning(_GITHUB_FIELD_DEPRECATION_MSG.format(field="tags"))
-
-        # Validate repo format if provided (for backwards compatibility)
-        if repo:
-            is_valid, error_message = _validate_github_repo_format(repo)
-            if not is_valid:
-                raise OrchestrationError(f"Invalid GitHub repo format '{repo}': {error_message}")
-
     return TriggerConfig(
         source=source,
         project=data.get("project", ""),
         jql_filter=data.get("jql_filter", ""),
         tags=tags,
-        repo=repo,
-        query_filter=query_filter,
         project_number=project_number,
         project_scope=project_scope,
         project_owner=project_owner,

@@ -180,4 +180,3 @@ The following CSS files in this repository demonstrate the patterns described in
 ## Related Resources
 
 - [Stylelint Configuration](../.stylelintrc.json)
-- [GitHub Trigger Migration Guide](./GITHUB_TRIGGER_MIGRATION.md)

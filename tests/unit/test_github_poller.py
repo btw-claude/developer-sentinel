@@ -1,6 +1,5 @@
 """Tests for GitHub poller module."""
 
-import warnings
 from typing import Any
 from unittest.mock import patch
 
@@ -193,92 +192,6 @@ class TestGitHubIssueFromApiResponse:
         issue = GitHubIssue.from_api_response(data)
         assert issue.number == 0
         assert issue.title == ""
-
-
-class TestGitHubPollerBuildQuery:
-    """Tests for GitHubPoller.build_query (deprecated)."""
-
-    def test_repo_filter(self) -> None:
-        client = MockGitHubClient()
-        poller = GitHubPoller(client)
-        trigger = TriggerConfig(source="github", repo="org/repo")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            query = poller.build_query(trigger)
-        assert "repo:org/repo" in query
-
-    def test_tags_filter(self) -> None:
-        client = MockGitHubClient()
-        poller = GitHubPoller(client)
-        trigger = TriggerConfig(source="github", tags=["needs-review", "urgent"])
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            query = poller.build_query(trigger)
-        assert 'label:"needs-review"' in query
-        assert 'label:"urgent"' in query
-
-    def test_custom_query_filter(self) -> None:
-        client = MockGitHubClient()
-        poller = GitHubPoller(client)
-        trigger = TriggerConfig(source="github", query_filter="is:pr is:draft")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            query = poller.build_query(trigger)
-        assert "is:pr is:draft" in query
-
-    def test_default_state_open(self) -> None:
-        client = MockGitHubClient()
-        poller = GitHubPoller(client)
-        trigger = TriggerConfig(source="github", repo="org/repo")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            query = poller.build_query(trigger)
-        assert "state:open" in query
-
-    def test_no_state_when_specified_in_filter(self) -> None:
-        client = MockGitHubClient()
-        poller = GitHubPoller(client)
-        trigger = TriggerConfig(source="github", query_filter="state:closed")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            query = poller.build_query(trigger)
-        # Should not add default state:open
-        assert query.count("state:") == 1
-
-    def test_no_state_when_is_open_in_filter(self) -> None:
-        client = MockGitHubClient()
-        poller = GitHubPoller(client)
-        trigger = TriggerConfig(source="github", query_filter="is:open")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            query = poller.build_query(trigger)
-        assert "state:open" not in query
-
-    def test_combined_filters(self) -> None:
-        client = MockGitHubClient()
-        poller = GitHubPoller(client)
-        trigger = TriggerConfig(
-            source="github",
-            repo="org/repo",
-            tags=["review"],
-            query_filter="is:pr",
-        )
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            query = poller.build_query(trigger)
-        assert "repo:org/repo" in query
-        assert 'label:"review"' in query
-        assert "is:pr" in query
-
-    def test_empty_trigger(self) -> None:
-        client = MockGitHubClient()
-        poller = GitHubPoller(client)
-        trigger = TriggerConfig(source="github")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            query = poller.build_query(trigger)
-        # Should only have default state:open
-        assert query == "state:open"
 
 
 class TestGitHubPollerPoll:
@@ -1074,25 +987,6 @@ class TestGitHubPollerClearProjectIdCache:
         # Poll once more to confirm cache is stable
         poller.poll(trigger)
         assert len(client.get_project_calls) == 2  # Still 2
-
-
-class TestGitHubPollerBuildQueryDeprecation:
-    """Tests for build_query deprecation."""
-
-    def test_build_query_emits_deprecation_warning(self) -> None:
-        """Test that build_query emits a deprecation warning."""
-        client = MockGitHubClient()
-        poller = GitHubPoller(client)
-        trigger = TriggerConfig(source="github", repo="org/repo")
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            poller.build_query(trigger)
-
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "deprecated" in str(w[0].message).lower()
-            assert "project-based" in str(w[0].message).lower()
 
 
 class TestGitHubPollerLabelFiltering:

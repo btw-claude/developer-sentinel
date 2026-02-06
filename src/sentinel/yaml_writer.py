@@ -464,16 +464,17 @@ class OrchestrationYamlWriter:
             return count
 
     def toggle_by_project(self, orch_files: dict[str, Path], project: str, enabled: bool) -> int:
-        """Toggle orchestrations that match a specific project.
+        """Toggle orchestrations that match a specific project or project owner.
 
         Searches through the provided orchestration files and toggles the
-        `enabled` status for any orchestration whose trigger.project matches
-        the specified project.
+        `enabled` status for any orchestration whose trigger.project (Jira)
+        or trigger.project_owner (GitHub) matches the specified identifier.
 
         Args:
             orch_files: A mapping of orchestration names to their file paths.
                 The keys are not used for matching; all files are searched.
-            project: The Jira project key to match against trigger.project.
+            project: The identifier to match against trigger.project (Jira)
+                or trigger.project_owner (GitHub).
             enabled: The new enabled status (True or False).
 
         Returns:
@@ -517,7 +518,7 @@ class OrchestrationYamlWriter:
                     if not isinstance(trigger, dict):
                         continue
 
-                    if trigger.get("project") == project:
+                    if trigger.get("project") == project or trigger.get("project_owner") == project:
                         orch["enabled"] = enabled
                         file_count += 1
 
@@ -544,92 +545,6 @@ class OrchestrationYamlWriter:
             logger.warning(
                 "No orchestrations found matching project '%s'",
                 project,
-            )
-
-        return total_count
-
-    def toggle_by_repo(self, orch_files: dict[str, Path], repo: str, enabled: bool) -> int:
-        """Toggle orchestrations that match a specific GitHub repository.
-
-        Searches through the provided orchestration files and toggles the
-        `enabled` status for any orchestration whose trigger.repo matches
-        the specified repository.
-
-        Args:
-            orch_files: A mapping of orchestration names to their file paths.
-                The keys are not used for matching; all files are searched.
-            repo: The GitHub repository identifier to match against trigger.repo
-                (e.g., "org/repo-name").
-            enabled: The new enabled status (True or False).
-
-        Returns:
-            The total number of orchestrations that were updated across all files.
-
-        Raises:
-            OrchestrationYamlWriterError: If there's an error reading, parsing,
-                or writing any file.
-            FileLockTimeoutError: If any file lock cannot be acquired within
-                the configured timeout.
-        """
-        logger.debug(
-            "toggle_by_repo called: repo='%s', enabled=%s, files=%d",
-            repo,
-            enabled,
-            len(orch_files),
-        )
-        total_count = 0
-        # Get unique file paths
-        unique_files = set(orch_files.values())
-
-        for file_path in unique_files:
-            with _file_lock(
-                file_path,
-                max_wait_seconds=self._lock_timeout_seconds,
-                cleanup_lock_file=self._cleanup_lock_files,
-                retry_interval_seconds=self._retry_interval_seconds,
-            ):
-                data = self._load_yaml(file_path)
-
-                orchestrations = data.get("orchestrations")
-                if orchestrations is None:
-                    continue
-
-                file_count = 0
-                for orch in orchestrations:
-                    if not isinstance(orch, dict):
-                        continue
-
-                    trigger = orch.get("trigger")
-                    if not isinstance(trigger, dict):
-                        continue
-
-                    if trigger.get("repo") == repo:
-                        orch["enabled"] = enabled
-                        file_count += 1
-
-                if file_count > 0:
-                    self._save_yaml(file_path, data)
-                    logger.info(
-                        "Set enabled=%s for %d orchestration(s) with repo '%s' in %s",
-                        enabled,
-                        file_count,
-                        repo,
-                        file_path,
-                    )
-
-                total_count += file_count
-
-        if total_count > 0:
-            logger.info(
-                "Total: set enabled=%s for %d orchestration(s) matching repo '%s'",
-                enabled,
-                total_count,
-                repo,
-            )
-        else:
-            logger.warning(
-                "No orchestrations found matching repo '%s'",
-                repo,
             )
 
         return total_count

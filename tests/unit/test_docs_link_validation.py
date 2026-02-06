@@ -199,11 +199,6 @@ class TestDocumentationLinks:
         readme = project_root / "README.md"
         assert readme.exists(), "README.md not found at project root"
 
-    def test_github_migration_docs_exist(self, project_root: Path) -> None:
-        """Verify GitHub trigger migration documentation exists."""
-        migration_doc = project_root / "docs" / "GITHUB_TRIGGER_MIGRATION.md"
-        assert migration_doc.exists(), "GITHUB_TRIGGER_MIGRATION.md not found"
-
     def test_all_relative_links_resolve(
         self, markdown_files: list[Path], project_root: Path
     ) -> None:
@@ -228,26 +223,6 @@ class TestDocumentationLinks:
         if broken_links:
             error_report = "\n".join(broken_links)
             pytest.fail(f"Found {len(broken_links)} broken link(s):\n{error_report}")
-
-    def test_github_migration_internal_links(self, project_root: Path) -> None:
-        """Verify internal links in GITHUB_TRIGGER_MIGRATION.md are valid."""
-        migration_doc = project_root / "docs" / "GITHUB_TRIGGER_MIGRATION.md"
-        links = extract_links(migration_doc)
-
-        # Check that expected cross-references exist
-        relative_links = [link for link in links if not is_external_link(link.url)]
-
-        # Validate each relative link
-        for link in relative_links:
-            if is_anchor_link(link.url):
-                continue  # Skip anchor validation
-
-            resolved = resolve_relative_link(migration_doc, link.url)
-            assert resolved is not None, f"Invalid link: {link.url}"
-            assert resolved.exists(), (
-                f"Broken link in GITHUB_TRIGGER_MIGRATION.md line {link.line_number}: "
-                f"[{link.text}]({link.url}) -> {resolved} does not exist"
-            )
 
     def test_readme_documentation_links(self, project_root: Path) -> None:
         """Verify README.md links to documentation are valid."""
