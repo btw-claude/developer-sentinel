@@ -40,7 +40,19 @@ if TYPE_CHECKING:
     from sentinel.router import Router
     from tests.mocks import MockJiraPoller, MockRouter
 
-from sentinel.config import Config, create_config
+from sentinel.config import (
+    CircuitBreakerConfig,
+    Config,
+    CursorConfig,
+    DashboardConfig,
+    ExecutionConfig,
+    GitHubConfig,
+    HealthCheckConfig,
+    JiraConfig,
+    LoggingConfig,
+    PollingConfig,
+    RateLimitConfig,
+)
 from sentinel.orchestration import (
     AgentConfig,
     GitHubContext,
@@ -111,9 +123,10 @@ def make_config(
 ) -> Config:
     """Create a Config instance for testing with sensible defaults.
 
-    This is a test helper that wraps create_config() to provide convenient
-    defaults for all configuration options. Use this function in tests when
-    you need a Config object but only care about specific settings.
+    This test helper constructs Config directly with sub-config objects,
+    providing convenient defaults for all configuration options. Use this
+    function in tests when you need a Config object but only care about
+    specific settings.
 
     The function is organized into parameter groups matching Config's sub-configs:
 
@@ -211,51 +224,71 @@ def make_config(
     # Support both max_issues and max_issues_per_poll parameter names
     effective_max_issues = max_issues_per_poll if max_issues_per_poll is not None else max_issues
 
-    return create_config(
-        poll_interval=poll_interval,
-        max_issues_per_poll=effective_max_issues,
-        max_concurrent_executions=max_concurrent_executions,
-        orchestrations_dir=orchestrations_dir,
-        agent_workdir=agent_workdir,
-        agent_logs_dir=agent_logs_dir,
-        orchestration_logs_dir=orchestration_logs_dir,
-        attempt_counts_ttl=attempt_counts_ttl,
-        max_queue_size=max_queue_size,
-        cleanup_workdir_on_success=cleanup_workdir_on_success,
-        disable_streaming_logs=disable_streaming_logs,
-        subprocess_timeout=subprocess_timeout,
-        default_base_branch=default_base_branch,
-        inter_message_times_threshold=inter_message_times_threshold,
-        log_level=log_level,
-        log_json=log_json,
-        dashboard_enabled=dashboard_enabled,
-        dashboard_port=dashboard_port,
-        dashboard_host=dashboard_host,
-        toggle_cooldown_seconds=toggle_cooldown_seconds,
-        rate_limit_cache_ttl=rate_limit_cache_ttl,
-        rate_limit_cache_maxsize=rate_limit_cache_maxsize,
-        jira_base_url=jira_base_url,
-        jira_email=jira_email,
-        jira_api_token=jira_api_token,
-        jira_epic_link_field=jira_epic_link_field,
-        github_token=github_token,
-        github_api_url=github_api_url,
-        default_agent_type=default_agent_type,
-        cursor_path=cursor_path,
-        cursor_default_model=cursor_default_model,
-        cursor_default_mode=cursor_default_mode,
-        claude_rate_limit_enabled=claude_rate_limit_enabled,
-        claude_rate_limit_per_minute=claude_rate_limit_per_minute,
-        claude_rate_limit_per_hour=claude_rate_limit_per_hour,
-        claude_rate_limit_strategy=claude_rate_limit_strategy,
-        claude_rate_limit_warning_threshold=claude_rate_limit_warning_threshold,
-        circuit_breaker_enabled=circuit_breaker_enabled,
-        circuit_breaker_failure_threshold=circuit_breaker_failure_threshold,
-        circuit_breaker_recovery_timeout=circuit_breaker_recovery_timeout,
-        circuit_breaker_half_open_max_calls=circuit_breaker_half_open_max_calls,
-        health_check_enabled=health_check_enabled,
-        health_check_timeout=health_check_timeout,
-        shutdown_timeout_seconds=shutdown_timeout_seconds,
+    return Config(
+        polling=PollingConfig(
+            interval=poll_interval,
+            max_issues_per_poll=effective_max_issues,
+        ),
+        execution=ExecutionConfig(
+            max_concurrent_executions=max_concurrent_executions,
+            orchestrations_dir=orchestrations_dir or Path("./orchestrations"),
+            agent_workdir=agent_workdir or Path("./workdir"),
+            agent_logs_dir=agent_logs_dir or Path("./logs"),
+            orchestration_logs_dir=orchestration_logs_dir,
+            attempt_counts_ttl=attempt_counts_ttl,
+            max_queue_size=max_queue_size,
+            cleanup_workdir_on_success=cleanup_workdir_on_success,
+            disable_streaming_logs=disable_streaming_logs,
+            subprocess_timeout=subprocess_timeout,
+            default_base_branch=default_base_branch,
+            inter_message_times_threshold=inter_message_times_threshold,
+            shutdown_timeout_seconds=shutdown_timeout_seconds,
+        ),
+        logging_config=LoggingConfig(
+            level=log_level,
+            json=log_json,
+        ),
+        dashboard=DashboardConfig(
+            enabled=dashboard_enabled,
+            port=dashboard_port,
+            host=dashboard_host,
+            toggle_cooldown_seconds=toggle_cooldown_seconds,
+            rate_limit_cache_ttl=rate_limit_cache_ttl,
+            rate_limit_cache_maxsize=rate_limit_cache_maxsize,
+        ),
+        jira=JiraConfig(
+            base_url=jira_base_url,
+            email=jira_email,
+            api_token=jira_api_token,
+            epic_link_field=jira_epic_link_field,
+        ),
+        github=GitHubConfig(
+            token=github_token,
+            api_url=github_api_url,
+        ),
+        cursor=CursorConfig(
+            default_agent_type=default_agent_type,
+            path=cursor_path,
+            default_model=cursor_default_model,
+            default_mode=cursor_default_mode,
+        ),
+        rate_limit=RateLimitConfig(
+            enabled=claude_rate_limit_enabled,
+            per_minute=claude_rate_limit_per_minute,
+            per_hour=claude_rate_limit_per_hour,
+            strategy=claude_rate_limit_strategy,
+            warning_threshold=claude_rate_limit_warning_threshold,
+        ),
+        circuit_breaker=CircuitBreakerConfig(
+            enabled=circuit_breaker_enabled,
+            failure_threshold=circuit_breaker_failure_threshold,
+            recovery_timeout=circuit_breaker_recovery_timeout,
+            half_open_max_calls=circuit_breaker_half_open_max_calls,
+        ),
+        health_check=HealthCheckConfig(
+            enabled=health_check_enabled,
+            timeout=health_check_timeout,
+        ),
     )
 
 

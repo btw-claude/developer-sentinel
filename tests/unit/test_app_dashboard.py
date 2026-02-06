@@ -15,7 +15,7 @@ import pytest
 
 from sentinel.app import start_dashboard
 from sentinel.bootstrap import BootstrapContext
-from sentinel.config import create_config
+from sentinel.config import Config, DashboardConfig
 from sentinel.dashboard.app import format_duration
 
 
@@ -30,10 +30,12 @@ class MockSentinel:
 @pytest.fixture
 def mock_bootstrap_context() -> BootstrapContext:
     """Create a mock BootstrapContext for testing."""
-    config = create_config(
-        dashboard_enabled=True,
-        dashboard_host="127.0.0.1",
-        dashboard_port=8080,
+    config = Config(
+        dashboard=DashboardConfig(
+            enabled=True,
+            host="127.0.0.1",
+            port=8080,
+        )
     )
     # Create minimal mock for BootstrapContext
     context = MagicMock(spec=BootstrapContext)
@@ -44,7 +46,7 @@ def mock_bootstrap_context() -> BootstrapContext:
 @pytest.fixture
 def mock_sentinel() -> MockSentinel:
     """Create a mock Sentinel for testing."""
-    config = create_config()
+    config = Config()
     return MockSentinel(config)
 
 
@@ -55,7 +57,7 @@ class TestStartDashboardGracefulDegradation:
         self, mock_sentinel: MockSentinel
     ) -> None:
         """Test that start_dashboard returns None when dashboard is disabled."""
-        config = create_config(dashboard_enabled=False)
+        config = Config(dashboard=DashboardConfig(enabled=False))
         context = MagicMock(spec=BootstrapContext)
         context.config = config
 
@@ -67,7 +69,7 @@ class TestStartDashboardGracefulDegradation:
         self, mock_sentinel: MockSentinel
     ) -> None:
         """Test that start_dashboard logs info when dashboard is disabled."""
-        config = create_config(dashboard_enabled=False)
+        config = Config(dashboard=DashboardConfig(enabled=False))
         context = MagicMock(spec=BootstrapContext)
         context.config = config
 

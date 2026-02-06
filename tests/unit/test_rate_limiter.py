@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from sentinel.config import create_config
+from sentinel.config import Config, RateLimitConfig
 from sentinel.rate_limiter import (
     ClaudeRateLimiter,
     QueueFullError,
@@ -218,12 +218,14 @@ class TestClaudeRateLimiter:
 
     def test_from_config(self) -> None:
         """Can create limiter from Config."""
-        config = create_config(
-            claude_rate_limit_enabled=True,
-            claude_rate_limit_per_minute=30,
-            claude_rate_limit_per_hour=500,
-            claude_rate_limit_strategy="reject",
-            claude_rate_limit_warning_threshold=0.3,
+        config = Config(
+            rate_limit=RateLimitConfig(
+                enabled=True,
+                per_minute=30,
+                per_hour=500,
+                strategy="reject",
+                warning_threshold=0.3,
+            )
         )
         limiter = ClaudeRateLimiter.from_config(config)
         assert limiter.enabled is True
@@ -900,13 +902,15 @@ class TestBoundedQueueBackpressure:
 
     def test_from_config_with_backpressure_settings(self) -> None:
         """Can create limiter from Config with backpressure settings."""
-        config = create_config(
-            claude_rate_limit_enabled=True,
-            claude_rate_limit_per_minute=30,
-            claude_rate_limit_per_hour=500,
-            claude_rate_limit_strategy="queue",
-            claude_rate_limit_max_queued=75,
-            claude_rate_limit_queue_full_strategy="wait",
+        config = Config(
+            rate_limit=RateLimitConfig(
+                enabled=True,
+                per_minute=30,
+                per_hour=500,
+                strategy="queue",
+                max_queued=75,
+                queue_full_strategy="wait",
+            )
         )
         limiter = ClaudeRateLimiter.from_config(config)
         assert limiter.enabled is True

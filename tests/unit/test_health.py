@@ -28,9 +28,10 @@ class TestHealthCheckConfig:
 
     def test_from_config_with_app_config(self) -> None:
         """Test creating HealthCheckConfig from application Config."""
-        from sentinel.config import create_config
+        from sentinel.config import Config
+        from sentinel.config import HealthCheckConfig as HealthCheckCfg
 
-        app_config = create_config(health_check_timeout=10.0, health_check_enabled=False)
+        app_config = Config(health_check=HealthCheckCfg(timeout=10.0, enabled=False))
         health_config = HealthCheckConfig.from_config(app_config)
 
         assert health_config.timeout == app_config.health_check.timeout
@@ -38,9 +39,9 @@ class TestHealthCheckConfig:
 
     def test_from_config_with_default_app_config(self) -> None:
         """Test creating HealthCheckConfig from default application Config."""
-        from sentinel.config import create_config
+        from sentinel.config import Config
 
-        app_config = create_config()
+        app_config = Config()
         health_config = HealthCheckConfig.from_config(app_config)
 
         assert health_config.timeout == app_config.health_check.timeout
@@ -322,9 +323,10 @@ class TestHealthChecker:
 
     def test_from_config_factory_method(self) -> None:
         """Test creating HealthChecker from application Config."""
-        from sentinel.config import create_config
+        from sentinel.config import Config
+        from sentinel.config import HealthCheckConfig as HealthCheckCfg
 
-        app_config = create_config(health_check_timeout=10.0, health_check_enabled=False)
+        app_config = Config(health_check=HealthCheckCfg(timeout=10.0, enabled=False))
         checker = HealthChecker.from_config(app_config)
 
         assert checker.config.timeout == 10.0
@@ -332,12 +334,12 @@ class TestHealthChecker:
 
     def test_from_config_with_clients(self) -> None:
         """Test creating HealthChecker from Config with optional clients."""
-        from sentinel.config import create_config
+        from sentinel.config import Config
 
         mock_jira_client = MagicMock()
         mock_github_client = MagicMock()
 
-        app_config = create_config()
+        app_config = Config()
         checker = HealthChecker.from_config(
             app_config,
             jira_client=mock_jira_client,
@@ -351,9 +353,10 @@ class TestHealthChecker:
 
     def test_from_config_uses_config_values(self) -> None:
         """Test that from_config creates checker using Config health check settings."""
-        from sentinel.config import create_config
+        from sentinel.config import Config
+        from sentinel.config import HealthCheckConfig as HealthCheckCfg
 
-        app_config = create_config(health_check_timeout=15.0, health_check_enabled=True)
+        app_config = Config(health_check=HealthCheckCfg(timeout=15.0, enabled=True))
         checker = HealthChecker.from_config(app_config)
 
         # The checker should have a config with values from the app config
