@@ -22,30 +22,38 @@ from sentinel.agent_clients import (
     CursorMode,
     create_default_factory,
 )
-from sentinel.config import Config, create_config
+from sentinel.config import Config, CursorConfig, ExecutionConfig
 
 
 @pytest.fixture
 def test_config() -> Config:
     """Create a default test Config with standard cursor settings."""
-    return create_config(
-        agent_workdir=Path("/tmp/test-workdir"),
-        agent_logs_dir=Path("/tmp/test-logs"),
-        cursor_path="/usr/local/bin/cursor",
-        cursor_default_model="claude-3-sonnet",
-        cursor_default_mode="agent",
+    return Config(
+        execution=ExecutionConfig(
+            agent_workdir=Path("/tmp/test-workdir"),
+            agent_logs_dir=Path("/tmp/test-logs"),
+        ),
+        cursor=CursorConfig(
+            path="/usr/local/bin/cursor",
+            default_model="claude-3-sonnet",
+            default_mode="agent",
+        ),
     )
 
 
 @pytest.fixture
 def test_config_plan_mode() -> Config:
     """Create a test Config with plan mode."""
-    return create_config(
-        agent_workdir=Path("/tmp/test-workdir"),
-        agent_logs_dir=Path("/tmp/test-logs"),
-        cursor_path="/usr/local/bin/cursor",
-        cursor_default_model="claude-3-sonnet",
-        cursor_default_mode="plan",
+    return Config(
+        execution=ExecutionConfig(
+            agent_workdir=Path("/tmp/test-workdir"),
+            agent_logs_dir=Path("/tmp/test-logs"),
+        ),
+        cursor=CursorConfig(
+            path="/usr/local/bin/cursor",
+            default_model="claude-3-sonnet",
+            default_mode="plan",
+        ),
     )
 
 
@@ -59,12 +67,16 @@ def make_test_config(
     Note: For simple test cases, prefer using the test_config fixture.
     This helper is useful when specific parameter overrides are needed.
     """
-    return create_config(
-        agent_workdir=Path("/tmp/test-workdir"),
-        agent_logs_dir=Path("/tmp/test-logs"),
-        cursor_path=cursor_path,
-        cursor_default_model=cursor_default_model,
-        cursor_default_mode=cursor_default_mode,
+    return Config(
+        execution=ExecutionConfig(
+            agent_workdir=Path("/tmp/test-workdir"),
+            agent_logs_dir=Path("/tmp/test-logs"),
+        ),
+        cursor=CursorConfig(
+            path=cursor_path,
+            default_model=cursor_default_model,
+            default_mode=cursor_default_mode,
+        ),
     )
 
 
@@ -110,7 +122,7 @@ class TestCursorAgentClientInit:
 
     def test_init_with_defaults(self) -> None:
         """Test initialization with default config values."""
-        config = create_config(cursor_default_mode="agent")
+        config = Config(cursor=CursorConfig(default_mode="agent"))
         client = CursorAgentClient(config)
 
         assert client.config is config
@@ -148,9 +160,11 @@ class TestCursorAgentClientInit:
 
     def test_init_with_empty_cursor_mode_raises_error(self) -> None:
         """Test that initialization raises AgentClientError when cursor_default_mode is empty."""
-        config = create_config(
-            cursor_path="/usr/local/bin/cursor",
-            cursor_default_mode="",
+        config = Config(
+            cursor=CursorConfig(
+                path="/usr/local/bin/cursor",
+                default_mode="",
+            ),
         )
 
         with pytest.raises(AgentClientError) as exc_info:
@@ -161,9 +175,11 @@ class TestCursorAgentClientInit:
 
     def test_init_with_whitespace_cursor_mode_raises_error(self) -> None:
         """Test that initialization raises AgentClientError when cursor_default_mode is whitespace."""
-        config = create_config(
-            cursor_path="/usr/local/bin/cursor",
-            cursor_default_mode="   ",
+        config = Config(
+            cursor=CursorConfig(
+                path="/usr/local/bin/cursor",
+                default_mode="   ",
+            ),
         )
 
         with pytest.raises(AgentClientError) as exc_info:

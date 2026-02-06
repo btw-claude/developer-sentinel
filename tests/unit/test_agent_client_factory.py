@@ -18,7 +18,7 @@ from sentinel.agent_clients import (
     ClaudeSdkAgentClient,
     create_default_factory,
 )
-from sentinel.config import Config, create_config
+from sentinel.config import Config, ExecutionConfig
 from sentinel.types import AgentType
 
 
@@ -51,9 +51,11 @@ class MockAgentClient(AgentClient):
 
 def make_test_config() -> Config:
     """Create a Config for testing."""
-    return create_config(
-        agent_workdir=Path("/tmp/test-workdir"),
-        agent_logs_dir=Path("/tmp/test-logs"),
+    return Config(
+        execution=ExecutionConfig(
+            agent_workdir=Path("/tmp/test-workdir"),
+            agent_logs_dir=Path("/tmp/test-logs"),
+        )
     )
 
 
