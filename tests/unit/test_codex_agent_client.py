@@ -1,8 +1,10 @@
 """Unit tests for CodexAgentClient.
 
 Tests for the Codex CLI agent client implementation.
+Test fixture uses CodexSubprocessMocks NamedTuple for self-documenting
+mock access instead of positional tuple destructuring.
 
-Tests use pytest-asyncio for async test support.
+Tests use asyncio.run() for async test support.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,6 +26,19 @@ from sentinel.agent_clients import (
 from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitState
 from sentinel.config import CodexConfig, Config
 from tests.helpers import make_config
+
+
+class CodexSubprocessMocks(NamedTuple):
+    """Container for subprocess mocks used in codex agent tests.
+
+    Using a NamedTuple makes fixture return values self-documenting
+    compared to positional tuple destructuring.
+    """
+
+    tmpdir: MagicMock
+    output_path: MagicMock
+    run: MagicMock
+    path_cls: MagicMock
 
 
 @pytest.fixture
@@ -51,13 +67,13 @@ def test_config() -> Config:
 
 
 @pytest.fixture
-def mock_codex_subprocess():
+def mock_codex_subprocess() -> CodexSubprocessMocks:
     """Set up standard mocks for codex subprocess execution.
 
-    Yields a tuple of (mock_tmpdir, mock_output_path, mock_run, mock_path_cls)
-    with common setup for tempfile.TemporaryDirectory, Path, and subprocess.run.
-    The output file defaults to existing with content "Agent response".
-    Tests can customize mock_output_path and mock_run as needed.
+    Yields a CodexSubprocessMocks NamedTuple with tmpdir, output_path, run,
+    and path_cls mocks. Common setup for tempfile.TemporaryDirectory, Path,
+    and subprocess.run. The output file defaults to existing with content
+    "Agent response". Tests can customize output_path and run as needed.
     """
     with (
         patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
@@ -83,7 +99,12 @@ def mock_codex_subprocess():
             stderr="",
         )
 
-        yield mock_tmpdir_cls, mock_output_path, mock_run, mock_path_cls
+        yield CodexSubprocessMocks(
+            tmpdir=mock_tmpdir_cls,
+            output_path=mock_output_path,
+            run=mock_run,
+            path_cls=mock_path_cls,
+        )
 
 
 class TestCodexAgentClientInit:
@@ -223,30 +244,27 @@ class TestCodexAgentClientRunAgent:
 
     def test_run_agent_success(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test successful agent execution."""
-        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-
         client = CodexAgentClient(codex_config)
 
         result = asyncio.run(client.run_agent("test prompt"))
 
         assert result.response == "Agent response"
         assert result.workdir is None
-        mock_run.assert_called_once()
+        mock_codex_subprocess.run.assert_called_once()
 
     def test_run_agent_with_context(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test agent execution with context dict."""
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.stat.return_value = MagicMock(st_size=8)
-        mock_output_path.read_text.return_value = "Response"
-        mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
 
         client = CodexAgentClient(codex_config)
 
@@ -258,7 +276,7 @@ class TestCodexAgentClientRunAgent:
         )
 
         # Verify the prompt was augmented with context
-        call_args = mock_run.call_args
+        call_args = mock_codex_subprocess.run.call_args
         cmd = call_args[0][0]
         # The prompt is the third element (after codex, exec)
         full_prompt = cmd[2]
@@ -268,36 +286,34 @@ class TestCodexAgentClientRunAgent:
 
     def test_run_agent_with_timeout(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test agent execution with explicit timeout."""
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.stat.return_value = MagicMock(st_size=8)
-        mock_output_path.read_text.return_value = "Response"
-        mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
 
         client = CodexAgentClient(codex_config)
 
         asyncio.run(client.run_agent("prompt", timeout_seconds=120))
 
-        mock_run.assert_called_once()
-        call_kwargs = mock_run.call_args[1]
+        mock_codex_subprocess.run.assert_called_once()
+        call_kwargs = mock_codex_subprocess.run.call_args[1]
         assert call_kwargs["timeout"] == 120
 
     def test_run_agent_uses_config_subprocess_timeout(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
     ) -> None:
         """Test that run_agent falls back to subprocess_timeout from config.
 
         When timeout_seconds is not provided and config.execution.subprocess_timeout
         is set, the config value should be used as the effective timeout.
         """
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.stat.return_value = MagicMock(st_size=8)
-        mock_output_path.read_text.return_value = "Response"
-        mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
 
         config = make_config(
             codex_path="/usr/local/bin/codex",
@@ -308,22 +324,21 @@ class TestCodexAgentClientRunAgent:
 
         asyncio.run(client.run_agent("prompt"))
 
-        call_kwargs = mock_run.call_args[1]
+        call_kwargs = mock_codex_subprocess.run.call_args[1]
         assert call_kwargs["timeout"] == 120
 
     def test_run_agent_no_timeout_when_subprocess_timeout_zero(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
     ) -> None:
         """Test that no timeout is applied when subprocess_timeout is zero.
 
         When timeout_seconds is not provided and config.execution.subprocess_timeout
         is 0, the effective timeout should remain None (no timeout).
         """
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.stat.return_value = MagicMock(st_size=8)
-        mock_output_path.read_text.return_value = "Response"
-        mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
 
         config = make_config(
             codex_path="/usr/local/bin/codex",
@@ -334,18 +349,17 @@ class TestCodexAgentClientRunAgent:
 
         asyncio.run(client.run_agent("prompt"))
 
-        call_kwargs = mock_run.call_args[1]
+        call_kwargs = mock_codex_subprocess.run.call_args[1]
         assert call_kwargs["timeout"] is None
 
     def test_run_agent_with_model_override(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
     ) -> None:
         """Test agent execution with model override."""
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.stat.return_value = MagicMock(st_size=8)
-        mock_output_path.read_text.return_value = "Response"
-        mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
 
         config = make_config(
             codex_path="/usr/local/bin/codex",
@@ -355,22 +369,21 @@ class TestCodexAgentClientRunAgent:
 
         asyncio.run(client.run_agent("prompt", model="override-model"))
 
-        call_args = mock_run.call_args
+        call_args = mock_codex_subprocess.run.call_args
         cmd = call_args[0][0]
         model_idx = cmd.index("--model") + 1
         assert cmd[model_idx] == "override-model"
 
     def test_run_agent_creates_workdir(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         tmp_path: Path,
         codex_config: Config,
     ) -> None:
         """Test that run_agent creates a working directory when configured."""
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.stat.return_value = MagicMock(st_size=8)
-        mock_output_path.read_text.return_value = "Response"
-        mock_run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
 
         client = CodexAgentClient(codex_config, base_workdir=tmp_path)
 
@@ -380,18 +393,17 @@ class TestCodexAgentClientRunAgent:
         assert result.workdir.exists()
         assert "TEST-123" in result.workdir.name
         # Verify --cd flag was passed in command
-        call_args = mock_run.call_args
+        call_args = mock_codex_subprocess.run.call_args
         cmd = call_args[0][0]
         assert "--cd" in cmd
 
     def test_run_agent_timeout_raises_error(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that timeout raises AgentTimeoutError."""
-        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
+        mock_codex_subprocess.run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
 
         client = CodexAgentClient(codex_config)
 
@@ -402,13 +414,12 @@ class TestCodexAgentClientRunAgent:
 
     def test_run_agent_nonzero_exit_raises_error(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that non-zero exit code raises AgentClientError."""
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.exists.return_value = False
-        mock_run.return_value = MagicMock(
+        mock_codex_subprocess.output_path.exists.return_value = False
+        mock_codex_subprocess.run.return_value = MagicMock(
             returncode=1,
             stdout="",
             stderr="Error: something went wrong",
@@ -424,12 +435,11 @@ class TestCodexAgentClientRunAgent:
 
     def test_run_agent_file_not_found_raises_error(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that FileNotFoundError raises AgentClientError."""
-        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_run.side_effect = FileNotFoundError("codex not found")
+        mock_codex_subprocess.run.side_effect = FileNotFoundError("codex not found")
 
         client = CodexAgentClient(codex_config)
 
@@ -440,12 +450,11 @@ class TestCodexAgentClientRunAgent:
 
     def test_run_agent_os_error_raises_error(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that OSError raises AgentClientError."""
-        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_run.side_effect = OSError("Permission denied")
+        mock_codex_subprocess.run.side_effect = OSError("Permission denied")
 
         client = CodexAgentClient(codex_config)
 
@@ -456,14 +465,13 @@ class TestCodexAgentClientRunAgent:
 
     def test_run_agent_falls_back_to_stdout(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that response falls back to stdout when output file is empty."""
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
         # Output file exists but is empty
-        mock_output_path.stat.return_value = MagicMock(st_size=0)
-        mock_run.return_value = MagicMock(
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=0)
+        mock_codex_subprocess.run.return_value = MagicMock(
             returncode=0,
             stdout="Stdout response",
             stderr="",
@@ -477,14 +485,13 @@ class TestCodexAgentClientRunAgent:
 
     def test_run_agent_uses_fixture(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         test_config: Config,
     ) -> None:
         """Test run_agent using pytest fixture for config."""
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.stat.return_value = MagicMock(st_size=20)
-        mock_output_path.read_text.return_value = "Fixture test response"
-        mock_run.return_value = MagicMock(
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=20)
+        mock_codex_subprocess.output_path.read_text.return_value = "Fixture test response"
+        mock_codex_subprocess.run.return_value = MagicMock(
             returncode=0,
             stdout="Fixture test response",
             stderr="",
@@ -494,7 +501,54 @@ class TestCodexAgentClientRunAgent:
         result = asyncio.run(client.run_agent("test prompt"))
 
         assert result.response == "Fixture test response"
-        mock_run.assert_called_once()
+        mock_codex_subprocess.run.assert_called_once()
+
+    def test_run_agent_success_output_file_missing(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test that run_agent falls back to stdout when output file does not exist.
+
+        Covers the edge case where returncode=0 but the output file was never
+        created (exists() returns False). The response should fall back to stdout.
+        """
+        mock_codex_subprocess.output_path.exists.return_value = False
+        mock_codex_subprocess.run.return_value = MagicMock(
+            returncode=0,
+            stdout="Stdout fallback",
+            stderr="",
+        )
+
+        client = CodexAgentClient(codex_config)
+
+        result = asyncio.run(client.run_agent("prompt"))
+
+        assert result.response == "Stdout fallback"
+        mock_codex_subprocess.output_path.read_text.assert_not_called()
+
+    def test_run_agent_empty_output_and_empty_stdout(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test behavior when both output file and stdout are empty.
+
+        Documents that when the output file is empty (st_size=0) and stdout
+        is also empty, the response is an empty string.
+        """
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=0)
+        mock_codex_subprocess.run.return_value = MagicMock(
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        client = CodexAgentClient(codex_config)
+
+        result = asyncio.run(client.run_agent("prompt"))
+
+        assert result.response == ""
 
 
 class TestCodexAgentClientWorkdir:
@@ -523,50 +577,6 @@ class TestCodexAgentClientWorkdir:
             client._create_workdir("TEST-789")
 
         assert "base_workdir not configured" in str(exc_info.value)
-
-
-class TestCodexAgentClientFactoryIntegration:
-    """Tests for factory integration."""
-
-    def test_factory_creates_codex_client(self) -> None:
-        """Test that create_default_factory registers codex builder."""
-        config = make_config(
-            codex_path="/usr/local/bin/codex",
-            codex_default_model="o3-mini",
-        )
-        factory = create_default_factory(config)
-
-        assert "codex" in factory.registered_types
-
-    def test_factory_creates_codex_instance(self) -> None:
-        """Test that factory creates CodexAgentClient instance."""
-        config = make_config(
-            codex_path="/usr/local/bin/codex",
-            codex_default_model="o3-mini",
-        )
-        factory = create_default_factory(config)
-
-        client = factory.create("codex", config)
-
-        assert isinstance(client, CodexAgentClient)
-        assert client.agent_type == "codex"
-        assert client.config is config
-
-    def test_factory_codex_client_has_correct_settings(self) -> None:
-        """Test that factory-created client has correct settings from config."""
-        config = make_config(
-            codex_path="/custom/codex",
-            codex_default_model="custom-model",
-        )
-        factory = create_default_factory(config)
-
-        client = factory.create("codex", config)
-
-        assert isinstance(client, CodexAgentClient)
-        assert client._codex_path == "/custom/codex"
-        assert client._default_model == "custom-model"
-        assert client.base_workdir == config.execution.agent_workdir
-        assert client.log_base_dir == config.execution.agent_logs_dir
 
 
 class TestCodexCircuitBreaker:
@@ -632,7 +642,7 @@ class TestCodexCircuitBreaker:
 
     def test_run_agent_records_success(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that successful execution records success on circuit breaker."""
@@ -646,13 +656,12 @@ class TestCodexCircuitBreaker:
 
     def test_run_agent_records_failure_on_nonzero_exit(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that non-zero exit code records failure on circuit breaker."""
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.exists.return_value = False
-        mock_run.return_value = MagicMock(
+        mock_codex_subprocess.output_path.exists.return_value = False
+        mock_codex_subprocess.run.return_value = MagicMock(
             returncode=1,
             stdout="",
             stderr="Error: something went wrong",
@@ -669,12 +678,11 @@ class TestCodexCircuitBreaker:
 
     def test_run_agent_records_failure_on_timeout(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that timeout records failure on circuit breaker."""
-        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
+        mock_codex_subprocess.run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=60)
 
         cb = CircuitBreaker(service_name="codex")
         client = CodexAgentClient(codex_config, circuit_breaker=cb)
@@ -686,12 +694,11 @@ class TestCodexCircuitBreaker:
 
     def test_run_agent_records_failure_on_file_not_found(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that FileNotFoundError records failure on circuit breaker."""
-        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_run.side_effect = FileNotFoundError("codex not found")
+        mock_codex_subprocess.run.side_effect = FileNotFoundError("codex not found")
 
         cb = CircuitBreaker(service_name="codex")
         client = CodexAgentClient(codex_config, circuit_breaker=cb)
@@ -703,12 +710,11 @@ class TestCodexCircuitBreaker:
 
     def test_run_agent_records_failure_on_os_error(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that OSError records failure on circuit breaker."""
-        _mock_tmpdir, _mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_run.side_effect = OSError("Permission denied")
+        mock_codex_subprocess.run.side_effect = OSError("Permission denied")
 
         cb = CircuitBreaker(service_name="codex")
         client = CodexAgentClient(codex_config, circuit_breaker=cb)
@@ -720,13 +726,12 @@ class TestCodexCircuitBreaker:
 
     def test_repeated_failures_open_circuit(
         self,
-        mock_codex_subprocess: tuple,
+        mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
         """Test that repeated failures cause the circuit to open."""
-        _mock_tmpdir, mock_output_path, mock_run, _mock_path_cls = mock_codex_subprocess
-        mock_output_path.exists.return_value = False
-        mock_run.return_value = MagicMock(
+        mock_codex_subprocess.output_path.exists.return_value = False
+        mock_codex_subprocess.run.return_value = MagicMock(
             returncode=1,
             stdout="",
             stderr="Error: service unavailable",

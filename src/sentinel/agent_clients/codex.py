@@ -132,6 +132,10 @@ class CodexAgentClient(AgentClient):
     def _create_workdir(self, issue_key: str) -> Path:
         """Create a unique working directory for an agent run.
 
+        .. todo:: DS-656: This method is identical to
+           ``CursorAgentClient._create_workdir``. Consider extracting to
+           a shared base class method or mixin to reduce duplication.
+
         Args:
             issue_key: The issue key to include in the directory name.
 
@@ -242,6 +246,10 @@ class CodexAgentClient(AgentClient):
             workdir = self._create_workdir(issue_key)
 
         # Build full prompt with context section
+        # TODO(DS-656): Context dict values are concatenated directly into the
+        # prompt string. This is consistent with the cursor client pattern, but
+        # should be hardened (e.g. input sanitization) if context could ever
+        # originate from untrusted sources.
         full_prompt = prompt
         if context:
             full_prompt += "\n\nContext:\n" + "".join(f"- {k}: {v}\n" for k, v in context.items())
