@@ -417,6 +417,9 @@ def create_routes(
     # CSRF protection for state-changing endpoints (DS-736)
     csrf_tokens: TTLCache[str, bool] = TTLCache(maxsize=1000, ttl=3600)
 
+    # Rate limiting for CSRF token endpoint to prevent TTLCache exhaustion (DS-737)
+    csrf_rate_limit: TTLCache[str, int] = TTLCache(maxsize=256, ttl=60)
+
     def _generate_csrf_token() -> str:
         """Generate a CSRF token and store it for validation."""
         token = secrets.token_urlsafe(32)
@@ -443,15 +446,33 @@ def create_routes(
     dashboard_router = APIRouter()
 
     @dashboard_router.get("/api/csrf-token")
-    async def api_csrf_token() -> dict[str, str]:
+    async def api_csrf_token(request: Request) -> dict[str, str]:
         """Generate and return a CSRF token.
 
         Provides a CSRF token for use in state-changing API requests.
         Tokens are single-use and expire after 1 hour.
 
+        Rate limited to 30 requests per minute per client IP to prevent
+        potential TTLCache exhaustion (DS-737). The csrf_tokens cache has
+        maxsize=1000, so unbounded generation could fill and evict valid tokens.
+
+        Args:
+            request: The incoming HTTP request (used for client IP extraction).
+
         Returns:
             Dict containing the CSRF token.
+
+        Raises:
+            HTTPException: 429 if rate limit is exceeded.
         """
+        client_ip = request.client.host if request.client else "unknown"
+        current_count = csrf_rate_limit.get(client_ip, 0)
+        if current_count >= 30:
+            raise HTTPException(
+                status_code=429,
+                detail="CSRF token request rate limit exceeded. Please try again later.",
+            )
+        csrf_rate_limit[client_ip] = current_count + 1
         return {"csrf_token": _generate_csrf_token()}
 
     @dashboard_router.get("/", response_class=HTMLResponse)

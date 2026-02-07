@@ -9,8 +9,42 @@
  * - htmx: For AJAX requests and DOM updates
  * - showToast: Global toast notification function (defined in base.html)
  *
+ * CSRF Token Auto-Refresh (DS-737):
+ * When a page is refreshed, embedded CSRF tokens become invalid (single-use).
+ * The refreshCsrfToken() function fetches a fresh token from the API and
+ * updates the hidden input, preventing 403 errors on form submission after
+ * page refresh.
+ *
  * @module orchestration-forms
  */
+
+/**
+ * Fetch a fresh CSRF token from the server and update the hidden input.
+ *
+ * This function is called on page load and after a 403 CSRF failure to
+ * transparently refresh the token. If the hidden input element does not
+ * exist, the function is a no-op.
+ *
+ * @returns {Promise<string|null>} The new CSRF token, or null on failure
+ */
+function refreshCsrfToken() {
+    return fetch('/api/csrf-token')
+        .then(function(response) {
+            if (!response.ok) return null;
+            return response.json();
+        })
+        .then(function(data) {
+            if (data && data.csrf_token) {
+                var el = document.getElementById('csrf_token');
+                if (el) el.value = data.csrf_token;
+                return data.csrf_token;
+            }
+            return null;
+        })
+        .catch(function() {
+            return null;
+        });
+}
 
 /**
  * Split a comma-separated or newline-separated string into an array.
@@ -352,35 +386,53 @@ function submitOrchestrationCreate(formElement) {
     // Read CSRF token from hidden input
     var csrfToken = document.getElementById('csrf_token');
 
-    // Submit via fetch
-    fetch('/api/orchestrations', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken ? csrfToken.value : ''
-        },
-        body: JSON.stringify(body)
-    }).then(function(response) {
-        return response.json().then(function(data) {
-            return { status: response.status, data: data };
+    /**
+     * Internal helper to perform the create POST request.
+     *
+     * @param {string} token - CSRF token to include in the request header
+     * @param {boolean} isRetry - Whether this is a retry after token refresh
+     */
+    function doCreate(token, isRetry) {
+        fetch('/api/orchestrations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': token
+            },
+            body: JSON.stringify(body)
+        }).then(function(response) {
+            return response.json().then(function(data) {
+                return { status: response.status, data: data };
+            });
+        }).then(function(result) {
+            if (result.status >= 200 && result.status < 300 && result.data.success) {
+                showToast('success', 'Orchestration \'' + name + '\' created successfully');
+                // Hide the creation form
+                document.getElementById('create-form-container').style.display = 'none';
+                // Reload the orchestrations list (HTMX will auto-refresh on next poll)
+            } else if (result.status === 403 && !isRetry) {
+                // CSRF token invalid (e.g., page refresh) - auto-refresh and retry (DS-737)
+                refreshCsrfToken().then(function(newToken) {
+                    if (newToken) {
+                        doCreate(newToken, true);
+                    } else {
+                        showToast('error', 'CSRF token refresh failed. Please reload the page.');
+                    }
+                });
+            } else if (result.status === 403) {
+                showToast('error', 'CSRF token validation failed. Please reload the page.');
+            } else if (result.status === 422) {
+                showToast('error', result.data.detail || 'Validation error');
+            } else if (result.status === 429) {
+                showToast('warning', 'Rate limit exceeded. Please wait before trying again.');
+            } else {
+                showToast('error', result.data.detail || 'Failed to create orchestration');
+            }
+        }).catch(function(error) {
+            console.error('submitOrchestrationCreate: fetch error:', error);
+            showToast('error', 'Network error while creating orchestration');
         });
-    }).then(function(result) {
-        if (result.status >= 200 && result.status < 300 && result.data.success) {
-            showToast('success', 'Orchestration \'' + name + '\' created successfully');
-            // Hide the creation form
-            document.getElementById('create-form-container').style.display = 'none';
-            // Reload the orchestrations list (HTMX will auto-refresh on next poll)
-        } else if (result.status === 422) {
-            showToast('error', result.data.detail || 'Validation error');
-        } else if (result.status === 429) {
-            showToast('warning', 'Rate limit exceeded. Please wait before trying again.');
-        } else if (result.status === 403) {
-            showToast('error', 'CSRF token validation failed. Please reload the page.');
-        } else {
-            showToast('error', result.data.detail || 'Failed to create orchestration');
-        }
-    }).catch(function(error) {
-        console.error('submitOrchestrationCreate: fetch error:', error);
-        showToast('error', 'Network error while creating orchestration');
-    });
+    }
+
+    doCreate(csrfToken ? csrfToken.value : '', false);
 }

@@ -1125,51 +1125,56 @@
    ORCHESTRATION FORM COMPONENT
    Styles for the orchestration create/edit form inputs and controls.
    Extracted from inline styles for consistency and maintainability (DS-736).
+
+   DRY Refactor (DS-737):
+   - .form-input-base: Shared properties for all form input variants
+   - .form-textarea-base: Shared properties for all form textarea variants
+   - Variant classes override only the properties that differ (e.g., background)
    ============================================================================= */
 
-/* Standard form input styling for text, number, and select elements */
-.form-input {
-    background: var(--bg-secondary, #16213e);
+/* Base form input styling shared by .form-input and .form-input--nested */
+.form-input-base,
+.form-input,
+.form-input--nested {
     border: 1px solid var(--accent, #0f3460);
     border-radius: 4px;
     color: var(--text-primary, #eee);
     flex: 1;
     padding: 0.25rem;
+}
+
+/* Standard form input styling for text, number, and select elements */
+.form-input {
+    background: var(--bg-secondary, #16213e);
 }
 
 /* Form input with primary background (used in nested subsections) */
 .form-input--nested {
     background: var(--bg-primary, #1a1a2e);
+}
+
+/* Base textarea styling shared by .form-textarea and .form-textarea--full */
+.form-textarea-base,
+.form-textarea,
+.form-textarea--full {
     border: 1px solid var(--accent, #0f3460);
     border-radius: 4px;
     color: var(--text-primary, #eee);
-    flex: 1;
-    padding: 0.25rem;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85em;
+    padding: 0.5rem;
+    resize: vertical;
 }
 
 /* Textarea styling for multiline form fields (prompts, patterns) */
 .form-textarea {
     background: var(--bg-secondary, #16213e);
-    border: 1px solid var(--accent, #0f3460);
-    border-radius: 4px;
-    color: var(--text-primary, #eee);
     flex: 1;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 0.85em;
-    padding: 0.5rem;
-    resize: vertical;
 }
 
 /* Full-width textarea variant for prompt blocks */
 .form-textarea--full {
     background: var(--bg-secondary, #16213e);
-    border: 1px solid var(--accent, #0f3460);
-    border-radius: 4px;
-    color: var(--text-primary, #eee);
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 0.85em;
-    padding: 0.5rem;
-    resize: vertical;
     width: 100%;
 }
 
