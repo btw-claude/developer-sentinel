@@ -16,3 +16,18 @@
 {% macro status_badge(active_count, total_count) %}
 <span class="badge{% if active_count == 0 %} badge--inactive{% elif active_count == total_count %} badge--success{% endif %}">{{ active_count }}/{{ total_count }}</span>
 {%- endmacro %}
+
+{#
+  Macro to render a success rate with consistent color coding.
+
+  Determines the text color class based on the success rate percentage:
+  - text-success (green): When rate >= 90%
+  - text-warning (yellow): When rate >= 70%
+  - text-danger (red): When rate < 70%
+
+  @param rate - Success rate as a percentage (0.0 - 100.0)
+  @returns A span element with the rate formatted to one decimal place and appropriate color class
+#}
+{% macro success_rate_display(rate) %}
+<span class="{% if rate >= 90 %}text-success{% elif rate >= 70 %}text-warning{% else %}text-danger{% endif %}">{{ "%.1f" | format(rate) }}%</span>
+{%- endmacro %}
