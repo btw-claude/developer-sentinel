@@ -1233,19 +1233,19 @@ class TestParseEnvIntValidationAndLogging:
     def test_parse_env_int_raises_on_zero(self) -> None:
         """Should raise ValueError when environment variable is set to 0."""
         with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "0"}):
-            with pytest.raises(ValueError, match="must be a positive integer"):
+            with pytest.raises(ValueError, match="must be >= 1, got 0"):
                 _parse_env_int("TEST_PARSE_ENV_INT", 42)
 
     def test_parse_env_int_raises_on_negative(self) -> None:
         """Should raise ValueError when environment variable is set to a negative value."""
         with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "-1"}):
-            with pytest.raises(ValueError, match="must be a positive integer"):
+            with pytest.raises(ValueError, match="must be >= 1, got -1"):
                 _parse_env_int("TEST_PARSE_ENV_INT", 42)
 
     def test_parse_env_int_raises_on_large_negative(self) -> None:
         """Should raise ValueError for large negative values."""
         with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "-100"}):
-            with pytest.raises(ValueError, match="must be a positive integer"):
+            with pytest.raises(ValueError, match="must be >= 1, got -100"):
                 _parse_env_int("TEST_PARSE_ENV_INT", 42)
 
     def test_parse_env_int_accepts_one(self) -> None:
@@ -1265,10 +1265,11 @@ class TestParseEnvIntValidationAndLogging:
         assert result == 10
 
         info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        expected = "Using TEST_PARSE_ENV_INT=10 from environment (default: 42)"
         assert any(
-            "TEST_PARSE_ENV_INT" in msg and "10" in msg and "42" in msg
+            msg == expected
             for msg in info_messages
-        ), f"Expected info log with env var name, value, and default in: {info_messages}"
+        ), f"Expected exact info log '{expected}' in: {info_messages}"
 
     def test_parse_env_int_no_log_when_using_default(
         self, caplog: pytest.LogCaptureFixture
@@ -1310,12 +1311,63 @@ class TestParseEnvIntValidationAndLogging:
         assert result == 5
 
         info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        expected = "Using AGENT_TEAMS_TIMEOUT_MULTIPLIER=5 from environment (default: 3)"
         assert any(
-            "AGENT_TEAMS_TIMEOUT_MULTIPLIER" in msg
-            and "5" in msg
-            and "3" in msg
-            and "environment" in msg
-            and "default" in msg
+            msg == expected
             for msg in info_messages
-        ), f"Expected formatted info log in: {info_messages}"
+        ), f"Expected exact info log '{expected}' in: {info_messages}"
+
+    # --- Tests for min_value parameter (DS-721) ---
+
+    def test_parse_env_int_min_value_zero_allows_zero(self) -> None:
+        """Should accept 0 when min_value=0."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "0"}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 42, min_value=0)
+        assert result == 0
+
+    def test_parse_env_int_min_value_zero_rejects_negative(self) -> None:
+        """Should reject negative values when min_value=0."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "-1"}):
+            with pytest.raises(ValueError, match="must be >= 0, got -1"):
+                _parse_env_int("TEST_PARSE_ENV_INT", 42, min_value=0)
+
+    def test_parse_env_int_custom_min_value_rejects_below(self) -> None:
+        """Should reject values below a custom min_value."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "4"}):
+            with pytest.raises(ValueError, match="must be >= 5, got 4"):
+                _parse_env_int("TEST_PARSE_ENV_INT", 10, min_value=5)
+
+    def test_parse_env_int_custom_min_value_accepts_exact(self) -> None:
+        """Should accept a value exactly equal to min_value."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "5"}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 10, min_value=5)
+        assert result == 5
+
+    def test_parse_env_int_custom_min_value_accepts_above(self) -> None:
+        """Should accept a value above the custom min_value."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "6"}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 10, min_value=5)
+        assert result == 6
+
+    def test_parse_env_int_default_min_value_is_one(self) -> None:
+        """Should default to min_value=1, preserving backward compatibility."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "1"}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 42)
+        assert result == 1
+
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "0"}):
+            with pytest.raises(ValueError, match="must be >= 1, got 0"):
+                _parse_env_int("TEST_PARSE_ENV_INT", 42)
+
+    def test_parse_env_int_negative_min_value(self) -> None:
+        """Should support negative min_value for signed-int use cases."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "-5"}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 0, min_value=-10)
+        assert result == -5
+
+    def test_parse_env_int_negative_min_value_rejects_below(self) -> None:
+        """Should reject values below a negative min_value."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "-11"}):
+            with pytest.raises(ValueError, match=r"must be >= -10, got -11"):
+                _parse_env_int("TEST_PARSE_ENV_INT", 0, min_value=-10)
 

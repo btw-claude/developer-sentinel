@@ -37,19 +37,20 @@ _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER: int = 3
 _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS: int = 900
 
 
-def _parse_env_int(name: str, default: int) -> int:
+def _parse_env_int(name: str, default: int, *, min_value: int = 1) -> int:
     """Parse an integer from an environment variable, falling back to *default*.
 
     Args:
         name: Environment variable name.
         default: Value to return when the variable is unset or empty.
+        min_value: Minimum accepted value (inclusive). Defaults to 1.
 
     Returns:
         The parsed integer value.
 
     Raises:
         ValueError: If the environment variable is set to a non-integer value
-            or to a value that is not a positive integer (< 1).
+            or to a value below *min_value*.
     """
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -61,10 +62,9 @@ def _parse_env_int(name: str, default: int) -> int:
             f"Environment variable {name} must be an integer, got {raw!r}"
         ) from None
 
-    if value < 1:
+    if value < min_value:
         raise ValueError(
-            f"Environment variable {name} must be a positive integer (>= 1), "
-            f"got {value}"
+            f"Environment variable {name} must be >= {min_value}, got {value}"
         )
 
     logger.info(
