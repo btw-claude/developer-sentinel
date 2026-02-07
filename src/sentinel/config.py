@@ -94,6 +94,8 @@ class DashboardConfig:
         toggle_cooldown_seconds: Cooldown period between writes to the same file.
         rate_limit_cache_ttl: TTL in seconds for rate limit cache entries.
         rate_limit_cache_maxsize: Maximum number of entries in the rate limit cache.
+        green_threshold: Success rate percentage at or above which the display is green.
+        yellow_threshold: Success rate percentage at or above which the display is yellow.
     """
 
     enabled: bool = False
@@ -102,6 +104,8 @@ class DashboardConfig:
     toggle_cooldown_seconds: float = 2.0
     rate_limit_cache_ttl: int = 3600
     rate_limit_cache_maxsize: int = 10000
+    green_threshold: float = 90.0
+    yellow_threshold: float = 70.0
 
 
 @dataclass(frozen=True)
@@ -430,6 +434,40 @@ def _parse_non_negative_float(value: str, name: str, default: float) -> float:
         return default
 
 
+def _parse_percentage_threshold(value: str, name: str, default: float) -> float:
+    """Parse a string as a percentage threshold (0-100) with validation.
+
+    Args:
+        value: The string value to parse.
+        name: The name of the setting (for error messages).
+        default: The default value to use if parsing fails.
+
+    Returns:
+        The parsed percentage threshold (0.0-100.0), or the default if invalid.
+
+    Logs a warning if the value is invalid or out of range.
+    """
+    try:
+        parsed = float(value)
+        if parsed < 0.0 or parsed > 100.0:
+            logging.warning(
+                "Invalid %s: %f is not in range 0-100, using default %f",
+                name,
+                parsed,
+                default,
+            )
+            return default
+        return parsed
+    except ValueError:
+        logging.warning(
+            "Invalid %s: '%s' is not a valid number, using default %f",
+            name,
+            value,
+            default,
+        )
+        return default
+
+
 def _validate_cursor_mode(value: str, default: str = CursorMode.AGENT.value) -> str:
     """Validate and normalize a Cursor mode string.
 
@@ -731,6 +769,30 @@ def load_config(env_file: Path | None = None) -> Config:
         10,
     )
 
+    # Parse dashboard success rate thresholds
+    green_threshold = _parse_percentage_threshold(
+        os.getenv("SENTINEL_DASHBOARD_GREEN_THRESHOLD", "90.0"),
+        "SENTINEL_DASHBOARD_GREEN_THRESHOLD",
+        90.0,
+    )
+    yellow_threshold = _parse_percentage_threshold(
+        os.getenv("SENTINEL_DASHBOARD_YELLOW_THRESHOLD", "70.0"),
+        "SENTINEL_DASHBOARD_YELLOW_THRESHOLD",
+        70.0,
+    )
+
+    # Cross-validate: green_threshold must be >= yellow_threshold
+    if green_threshold < yellow_threshold:
+        logging.warning(
+            "Invalid threshold configuration: green_threshold (%f) is less than "
+            "yellow_threshold (%f). This would cause confusing display behavior. "
+            "Falling back to defaults (green=90.0, yellow=70.0).",
+            green_threshold,
+            yellow_threshold,
+        )
+        green_threshold = 90.0
+        yellow_threshold = 70.0
+
     # Parse Claude API rate limiting configuration
     claude_rate_limit_enabled = _parse_bool(os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_ENABLED", "true"))
     claude_rate_limit_per_minute = _parse_positive_int(
@@ -825,6 +887,8 @@ def load_config(env_file: Path | None = None) -> Config:
         toggle_cooldown_seconds=toggle_cooldown_seconds,
         rate_limit_cache_ttl=rate_limit_cache_ttl,
         rate_limit_cache_maxsize=rate_limit_cache_maxsize,
+        green_threshold=green_threshold,
+        yellow_threshold=yellow_threshold,
     )
 
     rate_limit_config = RateLimitConfig(

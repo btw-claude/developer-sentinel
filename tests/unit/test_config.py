@@ -26,6 +26,7 @@ from sentinel.config import (
     RateLimitConfig,
     _parse_bool,
     _parse_non_negative_float,
+    _parse_percentage_threshold,
     _parse_port,
     _parse_positive_int,
     _validate_agent_type,
@@ -103,6 +104,8 @@ class TestSubConfigs:
         assert dashboard.toggle_cooldown_seconds == 2.0
         assert dashboard.rate_limit_cache_ttl == 3600
         assert dashboard.rate_limit_cache_maxsize == 10000
+        assert dashboard.green_threshold == 90.0
+        assert dashboard.yellow_threshold == 70.0
 
     def test_rate_limit_config_defaults(self) -> None:
         rate_limit = RateLimitConfig()
@@ -1131,6 +1134,169 @@ class TestRateLimitCacheMaxsizeConfig:
 
         assert config.dashboard.rate_limit_cache_maxsize == 10000
         assert "not positive" in caplog.text
+
+
+class TestParsePercentageThreshold:
+    """Tests for _parse_percentage_threshold helper function."""
+
+    def test_valid_percentage(self) -> None:
+        """Test parsing valid percentage values."""
+        assert _parse_percentage_threshold("50.0", "TEST_VAR", 90.0) == 50.0
+        assert _parse_percentage_threshold("0", "TEST_VAR", 90.0) == 0.0
+        assert _parse_percentage_threshold("100", "TEST_VAR", 90.0) == 100.0
+        assert _parse_percentage_threshold("0.0", "TEST_VAR", 90.0) == 0.0
+        assert _parse_percentage_threshold("100.0", "TEST_VAR", 90.0) == 100.0
+
+    def test_valid_boundary_values(self) -> None:
+        """Test parsing boundary percentage values."""
+        assert _parse_percentage_threshold("0.0", "TEST_VAR", 90.0) == 0.0
+        assert _parse_percentage_threshold("100.0", "TEST_VAR", 90.0) == 100.0
+
+    def test_invalid_negative(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that negative values are rejected."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_percentage_threshold("-1.0", "TEST_VAR", 90.0)
+        assert result == 90.0
+        assert "Invalid TEST_VAR: -1.000000 is not in range 0-100" in caplog.text
+
+    def test_invalid_above_100(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that values above 100 are rejected."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_percentage_threshold("101.0", "TEST_VAR", 90.0)
+        assert result == 90.0
+        assert "Invalid TEST_VAR: 101.000000 is not in range 0-100" in caplog.text
+
+    def test_invalid_non_numeric(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that non-numeric values are rejected."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_percentage_threshold("abc", "TEST_VAR", 90.0)
+        assert result == 90.0
+        assert "Invalid TEST_VAR: 'abc' is not a valid number" in caplog.text
+
+    def test_invalid_empty_string(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that empty strings are rejected."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_percentage_threshold("", "TEST_VAR", 90.0)
+        assert result == 90.0
+
+
+class TestGreenThresholdConfig:
+    """Tests for green_threshold configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that green_threshold defaults to 90.0."""
+        monkeypatch.delenv("SENTINEL_DASHBOARD_GREEN_THRESHOLD", raising=False)
+
+        config = load_config()
+
+        assert config.dashboard.green_threshold == 90.0
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that green_threshold loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_GREEN_THRESHOLD", "95.0")
+
+        config = load_config()
+
+        assert config.dashboard.green_threshold == 95.0
+
+    def test_invalid_above_100_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that values above 100 use the default."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_GREEN_THRESHOLD", "150.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.dashboard.green_threshold == 90.0
+        assert "not in range 0-100" in caplog.text
+
+    def test_invalid_negative_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that negative values use the default."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_GREEN_THRESHOLD", "-10.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.dashboard.green_threshold == 90.0
+        assert "not in range 0-100" in caplog.text
+
+
+class TestYellowThresholdConfig:
+    """Tests for yellow_threshold configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that yellow_threshold defaults to 70.0."""
+        monkeypatch.delenv("SENTINEL_DASHBOARD_YELLOW_THRESHOLD", raising=False)
+
+        config = load_config()
+
+        assert config.dashboard.yellow_threshold == 70.0
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that yellow_threshold loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_YELLOW_THRESHOLD", "60.0")
+
+        config = load_config()
+
+        assert config.dashboard.yellow_threshold == 60.0
+
+    def test_invalid_above_100_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that values above 100 use the default."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_YELLOW_THRESHOLD", "200.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.dashboard.yellow_threshold == 70.0
+        assert "not in range 0-100" in caplog.text
+
+
+class TestThresholdCrossValidation:
+    """Tests for cross-validation of green and yellow thresholds."""
+
+    def test_valid_thresholds_green_greater_than_yellow(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that valid thresholds (green >= yellow) are accepted."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_GREEN_THRESHOLD", "80.0")
+        monkeypatch.setenv("SENTINEL_DASHBOARD_YELLOW_THRESHOLD", "60.0")
+
+        config = load_config()
+
+        assert config.dashboard.green_threshold == 80.0
+        assert config.dashboard.yellow_threshold == 60.0
+
+    def test_valid_thresholds_green_equals_yellow(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that equal thresholds (green == yellow) are accepted."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_GREEN_THRESHOLD", "75.0")
+        monkeypatch.setenv("SENTINEL_DASHBOARD_YELLOW_THRESHOLD", "75.0")
+
+        config = load_config()
+
+        assert config.dashboard.green_threshold == 75.0
+        assert config.dashboard.yellow_threshold == 75.0
+
+    def test_invalid_green_less_than_yellow_falls_back_to_defaults(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that green < yellow falls back to defaults with warning."""
+        monkeypatch.setenv("SENTINEL_DASHBOARD_GREEN_THRESHOLD", "60.0")
+        monkeypatch.setenv("SENTINEL_DASHBOARD_YELLOW_THRESHOLD", "80.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.dashboard.green_threshold == 90.0
+        assert config.dashboard.yellow_threshold == 70.0
+        assert "green_threshold" in caplog.text
+        assert "less than" in caplog.text
 
 
 class TestValidateBranchName:

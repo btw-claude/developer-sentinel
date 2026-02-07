@@ -222,3 +222,183 @@ class TestStatusBadgeMacro:
         soup = parse_badge(active_count=7, total_count=12)
 
         assert_badge_text(soup, "7/12")
+
+
+class TestSuccessRateDisplayMacro:
+    """Tests for the success_rate_display Jinja2 macro.
+
+    The success_rate_display macro renders a success rate with threshold-based coloring:
+    - status-ok (green): When rate >= green_threshold (default 90.0)
+    - status-warn (yellow): When rate >= yellow_threshold but < green_threshold (default 70.0)
+    - status-error (red): When rate < yellow_threshold
+
+    Tests use BeautifulSoup for semantic HTML assertions.
+    """
+
+    @pytest.fixture
+    def jinja_env(self) -> Environment:
+        """Create a Jinja2 environment with the templates directory."""
+        templates_dir = (
+            Path(__file__).parent.parent.parent / "src" / "sentinel" / "dashboard" / "templates"
+        )
+        env = Environment(loader=FileSystemLoader(str(templates_dir)))
+        return env
+
+    @pytest.fixture
+    def render_success_rate(
+        self, jinja_env: Environment
+    ) -> Callable[[float, float, float], str]:
+        """Create a helper function to render the success_rate_display macro."""
+        jinja_env.get_template("macros.html")
+
+        def render(
+            rate: float,
+            green_threshold: float = 90.0,
+            yellow_threshold: float = 70.0,
+        ) -> str:
+            template_str = (
+                '{%- from "macros.html" import success_rate_display -%}'
+                "{{ success_rate_display(rate, green_threshold, yellow_threshold) }}"
+            )
+            template = jinja_env.from_string(template_str)
+            return template.render(
+                rate=rate,
+                green_threshold=green_threshold,
+                yellow_threshold=yellow_threshold,
+            ).strip()
+
+        return render
+
+    @pytest.fixture
+    def parse_rate(
+        self, render_success_rate: Callable[[float, float, float], str]
+    ) -> Callable[..., BeautifulSoup]:
+        """Create a helper function to render and parse a success rate display."""
+
+        def parse(
+            rate: float,
+            green_threshold: float = 90.0,
+            yellow_threshold: float = 70.0,
+        ) -> BeautifulSoup:
+            result = render_success_rate(
+                rate=rate,
+                green_threshold=green_threshold,
+                yellow_threshold=yellow_threshold,
+            )
+            return BeautifulSoup(result, "html.parser")
+
+        return parse
+
+    def test_green_status_at_threshold(self, parse_rate) -> None:
+        """Test status-ok class when rate equals green_threshold."""
+        soup = parse_rate(rate=90.0)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-ok" in span.get("class", [])
+
+    def test_green_status_above_threshold(self, parse_rate) -> None:
+        """Test status-ok class when rate is above green_threshold."""
+        soup = parse_rate(rate=95.5)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-ok" in span.get("class", [])
+
+    def test_green_status_at_100(self, parse_rate) -> None:
+        """Test status-ok class when rate is 100."""
+        soup = parse_rate(rate=100.0)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-ok" in span.get("class", [])
+
+    def test_yellow_status_at_threshold(self, parse_rate) -> None:
+        """Test status-warn class when rate equals yellow_threshold."""
+        soup = parse_rate(rate=70.0)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-warn" in span.get("class", [])
+
+    def test_yellow_status_between_thresholds(self, parse_rate) -> None:
+        """Test status-warn class when rate is between yellow and green thresholds."""
+        soup = parse_rate(rate=80.0)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-warn" in span.get("class", [])
+
+    def test_red_status_below_yellow_threshold(self, parse_rate) -> None:
+        """Test status-error class when rate is below yellow_threshold."""
+        soup = parse_rate(rate=60.0)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-error" in span.get("class", [])
+
+    def test_red_status_at_zero(self, parse_rate) -> None:
+        """Test status-error class when rate is 0."""
+        soup = parse_rate(rate=0.0)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-error" in span.get("class", [])
+
+    def test_custom_thresholds(self, parse_rate) -> None:
+        """Test with custom threshold values."""
+        # 85 is above custom green threshold of 80
+        soup = parse_rate(rate=85.0, green_threshold=80.0, yellow_threshold=50.0)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-ok" in span.get("class", [])
+
+    def test_custom_thresholds_yellow_range(self, parse_rate) -> None:
+        """Test yellow range with custom thresholds."""
+        # 60 is between custom yellow (50) and green (80)
+        soup = parse_rate(rate=60.0, green_threshold=80.0, yellow_threshold=50.0)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-warn" in span.get("class", [])
+
+    def test_custom_thresholds_red_range(self, parse_rate) -> None:
+        """Test red range with custom thresholds."""
+        # 40 is below custom yellow threshold of 50
+        soup = parse_rate(rate=40.0, green_threshold=80.0, yellow_threshold=50.0)
+        span = soup.find("span")
+        assert span is not None
+        assert "status-error" in span.get("class", [])
+
+    def test_rate_display_format(self, parse_rate) -> None:
+        """Test that rate is displayed with one decimal place and percent sign."""
+        soup = parse_rate(rate=95.5)
+        span = soup.find("span")
+        assert span is not None
+        assert span.text == "95.5%"
+
+    def test_rate_display_format_whole_number(self, parse_rate) -> None:
+        """Test that whole number rates display with .0 suffix."""
+        soup = parse_rate(rate=90.0)
+        span = soup.find("span")
+        assert span is not None
+        assert span.text == "90.0%"
+
+    def test_renders_span_element(self, parse_rate) -> None:
+        """Test that the display is rendered as a span element."""
+        soup = parse_rate(rate=85.0)
+        span = soup.find("span")
+        assert span is not None
+        assert span.name == "span"
+
+    def test_default_thresholds_are_floats(self, render_success_rate) -> None:
+        """Test that default thresholds use float values (90.0 and 70.0), not integers.
+
+        This verifies the fix for Jinja2 macro default type consistency:
+        defaults should be 90.0 and 70.0 (floats), not 90 and 70 (integers).
+        """
+        # Rate of 89.9 should be yellow (below green_threshold of 90.0)
+        result = render_success_rate(rate=89.9)
+        soup = BeautifulSoup(result, "html.parser")
+        span = soup.find("span")
+        assert span is not None
+        assert "status-warn" in span.get("class", [])
+
+        # Rate of 90.0 should be green (at green_threshold of 90.0)
+        result = render_success_rate(rate=90.0)
+        soup = BeautifulSoup(result, "html.parser")
+        span = soup.find("span")
+        assert span is not None
+        assert "status-ok" in span.get("class", [])
