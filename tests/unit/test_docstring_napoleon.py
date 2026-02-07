@@ -25,15 +25,9 @@ import re
 from typing import Any
 
 import pytest
+from sphinx.ext.napoleon import GoogleDocstring
 
 from tests.helpers import make_config
-
-# Skip entire module if sphinx is not installed
-sphinx_napoleon = pytest.importorskip(
-    "sphinx.ext.napoleon",
-    reason="sphinx is required for Napoleon docstring validation",
-)
-GoogleDocstring = sphinx_napoleon.GoogleDocstring
 
 
 def _get_docstring(func: Any) -> str:
@@ -111,68 +105,60 @@ def _extract_napoleon_params(parsed: str) -> list[str]:
     return re.findall(r":param (\w+):", parsed)
 
 
-# -- Expected parameter groups for make_config() --
-# These match the blank-line-separated groups in the docstring,
-# which correspond to Config sub-config sections.
-MAKE_CONFIG_PARAM_GROUPS: list[list[str]] = [
-    # Polling settings
-    ["poll_interval", "max_issues", "max_issues_per_poll"],
-    # Execution settings
-    [
-        "max_concurrent_executions",
-        "orchestrations_dir",
-        "agent_workdir",
-        "agent_logs_dir",
-        "orchestration_logs_dir",
-        "attempt_counts_ttl",
-        "max_queue_size",
-        "cleanup_workdir_on_success",
-        "disable_streaming_logs",
-        "subprocess_timeout",
-        "default_base_branch",
-        "inter_message_times_threshold",
-    ],
-    # Logging settings
-    ["log_level", "log_json"],
-    # Dashboard settings
-    [
-        "dashboard_enabled",
-        "dashboard_port",
-        "dashboard_host",
-        "toggle_cooldown_seconds",
-        "rate_limit_cache_ttl",
-        "rate_limit_cache_maxsize",
-    ],
-    # Jira settings
-    ["jira_base_url", "jira_email", "jira_api_token", "jira_epic_link_field"],
-    # GitHub settings
-    ["github_token", "github_api_url"],
-    # Agent settings
-    ["default_agent_type"],
-    # Cursor settings
-    ["cursor_path", "cursor_default_model", "cursor_default_mode"],
-    # Codex settings
-    ["codex_path", "codex_default_model"],
-    # Rate limit settings
-    [
-        "claude_rate_limit_enabled",
-        "claude_rate_limit_per_minute",
-        "claude_rate_limit_per_hour",
-        "claude_rate_limit_strategy",
-        "claude_rate_limit_warning_threshold",
-    ],
-    # Circuit breaker settings
-    [
-        "circuit_breaker_enabled",
-        "circuit_breaker_failure_threshold",
-        "circuit_breaker_recovery_timeout",
-        "circuit_breaker_half_open_max_calls",
-    ],
-    # Health check settings
-    ["health_check_enabled", "health_check_timeout"],
-    # Shutdown settings
-    ["shutdown_timeout_seconds"],
-]
+def _extract_param_groups_from_source(func: Any) -> list[list[str]]:
+    """Auto-generate parameter groups from make_config() source comments.
+
+    Parses the function signature of ``func`` to extract parameter groups
+    delimited by ``# <Name> settings`` comments. This eliminates the need
+    for a manually maintained constant that must be kept in sync with the
+    function definition (DS-691 item 2).
+
+    Args:
+        func: The function whose source to parse.
+
+    Returns:
+        List of parameter groups, where each group is a list of parameter
+        names appearing between consecutive group-comment lines.
+
+    Raises:
+        AssertionError: If the function signature cannot be located.
+    """
+    source = inspect.getsource(func)
+
+    # Extract only the function signature (between 'def <name>(' and ') ->')
+    func_name = func.__name__
+    sig_match = re.search(
+        rf"def {re.escape(func_name)}\((.*?)\)\s*->", source, re.DOTALL
+    )
+    assert sig_match is not None, f"Could not find {func_name} function signature"
+    sig_section = sig_match.group(1)
+
+    group_comment_pattern = re.compile(r"#\s+\w[\w\s]+\s+settings", re.IGNORECASE)
+    groups: list[list[str]] = []
+    current_group: list[str] = []
+
+    for line in sig_section.split("\n"):
+        stripped = line.strip()
+        if group_comment_pattern.search(stripped):
+            if current_group:
+                groups.append(current_group)
+            current_group = []
+            continue
+        param_match = re.match(r"(\w+)\s*:", stripped)
+        if param_match:
+            current_group.append(param_match.group(1))
+
+    if current_group:
+        groups.append(current_group)
+
+    return groups
+
+
+# Auto-generated from make_config() source inline comments (DS-691).
+# Previously a hardcoded constant that required manual updates whenever
+# make_config() parameters changed.  Now derived at import time so the
+# test data stays in sync with the source automatically.
+MAKE_CONFIG_PARAM_GROUPS: list[list[str]] = _extract_param_groups_from_source(make_config)
 
 
 class TestMakeConfigNapoleonRendering:
@@ -315,51 +301,39 @@ class TestDocstringGroupStructure:
             "Parameter groups may have lost their visual separation."
         )
 
-    def test_param_groups_match_function_comments(self) -> None:
-        """Verify parameter groups align with the function's inline comments.
+    def test_auto_generated_groups_cover_all_params(self) -> None:
+        """Verify auto-generated param groups cover every signature parameter.
 
-        The make_config() function uses inline comments (e.g., '# Polling settings')
-        to label parameter groups. The docstring's blank-line groups should contain
-        the same parameters in the same order.
+        MAKE_CONFIG_PARAM_GROUPS is now auto-generated from make_config()
+        source comments (DS-691). This test validates that the generation
+        produces groups covering every parameter in the function signature.
         """
-        # Get the source of make_config to extract comment-based groups
-        source = inspect.getsource(make_config)
+        sig_params = _get_signature_params(make_config)
+        grouped_params = {p for group in MAKE_CONFIG_PARAM_GROUPS for p in group}
 
-        # Extract only the function signature (between 'def make_config(' and ') ->')
-        sig_match = re.search(r"def make_config\((.*?)\)\s*->", source, re.DOTALL)
-        assert sig_match is not None, "Could not find make_config function signature"
-        sig_section = sig_match.group(1)
-
-        # Extract parameters between each group comment
-        group_comment_pattern = re.compile(r"#\s+(\w[\w\s]+)\s+settings", re.IGNORECASE)
-        source_groups: list[list[str]] = []
-        current_group: list[str] = []
-
-        for line in sig_section.split("\n"):
-            stripped = line.strip()
-            # Check for group comment (e.g., "# Polling settings")
-            if group_comment_pattern.search(stripped):
-                if current_group:
-                    source_groups.append(current_group)
-                current_group = []
-                continue
-            # Check for parameter definition (name: type = default)
-            param_match = re.match(r"(\w+)\s*:", stripped)
-            if param_match:
-                param_name = param_match.group(1)
-                current_group.append(param_name)
-
-        if current_group:
-            source_groups.append(current_group)
-
-        # Flatten both and verify they contain the same parameters
-        expected_flat = [p for group in MAKE_CONFIG_PARAM_GROUPS for p in group]
-        source_flat = [p for group in source_groups for p in group]
-
-        assert source_flat == expected_flat, (
-            "Parameter groups in MAKE_CONFIG_PARAM_GROUPS don't match "
-            "the inline comment groups in make_config() function definition."
+        missing = sig_params - grouped_params
+        assert not missing, (
+            f"Auto-generated param groups are missing parameters: {missing}. "
+            "Ensure every parameter in make_config() has a group comment above it."
         )
+
+        extra = grouped_params - sig_params
+        assert not extra, (
+            f"Auto-generated param groups contain unknown parameters: {extra}. "
+            "The source comment parsing may be picking up non-parameter lines."
+        )
+
+    def test_auto_generated_groups_are_non_empty(self) -> None:
+        """Verify auto-generated param groups are all non-empty.
+
+        Each ``# <Name> settings`` comment in make_config() should be followed
+        by at least one parameter.
+        """
+        for i, group in enumerate(MAKE_CONFIG_PARAM_GROUPS):
+            assert len(group) > 0, (
+                f"Parameter group {i} is empty. "
+                "A group comment in make_config() has no parameters beneath it."
+            )
 
     def test_no_non_standard_separators_in_docstring(self, raw_docstring: str) -> None:
         """Verify no non-standard separators remain in the docstring.
