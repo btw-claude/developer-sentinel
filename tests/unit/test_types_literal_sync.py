@@ -1,8 +1,11 @@
-"""Tests for Literal type alias and StrEnum synchronization (DS-649, DS-659).
+"""Tests for Literal type alias and StrEnum synchronization (DS-649, DS-659, DS-669).
 
 Validates that every Literal type alias in sentinel.types stays in sync
 with its corresponding StrEnum class. These tests complement the import-time
 validation in types.py by providing explicit, fine-grained assertions.
+
+Also validates the LiteralForm runtime Protocol (DS-669) which provides
+structurally tighter type narrowing than bare ``object`` at runtime.
 """
 
 from __future__ import annotations
@@ -148,8 +151,40 @@ class TestValidateLiteralMatchesEnum:
 
 
 class TestLiteralFormTypeAlias:
-    """Tests for the LiteralForm type alias (DS-659)."""
+    """Tests for the LiteralForm runtime Protocol (DS-659, DS-669).
 
-    def test_literal_form_is_object(self) -> None:
-        """LiteralForm is a TypeAlias for object, providing self-documenting intent."""
-        assert LiteralForm is object
+    At runtime, LiteralForm is a @runtime_checkable Protocol requiring
+    ``__origin__``, providing structurally tighter type narrowing than bare
+    ``object``.  Under TYPE_CHECKING (mypy), it remains ``object``.
+    """
+
+    def test_literal_form_is_runtime_checkable_protocol(self) -> None:
+        """LiteralForm is a runtime-checkable Protocol at runtime (DS-669)."""
+        assert hasattr(LiteralForm, "_is_runtime_protocol")
+        assert LiteralForm._is_runtime_protocol  # noqa: SLF001
+
+    def test_literal_forms_are_instances_of_protocol(self) -> None:
+        """All Literal type aliases satisfy the LiteralForm Protocol."""
+        literal_types = [
+            TriggerSourceLiteral,
+            AgentTypeLiteral,
+            CursorModeLiteral,
+            RateLimitStrategyLiteral,
+            QueueFullStrategyLiteral,
+            ErrorTypeLiteral,
+        ]
+        for literal_type in literal_types:
+            assert isinstance(literal_type, LiteralForm), (
+                f"{literal_type!r} should be an instance of LiteralForm Protocol"
+            )
+
+    def test_literal_form_rejects_plain_objects(self) -> None:
+        """Plain objects without __origin__ are not instances of LiteralForm."""
+        assert not isinstance("not a literal", LiteralForm)
+        assert not isinstance(42, LiteralForm)
+        assert not isinstance(object(), LiteralForm)
+
+    def test_literal_forms_have_origin_attribute(self) -> None:
+        """Literal forms have __origin__ set to typing.Literal."""
+        assert hasattr(AgentTypeLiteral, "__origin__")
+        assert AgentTypeLiteral.__origin__ is Literal

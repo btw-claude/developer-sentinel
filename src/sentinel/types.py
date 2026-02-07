@@ -23,7 +23,7 @@ Usage:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal, TypeAlias, get_args
+from typing import TYPE_CHECKING, Literal, TypeAlias, get_args
 
 
 class TriggerSource(StrEnum):
@@ -267,13 +267,39 @@ RateLimitStrategyLiteral = Literal["queue", "reject"]
 QueueFullStrategyLiteral = Literal["reject", "wait"]
 ErrorTypeLiteral = Literal["I/O error", "runtime error", "data error"]
 
-# Type alias for Literal type forms passed to validation helpers (DS-659).
+# Type alias for Literal type forms passed to validation helpers (DS-659, DS-669).
+#
 # Python does not provide a clean runtime type for Literal[...] annotations;
 # at runtime they are typing._GenericAlias instances, but that is a private API.
 # mypy represents them as ``<typing special form>``, which is only assignable to
-# ``object``.  We define a named TypeAlias so that call-sites are self-documenting
-# (``literal_type: LiteralForm`` reads better than ``literal_type: object``).
-LiteralForm: TypeAlias = object
+# ``object``.
+#
+# We use a dual-definition strategy (DS-669):
+# - Under TYPE_CHECKING (static analysis / mypy): LiteralForm remains ``object``
+#   because mypy cannot assign Literal special forms to a Protocol.
+# - At runtime: LiteralForm is a @runtime_checkable Protocol requiring an
+#   ``__origin__`` attribute, which all Literal forms possess (set to
+#   ``typing.Literal``).  This avoids depending on the private
+#   ``typing._GenericAlias`` while providing structurally tighter type narrowing
+#   than bare ``object``.
+#
+# If Python ever exposes a public type for Literal forms, this alias should be
+# updated to use it.
+if TYPE_CHECKING:
+    LiteralForm: TypeAlias = object
+else:
+    from typing import Protocol, runtime_checkable
+
+    @runtime_checkable
+    class LiteralForm(Protocol):
+        """Runtime protocol for Literal type forms.
+
+        All ``Literal[...]`` annotations have an ``__origin__`` attribute set to
+        ``typing.Literal`` at runtime.  This protocol captures that structural
+        requirement without depending on private ``typing._GenericAlias``.
+        """
+
+        __origin__: type
 
 
 def _validate_literal_matches_enum(
@@ -290,8 +316,9 @@ def _validate_literal_matches_enum(
 
     Args:
         literal_type: The Literal type alias to validate (e.g., AgentTypeLiteral).
-            Typed as ``LiteralForm`` (an ``object`` alias) for self-documentation;
-            at runtime Literal forms are ``typing._GenericAlias`` instances.
+            Typed as ``LiteralForm``; at static-analysis time this is ``object``
+            for mypy compatibility, and at runtime it is a ``Protocol`` requiring
+            ``__origin__`` (see DS-669).
         enum_cls: The StrEnum class that is the source of truth (e.g., AgentType).
         alias_name: Human-readable name of the Literal alias for error messages.
 
