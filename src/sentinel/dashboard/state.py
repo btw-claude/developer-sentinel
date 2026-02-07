@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
@@ -274,12 +275,14 @@ class ExecutionSummaryStats:
     avg_cost_usd: float
 
     @classmethod
+    @lru_cache(maxsize=1)
     def empty(cls) -> ExecutionSummaryStats:
         """Create a zeroed ExecutionSummaryStats instance.
 
-        Returns an ExecutionSummaryStats with all counters, rates, and
-        totals set to zero. Useful as a default value when no executions
-        have been recorded.
+        Returns a cached singleton ExecutionSummaryStats with all counters,
+        rates, and totals set to zero. Since ExecutionSummaryStats is a
+        frozen dataclass, the result is always identical, so a cached
+        singleton avoids redundant allocations.
 
         Returns:
             An ExecutionSummaryStats instance with all fields set to zero.
