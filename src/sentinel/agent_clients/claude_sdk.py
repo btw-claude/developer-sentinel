@@ -777,6 +777,12 @@ class ClaudeSdkAgentClient(AgentClient):
         Returns:
             A tuple of (response_text, usage_info).
         """
+        assert self._circuit_breaker.allow_request(), (
+            "Circuit breaker does not allow requests - "
+            "_run_simple() must be called via run_agent(). "
+            f"State: {self._circuit_breaker.state.value}"
+        )
+
         try:
             # Acquire rate limit permit before making API call
             if not await self._rate_limiter.acquire_async(timeout=timeout):
@@ -892,6 +898,11 @@ class ClaudeSdkAgentClient(AgentClient):
         Returns:
             A tuple of (response_text, usage_info).
         """
+        assert self._circuit_breaker.allow_request(), (
+            "Circuit breaker does not allow requests - "
+            "_run_with_log() must be called via run_agent(). "
+            f"State: {self._circuit_breaker.state.value}"
+        )
         assert self.log_base_dir is not None
 
         # Acquire rate limit permit before making API call
