@@ -15,7 +15,7 @@
     </div>
     <div class="metric">
         <div class="metric-label">Success Rate</div>
-        <div class="metric-value">{{ success_rate_display(state.execution_summary.success_rate) }}</div>
+        <div class="metric-value">{{ success_rate_display(state.execution_summary.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}</div>
     </div>
     <div class="metric">
         <div class="metric-label">Failures</div>
@@ -75,7 +75,7 @@
             <td>{{ orch.total_runs }}</td>
             <td>{{ orch.success_count }}</td>
             <td>{{ orch.failure_count }}</td>
-            <td>{{ success_rate_display(orch.success_rate) }}</td>
+            <td>{{ success_rate_display(orch.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}</td>
             <td>{{ "%.1f" | format(orch.avg_duration_seconds) }}s</td>
             <td>${{ "%.4f" | format(orch.total_cost_usd) }}</td>
         </tr>

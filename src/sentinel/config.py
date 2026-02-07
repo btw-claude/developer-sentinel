@@ -94,6 +94,8 @@ class DashboardConfig:
         toggle_cooldown_seconds: Cooldown period between writes to the same file.
         rate_limit_cache_ttl: TTL in seconds for rate limit cache entries.
         rate_limit_cache_maxsize: Maximum number of entries in the rate limit cache.
+        success_rate_green_threshold: Minimum success rate (%) for green display.
+        success_rate_yellow_threshold: Minimum success rate (%) for yellow display.
     """
 
     enabled: bool = False
@@ -102,6 +104,8 @@ class DashboardConfig:
     toggle_cooldown_seconds: float = 2.0
     rate_limit_cache_ttl: int = 3600
     rate_limit_cache_maxsize: int = 10000
+    success_rate_green_threshold: float = 90.0
+    success_rate_yellow_threshold: float = 70.0
 
 
 @dataclass(frozen=True)
@@ -731,6 +735,18 @@ def load_config(env_file: Path | None = None) -> Config:
         10,
     )
 
+    # Parse success rate threshold configuration
+    success_rate_green_threshold = _parse_non_negative_float(
+        os.getenv("SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", "90.0"),
+        "SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD",
+        90.0,
+    )
+    success_rate_yellow_threshold = _parse_non_negative_float(
+        os.getenv("SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", "70.0"),
+        "SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD",
+        70.0,
+    )
+
     # Parse Claude API rate limiting configuration
     claude_rate_limit_enabled = _parse_bool(os.getenv("SENTINEL_CLAUDE_RATE_LIMIT_ENABLED", "true"))
     claude_rate_limit_per_minute = _parse_positive_int(
@@ -825,6 +841,8 @@ def load_config(env_file: Path | None = None) -> Config:
         toggle_cooldown_seconds=toggle_cooldown_seconds,
         rate_limit_cache_ttl=rate_limit_cache_ttl,
         rate_limit_cache_maxsize=rate_limit_cache_maxsize,
+        success_rate_green_threshold=success_rate_green_threshold,
+        success_rate_yellow_threshold=success_rate_yellow_threshold,
     )
 
     rate_limit_config = RateLimitConfig(
