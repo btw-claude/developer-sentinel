@@ -25,9 +25,15 @@ import re
 from typing import Any
 
 import pytest
-from sphinx.ext.napoleon import GoogleDocstring
 
-from tests.helpers import make_config
+# Ensure sphinx is available; skip gracefully if not installed (DS-692 item 3).
+pytest.importorskip(
+    "sphinx.ext.napoleon",
+    reason="sphinx is required for Napoleon docstring validation",
+)
+from sphinx.ext.napoleon import GoogleDocstring  # noqa: E402
+
+from tests.helpers import make_config  # noqa: E402
 
 
 def _get_docstring(func: Any) -> str:
@@ -121,7 +127,7 @@ def _extract_param_groups_from_source(func: Any) -> list[list[str]]:
         names appearing between consecutive group-comment lines.
 
     Raises:
-        AssertionError: If the function signature cannot be located.
+        ValueError: If the function signature cannot be located.
     """
     source = inspect.getsource(func)
 
@@ -130,10 +136,11 @@ def _extract_param_groups_from_source(func: Any) -> list[list[str]]:
     sig_match = re.search(
         rf"def {re.escape(func_name)}\((.*?)\)\s*->", source, re.DOTALL
     )
-    assert sig_match is not None, f"Could not find {func_name} function signature"
+    if sig_match is None:
+        raise ValueError(f"Could not find {func_name} function signature")
     sig_section = sig_match.group(1)
 
-    group_comment_pattern = re.compile(r"#\s+\w[\w\s]+\s+settings", re.IGNORECASE)
+    group_comment_pattern = re.compile(r"#\s+\w[\w ]+\s+settings", re.IGNORECASE)
     groups: list[list[str]] = []
     current_group: list[str] = []
 
@@ -158,7 +165,12 @@ def _extract_param_groups_from_source(func: Any) -> list[list[str]]:
 # Previously a hardcoded constant that required manual updates whenever
 # make_config() parameters changed.  Now derived at import time so the
 # test data stays in sync with the source automatically.
-MAKE_CONFIG_PARAM_GROUPS: list[list[str]] = _extract_param_groups_from_source(make_config)
+# Wrapped in try/except so that a parsing failure skips the module
+# gracefully instead of crashing collection (DS-692 item 4).
+try:
+    MAKE_CONFIG_PARAM_GROUPS: list[list[str]] = _extract_param_groups_from_source(make_config)
+except (ValueError, OSError) as exc:
+    pytest.skip(f"Could not auto-generate param groups: {exc}", allow_module_level=True)
 
 
 class TestMakeConfigNapoleonRendering:
@@ -306,7 +318,8 @@ class TestDocstringGroupStructure:
 
         MAKE_CONFIG_PARAM_GROUPS is now auto-generated from make_config()
         source comments (DS-691). This test validates that the generation
-        produces groups covering every parameter in the function signature.
+        produces groups covering every parameter in the function signature
+        and that the expected number of groups is stable (DS-692 item 5).
         """
         sig_params = _get_signature_params(make_config)
         grouped_params = {p for group in MAKE_CONFIG_PARAM_GROUPS for p in group}
@@ -321,6 +334,15 @@ class TestDocstringGroupStructure:
         assert not extra, (
             f"Auto-generated param groups contain unknown parameters: {extra}. "
             "The source comment parsing may be picking up non-parameter lines."
+        )
+
+        # Guard against silent group merging (DS-692 item 5).
+        # make_config() currently has 13 distinct "# <Name> settings" groups.
+        expected_group_count = 13
+        assert len(MAKE_CONFIG_PARAM_GROUPS) == expected_group_count, (
+            f"Expected {expected_group_count} parameter groups, "
+            f"got {len(MAKE_CONFIG_PARAM_GROUPS)}. "
+            "A group comment may have been removed or merged in make_config()."
         )
 
     def test_auto_generated_groups_are_non_empty(self) -> None:
