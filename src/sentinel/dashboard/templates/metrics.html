@@ -8,7 +8,7 @@
 {# Card 1: Execution Summary #}
 <div class="card">
     <h2>Execution Summary</h2>
-    {% if state.execution_summary and state.execution_summary.total_executions > 0 %}
+    {% if state.execution_summary.total_executions > 0 %}
     <div class="metric">
         <div class="metric-label">Total Executions</div>
         <div class="metric-value">{{ state.execution_summary.total_executions }}</div>
@@ -33,7 +33,7 @@
 {# Card 2: Cost & Token Usage #}
 <div class="card">
     <h2>Cost &amp; Token Usage</h2>
-    {% if state.execution_summary and state.execution_summary.total_executions > 0 %}
+    {% if state.execution_summary.total_executions > 0 %}
     <div class="metric">
         <div class="metric-label">Total Cost</div>
         <div class="metric-value">${{ "%.4f" | format(state.execution_summary.total_cost_usd) }}</div>
