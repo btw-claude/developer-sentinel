@@ -293,7 +293,12 @@ orchestrations:
       tools:
         - jira
         - github
+```
 
+To enable Claude Code's experimental Agent Teams feature, use `agent_teams: true`:
+
+```yaml
+orchestrations:
   - name: "claude-team-review"
     trigger:
       source: jira
