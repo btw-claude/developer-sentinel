@@ -1,4 +1,5 @@
 {# Security audit complete - all external links have rel="noopener noreferrer" #}
+{% from "macros.html" import success_rate_display %}
 {% if state.completed_executions %}
 <table>
     <tr>
@@ -31,26 +32,51 @@
         </td>
         <td>{{ exec.duration_seconds | format_duration }}</td>
         <td>
-            {% if exec.input_tokens is not none and exec.output_tokens is not none %}
-            <span title="Input tokens">{{ exec.input_tokens }}</span><span class="text-muted">&darr;</span>
+            <span title="Input tokens">{{ "{:,}".format(exec.input_tokens) }}</span><span class="text-muted">&darr;</span>
             /
-            <span title="Output tokens">{{ exec.output_tokens }}</span><span class="text-muted">&uarr;</span>
-            {% else %}
-            <span class="text-muted">&mdash;</span>
-            {% endif %}
+            <span title="Output tokens">{{ "{:,}".format(exec.output_tokens) }}</span><span class="text-muted">&uarr;</span>
         </td>
         <td>
-            {% if exec.total_cost_usd is not none %}
             ${{ "%.4f" | format(exec.total_cost_usd) }}
-            {% else %}
-            <span class="text-muted">&mdash;</span>
-            {% endif %}
         </td>
         <td>
-            {{ exec.completed_at.strftime('%H:%M:%S') }}
+            {{ exec.completed_at.strftime('%b %d %H:%M:%S') }}
         </td>
     </tr>
     {% endfor %}
+    <tfoot>
+    {% set ns = namespace(success_count=0, failure_count=0, total_duration=0.0, total_input_tokens=0, total_output_tokens=0, total_cost=0.0) %}
+    {% for exec in state.completed_executions %}
+        {% if exec.status == "success" %}
+            {% set ns.success_count = ns.success_count + 1 %}
+        {% else %}
+            {% set ns.failure_count = ns.failure_count + 1 %}
+        {% endif %}
+        {% set ns.total_duration = ns.total_duration + exec.duration_seconds %}
+        {% set ns.total_input_tokens = ns.total_input_tokens + exec.input_tokens %}
+        {% set ns.total_output_tokens = ns.total_output_tokens + exec.output_tokens %}
+        {% set ns.total_cost = ns.total_cost + exec.total_cost_usd %}
+    {% endfor %}
+    {% set total_count = state.completed_executions | length %}
+    {% set success_rate = (ns.success_count / total_count * 100) if total_count > 0 else 0 %}
+    {% set avg_duration = (ns.total_duration / total_count) if total_count > 0 else 0 %}
+    <tr class="summary-row">
+        <td colspan="2"><strong>Summary</strong> ({{ total_count }} executions)</td>
+        <td>
+            <span class="status-badge status-success">{{ ns.success_count }}</span>
+            <span class="status-badge status-failure">{{ ns.failure_count }}</span>
+            {{ success_rate_display(success_rate) }}
+        </td>
+        <td>{{ avg_duration | format_duration }} avg</td>
+        <td>
+            <span title="Total input tokens">{{ "{:,}".format(ns.total_input_tokens) }}</span><span class="text-muted">&darr;</span>
+            /
+            <span title="Total output tokens">{{ "{:,}".format(ns.total_output_tokens) }}</span><span class="text-muted">&uarr;</span>
+        </td>
+        <td>${{ "%.4f" | format(ns.total_cost) }}</td>
+        <td></td>
+    </tr>
+    </tfoot>
 </table>
 {% else %}
 <p class="text-muted">No recent executions</p>
