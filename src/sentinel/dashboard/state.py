@@ -11,7 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from sentinel.logging import generate_log_filename, parse_log_filename
 from sentinel.types import TriggerSource
@@ -35,6 +35,105 @@ class OrchestrationInfo:
     trigger_tags: list[str]
     agent_prompt_preview: str
     source_file: str
+
+
+@dataclass(frozen=True)
+class TriggerDetailInfo:
+    """Read-only trigger detail information for the orchestration detail view.
+
+    Contains all trigger fields from the orchestration configuration.
+    """
+
+    source: str
+    project: str
+    jql_filter: str
+    tags: list[str]
+    project_number: int | None
+    project_scope: Literal["org", "user"]
+    project_owner: str
+    project_filter: str
+    labels: list[str]
+
+
+@dataclass(frozen=True)
+class GitHubContextInfo:
+    """Read-only GitHub context information for the orchestration detail view."""
+
+    host: str
+    org: str
+    repo: str
+    branch: str
+    create_branch: bool
+    base_branch: str
+
+
+@dataclass(frozen=True)
+class AgentDetailInfo:
+    """Read-only agent detail information for the orchestration detail view.
+
+    Contains the full (non-truncated) prompt and all agent configuration fields.
+    """
+
+    prompt: str
+    github: GitHubContextInfo | None
+    timeout_seconds: int | None
+    model: str | None
+    agent_type: str | None
+    cursor_mode: str | None
+    agent_teams: None  # Reserved for future use; not yet implemented in AgentConfig
+    strict_template_variables: bool
+
+
+@dataclass(frozen=True)
+class RetryDetailInfo:
+    """Read-only retry detail information for the orchestration detail view."""
+
+    max_attempts: int
+    success_patterns: list[str]
+    failure_patterns: list[str]
+    default_status: str
+    default_outcome: str
+
+
+@dataclass(frozen=True)
+class OutcomeInfo:
+    """Read-only outcome information for the orchestration detail view."""
+
+    name: str
+    patterns: list[str]
+    add_tag: str
+
+
+@dataclass(frozen=True)
+class LifecycleInfo:
+    """Read-only lifecycle information for the orchestration detail view.
+
+    Combines on_start, on_complete, and on_failure configuration.
+    """
+
+    on_start_add_tag: str
+    on_complete_remove_tag: str
+    on_complete_add_tag: str
+    on_failure_add_tag: str
+
+
+@dataclass(frozen=True)
+class OrchestrationDetailInfo:
+    """Read-only orchestration detail information for the detail view.
+
+    Contains the full orchestration configuration, including all trigger,
+    agent, retry, outcome, and lifecycle fields.
+    """
+
+    name: str
+    enabled: bool
+    max_concurrent: int | None
+    source_file: str
+    trigger: TriggerDetailInfo
+    agent: AgentDetailInfo
+    retry: RetryDetailInfo
+    outcomes: list[OutcomeInfo]
+    lifecycle: LifecycleInfo
 
 
 @dataclass(frozen=True)
@@ -542,6 +641,116 @@ class SentinelStateAccessor:
             trigger_tags=trigger_tags,
             agent_prompt_preview=prompt_preview,
             source_file=source_file,
+        )
+
+    def get_orchestration_detail(self, name: str) -> OrchestrationDetailInfo | None:
+        """Get detailed orchestration information by name.
+
+        Finds the orchestration by name and converts it to an
+        OrchestrationDetailInfo containing the full configuration.
+
+        Args:
+            name: The orchestration name to look up.
+
+        Returns:
+            An OrchestrationDetailInfo with full configuration, or None
+            if no orchestration with the given name is found.
+        """
+        sentinel = self._sentinel
+
+        # Find the orchestration by name
+        orch = None
+        for o in sentinel.orchestrations:
+            if o.name == name:
+                orch = o
+                break
+
+        if orch is None:
+            return None
+
+        # Get the source file from active versions
+        active_version_snapshots = sentinel.get_active_versions()
+        orch_name_to_source_file: dict[str, str] = {
+            v.name: v.source_file for v in active_version_snapshots
+        }
+        source_file = orch_name_to_source_file.get(orch.name, "")
+
+        # Convert trigger
+        trigger = orch.trigger
+        trigger_detail = TriggerDetailInfo(
+            source=getattr(trigger, "source", TriggerSource.JIRA.value),
+            project=getattr(trigger, "project", ""),
+            jql_filter=getattr(trigger, "jql_filter", ""),
+            tags=list(trigger.tags) if trigger.tags else [],
+            project_number=getattr(trigger, "project_number", None),
+            project_scope=getattr(trigger, "project_scope", "org"),
+            project_owner=getattr(trigger, "project_owner", ""),
+            project_filter=getattr(trigger, "project_filter", ""),
+            labels=list(trigger.labels) if trigger.labels else [],
+        )
+
+        # Convert GitHub context
+        github_info = None
+        if orch.agent.github is not None:
+            gh = orch.agent.github
+            github_info = GitHubContextInfo(
+                host=gh.host,
+                org=gh.org,
+                repo=gh.repo,
+                branch=gh.branch,
+                create_branch=gh.create_branch,
+                base_branch=gh.base_branch,
+            )
+
+        # Convert agent
+        agent_detail = AgentDetailInfo(
+            prompt=orch.agent.prompt,
+            github=github_info,
+            timeout_seconds=orch.agent.timeout_seconds,
+            model=orch.agent.model,
+            agent_type=orch.agent.agent_type,
+            cursor_mode=orch.agent.cursor_mode,
+            agent_teams=None,
+            strict_template_variables=orch.agent.strict_template_variables,
+        )
+
+        # Convert retry
+        retry_detail = RetryDetailInfo(
+            max_attempts=orch.retry.max_attempts,
+            success_patterns=list(orch.retry.success_patterns),
+            failure_patterns=list(orch.retry.failure_patterns),
+            default_status=orch.retry.default_status,
+            default_outcome=orch.retry.default_outcome,
+        )
+
+        # Convert outcomes
+        outcomes = [
+            OutcomeInfo(
+                name=outcome.name,
+                patterns=list(outcome.patterns),
+                add_tag=outcome.add_tag,
+            )
+            for outcome in orch.outcomes
+        ]
+
+        # Convert lifecycle
+        lifecycle = LifecycleInfo(
+            on_start_add_tag=orch.on_start.add_tag,
+            on_complete_remove_tag=orch.on_complete.remove_tag,
+            on_complete_add_tag=orch.on_complete.add_tag,
+            on_failure_add_tag=orch.on_failure.add_tag,
+        )
+
+        return OrchestrationDetailInfo(
+            name=orch.name,
+            enabled=orch.enabled,
+            max_concurrent=orch.max_concurrent,
+            source_file=source_file,
+            trigger=trigger_detail,
+            agent=agent_detail,
+            retry=retry_detail,
+            outcomes=outcomes,
+            lifecycle=lifecycle,
         )
 
     def _snapshot_to_version_info(
