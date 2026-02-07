@@ -22,13 +22,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import secrets
 import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from cachetools import TTLCache
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -413,7 +414,45 @@ def create_routes(
     # Create rate limiter with config values
     rate_limiter = RateLimiter(effective_config)
 
+    # CSRF protection for state-changing endpoints (DS-736)
+    csrf_tokens: TTLCache[str, bool] = TTLCache(maxsize=1000, ttl=3600)
+
+    def _generate_csrf_token() -> str:
+        """Generate a CSRF token and store it for validation."""
+        token = secrets.token_urlsafe(32)
+        csrf_tokens[token] = True
+        return token
+
+    def _validate_csrf_token(token: str | None) -> None:
+        """Validate and consume a CSRF token.
+
+        Args:
+            token: The CSRF token to validate.
+
+        Raises:
+            HTTPException: 403 if token is missing or invalid.
+        """
+        if not token or token not in csrf_tokens:
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid or missing CSRF token",
+            )
+        # Consume token (single-use)
+        del csrf_tokens[token]
+
     dashboard_router = APIRouter()
+
+    @dashboard_router.get("/api/csrf-token")
+    async def api_csrf_token() -> dict[str, str]:
+        """Generate and return a CSRF token.
+
+        Provides a CSRF token for use in state-changing API requests.
+        Tokens are single-use and expire after 1 hour.
+
+        Returns:
+            Dict containing the CSRF token.
+        """
+        return {"csrf_token": _generate_csrf_token()}
 
     @dashboard_router.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
@@ -453,7 +492,7 @@ def create_routes(
             await templates.TemplateResponse(
                 request=request,
                 name="orchestrations.html",
-                context={"state": state},
+                context={"state": state, "csrf_token": _generate_csrf_token()},
             ),
         )
 
@@ -938,7 +977,7 @@ def create_routes(
     async def api_orchestrations_files() -> list[str]:
         """Return list of YAML files in the orchestrations directory.
 
-        Scans the orchestrations directory for .yaml and .yml files
+        Recursively scans the orchestrations directory for .yaml and .yml files
         and returns their relative paths for use in the file selector.
 
         Returns:
@@ -950,7 +989,7 @@ def create_routes(
         try:
             if orchestrations_dir.exists() and orchestrations_dir.is_dir():
                 for pattern in ("*.yaml", "*.yml"):
-                    for file_path in orchestrations_dir.glob(pattern):
+                    for file_path in orchestrations_dir.rglob(pattern):
                         if file_path.is_file():
                             # Return relative path from orchestrations_dir
                             relative_path = file_path.relative_to(orchestrations_dir)
@@ -1133,7 +1172,7 @@ def create_routes(
             await templates.TemplateResponse(
                 request=request,
                 name="partials/orchestration_create_form.html",
-                context={},
+                context={"csrf_token": _generate_csrf_token()},
             ),
         )
 
@@ -1519,6 +1558,7 @@ def create_routes(
     )
     async def create_orchestration(
         request_body: OrchestrationCreateRequest,
+        x_csrf_token: str | None = Header(None),
     ) -> OrchestrationCreateResponse:
         """Create a new orchestration.
 
@@ -1527,14 +1567,17 @@ def create_routes(
 
         Args:
             request_body: The create request containing orchestration configuration.
+            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             OrchestrationCreateResponse with success status, name, and any errors.
 
         Raises:
-            HTTPException: 422 for validation errors (duplicate name, invalid path),
+            HTTPException: 403 for CSRF validation failure,
+                422 for validation errors (duplicate name, invalid path),
                 429 for rate limit, 500 for YAML errors.
         """
+        _validate_csrf_token(x_csrf_token)
         logger.debug("create_orchestration called for '%s'", request_body.name)
         state = state_accessor.get_state()
 
