@@ -1217,3 +1217,105 @@ class TestAgentTeamsTimeoutEnvConfig:
         assert _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER == 3
         assert _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS == 900
 
+
+class TestParseEnvIntValidationAndLogging:
+    """Tests for _parse_env_int() positive-value validation and logging (DS-714).
+
+    These tests verify the two improvements from DS-714:
+    1. Positive-value validation: values of 0 or negative are rejected with
+       a clear error message, preventing operators from accidentally disabling
+       or inverting timeout behaviour.
+    2. Info-level logging: when an environment variable override is applied,
+       an info message is logged so operators can confirm their settings are
+       being picked up at startup.
+    """
+
+    def test_parse_env_int_raises_on_zero(self) -> None:
+        """Should raise ValueError when environment variable is set to 0."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "0"}):
+            with pytest.raises(ValueError, match="must be a positive integer"):
+                _parse_env_int("TEST_PARSE_ENV_INT", 42)
+
+    def test_parse_env_int_raises_on_negative(self) -> None:
+        """Should raise ValueError when environment variable is set to a negative value."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "-1"}):
+            with pytest.raises(ValueError, match="must be a positive integer"):
+                _parse_env_int("TEST_PARSE_ENV_INT", 42)
+
+    def test_parse_env_int_raises_on_large_negative(self) -> None:
+        """Should raise ValueError for large negative values."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "-100"}):
+            with pytest.raises(ValueError, match="must be a positive integer"):
+                _parse_env_int("TEST_PARSE_ENV_INT", 42)
+
+    def test_parse_env_int_accepts_one(self) -> None:
+        """Should accept 1 as a valid positive integer."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "1"}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 42)
+        assert result == 1
+
+    def test_parse_env_int_logs_info_on_override(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should log an info message when an env var override is applied."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "10"}):
+            with caplog.at_level(logging.INFO, logger="sentinel.orchestration"):
+                result = _parse_env_int("TEST_PARSE_ENV_INT", 42)
+
+        assert result == 10
+
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        assert any(
+            "TEST_PARSE_ENV_INT" in msg and "10" in msg and "42" in msg
+            for msg in info_messages
+        ), f"Expected info log with env var name, value, and default in: {info_messages}"
+
+    def test_parse_env_int_no_log_when_using_default(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should not log an info message when the default value is used."""
+        with caplog.at_level(logging.INFO, logger="sentinel.orchestration"):
+            result = _parse_env_int("NONEXISTENT_VAR_FOR_TEST_DS714", 42)
+
+        assert result == 42
+
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        assert not any(
+            "NONEXISTENT_VAR_FOR_TEST_DS714" in msg for msg in info_messages
+        ), f"Unexpected info log when using default: {info_messages}"
+
+    def test_parse_env_int_no_log_when_empty(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should not log an info message when env var is empty (uses default)."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": ""}):
+            with caplog.at_level(logging.INFO, logger="sentinel.orchestration"):
+                result = _parse_env_int("TEST_PARSE_ENV_INT", 42)
+
+        assert result == 42
+
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        assert not any(
+            "TEST_PARSE_ENV_INT" in msg for msg in info_messages
+        ), f"Unexpected info log when env var is empty: {info_messages}"
+
+    def test_parse_env_int_log_message_format(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should log message matching expected format: 'Using <name>=<value> from environment (default: <default>)'."""
+        with mock.patch.dict("os.environ", {"AGENT_TEAMS_TIMEOUT_MULTIPLIER": "5"}):
+            with caplog.at_level(logging.INFO, logger="sentinel.orchestration"):
+                result = _parse_env_int("AGENT_TEAMS_TIMEOUT_MULTIPLIER", 3)
+
+        assert result == 5
+
+        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+        assert any(
+            "AGENT_TEAMS_TIMEOUT_MULTIPLIER" in msg
+            and "5" in msg
+            and "3" in msg
+            and "environment" in msg
+            and "default" in msg
+            for msg in info_messages
+        ), f"Expected formatted info log in: {info_messages}"
+
