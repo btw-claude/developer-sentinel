@@ -130,90 +130,62 @@ def make_config(
 ) -> Config:
     """Create a Config instance for testing with sensible defaults.
 
-    This test helper constructs Config directly with sub-config objects,
-    providing convenient defaults for all configuration options. Use this
-    function in tests when you need a Config object but only care about
-    specific settings.
+    Constructs a Config with sub-config objects, providing convenient defaults
+    for all settings. Parameters are grouped to match Config's sub-configs.
 
-    The function is organized into parameter groups matching Config's sub-configs:
-
-    **Polling Settings** - Control how often and how many issues are fetched:
-        poll_interval: Seconds between polling cycles (default: 60).
-        max_issues: Maximum issues to fetch per poll (default: 50).
+    Args:
+        poll_interval: Seconds between polling cycles.
+        max_issues: Maximum issues to fetch per poll.
         max_issues_per_poll: Alias for max_issues (takes precedence if set).
-
-    **Execution Settings** - Control agent execution behavior:
-        max_concurrent_executions: Parallel orchestration limit (default: 1).
+        max_concurrent_executions: Parallel orchestration limit.
         orchestrations_dir: Directory for orchestration files.
         agent_workdir: Base directory for agent working directories.
         agent_logs_dir: Base directory for agent execution logs.
         orchestration_logs_dir: Per-orchestration log directory.
-        attempt_counts_ttl: TTL for retry attempt tracking (default: 3600s).
-        max_queue_size: Maximum queued issues (default: 100).
-        cleanup_workdir_on_success: Remove workdir after success (default: True).
-        disable_streaming_logs: Disable real-time log writes (default: False).
-        subprocess_timeout: Default subprocess timeout (default: 60.0s).
-        default_base_branch: Default git base branch (default: "main").
-        inter_message_times_threshold: Timing metrics threshold (default: 100).
-
-    **Logging Settings** - Control log output:
-        log_level: Log level - DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO).
-        log_json: Output logs in JSON format (default: False).
-
-    **Dashboard Settings** - Control the web dashboard:
-        dashboard_enabled: Enable web dashboard (default: False).
-        dashboard_port: Dashboard server port (default: 8080).
-        dashboard_host: Dashboard server host (default: "127.0.0.1").
-        toggle_cooldown_seconds: Cooldown between file toggle writes (default: 2.0).
-        rate_limit_cache_ttl: Rate limit cache TTL (default: 3600s).
-        rate_limit_cache_maxsize: Rate limit cache max entries (default: 10000).
-
-    **Jira Settings** - Jira REST API configuration:
-        jira_base_url: Jira instance URL (default: "").
-        jira_email: Authentication email (default: "").
-        jira_api_token: Authentication token (default: "").
-        jira_epic_link_field: Epic link custom field ID (default: "customfield_10014").
-
-    **GitHub Settings** - GitHub REST API configuration:
-        github_token: Personal access token (default: "").
-        github_api_url: GitHub Enterprise API URL (default: "").
-
-    **Agent Settings** - Default agent type configuration:
-        default_agent_type: Agent type - "claude", "codex", or "cursor" (default: "claude").
-
-    **Cursor Settings** - Cursor CLI configuration:
-        cursor_path: Path to Cursor CLI executable (default: "").
-        cursor_default_model: Default Cursor model (default: "").
-        cursor_default_mode: Cursor mode - agent, plan, ask (default: "agent").
-
-    **Codex Settings** - Codex CLI configuration:
-        codex_path: Path to Codex CLI executable (default: "").
-        codex_default_model: Default Codex model (default: "").
-
-    **Rate Limit Settings** - Claude API rate limiting:
-        claude_rate_limit_enabled: Enable rate limiting (default: True).
-        claude_rate_limit_per_minute: Max requests/minute (default: 60).
-        claude_rate_limit_per_hour: Max requests/hour (default: 1000).
-        claude_rate_limit_strategy: Strategy - "queue" or "reject" (default: "queue").
-        claude_rate_limit_warning_threshold: Warning threshold 0.0-1.0 (default: 0.2).
-
-    **Circuit Breaker Settings** - External service circuit breakers:
-        circuit_breaker_enabled: Enable circuit breakers (default: True).
-        circuit_breaker_failure_threshold: Failures to open circuit (default: 5).
-        circuit_breaker_recovery_timeout: Recovery wait time (default: 30.0s).
-        circuit_breaker_half_open_max_calls: Half-open state max calls (default: 3).
-
-    **Health Check Settings** - External dependency health checks:
-        health_check_enabled: Enable health checks (default: True).
-        health_check_timeout: Health check timeout (default: 5.0s).
-
-    **Shutdown Settings** - Graceful shutdown configuration:
-        shutdown_timeout_seconds: Timeout in seconds for graceful shutdown (default: 300.0).
-            If executions don't complete within this time, they will be forcefully
-            terminated. Set to 0 to wait indefinitely.
+        attempt_counts_ttl: TTL in seconds for retry attempt tracking.
+        max_queue_size: Maximum queued issues.
+        cleanup_workdir_on_success: Remove workdir after success.
+        disable_streaming_logs: Disable real-time log writes.
+        subprocess_timeout: Default subprocess timeout in seconds.
+        default_base_branch: Default git base branch.
+        inter_message_times_threshold: Timing metrics threshold.
+        log_level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        log_json: Output logs in JSON format.
+        dashboard_enabled: Enable web dashboard.
+        dashboard_port: Dashboard server port.
+        dashboard_host: Dashboard server host.
+        toggle_cooldown_seconds: Cooldown between file toggle writes.
+        rate_limit_cache_ttl: Rate limit cache TTL in seconds.
+        rate_limit_cache_maxsize: Rate limit cache max entries.
+        jira_base_url: Jira instance URL.
+        jira_email: Jira authentication email.
+        jira_api_token: Jira authentication token.
+        jira_epic_link_field: Epic link custom field ID.
+        github_token: GitHub personal access token.
+        github_api_url: GitHub Enterprise API URL.
+        default_agent_type: Agent type ("claude", "codex", or "cursor").
+        cursor_path: Path to Cursor CLI executable.
+        cursor_default_model: Default Cursor model.
+        cursor_default_mode: Cursor mode ("agent", "plan", or "ask").
+        codex_path: Path to Codex CLI executable.
+        codex_default_model: Default Codex model.
+        claude_rate_limit_enabled: Enable rate limiting.
+        claude_rate_limit_per_minute: Max requests per minute.
+        claude_rate_limit_per_hour: Max requests per hour.
+        claude_rate_limit_strategy: Strategy ("queue" or "reject").
+        claude_rate_limit_warning_threshold: Warning threshold (0.0-1.0).
+        circuit_breaker_enabled: Enable circuit breakers.
+        circuit_breaker_failure_threshold: Failures before opening circuit.
+        circuit_breaker_recovery_timeout: Recovery wait time in seconds.
+        circuit_breaker_half_open_max_calls: Max calls in half-open state.
+        health_check_enabled: Enable health checks.
+        health_check_timeout: Health check timeout in seconds.
+        shutdown_timeout_seconds: Graceful shutdown timeout in seconds.
+            Set to 0 to wait indefinitely.
 
     Returns:
-        A Config instance with the specified parameters organized into sub-configs.
+        A Config instance with the specified parameters organized into
+        sub-configs.
 
     Example::
 
@@ -225,13 +197,6 @@ def make_config(
             max_concurrent_executions=5,
             log_level="DEBUG",
             dashboard_enabled=True,
-        )
-
-        # Configure for integration testing with real services
-        config = make_config(
-            jira_base_url="https://test.atlassian.net",
-            jira_email="test@example.com",
-            jira_api_token="test-token",
         )
     """
     # Support both max_issues and max_issues_per_poll parameter names
