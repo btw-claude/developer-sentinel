@@ -4,13 +4,22 @@ This module contains tests for:
 - Labels and tags field validation in TriggerConfig
 - Agent type configuration (claude vs cursor)
 - Cursor mode configuration
+- Agent Teams timeout handling (DS-697)
 """
 
+import logging
 from pathlib import Path
 
 import pytest
 
-from sentinel.orchestration import OrchestrationError, load_orchestration_file
+from sentinel.orchestration import (
+    AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
+    AGENT_TEAMS_TIMEOUT_MULTIPLIER,
+    AgentConfig,
+    OrchestrationError,
+    get_effective_timeout,
+    load_orchestration_file,
+)
 
 
 class TestLabelsAndTagsValidation:
@@ -867,4 +876,250 @@ orchestrations:
         assert orch.agent.agent_teams is True
         assert orch.agent.github is not None
         assert orch.agent.github.org == "test-org"
+
+
+class TestAgentTeamsTimeout:
+    """Tests for Agent Teams timeout handling (DS-697).
+
+    These tests verify the timeout multiplier and minimum enforcement for
+    agent_teams-enabled orchestrations, including:
+    - get_effective_timeout() returns multiplied timeout when agent_teams is True
+    - get_effective_timeout() returns original timeout when agent_teams is False
+    - get_effective_timeout() returns None when no timeout is configured
+    - get_effective_timeout() enforces the minimum timeout for agent_teams
+    - A warning is logged when timeout_seconds is below the recommended minimum
+    - No warning is logged when timeout_seconds meets or exceeds the minimum
+    - Constants AGENT_TEAMS_TIMEOUT_MULTIPLIER and AGENT_TEAMS_MIN_TIMEOUT_SECONDS
+      have expected values
+    """
+
+    def test_effective_timeout_with_agent_teams_applies_multiplier(self) -> None:
+        """Should apply the timeout multiplier when agent_teams is True."""
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=600,
+            agent_teams=True,
+        )
+        result = get_effective_timeout(config)
+        assert result == 600 * AGENT_TEAMS_TIMEOUT_MULTIPLIER
+
+    def test_effective_timeout_without_agent_teams_unchanged(self) -> None:
+        """Should return the original timeout when agent_teams is False."""
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=600,
+            agent_teams=False,
+        )
+        result = get_effective_timeout(config)
+        assert result == 600
+
+    def test_effective_timeout_none_with_agent_teams(self) -> None:
+        """Should return None when no timeout is configured, even with agent_teams."""
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=None,
+            agent_teams=True,
+        )
+        result = get_effective_timeout(config)
+        assert result is None
+
+    def test_effective_timeout_none_without_agent_teams(self) -> None:
+        """Should return None when no timeout is configured and agent_teams is False."""
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=None,
+            agent_teams=False,
+        )
+        result = get_effective_timeout(config)
+        assert result is None
+
+    def test_effective_timeout_enforces_minimum_for_agent_teams(self) -> None:
+        """Should enforce the minimum timeout when multiplied result is too low."""
+        # A very small timeout should still result in at least the minimum
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=100,
+            agent_teams=True,
+        )
+        result = get_effective_timeout(config)
+        # 100 * 3 = 300, which is < 900, so minimum of 900 should be used
+        assert result == AGENT_TEAMS_MIN_TIMEOUT_SECONDS
+
+    def test_effective_timeout_multiplier_exceeds_minimum(self) -> None:
+        """Should use the multiplied value when it exceeds the minimum."""
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=600,
+            agent_teams=True,
+        )
+        result = get_effective_timeout(config)
+        # 600 * 3 = 1800, which is > 900, so 1800 should be used
+        assert result == 1800
+        assert result > AGENT_TEAMS_MIN_TIMEOUT_SECONDS
+
+    def test_effective_timeout_at_minimum_boundary(self) -> None:
+        """Should handle timeout at exactly the minimum boundary correctly."""
+        # Find a timeout where multiplied value equals the minimum
+        boundary_timeout = AGENT_TEAMS_MIN_TIMEOUT_SECONDS // AGENT_TEAMS_TIMEOUT_MULTIPLIER
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=boundary_timeout,
+            agent_teams=True,
+        )
+        result = get_effective_timeout(config)
+        assert result == max(
+            boundary_timeout * AGENT_TEAMS_TIMEOUT_MULTIPLIER,
+            AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
+        )
+
+    def test_warning_logged_for_low_timeout_with_agent_teams(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should log a warning when timeout is below the recommended minimum."""
+        yaml_content = """
+orchestrations:
+  - name: "low-timeout-teams"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: claude
+      agent_teams: true
+      timeout_seconds: 300
+"""
+        file_path = tmp_path / "low_timeout_teams.yaml"
+        file_path.write_text(yaml_content)
+
+        with caplog.at_level(logging.WARNING, logger="sentinel.orchestration"):
+            orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.timeout_seconds == 300
+        assert orchestrations[0].agent.agent_teams is True
+
+        # Check that a warning was logged about the low timeout
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any(
+            "timeout_seconds=300" in msg and "below the recommended minimum" in msg
+            for msg in warning_messages
+        ), f"Expected timeout warning in: {warning_messages}"
+
+    def test_no_warning_for_sufficient_timeout_with_agent_teams(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should not log a warning when timeout meets the recommended minimum."""
+        yaml_content = """
+orchestrations:
+  - name: "good-timeout-teams"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: claude
+      agent_teams: true
+      timeout_seconds: 900
+"""
+        file_path = tmp_path / "good_timeout_teams.yaml"
+        file_path.write_text(yaml_content)
+
+        with caplog.at_level(logging.WARNING, logger="sentinel.orchestration"):
+            orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.timeout_seconds == 900
+
+        # Verify no timeout warnings were logged
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert not any(
+            "below the recommended minimum" in msg for msg in warning_messages
+        ), f"Unexpected timeout warning in: {warning_messages}"
+
+    def test_no_warning_when_no_timeout_with_agent_teams(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should not log a warning when no timeout is configured with agent_teams."""
+        yaml_content = """
+orchestrations:
+  - name: "no-timeout-teams"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: claude
+      agent_teams: true
+"""
+        file_path = tmp_path / "no_timeout_teams.yaml"
+        file_path.write_text(yaml_content)
+
+        with caplog.at_level(logging.WARNING, logger="sentinel.orchestration"):
+            orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.timeout_seconds is None
+        assert orchestrations[0].agent.agent_teams is True
+
+        # Verify no timeout warnings were logged
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert not any(
+            "below the recommended minimum" in msg for msg in warning_messages
+        ), f"Unexpected timeout warning in: {warning_messages}"
+
+    def test_no_warning_for_low_timeout_without_agent_teams(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should not log a warning for low timeout when agent_teams is not enabled."""
+        yaml_content = """
+orchestrations:
+  - name: "low-timeout-no-teams"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      timeout_seconds: 100
+"""
+        file_path = tmp_path / "low_timeout_no_teams.yaml"
+        file_path.write_text(yaml_content)
+
+        with caplog.at_level(logging.WARNING, logger="sentinel.orchestration"):
+            orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.timeout_seconds == 100
+        assert orchestrations[0].agent.agent_teams is False
+
+        # Verify no timeout warnings were logged
+        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert not any(
+            "below the recommended minimum" in msg for msg in warning_messages
+        ), f"Unexpected timeout warning in: {warning_messages}"
+
+    def test_constants_have_expected_values(self) -> None:
+        """Should have expected constant values for timeout multiplier and minimum."""
+        assert AGENT_TEAMS_TIMEOUT_MULTIPLIER == 3
+        assert AGENT_TEAMS_MIN_TIMEOUT_SECONDS == 900
+
+    def test_effective_timeout_with_very_large_timeout(self) -> None:
+        """Should correctly multiply very large timeout values."""
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=3600,
+            agent_teams=True,
+        )
+        result = get_effective_timeout(config)
+        assert result == 3600 * AGENT_TEAMS_TIMEOUT_MULTIPLIER
+
+    def test_effective_timeout_with_timeout_of_one_second(self) -> None:
+        """Should enforce minimum for very small timeout values."""
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=1,
+            agent_teams=True,
+        )
+        result = get_effective_timeout(config)
+        # 1 * 3 = 3, which is < 900, so minimum of 900 should be used
+        assert result == AGENT_TEAMS_MIN_TIMEOUT_SECONDS
 
