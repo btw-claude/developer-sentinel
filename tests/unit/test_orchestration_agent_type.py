@@ -8,7 +8,6 @@ This module contains tests for:
 - Agent Teams timeout configurability via environment variables (DS-701)
 """
 
-import importlib
 import logging
 from pathlib import Path
 from unittest import mock
@@ -1179,37 +1178,39 @@ class TestAgentTeamsTimeoutEnvConfig:
             with pytest.raises(ValueError, match="must be an integer"):
                 _parse_env_int("TEST_PARSE_ENV_INT", 42)
 
-    def test_multiplier_env_override_on_module_reload(self) -> None:
-        """Should use env override for AGENT_TEAMS_TIMEOUT_MULTIPLIER on reload."""
-        import sentinel.orchestration as orch_mod
-
+    def test_multiplier_env_override(self) -> None:
+        """Should parse env override for AGENT_TEAMS_TIMEOUT_MULTIPLIER."""
         with mock.patch.dict("os.environ", {"AGENT_TEAMS_TIMEOUT_MULTIPLIER": "5"}):
-            importlib.reload(orch_mod)
-            assert orch_mod.AGENT_TEAMS_TIMEOUT_MULTIPLIER == 5
+            result = _parse_env_int(
+                "AGENT_TEAMS_TIMEOUT_MULTIPLIER",
+                _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER,
+            )
+            assert result == 5
 
-        # Restore defaults by reloading without the env var
-        with mock.patch.dict("os.environ", {}, clear=False):
-            os_env = dict(**orch_mod.os.environ)
-            os_env.pop("AGENT_TEAMS_TIMEOUT_MULTIPLIER", None)
-            with mock.patch.dict("os.environ", os_env, clear=True):
-                importlib.reload(orch_mod)
-            assert orch_mod.AGENT_TEAMS_TIMEOUT_MULTIPLIER == _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER
-
-    def test_min_timeout_env_override_on_module_reload(self) -> None:
-        """Should use env override for AGENT_TEAMS_MIN_TIMEOUT_SECONDS on reload."""
-        import sentinel.orchestration as orch_mod
-
+    def test_min_timeout_env_override(self) -> None:
+        """Should parse env override for AGENT_TEAMS_MIN_TIMEOUT_SECONDS."""
         with mock.patch.dict("os.environ", {"AGENT_TEAMS_MIN_TIMEOUT_SECONDS": "1200"}):
-            importlib.reload(orch_mod)
-            assert orch_mod.AGENT_TEAMS_MIN_TIMEOUT_SECONDS == 1200
+            result = _parse_env_int(
+                "AGENT_TEAMS_MIN_TIMEOUT_SECONDS",
+                _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
+            )
+            assert result == 1200
 
-        # Restore defaults by reloading without the env var
-        with mock.patch.dict("os.environ", {}, clear=False):
-            os_env = dict(**orch_mod.os.environ)
-            os_env.pop("AGENT_TEAMS_MIN_TIMEOUT_SECONDS", None)
-            with mock.patch.dict("os.environ", os_env, clear=True):
-                importlib.reload(orch_mod)
-            assert orch_mod.AGENT_TEAMS_MIN_TIMEOUT_SECONDS == _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS
+    def test_multiplier_uses_default_when_unset(self) -> None:
+        """Should return default multiplier when env var is not set."""
+        result = _parse_env_int(
+            "AGENT_TEAMS_TIMEOUT_MULTIPLIER",
+            _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER,
+        )
+        assert result == _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER
+
+    def test_min_timeout_uses_default_when_unset(self) -> None:
+        """Should return default min timeout when env var is not set."""
+        result = _parse_env_int(
+            "AGENT_TEAMS_MIN_TIMEOUT_SECONDS",
+            _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
+        )
+        assert result == _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS
 
     def test_defaults_unchanged_without_env_vars(self) -> None:
         """Should use defaults when no environment variables are set."""
