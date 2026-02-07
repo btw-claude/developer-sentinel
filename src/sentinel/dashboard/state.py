@@ -284,6 +284,10 @@ class DashboardState:
     # System status - thread pool, poll times, uptime
     system_status: SystemStatusInfo | None = None
 
+    # Configurable success rate thresholds for display coloring
+    success_rate_green_threshold: float = 90.0
+    success_rate_yellow_threshold: float = 70.0
+
 
 @dataclass(frozen=True)
 class OrchestrationVersionSnapshot:
@@ -572,6 +576,8 @@ class SentinelStateAccessor:
             execution_summary=execution_summary,
             orchestration_stats=orchestration_stats,
             system_status=system_status,
+            success_rate_green_threshold=config.dashboard.success_rate_green_threshold,
+            success_rate_yellow_threshold=config.dashboard.success_rate_yellow_threshold,
         )
 
     def _orchestration_to_info(self, orch: Orchestration, source_file: str) -> OrchestrationInfo:

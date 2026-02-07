@@ -2,6 +2,7 @@
 
 Tests for the _compute_execution_stats method of SentinelStateAccessor,
 verifying global summary statistics and per-orchestration grouping.
+Also tests for configurable success rate thresholds propagation to DashboardState.
 """
 
 from __future__ import annotations
@@ -543,6 +544,54 @@ class TestComputeExecutionStatsRounding:
         assert summary.total_cost_usd == 0.666667
         # Average: 0.6666666 / 3 = 0.2222222, rounded to 6 decimal places
         assert summary.avg_cost_usd == 0.222222
+
+
+class TestDashboardStateSuccessRateThresholds:
+    """Tests for configurable success rate thresholds in DashboardState."""
+
+    def test_default_thresholds_in_state(self) -> None:
+        """Test that default thresholds are set when using default Config."""
+        accessor = _create_accessor()
+        state = accessor.get_state()
+
+        assert state.success_rate_green_threshold == 90.0
+        assert state.success_rate_yellow_threshold == 70.0
+
+    def test_custom_thresholds_propagate_to_state(self) -> None:
+        """Test that custom threshold config values propagate to DashboardState."""
+        from sentinel.config import DashboardConfig
+
+        config = Config(
+            execution=ExecutionConfig(),
+            dashboard=DashboardConfig(
+                success_rate_green_threshold=95.0,
+                success_rate_yellow_threshold=80.0,
+            ),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        state = accessor.get_state()
+
+        assert state.success_rate_green_threshold == 95.0
+        assert state.success_rate_yellow_threshold == 80.0
+
+    def test_zero_thresholds_propagate_to_state(self) -> None:
+        """Test that zero threshold values propagate correctly."""
+        from sentinel.config import DashboardConfig
+
+        config = Config(
+            execution=ExecutionConfig(),
+            dashboard=DashboardConfig(
+                success_rate_green_threshold=0.0,
+                success_rate_yellow_threshold=0.0,
+            ),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        state = accessor.get_state()
+
+        assert state.success_rate_green_threshold == 0.0
+        assert state.success_rate_yellow_threshold == 0.0
 
 
 class TestMockSentinelProtocol:

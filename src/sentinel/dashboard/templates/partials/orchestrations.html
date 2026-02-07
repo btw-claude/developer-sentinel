@@ -75,7 +75,7 @@
                     </td>
                     <td>
                         {% if orch_stats %}
-                        {{ success_rate_display(orch_stats.success_rate) }}
+                        {{ success_rate_display(orch_stats.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}
                         {% else %}
                         <span style="color: var(--text-secondary);">-</span>
                         {% endif %}

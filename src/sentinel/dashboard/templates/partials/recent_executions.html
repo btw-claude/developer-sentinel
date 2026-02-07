@@ -45,35 +45,20 @@
     </tr>
     {% endfor %}
     <tfoot>
-    {% set ns = namespace(success_count=0, failure_count=0, total_duration=0.0, total_input_tokens=0, total_output_tokens=0, total_cost=0.0) %}
-    {% for exec in state.completed_executions %}
-        {% if exec.status == "success" %}
-            {% set ns.success_count = ns.success_count + 1 %}
-        {% else %}
-            {% set ns.failure_count = ns.failure_count + 1 %}
-        {% endif %}
-        {% set ns.total_duration = ns.total_duration + exec.duration_seconds %}
-        {% set ns.total_input_tokens = ns.total_input_tokens + exec.input_tokens %}
-        {% set ns.total_output_tokens = ns.total_output_tokens + exec.output_tokens %}
-        {% set ns.total_cost = ns.total_cost + exec.total_cost_usd %}
-    {% endfor %}
-    {% set total_count = state.completed_executions | length %}
-    {% set success_rate = (ns.success_count / total_count * 100) if total_count > 0 else 0 %}
-    {% set avg_duration = (ns.total_duration / total_count) if total_count > 0 else 0 %}
     <tr class="summary-row">
-        <td colspan="2"><strong>Summary</strong> ({{ total_count }} executions)</td>
+        <td colspan="2"><strong>Summary</strong> ({{ state.execution_summary.total_executions }} executions)</td>
         <td>
-            <span class="status-badge status-success">{{ ns.success_count }}</span>
-            <span class="status-badge status-failure">{{ ns.failure_count }}</span>
-            {{ success_rate_display(success_rate) }}
+            <span class="status-badge status-success">{{ state.execution_summary.success_count }}</span>
+            <span class="status-badge status-failure">{{ state.execution_summary.failure_count }}</span>
+            {{ success_rate_display(state.execution_summary.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}
         </td>
-        <td>{{ avg_duration | format_duration }} avg</td>
+        <td>{{ state.execution_summary.avg_duration_seconds | format_duration }} avg</td>
         <td>
-            <span title="Total input tokens">{{ "{:,}".format(ns.total_input_tokens) }}</span><span class="text-muted">&darr;</span>
+            <span title="Total input tokens">{{ "{:,}".format(state.execution_summary.total_input_tokens) }}</span><span class="text-muted">&darr;</span>
             /
-            <span title="Total output tokens">{{ "{:,}".format(ns.total_output_tokens) }}</span><span class="text-muted">&uarr;</span>
+            <span title="Total output tokens">{{ "{:,}".format(state.execution_summary.total_output_tokens) }}</span><span class="text-muted">&uarr;</span>
         </td>
-        <td>${{ "%.4f" | format(ns.total_cost) }}</td>
+        <td>${{ "%.4f" | format(state.execution_summary.total_cost_usd) }}</td>
         <td></td>
     </tr>
     </tfoot>

@@ -103,6 +103,8 @@ class TestSubConfigs:
         assert dashboard.toggle_cooldown_seconds == 2.0
         assert dashboard.rate_limit_cache_ttl == 3600
         assert dashboard.rate_limit_cache_maxsize == 10000
+        assert dashboard.success_rate_green_threshold == 90.0
+        assert dashboard.success_rate_yellow_threshold == 70.0
 
     def test_rate_limit_config_defaults(self) -> None:
         rate_limit = RateLimitConfig()
@@ -1395,3 +1397,107 @@ class TestJiraEpicLinkFieldConfig:
 
         # Empty string is valid, just means no fallback to classic epic link
         assert config.jira.epic_link_field == ""
+
+
+class TestSuccessRateGreenThreshold:
+    """Tests for success_rate_green_threshold configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that success_rate_green_threshold defaults to 90.0."""
+        monkeypatch.delenv("SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", raising=False)
+
+        config = load_config()
+
+        assert config.dashboard.success_rate_green_threshold == 90.0
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that success_rate_green_threshold loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", "95.0")
+
+        config = load_config()
+
+        assert config.dashboard.success_rate_green_threshold == 95.0
+
+    def test_zero_is_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that zero is a valid threshold value."""
+        monkeypatch.setenv("SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", "0.0")
+
+        config = load_config()
+
+        assert config.dashboard.success_rate_green_threshold == 0.0
+
+    def test_negative_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that negative value uses the default."""
+        monkeypatch.setenv("SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", "-10.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.dashboard.success_rate_green_threshold == 90.0
+        assert "negative" in caplog.text
+
+    def test_invalid_string_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid string uses the default."""
+        monkeypatch.setenv("SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", "not-a-number")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.dashboard.success_rate_green_threshold == 90.0
+        assert "not a valid number" in caplog.text
+
+
+class TestSuccessRateYellowThreshold:
+    """Tests for success_rate_yellow_threshold configuration."""
+
+    def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that success_rate_yellow_threshold defaults to 70.0."""
+        monkeypatch.delenv("SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", raising=False)
+
+        config = load_config()
+
+        assert config.dashboard.success_rate_yellow_threshold == 70.0
+
+    def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that success_rate_yellow_threshold loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", "80.0")
+
+        config = load_config()
+
+        assert config.dashboard.success_rate_yellow_threshold == 80.0
+
+    def test_zero_is_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that zero is a valid threshold value."""
+        monkeypatch.setenv("SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", "0.0")
+
+        config = load_config()
+
+        assert config.dashboard.success_rate_yellow_threshold == 0.0
+
+    def test_negative_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that negative value uses the default."""
+        monkeypatch.setenv("SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", "-5.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.dashboard.success_rate_yellow_threshold == 70.0
+        assert "negative" in caplog.text
+
+    def test_invalid_string_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid string uses the default."""
+        monkeypatch.setenv("SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", "abc")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.dashboard.success_rate_yellow_threshold == 70.0
+        assert "not a valid number" in caplog.text
