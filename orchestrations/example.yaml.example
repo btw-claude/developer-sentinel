@@ -847,3 +847,89 @@ orchestrations:
 
     on_failure:
       add_tag: "fork-failed"
+
+  # Agent Teams with Timeout Handling (DS-697, DS-701)
+  # --------------------------------------------------
+  # Agent Teams orchestrations involve multiple Claude Code processes (a team
+  # lead plus teammates) that coordinate via shared task lists and mailboxes.
+  # This takes significantly longer than single-agent runs, so timeouts are
+  # handled differently:
+  #
+  # 1. The configured timeout_seconds is automatically multiplied by
+  #    AGENT_TEAMS_TIMEOUT_MULTIPLIER (default 3x) at execution time.
+  # 2. The effective timeout is enforced to be at least
+  #    AGENT_TEAMS_MIN_TIMEOUT_SECONDS (default 900s / 15 min).
+  # 3. A warning is logged at parse time if timeout_seconds is below
+  #    the recommended minimum of 900 seconds.
+  #
+  # Both constants can be overridden via environment variables (DS-701):
+  #   export AGENT_TEAMS_TIMEOUT_MULTIPLIER=5
+  #   export AGENT_TEAMS_MIN_TIMEOUT_SECONDS=1200
+  # This allows different environments (dev vs production) to use different
+  # timeout settings based on their infrastructure capabilities.
+  #
+  # Example: timeout_seconds: 600 with agent_teams: true
+  #   -> effective timeout = max(600 * 3, 900) = 1800 seconds (30 min)
+  #
+  # Example: timeout_seconds: 200 with agent_teams: true
+  #   -> effective timeout = max(200 * 3, 900) = 900 seconds (15 min)
+  #   -> WARNING logged: timeout below recommended minimum
+  - name: "agent-teams-feature-development"
+
+    trigger:
+      source: jira
+      project: "PROJ"
+      tags:
+        - "agent-teams-dev"
+
+    agent:
+      prompt: |
+        You are a team lead coordinating a development team.
+
+        ## Issue Details
+        **Issue:** {jira_issue_key} - {jira_summary}
+
+        **Description:**
+        {jira_description}
+
+        ## Instructions
+        1. Implement the feature described above
+        2. Coordinate with your team for code review
+        3. Ensure all tests pass before completing
+
+        Respond with SUCCESS if the feature was implemented and reviewed,
+        or FAILURE if you encountered issues.
+
+      agent_type: claude
+      agent_teams: true  # Enable Agent Teams (multi-agent coordination)
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: main
+
+      # Timeout considerations for Agent Teams:
+      # - Set timeout_seconds to at least 900 (15 min) to avoid warnings
+      # - The effective timeout will be 3x this value (2700s = 45 min)
+      # - For complex features, consider 1800s (effective: 5400s = 90 min)
+      timeout_seconds: 900
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+
+    on_start:
+      add_tag: "agent-teams-processing"
+
+    on_complete:
+      add_tag: "agent-teams-completed"
+
+    on_failure:
+      add_tag: "agent-teams-failed"

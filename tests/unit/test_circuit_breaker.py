@@ -282,6 +282,76 @@ class TestCircuitBreakerStates:
         assert cb.state == CircuitState.OPEN
 
 
+class TestCircuitBreakerIsOpenProperty:
+    """Tests for CircuitBreaker.is_open read-only property."""
+
+    def test_is_open_false_when_closed(self) -> None:
+        """Test is_open returns False when circuit is in CLOSED state."""
+        cb = CircuitBreaker("test", CircuitBreakerConfig())
+        assert cb.is_open is False
+        assert cb.state == CircuitState.CLOSED
+
+    def test_is_open_true_when_open(self) -> None:
+        """Test is_open returns True when circuit is in OPEN state."""
+        config = CircuitBreakerConfig(failure_threshold=1)
+        cb = CircuitBreaker("test", config)
+
+        cb.record_failure(Exception("Error"))
+        assert cb.is_open is True
+        assert cb.state == CircuitState.OPEN
+
+    def test_is_open_false_when_half_open(self) -> None:
+        """Test is_open returns False when circuit is in HALF_OPEN state."""
+        config = CircuitBreakerConfig(failure_threshold=1, recovery_timeout=0.1)
+        cb = CircuitBreaker("test", config)
+
+        cb.record_failure(Exception("Error"))
+        assert cb.is_open is True
+
+        # Wait for recovery timeout
+        time.sleep(0.15)
+        assert cb.is_open is False
+        assert cb.state == CircuitState.HALF_OPEN
+
+    def test_is_open_after_reset(self) -> None:
+        """Test is_open returns False after circuit is reset."""
+        config = CircuitBreakerConfig(failure_threshold=1)
+        cb = CircuitBreaker("test", config)
+
+        cb.record_failure(Exception("Error"))
+        assert cb.is_open is True
+
+        cb.reset()
+        assert cb.is_open is False
+        assert cb.state == CircuitState.CLOSED
+
+    def test_is_open_is_side_effect_free(self) -> None:
+        """Test that is_open does not modify metrics or internal counters."""
+        cb = CircuitBreaker("test", CircuitBreakerConfig())
+
+        # Record initial metrics state
+        initial_total_calls = cb.metrics.total_calls
+        initial_rejected_calls = cb.metrics.rejected_calls
+
+        # Access is_open multiple times
+        _ = cb.is_open
+        _ = cb.is_open
+        _ = cb.is_open
+
+        # Metrics should not have changed
+        assert cb.metrics.total_calls == initial_total_calls
+        assert cb.metrics.rejected_calls == initial_rejected_calls
+
+    def test_is_open_with_disabled_circuit_breaker(self) -> None:
+        """Test is_open behavior when circuit breaker is disabled."""
+        config = CircuitBreakerConfig(enabled=False, failure_threshold=1)
+        cb = CircuitBreaker("test", config)
+
+        # Even after failures, disabled circuit breaker stays closed
+        cb.record_failure(Exception("Error"))
+        assert cb.is_open is False
+
+
 class TestCircuitBreakerDecorator:
     """Tests for circuit breaker decorator usage."""
 

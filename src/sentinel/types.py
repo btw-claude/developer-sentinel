@@ -278,8 +278,9 @@ ErrorTypeLiteral = Literal["I/O error", "runtime error", "data error"]
 # - Under TYPE_CHECKING (static analysis / mypy): LiteralForm remains ``object``
 #   because mypy cannot assign Literal special forms to a Protocol.
 # - At runtime: LiteralForm is a @runtime_checkable Protocol requiring an
-#   ``__origin__`` attribute, which all Literal forms possess (set to
-#   ``typing.Literal``).  This avoids depending on the private
+#   ``__origin__`` attribute (typed as ``object``), which all Literal forms
+#   possess (set to ``typing.Literal`` — a ``typing._SpecialForm``, not a
+#   ``type``; see DS-687).  This avoids depending on the private
 #   ``typing._GenericAlias`` while providing structurally tighter type narrowing
 #   than bare ``object``.
 #
@@ -297,9 +298,13 @@ else:
         All ``Literal[...]`` annotations have an ``__origin__`` attribute set to
         ``typing.Literal`` at runtime.  This protocol captures that structural
         requirement without depending on private ``typing._GenericAlias``.
+
+        Note: ``__origin__`` is typed as ``object`` rather than ``type`` because
+        ``Literal[...].__origin__`` is ``typing.Literal`` — a
+        ``typing._SpecialForm``, not a ``type`` instance (DS-687).
         """
 
-        __origin__: type
+        __origin__: object
 
 
 def _validate_literal_matches_enum(

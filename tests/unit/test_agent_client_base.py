@@ -31,6 +31,7 @@ class _ConcreteAgentClient(AgentClient):
         branch: str | None = None,
         create_branch: bool = False,
         base_branch: str = "main",
+        agent_teams: bool = False,
     ) -> AgentRunResult:
         """Run agent (stub)."""
         return AgentRunResult(response="stub")

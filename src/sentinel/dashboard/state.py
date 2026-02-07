@@ -247,11 +247,73 @@ class CompletedExecutionInfoView:
     orchestration_name: str
     status: str  # "success" or "failure"
     duration_seconds: float  # computed from started_at and completed_at
-    input_tokens: int | None
-    output_tokens: int | None
-    total_cost_usd: float | None
+    input_tokens: int
+    output_tokens: int
+    total_cost_usd: float
     completed_at: datetime
     issue_url: str
+
+
+@dataclass(frozen=True)
+class ExecutionSummaryStats:
+    """Aggregated summary statistics across all completed executions.
+
+    This provides global execution metrics for the dashboard Metrics tab,
+    including success rates, token/cost totals, and average durations.
+    """
+
+    total_executions: int
+    success_count: int
+    failure_count: int
+    success_rate: float  # percentage (0.0 - 100.0)
+    avg_duration_seconds: float
+    total_input_tokens: int
+    total_output_tokens: int
+    total_tokens: int
+    total_cost_usd: float
+    avg_cost_usd: float
+
+    @classmethod
+    def empty(cls) -> ExecutionSummaryStats:
+        """Create a zeroed ExecutionSummaryStats instance.
+
+        Returns an ExecutionSummaryStats with all counters, rates, and
+        totals set to zero. Useful as a default value when no executions
+        have been recorded.
+
+        Returns:
+            An ExecutionSummaryStats instance with all fields set to zero.
+        """
+        return cls(
+            total_executions=0,
+            success_count=0,
+            failure_count=0,
+            success_rate=0.0,
+            avg_duration_seconds=0.0,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_tokens=0,
+            total_cost_usd=0.0,
+            avg_cost_usd=0.0,
+        )
+
+
+@dataclass(frozen=True)
+class OrchestrationStats:
+    """Per-orchestration execution statistics.
+
+    This provides execution metrics grouped by orchestration name
+    for the dashboard Orchestrations tab.
+    """
+
+    orchestration_name: str
+    total_runs: int
+    success_count: int
+    failure_count: int
+    success_rate: float  # percentage (0.0 - 100.0)
+    avg_duration_seconds: float
+    total_cost_usd: float
+    last_run_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -325,8 +387,18 @@ class DashboardState:
     shutdown_requested: bool = False
     active_incomplete_tasks: int = 0
 
+    # Computed summary statistics
+    execution_summary: ExecutionSummaryStats = field(
+        default_factory=ExecutionSummaryStats.empty
+    )
+    orchestration_stats: list[OrchestrationStats] = field(default_factory=list)
+
     # System status - thread pool, poll times, uptime
     system_status: SystemStatusInfo | None = None
+
+    # Configurable success rate thresholds for display coloring
+    success_rate_green_threshold: float = 90.0
+    success_rate_yellow_threshold: float = 70.0
 
 
 @dataclass(frozen=True)
@@ -553,9 +625,9 @@ class SentinelStateAccessor:
                 orchestration_name=item.orchestration_name,
                 status=item.status,
                 duration_seconds=(item.completed_at - item.started_at).total_seconds(),
-                input_tokens=item.input_tokens if item.input_tokens > 0 else None,
-                output_tokens=item.output_tokens if item.output_tokens > 0 else None,
-                total_cost_usd=item.total_cost_usd if item.total_cost_usd > 0 else None,
+                input_tokens=item.input_tokens,
+                output_tokens=item.output_tokens,
+                total_cost_usd=item.total_cost_usd,
                 completed_at=item.completed_at,
                 issue_url=item.issue_url,
             )
@@ -589,6 +661,11 @@ class SentinelStateAccessor:
                 ):
                     active_github_repos.add(orch.trigger_project_owner)
 
+        # Compute execution summary statistics
+        execution_summary, orchestration_stats = self._compute_execution_stats(
+            completed_execution_views
+        )
+
         return DashboardState(
             poll_interval=config.polling.interval,
             max_concurrent_executions=config.execution.max_concurrent_executions,
@@ -608,7 +685,11 @@ class SentinelStateAccessor:
             hot_reload_metrics=hot_reload_metrics,
             shutdown_requested=sentinel.is_shutdown_requested(),
             active_incomplete_tasks=pending_count,
+            execution_summary=execution_summary,
+            orchestration_stats=orchestration_stats,
             system_status=system_status,
+            success_rate_green_threshold=config.dashboard.success_rate_green_threshold,
+            success_rate_yellow_threshold=config.dashboard.success_rate_yellow_threshold,
         )
 
     def _orchestration_to_info(self, orch: Orchestration, source_file: str) -> OrchestrationInfo:
@@ -808,6 +889,89 @@ class SentinelStateAccessor:
         ]
 
         return jira_projects, github_repos
+
+    def _compute_execution_stats(
+        self, executions: list[CompletedExecutionInfoView]
+    ) -> tuple[ExecutionSummaryStats, list[OrchestrationStats]]:
+        """Compute summary statistics from completed executions.
+
+        Groups completed executions by orchestration name and computes
+        success rates, average durations, and token/cost totals both
+        globally and per-orchestration.
+
+        Args:
+            executions: List of completed execution info views.
+
+        Returns:
+            A tuple of (execution_summary, orchestration_stats) where
+            execution_summary contains global aggregated stats and
+            orchestration_stats contains per-orchestration stats.
+        """
+        if not executions:
+            return ExecutionSummaryStats.empty(), []
+
+        # Compute global summary stats
+        total = len(executions)
+        successes = sum(1 for e in executions if e.status == "success")
+        failures = total - successes
+        success_rate = (successes / total) * 100.0
+
+        total_duration = sum(e.duration_seconds for e in executions)
+        avg_duration = total_duration / total
+
+        total_input = sum(e.input_tokens for e in executions)
+        total_output = sum(e.output_tokens for e in executions)
+        total_tokens = total_input + total_output
+        total_cost = sum(e.total_cost_usd for e in executions)
+        avg_cost = total_cost / total
+
+        execution_summary = ExecutionSummaryStats(
+            total_executions=total,
+            success_count=successes,
+            failure_count=failures,
+            success_rate=round(success_rate, 2),
+            avg_duration_seconds=round(avg_duration, 2),
+            total_input_tokens=total_input,
+            total_output_tokens=total_output,
+            total_tokens=total_tokens,
+            total_cost_usd=round(total_cost, 6),
+            avg_cost_usd=round(avg_cost, 6),
+        )
+
+        # Compute per-orchestration stats
+        orch_groups: dict[str, list[CompletedExecutionInfoView]] = defaultdict(list)
+        for execution in executions:
+            orch_groups[execution.orchestration_name].append(execution)
+
+        orchestration_stats: list[OrchestrationStats] = []
+        for orch_name, orch_executions in sorted(orch_groups.items()):
+            orch_total = len(orch_executions)
+            orch_successes = sum(1 for e in orch_executions if e.status == "success")
+            orch_failures = orch_total - orch_successes
+            orch_success_rate = (orch_successes / orch_total) * 100.0
+
+            orch_total_duration = sum(e.duration_seconds for e in orch_executions)
+            orch_avg_duration = orch_total_duration / orch_total
+
+            orch_total_cost = sum(e.total_cost_usd for e in orch_executions)
+
+            # Find most recent execution for last_run_at
+            last_run_at = max(e.completed_at for e in orch_executions)
+
+            orchestration_stats.append(
+                OrchestrationStats(
+                    orchestration_name=orch_name,
+                    total_runs=orch_total,
+                    success_count=orch_successes,
+                    failure_count=orch_failures,
+                    success_rate=round(orch_success_rate, 2),
+                    avg_duration_seconds=round(orch_avg_duration, 2),
+                    total_cost_usd=round(orch_total_cost, 6),
+                    last_run_at=last_run_at,
+                )
+            )
+
+        return execution_summary, orchestration_stats
 
     def get_log_files(self) -> list[dict[str, Any]]:
         """Get available log files grouped by orchestration.

@@ -47,6 +47,7 @@ class MockAgentClient(AgentClient):
         branch: str | None = None,
         create_branch: bool = False,
         base_branch: str = "main",
+        agent_teams: bool = False,
     ) -> AgentRunResult:
         return AgentRunResult(response="Mock response", workdir=None)
 

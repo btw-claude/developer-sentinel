@@ -255,6 +255,7 @@ class AgentClient(ABC):
         branch: str | None = None,
         create_branch: bool = False,
         base_branch: str = "main",
+        agent_teams: bool = False,
     ) -> AgentRunResult:
         """Run an agent with the given prompt.
 
@@ -277,6 +278,7 @@ class AgentClient(ABC):
             branch: Optional branch name to checkout/create before running the agent.
             create_branch: If True and branch doesn't exist, create it from base_branch.
             base_branch: Base branch to create new branches from. Defaults to "main".
+            agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
 
         Returns:
             AgentRunResult containing the agent's response text and optional working directory path.

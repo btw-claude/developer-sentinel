@@ -295,6 +295,17 @@ orchestrations:
         - github
 ```
 
+To enable Claude Code's experimental Agent Teams feature, use `agent_teams: true` in the `agent` block:
+
+```yaml
+    agent:
+      agent_type: claude
+
+      # Enable Claude Code's experimental Agent Teams feature
+      # (only valid when agent_type is "claude"; default: false)
+      agent_teams: true
+```
+
 **Agent Types:**
 - `claude` - Use Claude AI agent (default)
 - `cursor` - Use Cursor AI agent
@@ -305,6 +316,11 @@ orchestrations:
 - `agent` - Full autonomous agent mode (default)
 - `plan` - Planning mode - creates plans without executing
 - `ask` - Ask mode - waits for user confirmation before actions
+
+**Agent Teams (only valid when `agent_type: claude`):**
+- `agent_teams` - Boolean flag to enable Claude Code's experimental Agent Teams feature (default: `false`)
+- When set to `true`, enables multi-agent collaboration via Claude Code's Agent Teams capability
+- Only supported when `agent_type` is `claude` (or unset, since the default agent type is `claude`)
 
 See `orchestrations/README.md` for full configuration reference.
 

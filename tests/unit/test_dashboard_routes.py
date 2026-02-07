@@ -26,6 +26,7 @@ from sentinel.dashboard.state import (
     OrchestrationVersionSnapshot,
     SentinelStateAccessor,
 )
+from sentinel.state_tracker import CompletedExecutionInfo
 from tests.conftest import create_test_app
 from tests.helpers import assert_call_args_length
 
@@ -115,6 +116,14 @@ class MockSentinel:
     def get_execution_state(self) -> ExecutionStateSnapshot:
         """Return execution state snapshot with zero active executions."""
         return ExecutionStateSnapshot(active_count=0)
+
+    def get_completed_executions(self) -> list[CompletedExecutionInfo]:
+        """Return list of completed executions.
+
+        Returns an empty list by default. Override in subclasses or tests
+        to provide test data.
+        """
+        return []
 
     def is_shutdown_requested(self) -> bool:
         """Return whether shutdown has been requested."""

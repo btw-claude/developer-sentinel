@@ -942,6 +942,24 @@
 }
 
 /* =============================================================================
+   SUMMARY ROW COMPONENT
+   Styles for summary/footer rows in data tables (e.g., recent executions).
+
+   Usage:
+     <tr class="summary-row">
+       <td>Summary content</td>
+     </tr>
+
+   Provides visual distinction from regular table rows with a top border
+   and subtle background color change.
+   ============================================================================= */
+
+.summary-row td {
+    border-top: 2px solid var(--accent, #0f3460);
+    background-color: var(--bg-secondary, #16213e);
+}
+
+/* =============================================================================
    RESPONSIVE UTILITIES (Future Consideration)
 
    TODO: Consider adding breakpoint prefixes for responsive variants:
