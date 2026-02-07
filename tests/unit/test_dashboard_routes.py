@@ -2275,3 +2275,63 @@ class TestOrchestrationFilesEndpoint:
 
         route_paths = [route.path for route in app.routes]
         assert "/api/orchestrations/files" in route_paths
+
+
+class TestCsrfTokenRateLimiting:
+    """Tests for CSRF token endpoint rate limiting (DS-737)."""
+
+    def test_csrf_token_returns_token(self, temp_logs_dir: Path) -> None:
+        """Test that the CSRF token endpoint returns a token."""
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.get("/api/csrf-token")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "csrf_token" in data
+            assert len(data["csrf_token"]) > 0
+
+    def test_csrf_token_rate_limited_after_30_requests(self, temp_logs_dir: Path) -> None:
+        """Test that CSRF token endpoint returns 429 after 30 requests per minute."""
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # Make 30 requests - should all succeed
+            for i in range(30):
+                response = client.get("/api/csrf-token")
+                assert response.status_code == 200, f"Request {i+1} should succeed"
+
+            # 31st request should be rate limited
+            response = client.get("/api/csrf-token")
+            assert response.status_code == 429
+            assert "rate limit" in response.json()["detail"].lower()
+
+    def test_csrf_token_rate_limit_per_client_ip(self, temp_logs_dir: Path) -> None:
+        """Test that CSRF rate limiting is per-client IP."""
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # A single TestClient IP can make 30 requests
+            for _ in range(30):
+                response = client.get("/api/csrf-token")
+                assert response.status_code == 200
+
+            # Verify the 31st is blocked
+            response = client.get("/api/csrf-token")
+            assert response.status_code == 429
