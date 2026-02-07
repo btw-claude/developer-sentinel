@@ -134,12 +134,10 @@ def make_config(
     for all settings. Parameters are grouped to match Config's sub-configs.
 
     Args:
-        # -- Polling Settings --
         poll_interval: Seconds between polling cycles.
         max_issues: Maximum issues to fetch per poll.
         max_issues_per_poll: Alias for max_issues (takes precedence if set).
 
-        # -- Execution Settings --
         max_concurrent_executions: Parallel orchestration limit.
         orchestrations_dir: Directory for orchestration files.
         agent_workdir: Base directory for agent working directories.
@@ -153,11 +151,9 @@ def make_config(
         default_base_branch: Default git base branch.
         inter_message_times_threshold: Timing metrics threshold.
 
-        # -- Logging Settings --
         log_level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
         log_json: Output logs in JSON format.
 
-        # -- Dashboard Settings --
         dashboard_enabled: Enable web dashboard.
         dashboard_port: Dashboard server port.
         dashboard_host: Dashboard server host.
@@ -165,46 +161,37 @@ def make_config(
         rate_limit_cache_ttl: Rate limit cache TTL in seconds.
         rate_limit_cache_maxsize: Rate limit cache max entries.
 
-        # -- Jira Settings --
         jira_base_url: Jira instance URL.
         jira_email: Jira authentication email.
         jira_api_token: Jira authentication token.
         jira_epic_link_field: Epic link custom field ID.
 
-        # -- GitHub Settings --
         github_token: GitHub personal access token.
         github_api_url: GitHub Enterprise API URL.
 
-        # -- Agent Settings --
         default_agent_type: Agent type ("claude", "codex", or "cursor").
 
-        # -- Cursor Settings --
         cursor_path: Path to Cursor CLI executable.
         cursor_default_model: Default Cursor model.
         cursor_default_mode: Cursor mode ("agent", "plan", or "ask").
 
-        # -- Codex Settings --
         codex_path: Path to Codex CLI executable.
         codex_default_model: Default Codex model.
 
-        # -- Rate Limit Settings --
         claude_rate_limit_enabled: Enable rate limiting.
         claude_rate_limit_per_minute: Max requests per minute.
         claude_rate_limit_per_hour: Max requests per hour.
         claude_rate_limit_strategy: Strategy ("queue" or "reject").
         claude_rate_limit_warning_threshold: Warning threshold (0.0-1.0).
 
-        # -- Circuit Breaker Settings --
         circuit_breaker_enabled: Enable circuit breakers.
         circuit_breaker_failure_threshold: Failures before opening circuit.
         circuit_breaker_recovery_timeout: Recovery wait time in seconds.
         circuit_breaker_half_open_max_calls: Max calls in half-open state.
 
-        # -- Health Check Settings --
         health_check_enabled: Enable health checks.
         health_check_timeout: Health check timeout in seconds.
 
-        # -- Shutdown Settings --
         shutdown_timeout_seconds: Graceful shutdown timeout in seconds.
             Set to 0 to wait indefinitely.
 
@@ -224,7 +211,8 @@ def make_config(
             dashboard_enabled=True,
         )
 
-        # Configure for integration testing with real services
+        # Shows minimal config for service integration -- use when
+        # tests need real Jira/GitHub connectivity rather than defaults
         config = make_config(
             jira_base_url="https://test.atlassian.net",
             jira_email="test@example.com",
