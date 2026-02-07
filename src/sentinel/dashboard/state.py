@@ -707,9 +707,9 @@ class SentinelStateAccessor:
             An OrchestrationInfo object with read-only data.
         """
         trigger = orch.trigger
-        trigger_source = getattr(trigger, "source", TriggerSource.JIRA.value)
-        trigger_project = getattr(trigger, "project", None)
-        trigger_project_owner = getattr(trigger, "project_owner", None) or None
+        trigger_source = trigger.source
+        trigger_project = trigger.project or None
+        trigger_project_owner = trigger.project_owner or None
         trigger_tags = list(trigger.tags) if trigger.tags else []
 
         # Create a preview of the agent prompt (first 100 chars)
@@ -763,14 +763,14 @@ class SentinelStateAccessor:
         # Convert trigger
         trigger = orch.trigger
         trigger_detail = TriggerDetailInfo(
-            source=getattr(trigger, "source", TriggerSource.JIRA.value),
-            project=getattr(trigger, "project", ""),
-            jql_filter=getattr(trigger, "jql_filter", ""),
+            source=trigger.source,
+            project=trigger.project,
+            jql_filter=trigger.jql_filter,
             tags=list(trigger.tags) if trigger.tags else [],
-            project_number=getattr(trigger, "project_number", None),
-            project_scope=getattr(trigger, "project_scope", "org"),
-            project_owner=getattr(trigger, "project_owner", ""),
-            project_filter=getattr(trigger, "project_filter", ""),
+            project_number=trigger.project_number,
+            project_scope=trigger.project_scope,
+            project_owner=trigger.project_owner,
+            project_filter=trigger.project_filter,
             labels=list(trigger.labels) if trigger.labels else [],
         )
 
