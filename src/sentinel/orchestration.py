@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -24,25 +25,67 @@ from sentinel.types import (
 
 logger = get_logger(__name__)
 
-# Agent Teams timeout constants (DS-697)
+# Agent Teams timeout constants (DS-697, DS-701)
 # Agent Teams orchestrations involve multiple Claude Code processes (team lead +
 # teammates) coordinating via shared task lists and mailboxes, which takes
 # significantly longer than single-agent runs.
-AGENT_TEAMS_TIMEOUT_MULTIPLIER: int = 3
+#
+# Both constants can be overridden via environment variables so operators can
+# tune timeout behaviour per deployment without code changes (DS-701).
+
+_DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER: int = 3
+_DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS: int = 900
+
+
+def _parse_env_int(name: str, default: int) -> int:
+    """Parse an integer from an environment variable, falling back to *default*.
+
+    Args:
+        name: Environment variable name.
+        default: Value to return when the variable is unset or empty.
+
+    Returns:
+        The parsed integer value.
+
+    Raises:
+        ValueError: If the environment variable is set to a non-integer value.
+    """
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(
+            f"Environment variable {name} must be an integer, got {raw!r}"
+        ) from None
+
+
+AGENT_TEAMS_TIMEOUT_MULTIPLIER: int = _parse_env_int(
+    "AGENT_TEAMS_TIMEOUT_MULTIPLIER", _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER
+)
 """Multiplier applied to timeout_seconds when agent_teams is enabled.
 
 When an orchestration has ``agent_teams: true``, the effective timeout is
 ``timeout_seconds * AGENT_TEAMS_TIMEOUT_MULTIPLIER`` to account for the
 coordination overhead of multiple Claude Code processes.
+
+Override via the ``AGENT_TEAMS_TIMEOUT_MULTIPLIER`` environment variable.
+Default: 3.
 """
 
-AGENT_TEAMS_MIN_TIMEOUT_SECONDS: int = 900
+AGENT_TEAMS_MIN_TIMEOUT_SECONDS: int = _parse_env_int(
+    "AGENT_TEAMS_MIN_TIMEOUT_SECONDS", _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS
+)
 """Minimum recommended timeout (in seconds) for agent_teams-enabled orchestrations.
 
 If a configured ``timeout_seconds`` (before multiplier) falls below this
 threshold, a warning is logged advising the user to increase it.  The value
 of 900 seconds (15 minutes) reflects the typical coordination overhead of
 Agent Teams orchestrations.
+
+Override via the ``AGENT_TEAMS_MIN_TIMEOUT_SECONDS`` environment variable.
+Default: 900.
 """
 
 # Note: Branch validation is now handled by the shared branch_validation module
