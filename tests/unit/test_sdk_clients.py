@@ -14,6 +14,8 @@ import pytest
 
 from sentinel.agent_clients.base import AgentClientError, AgentTimeoutError, UsageInfo
 from sentinel.agent_clients.claude_sdk import (
+    _AGENT_TEAMS_ENV_VAR,
+    _build_agent_teams_env,
     _extract_usage_from_message,
     request_shutdown,
     reset_shutdown,
@@ -1541,3 +1543,159 @@ class TestClaudeSdkAgentClientUsage:
         assert '"input_tokens": 3000' in content
         assert '"output_tokens": 1500' in content
         assert '"total_cost_usd": 0.12' in content
+
+
+class TestAgentTeamsEnvVar:
+    """Tests for agent_teams env var passthrough to ClaudeAgentOptions."""
+
+    def test_agent_teams_enabled_passes_env_var_simple(self, mock_config: Config) -> None:
+        """Should pass agent teams env var when agent_teams=True via _run_simple."""
+        captured_options: list[Any] = []
+
+        def capture_query(prompt: str, **kwargs: Any) -> AsyncIterator[MockMessage]:
+            async def async_gen() -> AsyncIterator[MockMessage]:
+                captured_options.append(kwargs.get("options"))
+                yield MockMessage("done")
+            return async_gen()
+
+        with patch("sentinel.agent_clients.claude_sdk.query", side_effect=capture_query):
+            client = ClaudeSdkAgentClient(mock_config)
+            asyncio.run(client.run_agent("Do something", agent_teams=True))
+
+        assert len(captured_options) == 1
+        options = captured_options[0]
+        assert options.env == {_AGENT_TEAMS_ENV_VAR: "1"}
+
+    def test_agent_teams_disabled_no_env_var_simple(self, mock_config: Config) -> None:
+        """Should not pass agent teams env var when agent_teams=False via _run_simple."""
+        captured_options: list[Any] = []
+
+        def capture_query(prompt: str, **kwargs: Any) -> AsyncIterator[MockMessage]:
+            async def async_gen() -> AsyncIterator[MockMessage]:
+                captured_options.append(kwargs.get("options"))
+                yield MockMessage("done")
+            return async_gen()
+
+        with patch("sentinel.agent_clients.claude_sdk.query", side_effect=capture_query):
+            client = ClaudeSdkAgentClient(mock_config)
+            asyncio.run(client.run_agent("Do something", agent_teams=False))
+
+        assert len(captured_options) == 1
+        options = captured_options[0]
+        assert _AGENT_TEAMS_ENV_VAR not in options.env
+
+    def test_agent_teams_default_is_false(self, mock_config: Config) -> None:
+        """Should default agent_teams to False when not specified."""
+        captured_options: list[Any] = []
+
+        def capture_query(prompt: str, **kwargs: Any) -> AsyncIterator[MockMessage]:
+            async def async_gen() -> AsyncIterator[MockMessage]:
+                captured_options.append(kwargs.get("options"))
+                yield MockMessage("done")
+            return async_gen()
+
+        with patch("sentinel.agent_clients.claude_sdk.query", side_effect=capture_query):
+            client = ClaudeSdkAgentClient(mock_config)
+            asyncio.run(client.run_agent("Do something"))
+
+        assert len(captured_options) == 1
+        options = captured_options[0]
+        assert _AGENT_TEAMS_ENV_VAR not in options.env
+
+    def test_agent_teams_enabled_passes_env_var_streaming(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should pass agent teams env var when agent_teams=True via _run_with_log."""
+        log_dir = tmp_path / "logs"
+        captured_options: list[Any] = []
+
+        def capture_query(prompt: str, **kwargs: Any) -> AsyncIterator[MockMessage]:
+            async def async_gen() -> AsyncIterator[MockMessage]:
+                captured_options.append(kwargs.get("options"))
+                yield MockMessage("done")
+            return async_gen()
+
+        with patch("sentinel.agent_clients.claude_sdk.query", side_effect=capture_query):
+            client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
+            asyncio.run(
+                client.run_agent(
+                    "Test prompt",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test-orch",
+                    agent_teams=True,
+                )
+            )
+
+        assert len(captured_options) == 1
+        options = captured_options[0]
+        assert options.env == {_AGENT_TEAMS_ENV_VAR: "1"}
+
+    def test_agent_teams_disabled_no_env_var_streaming(
+        self, tmp_path: Path, mock_config: Config
+    ) -> None:
+        """Should not pass agent teams env var when agent_teams=False via _run_with_log."""
+        log_dir = tmp_path / "logs"
+        captured_options: list[Any] = []
+
+        def capture_query(prompt: str, **kwargs: Any) -> AsyncIterator[MockMessage]:
+            async def async_gen() -> AsyncIterator[MockMessage]:
+                captured_options.append(kwargs.get("options"))
+                yield MockMessage("done")
+            return async_gen()
+
+        with patch("sentinel.agent_clients.claude_sdk.query", side_effect=capture_query):
+            client = ClaudeSdkAgentClient(mock_config, log_base_dir=log_dir)
+            asyncio.run(
+                client.run_agent(
+                    "Test prompt",
+                    [],
+                    issue_key="DS-123",
+                    orchestration_name="test-orch",
+                    agent_teams=False,
+                )
+            )
+
+        assert len(captured_options) == 1
+        options = captured_options[0]
+        assert _AGENT_TEAMS_ENV_VAR not in options.env
+
+
+class TestBuildAgentTeamsEnv:
+    """Direct unit tests for _build_agent_teams_env() helper (DS-710).
+
+    These tests exercise the helper in isolation, complementing the indirect
+    integration-style tests in TestAgentTeamsEnvVar that verify the env dict
+    propagates through _run_query and _run_with_log.
+    """
+
+    def test_build_agent_teams_env_true_returns_env_dict(self) -> None:
+        """Should return a dict with the agent teams env var set to '1' when enabled."""
+        result = _build_agent_teams_env(agent_teams=True)
+        assert result == {_AGENT_TEAMS_ENV_VAR: "1"}
+
+    def test_build_agent_teams_env_false_returns_empty(self) -> None:
+        """Should return an empty dict when agent teams is disabled."""
+        result = _build_agent_teams_env(agent_teams=False)
+        assert result == {}
+
+    def test_build_agent_teams_env_true_value_is_string(self) -> None:
+        """Should set the env var value as a string '1', not an integer."""
+        result = _build_agent_teams_env(agent_teams=True)
+        assert isinstance(result[_AGENT_TEAMS_ENV_VAR], str)
+        assert result[_AGENT_TEAMS_ENV_VAR] == "1"
+
+    def test_build_agent_teams_env_false_has_no_keys(self) -> None:
+        """Should return a dict with no keys when disabled."""
+        result = _build_agent_teams_env(agent_teams=False)
+        assert len(result) == 0
+
+    def test_build_agent_teams_env_true_has_single_key(self) -> None:
+        """Should return a dict with exactly one key when enabled."""
+        result = _build_agent_teams_env(agent_teams=True)
+        assert len(result) == 1
+
+    def test_build_agent_teams_env_uses_correct_env_var_name(self) -> None:
+        """Should use the CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var name."""
+        result = _build_agent_teams_env(agent_teams=True)
+        assert "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" in result

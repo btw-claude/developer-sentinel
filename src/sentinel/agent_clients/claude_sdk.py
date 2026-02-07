@@ -40,6 +40,22 @@ from sentinel.rate_limiter import ClaudeRateLimiter, RateLimitExceededError
 
 logger = get_logger(__name__)
 
+# Environment variable name for enabling Claude Code's experimental Agent Teams feature.
+# Extracted as a constant to avoid duplication across code paths (DS-699).
+_AGENT_TEAMS_ENV_VAR = "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"
+
+
+def _build_agent_teams_env(agent_teams: bool) -> dict[str, str]:
+    """Build the environment dict for the agent teams feature flag.
+
+    Args:
+        agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
+
+    Returns:
+        A dict with the agent teams env var set to "1" if enabled, or an empty dict.
+    """
+    return {_AGENT_TEAMS_ENV_VAR: "1"} if agent_teams else {}
+
 
 @dataclass
 class TimingMetrics:
@@ -392,6 +408,7 @@ async def _run_query(
     cwd: str | None = None,
     collect_metrics: bool = True,
     shutdown_controller: ShutdownController | None = None,
+    agent_teams: bool = False,
 ) -> tuple[str, UsageInfo | None]:
     """Run a query using the Claude Agent SDK.
 
@@ -402,6 +419,7 @@ async def _run_query(
         collect_metrics: Whether to collect and log timing metrics.
         shutdown_controller: Optional ShutdownController for shutdown handling.
             If not provided, uses the default shared controller.
+        agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
 
     Returns:
         A tuple of (response_text, usage_info) where usage_info is extracted
@@ -412,11 +430,13 @@ async def _run_query(
     """
     metrics = TimingMetrics() if collect_metrics else None
 
+    env = _build_agent_teams_env(agent_teams)
     options = ClaudeAgentOptions(
         permission_mode="bypassPermissions",
         model=model,
         cwd=cwd,
         setting_sources=["project", "user"],  # Load skills from project and ~/.claude/skills
+        env=env,
     )
 
     # Use provided controller or fall back to shared default
@@ -713,11 +733,31 @@ class ClaudeSdkAgentClient(AgentClient):
         branch: str | None = None,
         create_branch: bool = False,
         base_branch: str = "main",
+        agent_teams: bool = False,
     ) -> AgentRunResult:
         """Run a Claude agent with the given prompt.
 
         This is an async method that properly composes with other async code
         without creating new event loops per call.
+
+        Args:
+            prompt: The prompt to send to the agent.
+            context: Optional context dict (e.g., GitHub repo info).
+            timeout_seconds: Optional timeout in seconds. If None, no timeout is applied.
+            issue_key: Optional issue key for creating a unique working directory.
+            model: Optional model identifier. If None, uses the client's default model.
+            orchestration_name: Optional orchestration name for streaming log files.
+            branch: Optional branch name to checkout/create before running the agent.
+            create_branch: If True and branch doesn't exist, create it from base_branch.
+            base_branch: Base branch to create new branches from. Defaults to "main".
+            agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
+
+        Returns:
+            AgentRunResult containing the agent's response text and optional working directory path.
+
+        Raises:
+            AgentClientError: If the agent execution fails.
+            AgentTimeoutError: If the agent execution times out.
         """
         # Check circuit breaker before attempting the request
         # This is done first to avoid unnecessary disk I/O from _create_workdir()
@@ -751,11 +791,13 @@ class ClaudeSdkAgentClient(AgentClient):
             assert issue_key is not None
             assert orchestration_name is not None
             response, usage_info = await self._run_with_log(
-                full_prompt, timeout_seconds, workdir, model, issue_key, orchestration_name
+                full_prompt, timeout_seconds, workdir, model, issue_key, orchestration_name,
+                agent_teams=agent_teams,
             )
         else:
             response, usage_info = await self._run_simple(
-                full_prompt, timeout_seconds, workdir, model
+                full_prompt, timeout_seconds, workdir, model,
+                agent_teams=agent_teams,
             )
             # When streaming is disabled but we have logging params, write full
             # response after completion
@@ -769,14 +811,28 @@ class ClaudeSdkAgentClient(AgentClient):
         timeout: int | None,
         workdir: Path | None,
         model: str | None,
+        agent_teams: bool = False,
     ) -> tuple[str, UsageInfo | None]:
         """Run agent without streaming logs.
 
         Note: Circuit breaker is checked in run_agent() before this method is called.
 
+        Args:
+            prompt: The prompt to send to the agent.
+            timeout: Optional timeout in seconds.
+            workdir: Optional working directory path.
+            model: Optional model identifier.
+            agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
+
         Returns:
             A tuple of (response_text, usage_info).
         """
+        assert not self._circuit_breaker.is_open, (
+            "Circuit breaker is OPEN - "
+            "_run_simple() must be called via run_agent(). "
+            f"State: {self._circuit_breaker.state.value}"
+        )
+
         try:
             # Acquire rate limit permit before making API call
             if not await self._rate_limiter.acquire_async(timeout=timeout):
@@ -787,6 +843,7 @@ class ClaudeSdkAgentClient(AgentClient):
                 model,
                 str(workdir) if workdir else None,
                 shutdown_controller=self._shutdown_controller,
+                agent_teams=agent_teams,
             )
             result = await asyncio.wait_for(coro, timeout=timeout) if timeout else await coro
             response, usage_info = result
@@ -884,14 +941,30 @@ class ClaudeSdkAgentClient(AgentClient):
         model: str | None,
         issue_key: str,
         orch_name: str,
+        agent_teams: bool = False,
     ) -> tuple[str, UsageInfo | None]:
         """Run agent with streaming logs.
 
         Note: Circuit breaker is checked in run_agent() before this method is called.
 
+        Args:
+            prompt: The prompt to send to the agent.
+            timeout: Optional timeout in seconds.
+            workdir: Optional working directory path.
+            model: Optional model identifier.
+            issue_key: The issue key for organizing logs.
+            orch_name: The orchestration name for organizing logs.
+            agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
+
         Returns:
             A tuple of (response_text, usage_info).
         """
+        assert not self._circuit_breaker.is_open, (
+            "Circuit breaker is OPEN - "
+            "_run_with_log() must be called via run_agent(). "
+            f"State: {self._circuit_breaker.state.value}"
+        )
+
         assert self.log_base_dir is not None
 
         # Acquire rate limit permit before making API call
@@ -939,6 +1012,7 @@ class ClaudeSdkAgentClient(AgentClient):
         status = "ERROR"
         usage_info: UsageInfo | None = None
         try:
+            env = _build_agent_teams_env(agent_teams)
             options = ClaudeAgentOptions(
                 permission_mode="bypassPermissions",
                 model=model,
@@ -947,6 +1021,7 @@ class ClaudeSdkAgentClient(AgentClient):
                     "project",
                     "user",
                 ],  # Load skills from project and ~/.claude/skills
+                env=env,
             )
             shutdown_event = self._shutdown_controller.get_shutdown_event()
 

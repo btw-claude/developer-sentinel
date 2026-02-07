@@ -1,8 +1,7 @@
 """Tests for YAML writer module.
 
-Create YAML writer module for safe orchestration file modification.
-Add timeout and cleanup improvements.
-Minor enhancements from code review.
+This module tests the YAML writer for safe orchestration file modification,
+including timeout handling, cleanup behavior, and code review enhancements.
 """
 
 import fcntl
@@ -1144,6 +1143,157 @@ orchestrations:
         """Writer should default retry interval to None (uses constant)."""
         writer = OrchestrationYamlWriter()
         assert writer._retry_interval_seconds is None
+
+
+class TestDeleteOrchestration:
+    """Tests for delete_orchestration method."""
+
+    def test_delete_orchestration_success(self, tmp_path: Path) -> None:
+        """Should successfully delete an orchestration from the file."""
+        yaml_content = """
+orchestrations:
+  - name: "orch-one"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "First"
+  - name: "orch-two"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Second"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.delete_orchestration(file_path, "orch-one")
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "orch-one" not in updated_content
+        assert "orch-two" in updated_content
+
+    def test_delete_orchestration_not_found(self, tmp_path: Path) -> None:
+        """Should return False when orchestration is not found."""
+        yaml_content = """
+orchestrations:
+  - name: "other-orch"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.delete_orchestration(file_path, "nonexistent")
+
+        assert result is False
+
+    def test_delete_orchestration_no_orchestrations_key(self, tmp_path: Path) -> None:
+        """Should return False when no orchestrations key exists."""
+        yaml_content = """
+some_other_key: value
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.delete_orchestration(file_path, "test-orch")
+
+        assert result is False
+
+    def test_delete_last_orchestration_leaves_empty_list(self, tmp_path: Path) -> None:
+        """Should leave empty orchestrations list when deleting the last one."""
+        yaml_content = """
+orchestrations:
+  - name: "only-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Only one"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.delete_orchestration(file_path, "only-orch")
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "only-orch" not in updated_content
+        assert "orchestrations" in updated_content
+        # The file should still exist with orchestrations key
+        assert file_path.exists()
+
+    def test_delete_orchestration_file_not_found(self, tmp_path: Path) -> None:
+        """Should raise error when file does not exist."""
+        writer = OrchestrationYamlWriter()
+
+        with pytest.raises(OrchestrationYamlWriterError, match="Orchestration file not found"):
+            writer.delete_orchestration(tmp_path / "nonexistent.yaml", "test")
+
+    def test_delete_orchestration_preserves_formatting(self, tmp_path: Path) -> None:
+        """Should preserve YAML formatting and comments after deletion."""
+        yaml_content = """# File-level comment
+orchestrations:
+  # First orchestration
+  - name: "delete-me"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Delete this"
+  # Second orchestration
+  - name: "keep-me"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Keep this"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        writer.delete_orchestration(file_path, "delete-me")
+
+        updated_content = file_path.read_text()
+        # File-level comment should be preserved
+        assert "# File-level comment" in updated_content
+        # Remaining orchestration should be preserved
+        assert "keep-me" in updated_content
+        assert "Keep this" in updated_content
+
+    def test_delete_orchestration_with_backup(self, tmp_path: Path) -> None:
+        """Should create backup before deleting orchestration."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+        backup_path = file_path.with_suffix(".yaml.bak")
+
+        writer = OrchestrationYamlWriter(create_backups=True)
+        writer.delete_orchestration(file_path, "test-orch")
+
+        assert backup_path.exists()
+        # Backup should contain original content
+        assert "test-orch" in backup_path.read_text()
+        # Original file should have orchestration removed
+        assert "test-orch" not in file_path.read_text()
 
 
 class TestLoggingEnhancements:

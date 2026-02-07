@@ -17,7 +17,13 @@ from sentinel.agent_clients.base import AgentClient, AgentClientError, AgentTime
 from sentinel.branch_validation import validate_runtime_branch_name
 from sentinel.github_poller import GitHubIssue
 from sentinel.logging import get_logger, log_agent_summary
-from sentinel.orchestration import GitHubContext, Orchestration, Outcome, RetryConfig
+from sentinel.orchestration import (
+    GitHubContext,
+    Orchestration,
+    Outcome,
+    RetryConfig,
+    get_effective_timeout,
+)
 from sentinel.poller import JiraIssue
 
 # Type alias for issues from any supported source
@@ -851,7 +857,8 @@ class AgentExecutor:
         """
         retry_config = orchestration.retry
         max_attempts = retry_config.max_attempts
-        timeout_seconds = orchestration.agent.timeout_seconds
+        # Apply Agent Teams timeout multiplier/minimum when applicable (DS-697)
+        timeout_seconds = get_effective_timeout(orchestration.agent)
         model = orchestration.agent.model
 
         # Build context for the agent
@@ -911,6 +918,7 @@ class AgentExecutor:
                     branch=branch,
                     create_branch=github.create_branch if github else False,
                     base_branch=github.base_branch if github else "main",
+                    agent_teams=orchestration.agent.agent_teams,
                 )
                 response = run_result.response
                 last_response = response

@@ -1,4 +1,5 @@
 {# Security audit complete - all external links have rel="noopener noreferrer" #}
+{% from "macros.html" import success_rate_display %}
 {% if state.completed_executions %}
 <table>
     <tr>
@@ -31,26 +32,36 @@
         </td>
         <td>{{ exec.duration_seconds | format_duration }}</td>
         <td>
-            {% if exec.input_tokens is not none and exec.output_tokens is not none %}
-            <span title="Input tokens">{{ exec.input_tokens }}</span><span class="text-muted">&darr;</span>
+            <span title="Input tokens">{{ "{:,}".format(exec.input_tokens) }}</span><span class="text-muted">&darr;</span>
             /
-            <span title="Output tokens">{{ exec.output_tokens }}</span><span class="text-muted">&uarr;</span>
-            {% else %}
-            <span class="text-muted">&mdash;</span>
-            {% endif %}
+            <span title="Output tokens">{{ "{:,}".format(exec.output_tokens) }}</span><span class="text-muted">&uarr;</span>
         </td>
         <td>
-            {% if exec.total_cost_usd is not none %}
             ${{ "%.4f" | format(exec.total_cost_usd) }}
-            {% else %}
-            <span class="text-muted">&mdash;</span>
-            {% endif %}
         </td>
         <td>
-            {{ exec.completed_at.strftime('%H:%M:%S') }}
+            {{ exec.completed_at.strftime('%b %d %H:%M:%S') }}
         </td>
     </tr>
     {% endfor %}
+    <tfoot>
+    <tr class="summary-row">
+        <td colspan="2"><strong>Summary</strong> ({{ state.execution_summary.total_executions }} executions)</td>
+        <td>
+            <span class="status-badge status-success">{{ state.execution_summary.success_count }}</span>
+            <span class="status-badge status-failure">{{ state.execution_summary.failure_count }}</span>
+            {{ success_rate_display(state.execution_summary.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}
+        </td>
+        <td>{{ state.execution_summary.avg_duration_seconds | format_duration }} avg</td>
+        <td>
+            <span title="Total input tokens">{{ "{:,}".format(state.execution_summary.total_input_tokens) }}</span><span class="text-muted">&darr;</span>
+            /
+            <span title="Total output tokens">{{ "{:,}".format(state.execution_summary.total_output_tokens) }}</span><span class="text-muted">&uarr;</span>
+        </td>
+        <td>${{ "%.4f" | format(state.execution_summary.total_cost_usd) }}</td>
+        <td></td>
+    </tr>
+    </tfoot>
 </table>
 {% else %}
 <p class="text-muted">No recent executions</p>

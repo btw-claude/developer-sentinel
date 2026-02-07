@@ -283,6 +283,25 @@
         }
 
         /**
+         * Toggle an orchestration detail row's expanded state.
+         * Used for inline expansion of orchestration configuration details.
+         * On first expansion, the HTMX hx-trigger="revealed" will load the detail content.
+         * On second click, the detail row collapses.
+         * @param {HTMLElement} rowElement - The clickable orchestration table row
+         * @param {string} orchName - The orchestration name used to find the detail row
+         */
+        function toggleOrchestrationDetail(rowElement, orchName) {
+            const detailRow = document.getElementById('detail-row-' + orchName);
+            if (!detailRow) {
+                console.warn('toggleOrchestrationDetail: Could not find detail row for: ' + orchName);
+                return;
+            }
+            const isExpanded = detailRow.classList.contains('expanded');
+            detailRow.classList.toggle('expanded');
+            rowElement.setAttribute('aria-expanded', !isExpanded);
+        }
+
+        /**
          * Check if a collapsible section is expanded.
          * Used in HTMX trigger expressions for conditional auto-refresh.
          * @param {string} contentId - The ID of the collapsible content element (e.g., 'system-status-content')
@@ -388,6 +407,54 @@
                 // Add success toast notification for positive user feedback
                 const statusMessage = data.enabled ? 'Enabled' : 'Disabled';
                 showToast('success', 'Orchestration ' + statusMessage.toLowerCase() + ' successfully');
+            }
+        }
+
+        /**
+         * Handle delete API response with toast notification and list refresh.
+         * Shows success or error toast and refreshes the orchestrations list on success.
+         * @param {Event} event - The HTMX event containing the XHR response
+         * @param {string} name - The name of the orchestration that was deleted
+         */
+        function handleDeleteResponse(event, name) {
+            const xhr = event.detail.xhr;
+            const status = xhr.status;
+
+            if (status >= 200 && status < 300) {
+                let data;
+                try {
+                    data = JSON.parse(xhr.response);
+                } catch (parseError) {
+                    console.error('handleDeleteResponse: Failed to parse JSON response:', parseError);
+                    showToast('error', 'Failed to process server response');
+                    return;
+                }
+
+                if (data.success) {
+                    showToast('success', 'Orchestration \'' + name + '\' deleted successfully');
+                    // Refresh the orchestrations list by triggering HTMX on the partials
+                    htmx.trigger(document.body, 'orchestration-deleted');
+                    // Also trigger a page-level refresh of orchestrations partial if present
+                    const orchPartial = document.querySelector('[hx-get*="/partials/orchestrations"]');
+                    if (orchPartial) {
+                        htmx.trigger(orchPartial, 'revealed');
+                    }
+                } else {
+                    showToast('error', 'Failed to delete orchestration \'' + name + '\'');
+                }
+            } else if (status === 429) {
+                showToast('warning', 'Rate limit exceeded. Please wait before trying again.');
+            } else {
+                let errorMessage = 'Failed to delete orchestration \'' + name + '\'';
+                try {
+                    const errorData = JSON.parse(xhr.response);
+                    if (errorData.detail) {
+                        errorMessage = errorData.detail;
+                    }
+                } catch (e) {
+                    // Use default error message
+                }
+                showToast('error', errorMessage);
             }
         }
 

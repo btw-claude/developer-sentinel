@@ -26,6 +26,7 @@ from sentinel.dashboard.state import (
     OrchestrationVersionSnapshot,
     SentinelStateAccessor,
 )
+from sentinel.state_tracker import CompletedExecutionInfo
 from tests.conftest import create_test_app
 from tests.helpers import assert_call_args_length
 
@@ -115,6 +116,14 @@ class MockSentinel:
     def get_execution_state(self) -> ExecutionStateSnapshot:
         """Return execution state snapshot with zero active executions."""
         return ExecutionStateSnapshot(active_count=0)
+
+    def get_completed_executions(self) -> list[CompletedExecutionInfo]:
+        """Return list of completed executions.
+
+        Returns an empty list by default. Override in subclasses or tests
+        to provide test data.
+        """
+        return []
 
     def is_shutdown_requested(self) -> bool:
         """Return whether shutdown has been requested."""
@@ -994,6 +1003,358 @@ orchestrations:
 
             # Should return 422 for validation error
             assert response.status_code == 422
+
+
+class TestDeleteOrchestrationEndpoint:
+    """Tests for DELETE /api/orchestrations/{name} endpoint."""
+
+    def test_delete_orchestration_success(self, temp_logs_dir: Path) -> None:
+        """Test successful deletion of an orchestration."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+  - name: "other-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Other prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.delete("/api/orchestrations/test-orch")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["name"] == "test-orch"
+
+            # Verify file was updated - orchestration should be removed
+            updated_content = orch_file.read_text()
+            assert "test-orch" not in updated_content
+            assert "other-orch" in updated_content
+
+    def test_delete_orchestration_not_found(self, temp_logs_dir: Path) -> None:
+        """Test 404 when orchestration doesn't exist."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.delete("/api/orchestrations/nonexistent")
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    def test_delete_orchestration_file_not_found(self, temp_logs_dir: Path) -> None:
+        """Test 404 when orchestration file doesn't exist."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test",
+            source_file="/nonexistent/path.yaml",
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.delete("/api/orchestrations/test-orch")
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    def test_delete_endpoint_exists(self, temp_logs_dir: Path) -> None:
+        """Test that the delete endpoint exists at the correct path."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
+
+        route_paths = [route.path for route in app.routes]
+        assert "/api/orchestrations/{name}" in route_paths
+
+    def test_delete_orchestration_rate_limited(self, temp_logs_dir: Path) -> None:
+        """Test that rapid deletes are rate limited."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "orch-1"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "First"
+  - name: "orch-2"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Second"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orchestrations = [
+            OrchestrationInfo(
+                name="orch-1",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_project_owner=None,
+                trigger_tags=[],
+                agent_prompt_preview="First",
+                source_file=str(orch_file),
+            ),
+            OrchestrationInfo(
+                name="orch-2",
+                enabled=True,
+                trigger_source="jira",
+                trigger_project="TEST",
+                trigger_project_owner=None,
+                trigger_tags=[],
+                agent_prompt_preview="Second",
+                source_file=str(orch_file),
+            ),
+        ]
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # First delete should succeed
+            response1 = client.delete("/api/orchestrations/orch-1")
+            assert response1.status_code == 200
+
+            # Immediate second delete should be rate limited (same file)
+            response2 = client.delete("/api/orchestrations/orch-2")
+            assert response2.status_code == 429
+            assert "Rate limit exceeded" in response2.json()["detail"]
+
+
+class TestEditOrchestrationEndpoint:
+    """Tests for PUT /api/orchestrations/{name} endpoint (DS-727)."""
+
+    def test_edit_orchestration_success(self, temp_logs_dir: Path) -> None:
+        """Test successful edit of an orchestration field via PUT."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Original prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Original prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.put(
+                "/api/orchestrations/test-orch",
+                json={"agent": {"prompt": "Updated prompt"}},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["name"] == "test-orch"
+
+            # Verify file was updated
+            updated_content = orch_file.read_text()
+            assert "Updated prompt" in updated_content
+
+    def test_edit_orchestration_not_found(self, temp_logs_dir: Path) -> None:
+        """Test 404 when orchestration doesn't exist."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.put(
+                "/api/orchestrations/nonexistent",
+                json={"enabled": False},
+            )
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    def test_edit_orchestration_validation_error(self, temp_logs_dir: Path) -> None:
+        """Test 422 when edit produces invalid configuration."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            # Send invalid max_concurrent (must be positive integer)
+            response = client.put(
+                "/api/orchestrations/test-orch",
+                json={"max_concurrent": -1},
+            )
+
+            assert response.status_code == 422
+
+    def test_edit_orchestration_empty_update(self, temp_logs_dir: Path) -> None:
+        """Test that empty update returns success without file modification."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        original_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+"""
+        orch_file.write_text(original_content)
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            # Send request with no fields set (all None)
+            response = client.put(
+                "/api/orchestrations/test-orch",
+                json={},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["name"] == "test-orch"
+
+    def test_edit_endpoint_exists(self, temp_logs_dir: Path) -> None:
+        """Test that the edit endpoint exists at the correct path."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
+
+        route_paths = [route.path for route in app.routes]
+        assert "/api/orchestrations/{name}" in route_paths
+
+    def test_edit_orchestration_file_not_found(self, temp_logs_dir: Path) -> None:
+        """Test 404 when orchestration file doesn't exist."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test",
+            source_file="/nonexistent/path.yaml",
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.put(
+                "/api/orchestrations/test-orch",
+                json={"enabled": False},
+            )
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
 
 
 class TestToggleRateLimiting:

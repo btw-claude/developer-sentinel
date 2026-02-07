@@ -66,6 +66,13 @@ dev = [
     # Docstring style linter - enforces Google style docstrings (DS-513)
     # See: [tool.pydocstyle] configuration below and CONTRIBUTING.md
     "pydocstyle>=6.3.0,<7.0.0",
+    # Sphinx Napoleon for docstring rendering validation (DS-686)
+    # See: tests/unit/test_docstring_napoleon.py
+    # Upper bound reverted to <10.0.0 (DS-692 item 6) for a more maintainable
+    # semver boundary. The tighter <9.2.0 bound from DS-691 was overly
+    # conservative; a major-version boundary provides a better balance
+    # between stability and maintenance burden.
+    "sphinx>=7.0.0,<10.0.0",
 ]
 
 [project.scripts]

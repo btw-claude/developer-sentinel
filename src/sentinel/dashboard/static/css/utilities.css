@@ -942,6 +942,24 @@
 }
 
 /* =============================================================================
+   SUMMARY ROW COMPONENT
+   Styles for summary/footer rows in data tables (e.g., recent executions).
+
+   Usage:
+     <tr class="summary-row">
+       <td>Summary content</td>
+     </tr>
+
+   Provides visual distinction from regular table rows with a top border
+   and subtle background color change.
+   ============================================================================= */
+
+.summary-row td {
+    border-top: 2px solid var(--accent, #0f3460);
+    background-color: var(--bg-secondary, #16213e);
+}
+
+/* =============================================================================
    RESPONSIVE UTILITIES (Future Consideration)
 
    TODO: Consider adding breakpoint prefixes for responsive variants:
@@ -957,3 +975,148 @@
 
    This would require @media queries with the appropriate breakpoints.
    ============================================================================= */
+
+/* =============================================================================
+   ORCHESTRATION DETAIL VIEW COMPONENT
+   Styles for the inline orchestration detail view with expandable rows.
+
+   BEM Structure:
+   - Block: .orchestration-detail
+   - Elements: .detail-section, .detail-row, .detail-label,
+               .prompt-block, .config-grid, .detail-actions
+   - Modifiers: (none currently)
+
+   Usage:
+     Rendered via HTMX when clicking an orchestration row.
+     Content loaded from /partials/orchestration_detail/{name}.
+   ============================================================================= */
+
+/* Container for the full detail view */
+.orchestration-detail {
+    background-color: var(--bg-primary, #1a1a2e);
+    border-top: 1px solid var(--accordion-border, var(--accent, #0f3460));
+    padding: 1rem 1.5rem;
+}
+
+/* Individual collapsible section */
+.detail-section {
+    border-bottom: 1px solid var(--accordion-border, var(--accent, #0f3460));
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+.detail-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.detail-section h4 {
+    color: var(--text-primary, #eee);
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+}
+
+/* Two-column key-value grid layout */
+.config-grid {
+    display: grid;
+    gap: 0.25rem;
+    grid-template-columns: 1fr;
+}
+
+/* Individual key-value row */
+.detail-row {
+    align-items: baseline;
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.2rem 0;
+}
+
+/* Label styling for key-value pairs */
+.detail-label {
+    color: var(--text-secondary, #aaa);
+    flex-shrink: 0;
+    font-size: 0.85em;
+    min-width: 140px;
+}
+
+/* Monospace pre block for full prompt display */
+.prompt-block {
+    background-color: var(--bg-secondary, #16213e);
+    border: 1px solid var(--accordion-border, var(--accent, #0f3460));
+    border-radius: 4px;
+    color: var(--text-primary, #eee);
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85em;
+    line-height: 1.5;
+    margin: 0.5rem 0 0 0;
+    max-height: 400px;
+    overflow: auto;
+    padding: 0.75rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Container for prompt label + block */
+.prompt-block-container {
+    margin-top: 0.5rem;
+}
+
+.prompt-block-container .detail-label {
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+/* Action buttons container */
+.detail-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+}
+
+/* Accent button style for Edit */
+.btn-sm.btn-accent {
+    background-color: var(--accent, #0f3460);
+    border: 1px solid var(--accent, #0f3460);
+    border-radius: 4px;
+    color: var(--text-primary, #eee);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.75rem;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.btn-sm.btn-accent:hover:not(:disabled) {
+    background-color: var(--accent-hover, rgba(15, 52, 96, 0.7));
+}
+
+.btn-sm.btn-accent:disabled,
+.btn-sm.btn-danger:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* Hidden detail row within orchestration table */
+.orchestration-detail-row {
+    display: none;
+}
+
+.orchestration-detail-row.expanded {
+    display: table-row;
+}
+
+.orchestration-detail-row td {
+    padding: 0;
+}
+
+/* Clickable row indicator */
+.clickable-row {
+    cursor: pointer;
+}
+
+.clickable-row:hover td {
+    background-color: var(--accordion-hover, var(--accent-hover, rgba(15, 52, 96, 0.3)));
+}

@@ -1,0 +1,222 @@
+{# Orchestration detail view - displayed inline when clicking an orchestration row #}
+<div class="orchestration-detail">
+    {# Trigger Config Section #}
+    <div class="detail-section">
+        <h4>Trigger Config</h4>
+        <div class="config-grid">
+            <div class="detail-row">
+                <span class="detail-label">Source</span>
+                <span><span class="tag">{{ detail.trigger.source }}</span></span>
+            </div>
+            {% if detail.trigger.project %}
+            <div class="detail-row">
+                <span class="detail-label">Project</span>
+                <span>{{ detail.trigger.project }}</span>
+            </div>
+            {% endif %}
+            {% if detail.trigger.project_owner %}
+            <div class="detail-row">
+                <span class="detail-label">Owner</span>
+                <span>{{ detail.trigger.project_owner }}</span>
+            </div>
+            {% endif %}
+            {% if detail.trigger.tags %}
+            <div class="detail-row">
+                <span class="detail-label">Tags</span>
+                <span>
+                    {% for tag in detail.trigger.tags %}
+                    <span class="tag">{{ tag }}</span>
+                    {% endfor %}
+                </span>
+            </div>
+            {% endif %}
+            {% if detail.trigger.labels %}
+            <div class="detail-row">
+                <span class="detail-label">Labels</span>
+                <span>
+                    {% for label in detail.trigger.labels %}
+                    <span class="tag">{{ label }}</span>
+                    {% endfor %}
+                </span>
+            </div>
+            {% endif %}
+            {% if detail.trigger.jql_filter %}
+            <div class="detail-row">
+                <span class="detail-label">JQL Filter</span>
+                <span>{{ detail.trigger.jql_filter }}</span>
+            </div>
+            {% endif %}
+            {% if detail.trigger.project_filter %}
+            <div class="detail-row">
+                <span class="detail-label">Project Filter</span>
+                <span>{{ detail.trigger.project_filter }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Agent Config Section #}
+    <div class="detail-section">
+        <h4>Agent Config</h4>
+        <div class="config-grid">
+            {% if detail.agent.agent_type %}
+            <div class="detail-row">
+                <span class="detail-label">Agent Type</span>
+                <span>{{ detail.agent.agent_type }}</span>
+            </div>
+            {% endif %}
+            {% if detail.agent.model %}
+            <div class="detail-row">
+                <span class="detail-label">Model</span>
+                <span>{{ detail.agent.model }}</span>
+            </div>
+            {% endif %}
+            {% if detail.agent.timeout_seconds %}
+            <div class="detail-row">
+                <span class="detail-label">Timeout</span>
+                <span>{{ detail.agent.timeout_seconds }}s</span>
+            </div>
+            {% endif %}
+            {% if detail.agent.cursor_mode %}
+            <div class="detail-row">
+                <span class="detail-label">Cursor Mode</span>
+                <span>{{ detail.agent.cursor_mode }}</span>
+            </div>
+            {% endif %}
+            {% if detail.agent.github %}
+            <div class="detail-row">
+                <span class="detail-label">GitHub Context</span>
+                <span>{{ detail.agent.github.org }}/{{ detail.agent.github.repo }}{% if detail.agent.github.branch %} ({{ detail.agent.github.branch }}){% endif %}</span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="prompt-block-container">
+            <span class="detail-label">Prompt</span>
+            <pre class="prompt-block">{{ detail.agent.prompt }}</pre>
+        </div>
+    </div>
+
+    {# Retry Config Section #}
+    <div class="detail-section">
+        <h4>Retry Config</h4>
+        <div class="config-grid">
+            <div class="detail-row">
+                <span class="detail-label">Max Attempts</span>
+                <span>{{ detail.retry.max_attempts }}</span>
+            </div>
+            {% if detail.retry.success_patterns %}
+            <div class="detail-row">
+                <span class="detail-label">Success Patterns</span>
+                <span>
+                    {% for pattern in detail.retry.success_patterns %}
+                    <span class="tag">{{ pattern }}</span>
+                    {% endfor %}
+                </span>
+            </div>
+            {% endif %}
+            {% if detail.retry.failure_patterns %}
+            <div class="detail-row">
+                <span class="detail-label">Failure Patterns</span>
+                <span>
+                    {% for pattern in detail.retry.failure_patterns %}
+                    <span class="tag">{{ pattern }}</span>
+                    {% endfor %}
+                </span>
+            </div>
+            {% endif %}
+            <div class="detail-row">
+                <span class="detail-label">Default Status</span>
+                <span>{{ detail.retry.default_status }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Default Outcome</span>
+                <span>{{ detail.retry.default_outcome }}</span>
+            </div>
+        </div>
+    </div>
+
+    {# Outcomes Section #}
+    {% if detail.outcomes %}
+    <div class="detail-section">
+        <h4>Outcomes</h4>
+        <table class="nested-table">
+            <tr>
+                <th>Name</th>
+                <th>Patterns</th>
+                <th>Add Tag</th>
+            </tr>
+            {% for outcome in detail.outcomes %}
+            <tr>
+                <td>{{ outcome.name }}</td>
+                <td>
+                    {% for pattern in outcome.patterns %}
+                    <span class="tag">{{ pattern }}</span>
+                    {% endfor %}
+                </td>
+                <td>{{ outcome.add_tag }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    {# Lifecycle Hooks Section #}
+    <div class="detail-section">
+        <h4>Lifecycle Hooks</h4>
+        <div class="config-grid">
+            {% if detail.lifecycle.on_start_add_tag %}
+            <div class="detail-row">
+                <span class="detail-label">On Start Add Tag</span>
+                <span class="tag">{{ detail.lifecycle.on_start_add_tag }}</span>
+            </div>
+            {% endif %}
+            {% if detail.lifecycle.on_complete_remove_tag %}
+            <div class="detail-row">
+                <span class="detail-label">On Complete Remove Tag</span>
+                <span class="tag">{{ detail.lifecycle.on_complete_remove_tag }}</span>
+            </div>
+            {% endif %}
+            {% if detail.lifecycle.on_complete_add_tag %}
+            <div class="detail-row">
+                <span class="detail-label">On Complete Add Tag</span>
+                <span class="tag">{{ detail.lifecycle.on_complete_add_tag }}</span>
+            </div>
+            {% endif %}
+            {% if detail.lifecycle.on_failure_add_tag %}
+            <div class="detail-row">
+                <span class="detail-label">On Failure Add Tag</span>
+                <span class="tag">{{ detail.lifecycle.on_failure_add_tag }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Metadata Section #}
+    <div class="detail-section">
+        <h4>Metadata</h4>
+        <div class="config-grid">
+            {% if detail.source_file %}
+            <div class="detail-row">
+                <span class="detail-label">Source File</span>
+                <span>{{ detail.source_file }}</span>
+            </div>
+            {% endif %}
+            {% if detail.max_concurrent is not none %}
+            <div class="detail-row">
+                <span class="detail-label">Max Concurrent</span>
+                <span>{{ detail.max_concurrent }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Action Buttons #}
+    <div class="detail-actions">
+        <button class="btn-sm btn-accent" disabled title="Edit functionality coming soon">Edit</button>
+        <button class="btn-sm btn-danger"
+                hx-delete="/api/orchestrations/{{ detail.name }}"
+                hx-confirm="Are you sure you want to delete the orchestration '{{ detail.name }}'? This action cannot be undone."
+                hx-swap="none"
+                hx-on::after-request="handleDeleteResponse(event, '{{ detail.name }}')">Delete</button>
+    </div>
+</div>

@@ -11,7 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from sentinel.logging import generate_log_filename, parse_log_filename
 from sentinel.types import TriggerSource
@@ -35,6 +35,105 @@ class OrchestrationInfo:
     trigger_tags: list[str]
     agent_prompt_preview: str
     source_file: str
+
+
+@dataclass(frozen=True)
+class TriggerDetailInfo:
+    """Read-only trigger detail information for the orchestration detail view.
+
+    Contains all trigger fields from the orchestration configuration.
+    """
+
+    source: str
+    project: str
+    jql_filter: str
+    tags: list[str]
+    project_number: int | None
+    project_scope: Literal["org", "user"]
+    project_owner: str
+    project_filter: str
+    labels: list[str]
+
+
+@dataclass(frozen=True)
+class GitHubContextInfo:
+    """Read-only GitHub context information for the orchestration detail view."""
+
+    host: str
+    org: str
+    repo: str
+    branch: str
+    create_branch: bool
+    base_branch: str
+
+
+@dataclass(frozen=True)
+class AgentDetailInfo:
+    """Read-only agent detail information for the orchestration detail view.
+
+    Contains the full (non-truncated) prompt and all agent configuration fields.
+    """
+
+    prompt: str
+    github: GitHubContextInfo | None
+    timeout_seconds: int | None
+    model: str | None
+    agent_type: str | None
+    cursor_mode: str | None
+    agent_teams: None  # Reserved for future use; not yet implemented in AgentConfig
+    strict_template_variables: bool
+
+
+@dataclass(frozen=True)
+class RetryDetailInfo:
+    """Read-only retry detail information for the orchestration detail view."""
+
+    max_attempts: int
+    success_patterns: list[str]
+    failure_patterns: list[str]
+    default_status: str
+    default_outcome: str
+
+
+@dataclass(frozen=True)
+class OutcomeInfo:
+    """Read-only outcome information for the orchestration detail view."""
+
+    name: str
+    patterns: list[str]
+    add_tag: str
+
+
+@dataclass(frozen=True)
+class LifecycleInfo:
+    """Read-only lifecycle information for the orchestration detail view.
+
+    Combines on_start, on_complete, and on_failure configuration.
+    """
+
+    on_start_add_tag: str
+    on_complete_remove_tag: str
+    on_complete_add_tag: str
+    on_failure_add_tag: str
+
+
+@dataclass(frozen=True)
+class OrchestrationDetailInfo:
+    """Read-only orchestration detail information for the detail view.
+
+    Contains the full orchestration configuration, including all trigger,
+    agent, retry, outcome, and lifecycle fields.
+    """
+
+    name: str
+    enabled: bool
+    max_concurrent: int | None
+    source_file: str
+    trigger: TriggerDetailInfo
+    agent: AgentDetailInfo
+    retry: RetryDetailInfo
+    outcomes: list[OutcomeInfo]
+    lifecycle: LifecycleInfo
 
 
 @dataclass(frozen=True)
@@ -148,11 +247,73 @@ class CompletedExecutionInfoView:
     orchestration_name: str
     status: str  # "success" or "failure"
     duration_seconds: float  # computed from started_at and completed_at
-    input_tokens: int | None
-    output_tokens: int | None
-    total_cost_usd: float | None
+    input_tokens: int
+    output_tokens: int
+    total_cost_usd: float
     completed_at: datetime
     issue_url: str
+
+
+@dataclass(frozen=True)
+class ExecutionSummaryStats:
+    """Aggregated summary statistics across all completed executions.
+
+    This provides global execution metrics for the dashboard Metrics tab,
+    including success rates, token/cost totals, and average durations.
+    """
+
+    total_executions: int
+    success_count: int
+    failure_count: int
+    success_rate: float  # percentage (0.0 - 100.0)
+    avg_duration_seconds: float
+    total_input_tokens: int
+    total_output_tokens: int
+    total_tokens: int
+    total_cost_usd: float
+    avg_cost_usd: float
+
+    @classmethod
+    def empty(cls) -> ExecutionSummaryStats:
+        """Create a zeroed ExecutionSummaryStats instance.
+
+        Returns an ExecutionSummaryStats with all counters, rates, and
+        totals set to zero. Useful as a default value when no executions
+        have been recorded.
+
+        Returns:
+            An ExecutionSummaryStats instance with all fields set to zero.
+        """
+        return cls(
+            total_executions=0,
+            success_count=0,
+            failure_count=0,
+            success_rate=0.0,
+            avg_duration_seconds=0.0,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_tokens=0,
+            total_cost_usd=0.0,
+            avg_cost_usd=0.0,
+        )
+
+
+@dataclass(frozen=True)
+class OrchestrationStats:
+    """Per-orchestration execution statistics.
+
+    This provides execution metrics grouped by orchestration name
+    for the dashboard Orchestrations tab.
+    """
+
+    orchestration_name: str
+    total_runs: int
+    success_count: int
+    failure_count: int
+    success_rate: float  # percentage (0.0 - 100.0)
+    avg_duration_seconds: float
+    total_cost_usd: float
+    last_run_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -226,8 +387,18 @@ class DashboardState:
     shutdown_requested: bool = False
     active_incomplete_tasks: int = 0
 
+    # Computed summary statistics
+    execution_summary: ExecutionSummaryStats = field(
+        default_factory=ExecutionSummaryStats.empty
+    )
+    orchestration_stats: list[OrchestrationStats] = field(default_factory=list)
+
     # System status - thread pool, poll times, uptime
     system_status: SystemStatusInfo | None = None
+
+    # Configurable success rate thresholds for display coloring
+    success_rate_green_threshold: float = 90.0
+    success_rate_yellow_threshold: float = 70.0
 
 
 @dataclass(frozen=True)
@@ -454,9 +625,9 @@ class SentinelStateAccessor:
                 orchestration_name=item.orchestration_name,
                 status=item.status,
                 duration_seconds=(item.completed_at - item.started_at).total_seconds(),
-                input_tokens=item.input_tokens if item.input_tokens > 0 else None,
-                output_tokens=item.output_tokens if item.output_tokens > 0 else None,
-                total_cost_usd=item.total_cost_usd if item.total_cost_usd > 0 else None,
+                input_tokens=item.input_tokens,
+                output_tokens=item.output_tokens,
+                total_cost_usd=item.total_cost_usd,
                 completed_at=item.completed_at,
                 issue_url=item.issue_url,
             )
@@ -490,6 +661,11 @@ class SentinelStateAccessor:
                 ):
                     active_github_repos.add(orch.trigger_project_owner)
 
+        # Compute execution summary statistics
+        execution_summary, orchestration_stats = self._compute_execution_stats(
+            completed_execution_views
+        )
+
         return DashboardState(
             poll_interval=config.polling.interval,
             max_concurrent_executions=config.execution.max_concurrent_executions,
@@ -509,7 +685,11 @@ class SentinelStateAccessor:
             hot_reload_metrics=hot_reload_metrics,
             shutdown_requested=sentinel.is_shutdown_requested(),
             active_incomplete_tasks=pending_count,
+            execution_summary=execution_summary,
+            orchestration_stats=orchestration_stats,
             system_status=system_status,
+            success_rate_green_threshold=config.dashboard.success_rate_green_threshold,
+            success_rate_yellow_threshold=config.dashboard.success_rate_yellow_threshold,
         )
 
     def _orchestration_to_info(self, orch: Orchestration, source_file: str) -> OrchestrationInfo:
@@ -542,6 +722,116 @@ class SentinelStateAccessor:
             trigger_tags=trigger_tags,
             agent_prompt_preview=prompt_preview,
             source_file=source_file,
+        )
+
+    def get_orchestration_detail(self, name: str) -> OrchestrationDetailInfo | None:
+        """Get detailed orchestration information by name.
+
+        Finds the orchestration by name and converts it to an
+        OrchestrationDetailInfo containing the full configuration.
+
+        Args:
+            name: The orchestration name to look up.
+
+        Returns:
+            An OrchestrationDetailInfo with full configuration, or None
+            if no orchestration with the given name is found.
+        """
+        sentinel = self._sentinel
+
+        # Find the orchestration by name
+        orch = None
+        for o in sentinel.orchestrations:
+            if o.name == name:
+                orch = o
+                break
+
+        if orch is None:
+            return None
+
+        # Get the source file from active versions
+        active_version_snapshots = sentinel.get_active_versions()
+        orch_name_to_source_file: dict[str, str] = {
+            v.name: v.source_file for v in active_version_snapshots
+        }
+        source_file = orch_name_to_source_file.get(orch.name, "")
+
+        # Convert trigger
+        trigger = orch.trigger
+        trigger_detail = TriggerDetailInfo(
+            source=getattr(trigger, "source", TriggerSource.JIRA.value),
+            project=getattr(trigger, "project", ""),
+            jql_filter=getattr(trigger, "jql_filter", ""),
+            tags=list(trigger.tags) if trigger.tags else [],
+            project_number=getattr(trigger, "project_number", None),
+            project_scope=getattr(trigger, "project_scope", "org"),
+            project_owner=getattr(trigger, "project_owner", ""),
+            project_filter=getattr(trigger, "project_filter", ""),
+            labels=list(trigger.labels) if trigger.labels else [],
+        )
+
+        # Convert GitHub context
+        github_info = None
+        if orch.agent.github is not None:
+            gh = orch.agent.github
+            github_info = GitHubContextInfo(
+                host=gh.host,
+                org=gh.org,
+                repo=gh.repo,
+                branch=gh.branch,
+                create_branch=gh.create_branch,
+                base_branch=gh.base_branch,
+            )
+
+        # Convert agent
+        agent_detail = AgentDetailInfo(
+            prompt=orch.agent.prompt,
+            github=github_info,
+            timeout_seconds=orch.agent.timeout_seconds,
+            model=orch.agent.model,
+            agent_type=orch.agent.agent_type,
+            cursor_mode=orch.agent.cursor_mode,
+            agent_teams=None,
+            strict_template_variables=orch.agent.strict_template_variables,
+        )
+
+        # Convert retry
+        retry_detail = RetryDetailInfo(
+            max_attempts=orch.retry.max_attempts,
+            success_patterns=list(orch.retry.success_patterns),
+            failure_patterns=list(orch.retry.failure_patterns),
+            default_status=orch.retry.default_status,
+            default_outcome=orch.retry.default_outcome,
+        )
+
+        # Convert outcomes
+        outcomes = [
+            OutcomeInfo(
+                name=outcome.name,
+                patterns=list(outcome.patterns),
+                add_tag=outcome.add_tag,
+            )
+            for outcome in orch.outcomes
+        ]
+
+        # Convert lifecycle
+        lifecycle = LifecycleInfo(
+            on_start_add_tag=orch.on_start.add_tag,
+            on_complete_remove_tag=orch.on_complete.remove_tag,
+            on_complete_add_tag=orch.on_complete.add_tag,
+            on_failure_add_tag=orch.on_failure.add_tag,
+        )
+
+        return OrchestrationDetailInfo(
+            name=orch.name,
+            enabled=orch.enabled,
+            max_concurrent=orch.max_concurrent,
+            source_file=source_file,
+            trigger=trigger_detail,
+            agent=agent_detail,
+            retry=retry_detail,
+            outcomes=outcomes,
+            lifecycle=lifecycle,
         )
 
     def _snapshot_to_version_info(
@@ -599,6 +889,89 @@ class SentinelStateAccessor:
         ]
 
         return jira_projects, github_repos
+
+    def _compute_execution_stats(
+        self, executions: list[CompletedExecutionInfoView]
+    ) -> tuple[ExecutionSummaryStats, list[OrchestrationStats]]:
+        """Compute summary statistics from completed executions.
+
+        Groups completed executions by orchestration name and computes
+        success rates, average durations, and token/cost totals both
+        globally and per-orchestration.
+
+        Args:
+            executions: List of completed execution info views.
+
+        Returns:
+            A tuple of (execution_summary, orchestration_stats) where
+            execution_summary contains global aggregated stats and
+            orchestration_stats contains per-orchestration stats.
+        """
+        if not executions:
+            return ExecutionSummaryStats.empty(), []
+
+        # Compute global summary stats
+        total = len(executions)
+        successes = sum(1 for e in executions if e.status == "success")
+        failures = total - successes
+        success_rate = (successes / total) * 100.0
+
+        total_duration = sum(e.duration_seconds for e in executions)
+        avg_duration = total_duration / total
+
+        total_input = sum(e.input_tokens for e in executions)
+        total_output = sum(e.output_tokens for e in executions)
+        total_tokens = total_input + total_output
+        total_cost = sum(e.total_cost_usd for e in executions)
+        avg_cost = total_cost / total
+
+        execution_summary = ExecutionSummaryStats(
+            total_executions=total,
+            success_count=successes,
+            failure_count=failures,
+            success_rate=round(success_rate, 2),
+            avg_duration_seconds=round(avg_duration, 2),
+            total_input_tokens=total_input,
+            total_output_tokens=total_output,
+            total_tokens=total_tokens,
+            total_cost_usd=round(total_cost, 6),
+            avg_cost_usd=round(avg_cost, 6),
+        )
+
+        # Compute per-orchestration stats
+        orch_groups: dict[str, list[CompletedExecutionInfoView]] = defaultdict(list)
+        for execution in executions:
+            orch_groups[execution.orchestration_name].append(execution)
+
+        orchestration_stats: list[OrchestrationStats] = []
+        for orch_name, orch_executions in sorted(orch_groups.items()):
+            orch_total = len(orch_executions)
+            orch_successes = sum(1 for e in orch_executions if e.status == "success")
+            orch_failures = orch_total - orch_successes
+            orch_success_rate = (orch_successes / orch_total) * 100.0
+
+            orch_total_duration = sum(e.duration_seconds for e in orch_executions)
+            orch_avg_duration = orch_total_duration / orch_total
+
+            orch_total_cost = sum(e.total_cost_usd for e in orch_executions)
+
+            # Find most recent execution for last_run_at
+            last_run_at = max(e.completed_at for e in orch_executions)
+
+            orchestration_stats.append(
+                OrchestrationStats(
+                    orchestration_name=orch_name,
+                    total_runs=orch_total,
+                    success_count=orch_successes,
+                    failure_count=orch_failures,
+                    success_rate=round(orch_success_rate, 2),
+                    avg_duration_seconds=round(orch_avg_duration, 2),
+                    total_cost_usd=round(orch_total_cost, 6),
+                    last_run_at=last_run_at,
+                )
+            )
+
+        return execution_summary, orchestration_stats
 
     def get_log_files(self) -> list[dict[str, Any]]:
         """Get available log files grouped by orchestration.

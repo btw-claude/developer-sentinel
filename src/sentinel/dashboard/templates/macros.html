@@ -16,3 +16,47 @@
 {% macro status_badge(active_count, total_count) %}
 <span class="badge{% if active_count == 0 %} badge--inactive{% elif active_count == total_count %} badge--success{% endif %}">{{ active_count }}/{{ total_count }}</span>
 {%- endmacro %}
+
+{#
+  Macro to render a success rate with consistent color coding.
+
+  Determines the text color class based on configurable success rate thresholds:
+  - text-success (green): When rate >= green_threshold (default 90%)
+  - text-warning (yellow): When rate >= yellow_threshold (default 70%)
+  - text-danger (red): When rate < yellow_threshold
+
+  @param rate - Success rate as a percentage (0.0 - 100.0)
+  @param green_threshold - Minimum rate for green display (default 90)
+  @param yellow_threshold - Minimum rate for yellow display (default 70)
+  @returns A span element with the rate formatted to one decimal place and appropriate color class
+#}
+{% macro success_rate_display(rate, green_threshold=90, yellow_threshold=70) %}
+<span class="{% if rate >= green_threshold %}text-success{% elif rate >= yellow_threshold %}text-warning{% else %}text-danger{% endif %}">{{ "%.1f" | format(rate) }}%</span>
+{%- endmacro %}
+
+{#
+  Macro to render a statistic value or a dash placeholder.
+
+  When the provided value is truthy, the caller block content is rendered.
+  When the value is falsy (None, 0, empty string, etc.), a styled dash
+  placeholder is rendered instead.
+
+  This macro uses Jinja2's call block pattern — it must be invoked with
+  {%% call stat_or_dash(value) %%}...{%% endcall %%} syntax so that the
+  content between the tags is available via caller().
+
+  Usage:
+    {%% call(v) stat_or_dash(orch_stats) %%}
+        {{ v.total_runs }}
+    {%% endcall %%}
+
+  @param value - The value to check for truthiness
+  @returns The caller block content if value is truthy, otherwise a dash placeholder
+#}
+{% macro stat_or_dash(value) %}
+{%- if value -%}
+{{ caller(value) }}
+{%- else -%}
+<span style="color: var(--text-secondary);">-</span>
+{%- endif -%}
+{%- endmacro %}

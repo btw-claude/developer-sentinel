@@ -1,51 +1,130 @@
 {# Security audit complete - no external links (target="_blank") in this template #}
 {% extends "base.html" %}
+{% from "macros.html" import success_rate_display %}
 
 {% block title %}Metrics - Developer Sentinel{% endblock %}
 
 {% block content %}
+{# Card 1: Execution Summary #}
 <div class="card">
-    <h2>Hot-Reload Metrics</h2>
-    {% if state.hot_reload_metrics %}
+    <h2>Execution Summary</h2>
+    {% if state.execution_summary.total_executions > 0 %}
     <div class="metric">
-        <div class="metric-label">Loaded Total</div>
-        <div class="metric-value">{{ state.hot_reload_metrics.orchestrations_loaded_total }}</div>
+        <div class="metric-label">Total Executions</div>
+        <div class="metric-value">{{ state.execution_summary.total_executions }}</div>
     </div>
     <div class="metric">
-        <div class="metric-label">Unloaded Total</div>
-        <div class="metric-value">{{ state.hot_reload_metrics.orchestrations_unloaded_total }}</div>
+        <div class="metric-label">Success Rate</div>
+        <div class="metric-value">{{ success_rate_display(state.execution_summary.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}</div>
     </div>
     <div class="metric">
-        <div class="metric-label">Reloaded Total</div>
-        <div class="metric-value">{{ state.hot_reload_metrics.orchestrations_reloaded_total }}</div>
+        <div class="metric-label">Failures</div>
+        <div class="metric-value">{{ state.execution_summary.failure_count }}</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Avg Duration</div>
+        <div class="metric-value">{{ "%.1f" | format(state.execution_summary.avg_duration_seconds) }}s</div>
     </div>
     {% else %}
-    <p style="color: var(--text-secondary);">Hot-reload metrics not available</p>
+    <p style="color: var(--text-secondary);">No completed executions to summarize</p>
     {% endif %}
 </div>
 
+{# Card 2: Cost & Token Usage #}
 <div class="card">
-    <h2>Execution Metrics</h2>
+    <h2>Cost &amp; Token Usage</h2>
+    {% if state.execution_summary.total_executions > 0 %}
     <div class="metric">
-        <div class="metric-label">Active Executions</div>
-        <div class="metric-value">{{ state.active_execution_count }}</div>
+        <div class="metric-label">Total Cost</div>
+        <div class="metric-value">${{ "%.4f" | format(state.execution_summary.total_cost_usd) }}</div>
     </div>
     <div class="metric">
-        <div class="metric-label">Available Slots</div>
-        <div class="metric-value">{{ state.available_slots }}</div>
+        <div class="metric-label">Avg Cost / Execution</div>
+        <div class="metric-value">${{ "%.4f" | format(state.execution_summary.avg_cost_usd) }}</div>
     </div>
     <div class="metric">
-        <div class="metric-label">Active Incomplete Tasks</div>
-        <div class="metric-value">{{ state.active_incomplete_tasks }}</div>
+        <div class="metric-label">Total Input Tokens</div>
+        <div class="metric-value">{{ "{:,}".format(state.execution_summary.total_input_tokens) }}</div>
     </div>
+    <div class="metric">
+        <div class="metric-label">Total Output Tokens</div>
+        <div class="metric-value">{{ "{:,}".format(state.execution_summary.total_output_tokens) }}</div>
+    </div>
+    {% else %}
+    <p style="color: var(--text-secondary);">No completed executions to summarize</p>
+    {% endif %}
 </div>
 
+{# Card 3: Per-Orchestration Breakdown #}
 <div class="card">
-    <h2>System Status</h2>
+    <h2>Per-Orchestration Breakdown</h2>
+    {% if state.orchestration_stats %}
     <table>
         <tr>
-            <th>Status</th>
+            <th>Orchestration</th>
+            <th>Runs</th>
+            <th>Success</th>
+            <th>Failures</th>
+            <th>Success Rate</th>
+            <th>Avg Duration</th>
+            <th>Total Cost</th>
+        </tr>
+        {% for orch in state.orchestration_stats %}
+        <tr>
+            <td>{{ orch.orchestration_name }}</td>
+            <td>{{ orch.total_runs }}</td>
+            <td>{{ orch.success_count }}</td>
+            <td>{{ orch.failure_count }}</td>
+            <td>{{ success_rate_display(orch.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}</td>
+            <td>{{ "%.1f" | format(orch.avg_duration_seconds) }}s</td>
+            <td>${{ "%.4f" | format(orch.total_cost_usd) }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p style="color: var(--text-secondary);">No completed executions to summarize</p>
+    {% endif %}
+</div>
+
+{# Card 4: System #}
+<div class="card">
+    <h2>System</h2>
+    <table>
+        <tr>
+            <th>Metric</th>
             <th>Value</th>
+        </tr>
+        {% if state.hot_reload_metrics %}
+        <tr>
+            <td>Orchestrations Loaded</td>
+            <td>{{ state.hot_reload_metrics.orchestrations_loaded_total }}</td>
+        </tr>
+        <tr>
+            <td>Orchestrations Unloaded</td>
+            <td>{{ state.hot_reload_metrics.orchestrations_unloaded_total }}</td>
+        </tr>
+        <tr>
+            <td>Orchestrations Reloaded</td>
+            <td>{{ state.hot_reload_metrics.orchestrations_reloaded_total }}</td>
+        </tr>
+        {% endif %}
+        <tr>
+            <td>Capacity</td>
+            <td>
+                {% if state.available_slots > 0 %}
+                <span class="status-ok">{{ state.available_slots }}/{{ state.max_concurrent_executions }} available</span>
+                {% else %}
+                <span class="status-warn">At capacity</span>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td>Active Executions</td>
+            <td>{{ state.active_execution_count }}</td>
+        </tr>
+        <tr>
+            <td>Available Slots</td>
+            <td>{{ state.available_slots }}</td>
         </tr>
         <tr>
             <td>Shutdown Requested</td>
@@ -54,16 +133,6 @@
                 <span class="status-warn">Yes</span>
                 {% else %}
                 <span class="status-ok">No</span>
-                {% endif %}
-            </td>
-        </tr>
-        <tr>
-            <td>Capacity</td>
-            <td>
-                {% if state.available_slots > 0 %}
-                <span class="status-ok">{{ state.available_slots }}/{{ state.max_concurrent_executions }} available</span>
-                {% else %}
-                <span class="status-warn">At capacity</span>
                 {% endif %}
             </td>
         </tr>

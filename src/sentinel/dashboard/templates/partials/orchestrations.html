@@ -1,3 +1,9 @@
+{% from "macros.html" import success_rate_display, stat_or_dash %}
+{# Build a lookup dict from orchestration_stats for O(1) access by name #}
+{% set stats_lookup = {} %}
+{% for stat in state.orchestration_stats %}
+    {% set _ = stats_lookup.update({stat.orchestration_name: stat}) %}
+{% endfor %}
 {% if projects %}
 <div class="nested-accordion">
     {% for project in projects %}
@@ -34,10 +40,18 @@
                 <tr>
                     <th>Name</th>
                     <th>Trigger Tags</th>
+                    <th>Last Run</th>
+                    <th>Runs</th>
+                    <th>Success Rate</th>
+                    <th>Avg Duration</th>
                     <th>Status</th>
                 </tr>
                 {% for orch in project.orchestrations %}
-                <tr>
+                {% set orch_stats = stats_lookup.get(orch.name) %}
+                <tr class="clickable-row"
+                    onclick="toggleOrchestrationDetail(this, '{{ orch.name }}')"
+                    aria-expanded="false"
+                    aria-label="Click to view details for {{ orch.name }}">
                     <td><strong>{{ orch.name }}</strong></td>
                     <td>
                         {% if orch.trigger_tags %}
@@ -49,7 +63,27 @@
                         {% endif %}
                     </td>
                     <td>
-                        <label class="toggle-switch">
+                        {% call(v) stat_or_dash(orch_stats and orch_stats.last_run_at) %}
+                        {{ orch_stats.last_run_at.strftime('%b %d %H:%M') }}
+                        {% endcall %}
+                    </td>
+                    <td>
+                        {% call(v) stat_or_dash(orch_stats) %}
+                        {{ v.total_runs }}
+                        {% endcall %}
+                    </td>
+                    <td>
+                        {% call(v) stat_or_dash(orch_stats) %}
+                        {{ success_rate_display(v.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}
+                        {% endcall %}
+                    </td>
+                    <td>
+                        {% call(v) stat_or_dash(orch_stats) %}
+                        {{ "%.1f" | format(v.avg_duration_seconds) }}s
+                        {% endcall %}
+                    </td>
+                    <td>
+                        <label class="toggle-switch" onclick="event.stopPropagation()">
                             <input type="checkbox"
                                    class="toggle-switch__input"
                                    {% if orch.enabled %}checked{% endif %}
@@ -59,6 +93,13 @@
                                    hx-on::after-request="handleToggleResponse(event)">
                             <span class="toggle-switch__slider"></span>
                         </label>
+                    </td>
+                </tr>
+                <tr class="orchestration-detail-row" id="detail-row-{{ orch.name }}">
+                    <td colspan="7"
+                        hx-get="/partials/orchestration_detail/{{ orch.name }}"
+                        hx-trigger="revealed"
+                        hx-swap="innerHTML">
                     </td>
                 </tr>
                 {% endfor %}

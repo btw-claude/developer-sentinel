@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -23,6 +24,81 @@ from sentinel.types import (
 )
 
 logger = get_logger(__name__)
+
+# Agent Teams timeout constants (DS-697, DS-701)
+# Agent Teams orchestrations involve multiple Claude Code processes (team lead +
+# teammates) coordinating via shared task lists and mailboxes, which takes
+# significantly longer than single-agent runs.
+#
+# Both constants can be overridden via environment variables so operators can
+# tune timeout behaviour per deployment without code changes (DS-701).
+
+_DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER: int = 3
+_DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS: int = 900
+
+
+def _parse_env_int(name: str, default: int) -> int:
+    """Parse an integer from an environment variable, falling back to *default*.
+
+    Args:
+        name: Environment variable name.
+        default: Value to return when the variable is unset or empty.
+
+    Returns:
+        The parsed integer value.
+
+    Raises:
+        ValueError: If the environment variable is set to a non-integer value
+            or to a value that is not a positive integer (< 1).
+    """
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(
+            f"Environment variable {name} must be an integer, got {raw!r}"
+        ) from None
+
+    if value < 1:
+        raise ValueError(
+            f"Environment variable {name} must be a positive integer (>= 1), "
+            f"got {value}"
+        )
+
+    logger.info(
+        "Using %s=%d from environment (default: %d)", name, value, default
+    )
+    return value
+
+
+AGENT_TEAMS_TIMEOUT_MULTIPLIER: int = _parse_env_int(
+    "AGENT_TEAMS_TIMEOUT_MULTIPLIER", _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER
+)
+"""Multiplier applied to timeout_seconds when agent_teams is enabled.
+
+When an orchestration has ``agent_teams: true``, the effective timeout is
+``timeout_seconds * AGENT_TEAMS_TIMEOUT_MULTIPLIER`` to account for the
+coordination overhead of multiple Claude Code processes.
+
+Override via the ``AGENT_TEAMS_TIMEOUT_MULTIPLIER`` environment variable.
+Default: 3.
+"""
+
+AGENT_TEAMS_MIN_TIMEOUT_SECONDS: int = _parse_env_int(
+    "AGENT_TEAMS_MIN_TIMEOUT_SECONDS", _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS
+)
+"""Minimum recommended timeout (in seconds) for agent_teams-enabled orchestrations.
+
+If a configured ``timeout_seconds`` (before multiplier) falls below this
+threshold, a warning is logged advising the user to increase it.  The value
+of 900 seconds (15 minutes) reflects the typical coordination overhead of
+Agent Teams orchestrations.
+
+Override via the ``AGENT_TEAMS_MIN_TIMEOUT_SECONDS`` environment variable.
+Default: 900.
+"""
 
 # Note: Branch validation is now handled by the shared branch_validation module
 
@@ -191,6 +267,13 @@ class AgentConfig:
         github: Optional GitHub repository context.
         timeout_seconds: Optional timeout in seconds for agent execution.
             If None, no timeout is applied.
+
+            **Agent Teams timeout behaviour (DS-697):** When ``agent_teams`` is
+            ``True``, the effective timeout used at execution time is
+            ``timeout_seconds * AGENT_TEAMS_TIMEOUT_MULTIPLIER`` (default 3x),
+            with a recommended minimum of ``AGENT_TEAMS_MIN_TIMEOUT_SECONDS``
+            (default 900 s / 15 min).  A warning is logged at parse time if the
+            configured value falls below the recommended minimum.
         model: Optional model identifier to use for this agent.
             If None, uses the Claude CLI's default model.
             Examples: "claude-opus-4-5-20251101", "claude-sonnet-4-20250514"
@@ -201,6 +284,15 @@ class AgentConfig:
             Only valid when agent_type is "cursor".
             Not valid when agent_type is "claude" or "codex".
             Valid values: "agent", "plan", "ask"
+        agent_teams: Whether to enable Claude Code's experimental Agent Teams
+            feature for this orchestration step. Agent Teams spawns a team of
+            Claude Code agents (e.g., developer + code reviewers) that coordinate
+            via shared task lists and mailboxes. Only valid when agent_type is
+            "claude" (Agent Teams is a Claude Code feature). Defaults to False.
+
+            When enabled, the executor automatically applies a timeout multiplier
+            (see ``AGENT_TEAMS_TIMEOUT_MULTIPLIER``) to account for the additional
+            coordination overhead of multiple Claude Code processes.
         strict_template_variables: If True, raise ValueError for unknown template
             variables instead of logging a warning. Useful for catching typos in
             prompts and branch patterns during development/testing.
@@ -213,6 +305,7 @@ class AgentConfig:
     model: str | None = None
     agent_type: AgentTypeLiteral | None = None
     cursor_mode: CursorModeLiteral | None = None
+    agent_teams: bool = False
     strict_template_variables: bool = False
 
 
@@ -657,11 +750,11 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
             valid_modes = ", ".join(f"'{m}'" for m in sorted(CursorMode.values()))
             raise OrchestrationError(f"Invalid cursor_mode '{cursor_mode}': must be {valid_modes}")
         # cursor_mode is only valid when agent_type is 'cursor'.
-        # NOTE: This uses an include-list approach (DS-646). Any agent type
+        # NOTE: This uses an exclude-list approach (DS-646). Any agent type
         # NOT listed in the tuple below will silently accept cursor_mode
-        # without validation (the implicit default behavior). When adding
-        # new AgentType values that do NOT support cursor_mode, you must
-        # add them to the tuple below so the validation rejects them.
+        # without validation. When adding new AgentType values that do NOT
+        # support cursor_mode, you must add them to the tuple below so the
+        # validation rejects them.
         if agent_type is not None and agent_type in (
             AgentType.CLAUDE.value,
             AgentType.CODEX.value,
@@ -670,6 +763,42 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
                 f"cursor_mode '{cursor_mode}' is only valid when agent_type is "
                 f"'{AgentType.CURSOR.value}'"
             )
+
+    # Parse agent_teams (defaults to False)
+    agent_teams = data.get("agent_teams", False)
+    if not isinstance(agent_teams, bool):
+        raise OrchestrationError(
+            f"Invalid agent_teams '{agent_teams}': must be a boolean"
+        )
+    # agent_teams is only valid when agent_type is "claude" (Agent Teams is a
+    # Claude Code feature, not available in Cursor or Codex).
+    # NOTE: This uses an exclude-list approach. When adding new AgentType values
+    # that do NOT support agent_teams, you must add them to the tuple below so
+    # the validation rejects them.
+    if agent_teams and agent_type is not None and agent_type in (
+        AgentType.CURSOR.value,
+        AgentType.CODEX.value,
+    ):
+        raise OrchestrationError(
+            f"agent_teams is only valid when agent_type is "
+            f"'{AgentType.CLAUDE.value}', got agent_type='{agent_type}'"
+        )
+
+    # Warn if agent_teams is enabled but timeout_seconds is below the recommended
+    # minimum (DS-697).  This is a parse-time warning so operators see it as
+    # early as possible.
+    if agent_teams and timeout is not None and timeout < AGENT_TEAMS_MIN_TIMEOUT_SECONDS:
+        logger.warning(
+            "agent_teams is enabled but timeout_seconds=%d is below the "
+            "recommended minimum of %d seconds for Agent Teams orchestrations. "
+            "The effective timeout will be %d seconds (timeout_seconds * %d). "
+            "Consider setting timeout_seconds >= %d to avoid premature timeouts.",
+            timeout,
+            AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
+            timeout * AGENT_TEAMS_TIMEOUT_MULTIPLIER,
+            AGENT_TEAMS_TIMEOUT_MULTIPLIER,
+            AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
+        )
 
     # Parse strict_template_variables (defaults to False for backwards compatibility)
     strict_template_variables = data.get("strict_template_variables", False)
@@ -685,8 +814,40 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
         model=model,
         agent_type=agent_type,
         cursor_mode=cursor_mode,
+        agent_teams=agent_teams,
         strict_template_variables=strict_template_variables,
     )
+
+
+def get_effective_timeout(agent_config: AgentConfig) -> int | None:
+    """Compute the effective timeout for an agent configuration.
+
+    When ``agent_teams`` is enabled the configured ``timeout_seconds`` is
+    multiplied by ``AGENT_TEAMS_TIMEOUT_MULTIPLIER`` to account for the
+    coordination overhead of multiple Claude Code processes.  If the result
+    is still below ``AGENT_TEAMS_MIN_TIMEOUT_SECONDS`` the minimum is used
+    instead.
+
+    When ``agent_teams`` is ``False`` the configured ``timeout_seconds`` is
+    returned unchanged.
+
+    Args:
+        agent_config: The agent configuration to compute the timeout for.
+
+    Returns:
+        The effective timeout in seconds, or ``None`` if no timeout is
+        configured.
+    """
+    timeout = agent_config.timeout_seconds
+    if timeout is None:
+        return None
+
+    if not agent_config.agent_teams:
+        return timeout
+
+    # Apply multiplier and enforce minimum for Agent Teams orchestrations
+    effective = timeout * AGENT_TEAMS_TIMEOUT_MULTIPLIER
+    return max(effective, AGENT_TEAMS_MIN_TIMEOUT_SECONDS)
 
 
 def _parse_retry(data: dict[str, Any] | None) -> RetryConfig:
