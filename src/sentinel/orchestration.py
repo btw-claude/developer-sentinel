@@ -48,17 +48,29 @@ def _parse_env_int(name: str, default: int) -> int:
         The parsed integer value.
 
     Raises:
-        ValueError: If the environment variable is set to a non-integer value.
+        ValueError: If the environment variable is set to a non-integer value
+            or to a value that is not a positive integer (< 1).
     """
     raw = os.environ.get(name, "").strip()
     if not raw:
         return default
     try:
-        return int(raw)
+        value = int(raw)
     except ValueError:
         raise ValueError(
             f"Environment variable {name} must be an integer, got {raw!r}"
         ) from None
+
+    if value < 1:
+        raise ValueError(
+            f"Environment variable {name} must be a positive integer (>= 1), "
+            f"got {value}"
+        )
+
+    logger.info(
+        "Using %s=%d from environment (default: %d)", name, value, default
+    )
+    return value
 
 
 AGENT_TEAMS_TIMEOUT_MULTIPLIER: int = _parse_env_int(
