@@ -1274,3 +1274,302 @@ orchestrations:
             for record in caplog.records
             if record.levelno == logging.WARNING
         )
+
+
+class TestUpdateOrchestration:
+    """Tests for update_orchestration method (DS-727)."""
+
+    def test_update_single_field(self, tmp_path: Path) -> None:
+        """Should update a single top-level field."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Original prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_orchestration(file_path, "test-orch", {"enabled": False})
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "enabled: false" in updated_content
+
+    def test_update_nested_dict(self, tmp_path: Path) -> None:
+        """Should deep-merge nested dict updates."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "OLD-PROJ"
+      tags:
+        - "tag1"
+    agent:
+      prompt: "Original prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_orchestration(
+            file_path,
+            "test-orch",
+            {"trigger": {"project": "NEW-PROJ"}},
+        )
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "NEW-PROJ" in updated_content
+        # source should still be there (unchanged by deep merge)
+        assert "source: jira" in updated_content
+
+    def test_update_list_field(self, tmp_path: Path) -> None:
+        """Should replace list fields entirely."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+      tags:
+        - "old-tag"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_orchestration(
+            file_path,
+            "test-orch",
+            {"trigger": {"tags": ["new-tag-1", "new-tag-2"]}},
+        )
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "new-tag-1" in updated_content
+        assert "new-tag-2" in updated_content
+        assert "old-tag" not in updated_content
+
+    def test_update_preserves_formatting(self, tmp_path: Path) -> None:
+        """Should preserve YAML comments on unchanged keys."""
+        yaml_content = """# File comment
+orchestrations:
+  # Orch comment
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"  # project comment
+    agent:
+      prompt: "Original"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        writer.update_orchestration(
+            file_path,
+            "test-orch",
+            {"agent": {"prompt": "Updated"}},
+        )
+
+        updated_content = file_path.read_text()
+        assert "# File comment" in updated_content
+        assert "# Orch comment" in updated_content
+        assert "Updated" in updated_content
+
+    def test_update_not_found(self, tmp_path: Path) -> None:
+        """Should return False when orchestration is not found."""
+        yaml_content = """
+orchestrations:
+  - name: "other-orch"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_orchestration(
+            file_path, "nonexistent", {"enabled": False}
+        )
+
+        assert result is False
+
+    def test_update_name_is_read_only(self, tmp_path: Path) -> None:
+        """Should raise error when trying to update the name field."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+
+        with pytest.raises(OrchestrationYamlWriterError, match="read-only"):
+            writer.update_orchestration(
+                file_path, "test-orch", {"name": "new-name"}
+            )
+
+    def test_update_no_orchestrations_key(self, tmp_path: Path) -> None:
+        """Should return False when no orchestrations key exists."""
+        yaml_content = """
+some_other_key: value
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_orchestration(
+            file_path, "test-orch", {"enabled": False}
+        )
+
+        assert result is False
+
+    def test_update_file_not_found(self, tmp_path: Path) -> None:
+        """Should raise error when file does not exist."""
+        writer = OrchestrationYamlWriter()
+
+        with pytest.raises(OrchestrationYamlWriterError, match="not found"):
+            writer.update_orchestration(
+                tmp_path / "nonexistent.yaml", "test", {"enabled": False}
+            )
+
+    def test_update_multiple_fields(self, tmp_path: Path) -> None:
+        """Should update multiple fields at once."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Original"
+      timeout_seconds: 300
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_orchestration(
+            file_path,
+            "test-orch",
+            {
+                "enabled": False,
+                "agent": {"prompt": "Updated", "timeout_seconds": 600},
+            },
+        )
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "enabled: false" in updated_content
+        assert "Updated" in updated_content
+        assert "600" in updated_content
+
+
+class TestReadOrchestration:
+    """Tests for read_orchestration method (DS-727)."""
+
+    def test_read_orchestration_success(self, tmp_path: Path) -> None:
+        """Should return orchestration data as plain dict."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_orchestration(file_path, "test-orch")
+
+        assert data is not None
+        assert data["name"] == "test-orch"
+        assert data["enabled"] is True
+        assert data["trigger"]["source"] == "jira"
+        assert data["trigger"]["project"] == "TEST"
+        assert data["agent"]["prompt"] == "Test prompt"
+
+    def test_read_orchestration_not_found(self, tmp_path: Path) -> None:
+        """Should return None when orchestration is not found."""
+        yaml_content = """
+orchestrations:
+  - name: "other-orch"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_orchestration(file_path, "nonexistent")
+
+        assert data is None
+
+    def test_read_orchestration_no_orchestrations_key(self, tmp_path: Path) -> None:
+        """Should return None when no orchestrations key exists."""
+        yaml_content = """
+some_other_key: value
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_orchestration(file_path, "test-orch")
+
+        assert data is None
+
+    def test_read_orchestration_returns_plain_dict(self, tmp_path: Path) -> None:
+        """Should return plain dict (not CommentedMap) for validation use."""
+        yaml_content = """
+orchestrations:
+  - name: "test-orch"
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test"
+      github:
+        host: "github.com"
+        org: "my-org"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_orchestration(file_path, "test-orch")
+
+        assert data is not None
+        # Should be plain dict, not CommentedMap
+        from ruamel.yaml.comments import CommentedMap
+
+        assert not isinstance(data, CommentedMap)
+        assert not isinstance(data["trigger"], CommentedMap)
+        assert not isinstance(data["agent"], CommentedMap)
+        assert not isinstance(data["agent"]["github"], CommentedMap)

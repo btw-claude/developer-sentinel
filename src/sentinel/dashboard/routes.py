@@ -30,9 +30,10 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from sentinel.orchestration import OrchestrationError, _parse_orchestration
 from sentinel.types import TriggerSource
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
@@ -141,6 +142,278 @@ class BulkToggleResponse(BaseModel):
 
     success: bool
     toggled_count: int
+
+
+# Pydantic models for orchestration edit endpoints (DS-727)
+class TriggerEditRequest(BaseModel):
+    """Request model for editing trigger configuration."""
+
+    source: Literal["jira", "github"] | None = None
+    project: str | None = None
+    jql_filter: str | None = None
+    tags: list[str] | None = None
+    project_number: int | None = None
+    project_scope: Literal["org", "user"] | None = None
+    project_owner: str | None = None
+    project_filter: str | None = None
+    labels: list[str] | None = None
+
+
+class GitHubContextEditRequest(BaseModel):
+    """Request model for editing GitHub context configuration."""
+
+    host: str | None = None
+    org: str | None = None
+    repo: str | None = None
+    branch: str | None = None
+    create_branch: bool | None = None
+    base_branch: str | None = None
+
+
+class AgentEditRequest(BaseModel):
+    """Request model for editing agent configuration."""
+
+    prompt: str | None = None
+    github: GitHubContextEditRequest | None = None
+    timeout_seconds: int | None = None
+    model: str | None = None
+    agent_type: Literal["claude", "codex", "cursor"] | None = None
+    cursor_mode: Literal["agent", "plan", "ask"] | None = None
+    agent_teams: bool | None = None
+    strict_template_variables: bool | None = None
+
+
+class RetryEditRequest(BaseModel):
+    """Request model for editing retry configuration."""
+
+    max_attempts: int | None = None
+    success_patterns: list[str] | None = None
+    failure_patterns: list[str] | None = None
+    default_status: Literal["success", "failure"] | None = None
+    default_outcome: str | None = None
+
+
+class OutcomeEditRequest(BaseModel):
+    """Request model for editing outcome configuration."""
+
+    name: str | None = None
+    patterns: list[str] | None = None
+    add_tag: str | None = None
+
+
+class LifecycleEditRequest(BaseModel):
+    """Request model for editing lifecycle configuration."""
+
+    on_start_add_tag: str | None = None
+    on_complete_remove_tag: str | None = None
+    on_complete_add_tag: str | None = None
+    on_failure_add_tag: str | None = None
+
+
+class OrchestrationEditRequest(BaseModel):
+    """Request model for editing an orchestration configuration.
+
+    All fields are optional. Only provided fields will be updated.
+    The 'name' field is read-only and cannot be edited.
+    """
+
+    enabled: bool | None = None
+    max_concurrent: int | None = None
+    trigger: TriggerEditRequest | None = None
+    agent: AgentEditRequest | None = None
+    retry: RetryEditRequest | None = None
+    outcomes: list[OutcomeEditRequest] | None = None
+    lifecycle: LifecycleEditRequest | None = None
+
+
+class OrchestrationEditResponse(BaseModel):
+    """Response model for orchestration edit."""
+
+    success: bool
+    name: str
+    errors: list[str] = Field(default_factory=list)
+
+
+def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
+    """Convert an OrchestrationEditRequest to a YAML-compatible update dict.
+
+    Only includes fields that were explicitly provided (not None).
+    Translates the Pydantic model structure into the YAML structure
+    used by orchestration files.
+
+    Args:
+        request: The edit request containing fields to update.
+
+    Returns:
+        A dictionary mirroring the YAML structure with only the
+        fields that should be updated.
+    """
+    updates: dict[str, Any] = {}
+
+    if request.enabled is not None:
+        updates["enabled"] = request.enabled
+
+    if request.max_concurrent is not None:
+        updates["max_concurrent"] = request.max_concurrent
+
+    if request.trigger is not None:
+        trigger: dict[str, Any] = {}
+        t = request.trigger
+        if t.source is not None:
+            trigger["source"] = t.source
+        if t.project is not None:
+            trigger["project"] = t.project
+        if t.jql_filter is not None:
+            trigger["jql_filter"] = t.jql_filter
+        if t.tags is not None:
+            trigger["tags"] = t.tags
+        if t.project_number is not None:
+            trigger["project_number"] = t.project_number
+        if t.project_scope is not None:
+            trigger["project_scope"] = t.project_scope
+        if t.project_owner is not None:
+            trigger["project_owner"] = t.project_owner
+        if t.project_filter is not None:
+            trigger["project_filter"] = t.project_filter
+        if t.labels is not None:
+            trigger["labels"] = t.labels
+        if trigger:
+            updates["trigger"] = trigger
+
+    if request.agent is not None:
+        agent: dict[str, Any] = {}
+        a = request.agent
+        if a.prompt is not None:
+            agent["prompt"] = a.prompt
+        if a.timeout_seconds is not None:
+            agent["timeout_seconds"] = a.timeout_seconds
+        if a.model is not None:
+            agent["model"] = a.model
+        if a.agent_type is not None:
+            agent["agent_type"] = a.agent_type
+        if a.cursor_mode is not None:
+            agent["cursor_mode"] = a.cursor_mode
+        if a.agent_teams is not None:
+            agent["agent_teams"] = a.agent_teams
+        if a.strict_template_variables is not None:
+            agent["strict_template_variables"] = a.strict_template_variables
+        if a.github is not None:
+            github: dict[str, Any] = {}
+            g = a.github
+            if g.host is not None:
+                github["host"] = g.host
+            if g.org is not None:
+                github["org"] = g.org
+            if g.repo is not None:
+                github["repo"] = g.repo
+            if g.branch is not None:
+                github["branch"] = g.branch
+            if g.create_branch is not None:
+                github["create_branch"] = g.create_branch
+            if g.base_branch is not None:
+                github["base_branch"] = g.base_branch
+            if github:
+                agent["github"] = github
+        if agent:
+            updates["agent"] = agent
+
+    if request.retry is not None:
+        retry: dict[str, Any] = {}
+        r = request.retry
+        if r.max_attempts is not None:
+            retry["max_attempts"] = r.max_attempts
+        if r.success_patterns is not None:
+            retry["success_patterns"] = r.success_patterns
+        if r.failure_patterns is not None:
+            retry["failure_patterns"] = r.failure_patterns
+        if r.default_status is not None:
+            retry["default_status"] = r.default_status
+        if r.default_outcome is not None:
+            retry["default_outcome"] = r.default_outcome
+        if retry:
+            updates["retry"] = retry
+
+    if request.outcomes is not None:
+        outcomes: list[dict[str, Any]] = []
+        for o in request.outcomes:
+            outcome: dict[str, Any] = {}
+            if o.name is not None:
+                outcome["name"] = o.name
+            if o.patterns is not None:
+                outcome["patterns"] = o.patterns
+            if o.add_tag is not None:
+                outcome["add_tag"] = o.add_tag
+            if outcome:
+                outcomes.append(outcome)
+        updates["outcomes"] = outcomes
+
+    if request.lifecycle is not None:
+        lc = request.lifecycle
+        if lc.on_start_add_tag is not None:
+            updates.setdefault("on_start", {})["add_tag"] = lc.on_start_add_tag
+        if lc.on_complete_remove_tag is not None:
+            updates.setdefault("on_complete", {})["remove_tag"] = lc.on_complete_remove_tag
+        if lc.on_complete_add_tag is not None:
+            updates.setdefault("on_complete", {})["add_tag"] = lc.on_complete_add_tag
+        if lc.on_failure_add_tag is not None:
+            updates.setdefault("on_failure", {})["add_tag"] = lc.on_failure_add_tag
+
+    return updates
+
+
+def _validate_orchestration_updates(
+    orch_name: str,
+    current_data: dict[str, Any],
+    updates: dict[str, Any],
+) -> list[str]:
+    """Validate orchestration updates by passing through _parse_orchestration.
+
+    Merges the updates into a copy of the current orchestration data and
+    validates the result through the existing _parse_orchestration() function.
+    This reuses ALL existing validation (branch patterns, agent_type/cursor_mode
+    combos, project keys, etc.) without duplication.
+
+    Args:
+        orch_name: The name of the orchestration being updated.
+        current_data: The current orchestration data as a plain dict.
+        updates: The updates to merge.
+
+    Returns:
+        A list of validation error messages. Empty list means validation passed.
+    """
+    # Deep merge updates into a copy of current data
+    merged = _deep_merge_dicts(current_data, updates)
+
+    # Ensure name is preserved in merged data
+    merged["name"] = orch_name
+
+    try:
+        _parse_orchestration(merged)
+        return []
+    except OrchestrationError as e:
+        return [str(e)]
+
+
+def _deep_merge_dicts(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    """Deep merge updates into a copy of base dict.
+
+    Creates a new dict with base values overridden by updates.
+    Nested dicts are recursively merged.
+
+    Args:
+        base: The base dictionary to merge into.
+        updates: The updates to apply.
+
+    Returns:
+        A new dictionary with merged values.
+    """
+    result = dict(base)
+    for key, value in updates.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge_dicts(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
 def create_routes(
@@ -880,6 +1153,114 @@ def create_routes(
                 request_body.identifier,
                 e,
             )
+            raise HTTPException(
+                status_code=500,
+                detail=str(e),
+            ) from e
+
+    @dashboard_router.put(
+        "/api/orchestrations/{name}",
+        response_model=OrchestrationEditResponse,
+        summary="Edit orchestration configuration",
+        description="Update the configuration of an orchestration by name. "
+        "Only provided fields are updated; omitted fields are left unchanged. "
+        "The 'name' field is read-only. Validates changes through the existing "
+        "orchestration parser before writing to YAML. "
+        "Rate limited to prevent rapid file writes.",
+    )
+    async def edit_orchestration(
+        name: str, request_body: OrchestrationEditRequest
+    ) -> OrchestrationEditResponse:
+        """Edit the configuration of an orchestration.
+
+        This endpoint updates orchestration fields in the YAML file.
+        Changes are validated through _parse_orchestration() before writing.
+        The change takes effect on the next hot-reload cycle.
+
+        Args:
+            name: The name of the orchestration to edit.
+            request_body: The edit request containing fields to update.
+
+        Returns:
+            OrchestrationEditResponse with success status, name, and any errors.
+
+        Raises:
+            HTTPException: 404 if orchestration not found, 422 for validation errors,
+                429 for rate limit, 500 for YAML errors.
+        """
+        logger.debug("edit_orchestration called for '%s'", name)
+        state = state_accessor.get_state()
+
+        # Find the orchestration to get its source file
+        orch_info = None
+        for orch in state.orchestrations:
+            if orch.name == name:
+                orch_info = orch
+                break
+
+        if orch_info is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found",
+            )
+
+        if not orch_info.source_file:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Source file not found for orchestration '{name}'",
+            )
+
+        source_file = Path(orch_info.source_file)
+        if not source_file.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration file not found: {source_file}",
+            )
+
+        # Build YAML-compatible update dict from Pydantic model
+        updates = _build_yaml_updates(request_body)
+
+        if not updates:
+            return OrchestrationEditResponse(success=True, name=name)
+
+        # Read current orchestration data for validation
+        try:
+            writer = OrchestrationYamlWriter()
+            current_data = writer.read_orchestration(source_file, name)
+        except OrchestrationYamlWriterError as e:
+            logger.error("Failed to read orchestration '%s': %s", name, e)
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+        if current_data is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found in file {source_file}",
+            )
+
+        # Validate the merged result through _parse_orchestration()
+        errors = _validate_orchestration_updates(name, current_data, updates)
+        if errors:
+            raise HTTPException(status_code=422, detail=errors[0])
+
+        # Check rate limit before writing
+        rate_limiter.check_rate_limit(str(source_file))
+
+        try:
+            result = writer.update_orchestration(source_file, name, updates)
+
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Orchestration '{name}' not found in file {source_file}",
+                )
+
+            # Record successful write for rate limiting
+            rate_limiter.record_write(str(source_file))
+
+            return OrchestrationEditResponse(success=True, name=name)
+
+        except OrchestrationYamlWriterError as e:
+            logger.error("Failed to edit orchestration '%s': %s", name, e)
             raise HTTPException(
                 status_code=500,
                 detail=str(e),
