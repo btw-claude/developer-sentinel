@@ -162,6 +162,7 @@ class CursorAgentClient(AgentClient):
         branch: str | None = None,
         create_branch: bool = False,
         base_branch: str = "main",
+        agent_teams: bool = False,
         mode: CursorMode | str | None = None,
     ) -> AgentRunResult:
         """Run a Cursor agent with the given prompt.
@@ -179,6 +180,8 @@ class CursorAgentClient(AgentClient):
             branch: Optional branch name (reserved for future implementation).
             create_branch: If True and branch doesn't exist, create it (reserved for future).
             base_branch: Base branch to create new branches from (reserved for future).
+            agent_teams: Whether to enable Claude Code's experimental Agent Teams feature
+                (ignored for Cursor client).
             mode: Optional operation mode (agent, plan, ask). Can be a CursorMode enum or string.
                   If None, uses the client's default mode.
 

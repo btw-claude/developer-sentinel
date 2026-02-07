@@ -174,6 +174,7 @@ class TestSentinelConcurrentExecution:
                 branch: str | None = None,
                 create_branch: bool = False,
                 base_branch: str = "main",
+                agent_teams: bool = False,
             ) -> AgentRunResult:
                 nonlocal execution_count, max_concurrent_seen
                 with lock:

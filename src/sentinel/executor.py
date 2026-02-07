@@ -911,6 +911,7 @@ class AgentExecutor:
                     branch=branch,
                     create_branch=github.create_branch if github else False,
                     base_branch=github.base_branch if github else "main",
+                    agent_teams=orchestration.agent.agent_teams,
                 )
                 response = run_result.response
                 last_response = response
