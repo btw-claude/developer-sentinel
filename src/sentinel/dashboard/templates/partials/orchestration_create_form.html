@@ -376,6 +376,10 @@
     {# The server-rendered token may be stale if the user refreshed the page, #}
     {# since CSRF tokens are single-use. This fetches a fresh one. #}
     if (typeof refreshCsrfToken === 'function') {
-        refreshCsrfToken();
+        refreshCsrfToken().then(function(token) {
+            if (!token) {
+                console.warn('CSRF token refresh failed on form load; form submissions may fail with 403');
+            }
+        });
     }
 </script>

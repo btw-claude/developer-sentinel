@@ -412,7 +412,7 @@ function submitOrchestrationCreate(formElement) {
                 // Reload the orchestrations list (HTMX will auto-refresh on next poll)
             } else if (result.status === 403 && !isRetry) {
                 // CSRF token invalid (e.g., page refresh) - auto-refresh and retry (DS-737)
-                refreshCsrfToken().then(function(newToken) {
+                return refreshCsrfToken().then(function(newToken) {
                     if (newToken) {
                         doCreate(newToken, true);
                     } else {
