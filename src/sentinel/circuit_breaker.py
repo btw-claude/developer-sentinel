@@ -271,6 +271,19 @@ class CircuitBreaker:
             return self._state
 
     @property
+    def is_open(self) -> bool:
+        """Check if the circuit breaker is currently in the OPEN state.
+
+        Provides a clean, side-effect-free API for checking circuit state
+        without requiring callers to import CircuitState. Unlike allow_request(),
+        this property does not modify metrics or internal counters.
+
+        Returns:
+            True if the circuit is open (requests would be rejected), False otherwise.
+        """
+        return self.state == CircuitState.OPEN
+
+    @property
     def metrics(self) -> CircuitBreakerMetrics:
         """Get current metrics."""
         with self._lock:
