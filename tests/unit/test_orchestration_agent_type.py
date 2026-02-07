@@ -640,3 +640,231 @@ orchestrations:
         assert orch.agent.github is not None
         assert orch.agent.github.org == "test-org"
 
+
+class TestAgentTeams:
+    """Tests for agent_teams field in AgentConfig.
+
+    These tests verify the agent_teams boolean field:
+    - Defaults to False when not specified
+    - Can be set to True when agent_type is "claude"
+    - Is rejected when agent_type is "cursor" or "codex"
+    - Must be a boolean value
+    - Is allowed when agent_type is None (default resolved at runtime)
+    """
+
+    def test_agent_teams_defaults_to_false(self, tmp_path: Path) -> None:
+        """Should default to False when agent_teams is not specified."""
+        yaml_content = """
+orchestrations:
+  - name: "no-agent-teams"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "no_agent_teams.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_teams is False
+
+    def test_agent_teams_true_with_claude_agent_type(self, tmp_path: Path) -> None:
+        """Should load agent_teams=True when agent_type is 'claude'."""
+        yaml_content = """
+orchestrations:
+  - name: "claude-agent-teams"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: claude
+      agent_teams: true
+"""
+        file_path = tmp_path / "claude_agent_teams.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_teams is True
+        assert orchestrations[0].agent.agent_type == "claude"
+
+    def test_agent_teams_false_explicit(self, tmp_path: Path) -> None:
+        """Should load agent_teams=False when explicitly set."""
+        yaml_content = """
+orchestrations:
+  - name: "explicit-false"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: claude
+      agent_teams: false
+"""
+        file_path = tmp_path / "explicit_false.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_teams is False
+
+    def test_agent_teams_with_cursor_agent_type_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when agent_teams=True with agent_type='cursor'."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-cursor-teams"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      agent_type: cursor
+      agent_teams: true
+"""
+        file_path = tmp_path / "invalid_cursor_teams.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(
+            OrchestrationError, match="agent_teams is only valid when agent_type is 'claude'"
+        ):
+            load_orchestration_file(file_path)
+
+    def test_agent_teams_with_codex_agent_type_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when agent_teams=True with agent_type='codex'."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-codex-teams"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      agent_type: codex
+      agent_teams: true
+"""
+        file_path = tmp_path / "invalid_codex_teams.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(
+            OrchestrationError, match="agent_teams is only valid when agent_type is 'claude'"
+        ):
+            load_orchestration_file(file_path)
+
+    def test_agent_teams_invalid_type_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when agent_teams is not a boolean."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-type"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      agent_type: claude
+      agent_teams: "yes"
+"""
+        file_path = tmp_path / "invalid_type.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid agent_teams.*must be a boolean"):
+            load_orchestration_file(file_path)
+
+    def test_agent_teams_integer_type_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when agent_teams is an integer instead of boolean."""
+        yaml_content = """
+orchestrations:
+  - name: "invalid-int"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      agent_type: claude
+      agent_teams: 1
+"""
+        file_path = tmp_path / "invalid_int.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid agent_teams.*must be a boolean"):
+            load_orchestration_file(file_path)
+
+    def test_agent_teams_true_without_agent_type_allowed(self, tmp_path: Path) -> None:
+        """agent_teams=True without agent_type should be allowed (resolved at runtime)."""
+        yaml_content = """
+orchestrations:
+  - name: "teams-no-type"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_teams: true
+"""
+        file_path = tmp_path / "teams_no_type.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_teams is True
+        assert orchestrations[0].agent.agent_type is None
+
+    def test_agent_teams_false_with_cursor_allowed(self, tmp_path: Path) -> None:
+        """agent_teams=False with agent_type='cursor' should be allowed (no conflict)."""
+        yaml_content = """
+orchestrations:
+  - name: "cursor-no-teams"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      agent_type: cursor
+      agent_teams: false
+"""
+        file_path = tmp_path / "cursor_no_teams.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.agent_teams is False
+        assert orchestrations[0].agent.agent_type == "cursor"
+
+    def test_agent_teams_with_all_other_config_options(self, tmp_path: Path) -> None:
+        """Should load agent_teams along with all other agent config options."""
+        yaml_content = """
+orchestrations:
+  - name: "full-teams-config"
+    trigger:
+      source: jira
+      project: "TEST"
+      tags: ["review"]
+    agent:
+      prompt: "Review the code"
+      timeout_seconds: 300
+      model: "claude-opus-4-5-20251101"
+      agent_type: claude
+      agent_teams: true
+      github:
+        host: "github.com"
+        org: "test-org"
+        repo: "test-repo"
+"""
+        file_path = tmp_path / "full_teams_config.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.prompt == "Review the code"
+        assert orch.agent.timeout_seconds == 300
+        assert orch.agent.model == "claude-opus-4-5-20251101"
+        assert orch.agent.agent_type == "claude"
+        assert orch.agent.agent_teams is True
+        assert orch.agent.github is not None
+        assert orch.agent.github.org == "test-org"
+

@@ -201,6 +201,11 @@ class AgentConfig:
             Only valid when agent_type is "cursor".
             Not valid when agent_type is "claude" or "codex".
             Valid values: "agent", "plan", "ask"
+        agent_teams: Whether to enable Claude Code's experimental Agent Teams
+            feature for this orchestration step. Agent Teams spawns a team of
+            Claude Code agents (e.g., developer + code reviewers) that coordinate
+            via shared task lists and mailboxes. Only valid when agent_type is
+            "claude" (Agent Teams is a Claude Code feature). Defaults to False.
         strict_template_variables: If True, raise ValueError for unknown template
             variables instead of logging a warning. Useful for catching typos in
             prompts and branch patterns during development/testing.
@@ -213,6 +218,7 @@ class AgentConfig:
     model: str | None = None
     agent_type: AgentTypeLiteral | None = None
     cursor_mode: CursorModeLiteral | None = None
+    agent_teams: bool = False
     strict_template_variables: bool = False
 
 
@@ -671,6 +677,26 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
                 f"'{AgentType.CURSOR.value}'"
             )
 
+    # Parse agent_teams (defaults to False)
+    agent_teams = data.get("agent_teams", False)
+    if not isinstance(agent_teams, bool):
+        raise OrchestrationError(
+            f"Invalid agent_teams '{agent_teams}': must be a boolean"
+        )
+    # agent_teams is only valid when agent_type is "claude" (Agent Teams is a
+    # Claude Code feature, not available in Cursor or Codex).
+    # NOTE: This uses an exclude-list approach. When adding new AgentType values
+    # that do NOT support agent_teams, you must add them to the tuple below so
+    # the validation rejects them.
+    if agent_teams and agent_type is not None and agent_type in (
+        AgentType.CURSOR.value,
+        AgentType.CODEX.value,
+    ):
+        raise OrchestrationError(
+            f"agent_teams is only valid when agent_type is "
+            f"'{AgentType.CLAUDE.value}', got agent_type='{agent_type}'"
+        )
+
     # Parse strict_template_variables (defaults to False for backwards compatibility)
     strict_template_variables = data.get("strict_template_variables", False)
     if not isinstance(strict_template_variables, bool):
@@ -685,6 +711,7 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
         model=model,
         agent_type=agent_type,
         cursor_mode=cursor_mode,
+        agent_teams=agent_teams,
         strict_template_variables=strict_template_variables,
     )
 
