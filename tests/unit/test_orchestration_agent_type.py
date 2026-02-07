@@ -5,18 +5,24 @@ This module contains tests for:
 - Agent type configuration (claude vs cursor)
 - Cursor mode configuration
 - Agent Teams timeout handling (DS-697)
+- Agent Teams timeout configurability via environment variables (DS-701)
 """
 
+import importlib
 import logging
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
 from sentinel.orchestration import (
+    _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
+    _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER,
     AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
     AGENT_TEAMS_TIMEOUT_MULTIPLIER,
     AgentConfig,
     OrchestrationError,
+    _parse_env_int,
     get_effective_timeout,
     load_orchestration_file,
 )
@@ -1097,10 +1103,10 @@ orchestrations:
             "below the recommended minimum" in msg for msg in warning_messages
         ), f"Unexpected timeout warning in: {warning_messages}"
 
-    def test_constants_have_expected_values(self) -> None:
-        """Should have expected constant values for timeout multiplier and minimum."""
-        assert AGENT_TEAMS_TIMEOUT_MULTIPLIER == 3
-        assert AGENT_TEAMS_MIN_TIMEOUT_SECONDS == 900
+    def test_constants_have_expected_default_values(self) -> None:
+        """Should have expected default constant values for timeout multiplier and minimum."""
+        assert _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER == 3
+        assert _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS == 900
 
     def test_effective_timeout_with_very_large_timeout(self) -> None:
         """Should correctly multiply very large timeout values."""
@@ -1122,4 +1128,91 @@ orchestrations:
         result = get_effective_timeout(config)
         # 1 * 3 = 3, which is < 900, so minimum of 900 should be used
         assert result == AGENT_TEAMS_MIN_TIMEOUT_SECONDS
+
+
+class TestAgentTeamsTimeoutEnvConfig:
+    """Tests for Agent Teams timeout configurability via environment variables (DS-701).
+
+    These tests verify that AGENT_TEAMS_TIMEOUT_MULTIPLIER and
+    AGENT_TEAMS_MIN_TIMEOUT_SECONDS can be overridden via environment
+    variables, enabling per-deployment tuning without code changes.
+    """
+
+    def test_parse_env_int_returns_default_when_unset(self) -> None:
+        """Should return default when environment variable is not set."""
+        result = _parse_env_int("NONEXISTENT_VAR_FOR_TEST_DS701", 42)
+        assert result == 42
+
+    def test_parse_env_int_returns_default_when_empty(self) -> None:
+        """Should return default when environment variable is empty."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": ""}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 42)
+        assert result == 42
+
+    def test_parse_env_int_returns_default_when_whitespace(self) -> None:
+        """Should return default when environment variable is whitespace only."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "   "}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 42)
+        assert result == 42
+
+    def test_parse_env_int_parses_valid_integer(self) -> None:
+        """Should parse a valid integer from the environment variable."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "5"}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 42)
+        assert result == 5
+
+    def test_parse_env_int_parses_with_whitespace(self) -> None:
+        """Should parse an integer with surrounding whitespace."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": " 7 "}):
+            result = _parse_env_int("TEST_PARSE_ENV_INT", 42)
+        assert result == 7
+
+    def test_parse_env_int_raises_on_non_integer(self) -> None:
+        """Should raise ValueError for a non-integer environment variable."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "not_a_number"}):
+            with pytest.raises(ValueError, match="must be an integer"):
+                _parse_env_int("TEST_PARSE_ENV_INT", 42)
+
+    def test_parse_env_int_raises_on_float(self) -> None:
+        """Should raise ValueError for a float environment variable."""
+        with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "3.5"}):
+            with pytest.raises(ValueError, match="must be an integer"):
+                _parse_env_int("TEST_PARSE_ENV_INT", 42)
+
+    def test_multiplier_env_override_on_module_reload(self) -> None:
+        """Should use env override for AGENT_TEAMS_TIMEOUT_MULTIPLIER on reload."""
+        import sentinel.orchestration as orch_mod
+
+        with mock.patch.dict("os.environ", {"AGENT_TEAMS_TIMEOUT_MULTIPLIER": "5"}):
+            importlib.reload(orch_mod)
+            assert orch_mod.AGENT_TEAMS_TIMEOUT_MULTIPLIER == 5
+
+        # Restore defaults by reloading without the env var
+        with mock.patch.dict("os.environ", {}, clear=False):
+            os_env = dict(**orch_mod.os.environ)
+            os_env.pop("AGENT_TEAMS_TIMEOUT_MULTIPLIER", None)
+            with mock.patch.dict("os.environ", os_env, clear=True):
+                importlib.reload(orch_mod)
+            assert orch_mod.AGENT_TEAMS_TIMEOUT_MULTIPLIER == _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER
+
+    def test_min_timeout_env_override_on_module_reload(self) -> None:
+        """Should use env override for AGENT_TEAMS_MIN_TIMEOUT_SECONDS on reload."""
+        import sentinel.orchestration as orch_mod
+
+        with mock.patch.dict("os.environ", {"AGENT_TEAMS_MIN_TIMEOUT_SECONDS": "1200"}):
+            importlib.reload(orch_mod)
+            assert orch_mod.AGENT_TEAMS_MIN_TIMEOUT_SECONDS == 1200
+
+        # Restore defaults by reloading without the env var
+        with mock.patch.dict("os.environ", {}, clear=False):
+            os_env = dict(**orch_mod.os.environ)
+            os_env.pop("AGENT_TEAMS_MIN_TIMEOUT_SECONDS", None)
+            with mock.patch.dict("os.environ", os_env, clear=True):
+                importlib.reload(orch_mod)
+            assert orch_mod.AGENT_TEAMS_MIN_TIMEOUT_SECONDS == _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS
+
+    def test_defaults_unchanged_without_env_vars(self) -> None:
+        """Should use defaults when no environment variables are set."""
+        assert _DEFAULT_AGENT_TEAMS_TIMEOUT_MULTIPLIER == 3
+        assert _DEFAULT_AGENT_TEAMS_MIN_TIMEOUT_SECONDS == 900
 

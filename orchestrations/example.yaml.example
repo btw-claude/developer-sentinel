@@ -848,8 +848,8 @@ orchestrations:
     on_failure:
       add_tag: "fork-failed"
 
-  # Agent Teams with Timeout Handling (DS-697)
-  # -------------------------------------------
+  # Agent Teams with Timeout Handling (DS-697, DS-701)
+  # --------------------------------------------------
   # Agent Teams orchestrations involve multiple Claude Code processes (a team
   # lead plus teammates) that coordinate via shared task lists and mailboxes.
   # This takes significantly longer than single-agent runs, so timeouts are
@@ -861,6 +861,12 @@ orchestrations:
   #    AGENT_TEAMS_MIN_TIMEOUT_SECONDS (default 900s / 15 min).
   # 3. A warning is logged at parse time if timeout_seconds is below
   #    the recommended minimum of 900 seconds.
+  #
+  # Both constants can be overridden via environment variables (DS-701):
+  #   export AGENT_TEAMS_TIMEOUT_MULTIPLIER=5
+  #   export AGENT_TEAMS_MIN_TIMEOUT_SECONDS=1200
+  # This allows different environments (dev vs production) to use different
+  # timeout settings based on their infrastructure capabilities.
   #
   # Example: timeout_seconds: 600 with agent_teams: true
   #   -> effective timeout = max(600 * 3, 900) = 1800 seconds (30 min)
