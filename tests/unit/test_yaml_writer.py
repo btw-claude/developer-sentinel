@@ -1,8 +1,7 @@
 """Tests for YAML writer module.
 
-Create YAML writer module for safe orchestration file modification.
-Add timeout and cleanup improvements.
-Minor enhancements from code review.
+This module tests the YAML writer for safe orchestration file modification,
+including timeout handling, cleanup behavior, and code review enhancements.
 """
 
 import fcntl
