@@ -66,6 +66,9 @@ dev = [
     # Docstring style linter - enforces Google style docstrings (DS-513)
     # See: [tool.pydocstyle] configuration below and CONTRIBUTING.md
     "pydocstyle>=6.3.0,<7.0.0",
+    # Sphinx Napoleon for docstring rendering validation (DS-686)
+    # See: tests/unit/test_docstring_napoleon.py
+    "sphinx>=7.0.0,<10.0.0",
 ]
 
 [project.scripts]
