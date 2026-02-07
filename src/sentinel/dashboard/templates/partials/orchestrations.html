@@ -1,3 +1,9 @@
+{% from "macros.html" import success_rate_display %}
+{# Build a lookup dict from orchestration_stats for O(1) access by name #}
+{% set stats_lookup = {} %}
+{% for stat in state.orchestration_stats %}
+    {% set _ = stats_lookup.update({stat.orchestration_name: stat}) %}
+{% endfor %}
 {% if projects %}
 <div class="nested-accordion">
     {% for project in projects %}
@@ -34,9 +40,14 @@
                 <tr>
                     <th>Name</th>
                     <th>Trigger Tags</th>
+                    <th>Last Run</th>
+                    <th>Runs</th>
+                    <th>Success Rate</th>
+                    <th>Avg Duration</th>
                     <th>Status</th>
                 </tr>
                 {% for orch in project.orchestrations %}
+                {% set orch_stats = stats_lookup.get(orch.name) %}
                 <tr>
                     <td><strong>{{ orch.name }}</strong></td>
                     <td>
@@ -44,6 +55,34 @@
                             {% for tag in orch.trigger_tags %}
                             <span class="tag">{{ tag }}</span>
                             {% endfor %}
+                        {% else %}
+                        <span style="color: var(--text-secondary);">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if orch_stats and orch_stats.last_run_at %}
+                        {{ orch_stats.last_run_at.strftime('%b %d %H:%M') }}
+                        {% else %}
+                        <span style="color: var(--text-secondary);">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if orch_stats %}
+                        {{ orch_stats.total_runs }}
+                        {% else %}
+                        <span style="color: var(--text-secondary);">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if orch_stats %}
+                        {{ success_rate_display(orch_stats.success_rate) }}
+                        {% else %}
+                        <span style="color: var(--text-secondary);">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if orch_stats %}
+                        {{ "%.1f" | format(orch_stats.avg_duration_seconds) }}s
                         {% else %}
                         <span style="color: var(--text-secondary);">-</span>
                         {% endif %}
