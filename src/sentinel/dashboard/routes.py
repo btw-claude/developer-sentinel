@@ -50,6 +50,10 @@ logger = logging.getLogger(__name__)
 # Used in both Deprecation and Sunset headers
 HEALTH_ENDPOINT_SUNSET_DATE = "Sat, 01 Jun 2026 00:00:00 GMT"
 
+# Maximum CSRF token requests allowed per client IP per minute (DS-738).
+# Guards against TTLCache exhaustion in the csrf_tokens cache (maxsize=1000).
+CSRF_TOKEN_RATE_LIMIT_PER_MINUTE = 30
+
 
 class RateLimiter:
     """Rate limiter for file write operations.
@@ -452,9 +456,10 @@ def create_routes(
         Provides a CSRF token for use in state-changing API requests.
         Tokens are single-use and expire after 1 hour.
 
-        Rate limited to 30 requests per minute per client IP to prevent
-        potential TTLCache exhaustion (DS-737). The csrf_tokens cache has
-        maxsize=1000, so unbounded generation could fill and evict valid tokens.
+        Rate limited to CSRF_TOKEN_RATE_LIMIT_PER_MINUTE requests per minute
+        per client IP to prevent potential TTLCache exhaustion (DS-737). The
+        csrf_tokens cache has maxsize=1000, so unbounded generation could fill
+        and evict valid tokens.
 
         Args:
             request: The incoming HTTP request (used for client IP extraction).
@@ -466,8 +471,14 @@ def create_routes(
             HTTPException: 429 if rate limit is exceeded.
         """
         client_ip = request.client.host if request.client else "unknown"
+        if client_ip == "unknown":
+            logger.warning(
+                "CSRF token request from unknown client IP (request.client is None); "
+                "this may indicate the app is behind a proxy that does not set "
+                "X-Forwarded-For or similar headers"
+            )
         current_count = csrf_rate_limit.get(client_ip, 0)
-        if current_count >= 30:
+        if current_count >= CSRF_TOKEN_RATE_LIMIT_PER_MINUTE:
             raise HTTPException(
                 status_code=429,
                 detail="CSRF token request rate limit exceeded. Please try again later.",
