@@ -21,8 +21,7 @@ Module Organization:
 
     - ``tests/mocks.py`` - Mock implementations of core interfaces
     - ``tests/helpers.py`` - Test helper functions (make_config, make_orchestration, etc.)
-    - ``tests/conftest.py`` - Pytest fixtures, type aliases, and re-exports for backwards
-      compatibility
+    - ``tests/conftest.py`` - Pytest fixtures, type aliases, and re-exports for backward compatibility
 
 Dashboard Test Helpers:
 
