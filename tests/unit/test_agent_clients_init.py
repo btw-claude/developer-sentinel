@@ -1,7 +1,8 @@
 """Tests for agent_clients package __init__.py exports.
 
 Validates that all expected symbols are exported from the agent_clients
-package and are importable, following the pattern in test_validation.py.
+package, are importable, and that each re-exported symbol is the identical
+object (``is``) as the one in its source submodule.
 """
 
 from __future__ import annotations
@@ -121,8 +122,7 @@ class TestAgentClientsModuleAll:
         (``is``) to ``<source_module>.<symbol>``, catching accidental
         shadowing or stale re-exports.
         """
-        import sentinel.agent_clients as pkg
-
+        pkg = importlib.import_module("sentinel.agent_clients")
         src_mod = importlib.import_module(source_module)
         package_obj = getattr(pkg, symbol)
         source_obj = getattr(src_mod, symbol)
