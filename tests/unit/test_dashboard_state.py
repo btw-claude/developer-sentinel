@@ -7,7 +7,7 @@ Also tests for configurable success rate thresholds propagation to DashboardStat
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sentinel.config import Config, ExecutionConfig
 from sentinel.dashboard.state import (
@@ -50,7 +50,7 @@ def make_execution(
         A CompletedExecutionInfoView instance with the specified parameters.
     """
     if completed_at is None:
-        completed_at = datetime.now()
+        completed_at = datetime.now(tz=UTC)
 
     return CompletedExecutionInfoView(
         issue_key=issue_key,
@@ -401,7 +401,7 @@ class TestComputeExecutionStatsLastRunAt:
     def test_last_run_at_picks_most_recent_completed_at(self) -> None:
         """Test that last_run_at is the most recent completed_at per orchestration."""
         accessor = _create_accessor()
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
         earliest = now - timedelta(hours=3)
         middle = now - timedelta(hours=1)
         latest = now
@@ -420,7 +420,7 @@ class TestComputeExecutionStatsLastRunAt:
     def test_last_run_at_per_orchestration(self) -> None:
         """Test that last_run_at is computed independently per orchestration."""
         accessor = _create_accessor()
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
         time_a = now - timedelta(hours=2)
         time_b = now - timedelta(hours=1)
 
@@ -542,7 +542,9 @@ class TestComputeExecutionStatsRounding:
 
         # Total: 0.6666666, rounded to 6 decimal places
         assert summary.total_cost_usd == 0.666667
-        # Average: 0.6666666 / 3 = 0.2222222, rounded to 6 decimal places
+        # Average: 0.6666666 / 3 = 0.2222222, rounded to 6 decimal places.
+        # The 7th digit is 2 (< 5), so the value rounds down to 0.222222
+        # rather than up to 0.222223.
         assert summary.avg_cost_usd == 0.222222
 
 
