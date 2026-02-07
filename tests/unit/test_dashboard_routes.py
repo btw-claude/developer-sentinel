@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sentinel.config import Config, DashboardConfig, ExecutionConfig
@@ -25,6 +26,13 @@ from sentinel.dashboard.state import (
     OrchestrationInfo,
     OrchestrationVersionSnapshot,
     SentinelStateAccessor,
+)
+from sentinel.orchestration import (
+    AgentConfig,
+    GitHubContext,
+    Orchestration,
+    RetryConfig,
+    TriggerConfig,
 )
 from sentinel.state_tracker import CompletedExecutionInfo
 from tests.conftest import create_test_app
@@ -1764,3 +1772,214 @@ class TestCreateRoutesLogging:
             call_args = mock_logger.debug.call_args
             assert_call_args_length(call_args, 5)
             assert call_args[0][4] == 20000
+
+
+class MockSentinelForEditForm(MockSentinel):
+    """Mock Sentinel with real orchestrations for edit form endpoint tests.
+
+    Extends MockSentinel to return actual Orchestration instances, which is
+    required by SentinelStateAccessor.get_orchestration_detail(). This enables
+    testing the GET /partials/orchestration_edit/{name} endpoint that renders
+    the edit form template.
+    """
+
+    def __init__(
+        self,
+        config: Config,
+        orchestration_list: list[Orchestration] | None = None,
+        active_versions: list[OrchestrationVersionSnapshot] | None = None,
+    ) -> None:
+        super().__init__(config)
+        self._orchestration_list = orchestration_list or []
+        self._active_versions = active_versions or []
+
+    @property
+    def orchestrations(self) -> list[Any]:
+        """Return the list of active orchestrations."""
+        return self._orchestration_list
+
+    def get_active_versions(self) -> list[OrchestrationVersionSnapshot]:
+        """Return active version snapshots."""
+        return self._active_versions
+
+
+class TestEditFormPartialEndpoint:
+    """Tests for GET /partials/orchestration_edit/{name} endpoint (DS-728).
+
+    Tests the edit form partial that renders a pre-populated HTMX form
+    for inline orchestration editing.
+    """
+
+    @staticmethod
+    def _create_app_with_templates(
+        accessor: SentinelStateAccessor,
+        config: Config | None = None,
+    ) -> FastAPI:
+        """Create a test FastAPI app with Jinja2 templates configured.
+
+        The edit form endpoint requires Jinja2 templates, so this helper
+        configures the template environment the same way the production
+        create_app() does.
+        """
+        from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+        from sentinel.dashboard.app import TemplateEnvironmentWrapper, format_duration
+
+        app = create_test_app(accessor, config)
+
+        templates_dir = Path(__file__).parent.parent.parent / "src" / "sentinel" / "dashboard" / "templates"
+        template_env = Environment(
+            loader=FileSystemLoader(str(templates_dir)),
+            autoescape=select_autoescape(["html", "xml"]),
+            enable_async=True,
+        )
+        template_env.filters["format_duration"] = format_duration
+        app.state.templates = TemplateEnvironmentWrapper(template_env)
+
+        return app
+
+    def _make_orchestration(
+        self,
+        name: str = "test-orch",
+        source: str = "jira",
+        project: str = "TEST",
+        prompt: str = "Test prompt",
+        github: GitHubContext | None = None,
+        agent_type: str | None = None,
+    ) -> Orchestration:
+        """Create a test Orchestration instance."""
+        return Orchestration(
+            name=name,
+            trigger=TriggerConfig(source=source, project=project),
+            agent=AgentConfig(
+                prompt=prompt,
+                github=github,
+                agent_type=agent_type,
+            ),
+            retry=RetryConfig(),
+        )
+
+    def test_edit_form_returns_200_for_existing_orchestration(self, temp_logs_dir: Path) -> None:
+        """Test that edit form partial returns 200 for an existing orchestration."""
+        orch = self._make_orchestration(name="my-orch", prompt="Review the code")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/my-orch")
+
+            assert response.status_code == 200
+
+    def test_edit_form_returns_404_for_nonexistent_orchestration(
+        self, temp_logs_dir: Path
+    ) -> None:
+        """Test that edit form partial returns 404 for unknown orchestration name."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/nonexistent")
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    def test_edit_form_contains_orchestration_name(self, temp_logs_dir: Path) -> None:
+        """Test that edit form HTML contains the orchestration name."""
+        orch = self._make_orchestration(name="review-orch", prompt="Review code")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/review-orch")
+
+            assert response.status_code == 200
+            assert "review-orch" in response.text
+
+    def test_edit_form_contains_prompt_text(self, temp_logs_dir: Path) -> None:
+        """Test that edit form HTML contains the agent prompt text."""
+        orch = self._make_orchestration(name="test-orch", prompt="Analyze and fix the bug")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/test-orch")
+
+            assert response.status_code == 200
+            assert "Analyze and fix the bug" in response.text
+
+    def test_edit_form_contains_form_element(self, temp_logs_dir: Path) -> None:
+        """Test that edit form HTML contains a form element with correct ID."""
+        orch = self._make_orchestration(name="form-orch")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/form-orch")
+
+            assert response.status_code == 200
+            assert 'id="edit-form-form-orch"' in response.text
+
+    def test_edit_form_contains_save_and_cancel_buttons(self, temp_logs_dir: Path) -> None:
+        """Test that edit form HTML contains Save and Cancel action buttons."""
+        orch = self._make_orchestration(name="btn-orch")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/btn-orch")
+
+            assert response.status_code == 200
+            assert "Save" in response.text
+            assert "Cancel" in response.text
+
+    def test_edit_form_contains_trigger_source_radio(self, temp_logs_dir: Path) -> None:
+        """Test that edit form contains trigger source radio buttons."""
+        orch = self._make_orchestration(name="radio-orch", source="jira")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/radio-orch")
+
+            assert response.status_code == 200
+            assert 'name="trigger_source"' in response.text
+            assert 'value="jira"' in response.text
+            assert 'value="github"' in response.text
+
+    def test_edit_form_endpoint_exists(self, temp_logs_dir: Path) -> None:
+        """Test that the edit form endpoint exists at the correct path."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        route_paths = [route.path for route in app.routes]
+        assert "/partials/orchestration_edit/{name}" in route_paths
+
+    def test_edit_form_returns_html_content_type(self, temp_logs_dir: Path) -> None:
+        """Test that edit form endpoint returns HTML content type."""
+        orch = self._make_orchestration(name="html-orch")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/html-orch")
+
+            assert response.status_code == 200
+            assert "text/html" in response.headers["content-type"]
