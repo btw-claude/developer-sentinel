@@ -1,0 +1,375 @@
+{# Orchestration creation form - displayed when clicking New Orchestration button #}
+<div class="orchestration-detail">
+    <form id="create-form">
+        {# Name and File Section #}
+        <div class="detail-section">
+            <h4>Basic Configuration</h4>
+            <div class="config-grid">
+                <div class="detail-row">
+                    <label class="detail-label" for="create_name">Name *</label>
+                    <input type="text" id="create_name" name="create_name" required
+                           placeholder="Unique orchestration name"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+
+                <div class="detail-row">
+                    <label class="detail-label" for="target_file_selector">Target File *</label>
+                    <select id="target_file_selector" name="target_file_selector"
+                            onchange="toggleNewFileInput(this.value)"
+                            style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                        <option value="">-- Select existing file or create new --</option>
+                        <option value="__new__">Create new file...</option>
+                    </select>
+                </div>
+
+                <div class="detail-row" id="new-file-row" style="display: none;">
+                    <label class="detail-label" for="new_file_name">New File Name</label>
+                    <input type="text" id="new_file_name" name="new_file_name"
+                           placeholder="e.g., my-orchestration.yaml"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+
+                <div class="detail-row">
+                    <label class="detail-label" for="create_enabled">Enabled</label>
+                    <label>
+                        <input type="checkbox" id="create_enabled" name="create_enabled" checked>
+                        Yes
+                    </label>
+                </div>
+
+                <div class="detail-row">
+                    <label class="detail-label" for="create_max_concurrent">Max Concurrent</label>
+                    <input type="number" id="create_max_concurrent" name="create_max_concurrent"
+                           min="1" placeholder="Optional"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+            </div>
+        </div>
+
+        {# Trigger Config Section #}
+        <div class="detail-section">
+            <h4>Trigger Config</h4>
+            <div class="config-grid">
+                <div class="detail-row">
+                    <label class="detail-label">Source</label>
+                    <div>
+                        <label style="margin-right: 1rem;">
+                            <input type="radio" name="trigger_source" value="jira" checked
+                                   onchange="toggleTriggerFields(this.value)">
+                            Jira
+                        </label>
+                        <label>
+                            <input type="radio" name="trigger_source" value="github"
+                                   onchange="toggleTriggerFields(this.value)">
+                            GitHub
+                        </label>
+                    </div>
+                </div>
+
+                {# Jira-specific fields #}
+                <div id="jira-fields" style="display: block;">
+                    <div class="detail-row">
+                        <label class="detail-label" for="jira_project">Project</label>
+                        <input type="text" id="jira_project" name="jira_project"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="jira_jql_filter">JQL Filter</label>
+                        <input type="text" id="jira_jql_filter" name="jira_jql_filter"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="jira_tags">Tags</label>
+                        <input type="text" id="jira_tags" name="jira_tags"
+                               placeholder="comma-separated"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                </div>
+
+                {# GitHub-specific fields #}
+                <div id="github-fields" style="display: none;">
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_project_number">Project Number</label>
+                        <input type="number" id="github_project_number" name="github_project_number"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label">Project Scope</label>
+                        <div>
+                            <label style="margin-right: 1rem;">
+                                <input type="radio" name="github_project_scope" value="org" checked>
+                                Org
+                            </label>
+                            <label>
+                                <input type="radio" name="github_project_scope" value="user">
+                                User
+                            </label>
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_project_owner">Project Owner</label>
+                        <input type="text" id="github_project_owner" name="github_project_owner"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_project_filter">Project Filter</label>
+                        <input type="text" id="github_project_filter" name="github_project_filter"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_labels">Labels</label>
+                        <input type="text" id="github_labels" name="github_labels"
+                               placeholder="comma-separated"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Agent Config Section #}
+        <div class="detail-section">
+            <h4>Agent Config</h4>
+            <div class="config-grid">
+                <div class="detail-row">
+                    <label class="detail-label" for="agent_type">Agent Type</label>
+                    <select id="agent_type" name="agent_type"
+                            onchange="toggleCursorMode(this.value)"
+                            style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                        <option value="claude" selected>Claude</option>
+                        <option value="cursor">Cursor</option>
+                        <option value="codex">Codex</option>
+                    </select>
+                </div>
+
+                <div class="detail-row" id="cursor-mode-row" style="display: none;">
+                    <label class="detail-label" for="cursor_mode">Cursor Mode</label>
+                    <select id="cursor_mode" name="cursor_mode"
+                            style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                        <option value="agent" selected>Agent</option>
+                        <option value="plan">Plan</option>
+                        <option value="ask">Ask</option>
+                    </select>
+                </div>
+
+                <div class="detail-row">
+                    <label class="detail-label" for="model">Model</label>
+                    <input type="text" id="model" name="model"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+
+                <div class="detail-row">
+                    <label class="detail-label" for="timeout_seconds">Timeout (seconds)</label>
+                    <input type="number" id="timeout_seconds" name="timeout_seconds"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+            </div>
+
+            <div class="prompt-block-container">
+                <label class="detail-label" for="prompt">Prompt</label>
+                <textarea id="prompt" name="prompt" rows="8"
+                          style="width: 100%; padding: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px; font-family: 'Courier New', Courier, monospace; font-size: 0.85em; resize: vertical;"></textarea>
+            </div>
+
+            {# GitHub Context Sub-form #}
+            <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--accent); border-radius: 4px;">
+                <h5 style="margin: 0 0 0.75rem 0; color: var(--text-primary); font-size: 0.85rem;">GitHub Context</h5>
+                <div class="config-grid">
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_host">Host</label>
+                        <input type="text" id="github_host" name="github_host"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-primary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_org">Organization</label>
+                        <input type="text" id="github_org" name="github_org"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-primary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_repo">Repository</label>
+                        <input type="text" id="github_repo" name="github_repo"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-primary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_branch">Branch</label>
+                        <input type="text" id="github_branch" name="github_branch"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-primary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_create_branch">Create Branch</label>
+                        <label>
+                            <input type="checkbox" id="github_create_branch" name="github_create_branch">
+                            Yes
+                        </label>
+                    </div>
+                    <div class="detail-row">
+                        <label class="detail-label" for="github_base_branch">Base Branch</label>
+                        <input type="text" id="github_base_branch" name="github_base_branch"
+                               style="flex: 1; padding: 0.25rem; background: var(--bg-primary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Retry Config Section #}
+        <div class="detail-section">
+            <h4>Retry Config</h4>
+            <div class="config-grid">
+                <div class="detail-row">
+                    <label class="detail-label" for="max_attempts">Max Attempts</label>
+                    <input type="number" id="max_attempts" name="max_attempts"
+                           value="1" min="1"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="success_patterns">Success Patterns</label>
+                    <textarea id="success_patterns" name="success_patterns" rows="3"
+                              placeholder="one pattern per line"
+                              style="flex: 1; padding: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px; font-family: 'Courier New', Courier, monospace; font-size: 0.85em; resize: vertical;"></textarea>
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="failure_patterns">Failure Patterns</label>
+                    <textarea id="failure_patterns" name="failure_patterns" rows="3"
+                              placeholder="one pattern per line"
+                              style="flex: 1; padding: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px; font-family: 'Courier New', Courier, monospace; font-size: 0.85em; resize: vertical;"></textarea>
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label">Default Status</label>
+                    <div>
+                        <label style="margin-right: 1rem;">
+                            <input type="radio" name="default_status" value="success" checked>
+                            Success
+                        </label>
+                        <label>
+                            <input type="radio" name="default_status" value="failure">
+                            Failure
+                        </label>
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="default_outcome">Default Outcome</label>
+                    <input type="text" id="default_outcome" name="default_outcome"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+            </div>
+        </div>
+
+        {# Outcomes Section #}
+        <div class="detail-section">
+            <h4>Outcomes</h4>
+            <div id="outcomes-container">
+            </div>
+            <button type="button" onclick="addOutcome()" class="btn-sm btn-accent" style="margin-top: 0.5rem;">Add Outcome</button>
+        </div>
+
+        {# Lifecycle Hooks Section #}
+        <div class="detail-section">
+            <h4>Lifecycle Hooks</h4>
+            <div class="config-grid">
+                <div class="detail-row">
+                    <label class="detail-label" for="on_start_add_tag">On Start Add Tag</label>
+                    <input type="text" id="on_start_add_tag" name="on_start_add_tag"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="on_complete_remove_tag">On Complete Remove Tag</label>
+                    <input type="text" id="on_complete_remove_tag" name="on_complete_remove_tag"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="on_complete_add_tag">On Complete Add Tag</label>
+                    <input type="text" id="on_complete_add_tag" name="on_complete_add_tag"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="on_failure_add_tag">On Failure Add Tag</label>
+                    <input type="text" id="on_failure_add_tag" name="on_failure_add_tag"
+                           style="flex: 1; padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+                </div>
+            </div>
+        </div>
+
+        {# Action Buttons #}
+        <div class="detail-actions">
+            <button type="button" class="btn-sm btn-accent" onclick="submitOrchestrationCreate(this.closest('form'))">Create</button>
+            <button type="button" class="btn-sm"
+                    onclick="document.getElementById('create-form-container').style.display = 'none';"
+                    style="background-color: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); padding: 0.25rem 0.75rem; font-size: 0.8rem; border-radius: 4px; cursor: pointer;">Cancel</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    {# Load existing YAML files into the selector #}
+    (function() {
+        fetch('/api/orchestrations/files')
+            .then(function(response) { return response.json(); })
+            .then(function(files) {
+                var selector = document.getElementById('target_file_selector');
+                if (selector && files && files.length > 0) {
+                    files.forEach(function(file) {
+                        var option = document.createElement('option');
+                        option.value = file;
+                        option.textContent = file;
+                        // Insert before the "Create new file" option
+                        selector.insertBefore(option, selector.lastElementChild);
+                    });
+                }
+            })
+            .catch(function(error) {
+                console.error('Failed to load orchestration files:', error);
+            });
+    })();
+
+    {# Toggle new file input visibility #}
+    function toggleNewFileInput(value) {
+        var newFileRow = document.getElementById('new-file-row');
+        if (value === '__new__') {
+            newFileRow.style.display = 'flex';
+        } else {
+            newFileRow.style.display = 'none';
+        }
+    }
+
+    {# Toggle between Jira and GitHub trigger fields #}
+    function toggleTriggerFields(source) {
+        var jiraFields = document.getElementById('jira-fields');
+        var githubFields = document.getElementById('github-fields');
+
+        if (source === 'jira') {
+            jiraFields.style.display = 'block';
+            githubFields.style.display = 'none';
+        } else {
+            jiraFields.style.display = 'none';
+            githubFields.style.display = 'block';
+        }
+    }
+
+    {# Toggle cursor_mode visibility based on agent_type #}
+    function toggleCursorMode(agentType) {
+        var cursorModeRow = document.getElementById('cursor-mode-row');
+        cursorModeRow.style.display = agentType === 'cursor' ? 'flex' : 'none';
+    }
+
+    {# Add a new outcome row #}
+    function addOutcome() {
+        var container = document.getElementById('outcomes-container');
+        var row = document.createElement('div');
+        row.className = 'outcome-row';
+        row.style.cssText = 'display: grid; grid-template-columns: 1fr 2fr 1fr auto; gap: 0.5rem; margin-bottom: 0.5rem; align-items: start;';
+        row.innerHTML = `
+            <input type="text" name="outcome_name" placeholder="Outcome name"
+                   style="padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+            <textarea name="outcome_patterns" rows="2" placeholder="Patterns (one per line)"
+                      style="padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px; font-family: 'Courier New', Courier, monospace; font-size: 0.85em; resize: vertical;"></textarea>
+            <input type="text" name="outcome_add_tag" placeholder="Add tag"
+                   style="padding: 0.25rem; background: var(--bg-secondary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px;">
+            <button type="button" onclick="removeOutcome(this)" class="btn-sm btn-danger" style="height: fit-content;">Remove</button>
+        `;
+        container.appendChild(row);
+    }
+
+    {# Remove an outcome row #}
+    function removeOutcome(button) {
+        button.closest('.outcome-row').remove();
+    }
+</script>

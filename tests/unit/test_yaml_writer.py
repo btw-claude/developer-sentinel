@@ -1145,6 +1145,172 @@ orchestrations:
         assert writer._retry_interval_seconds is None
 
 
+class TestAddOrchestration:
+    """Tests for add_orchestration method (DS-729)."""
+
+    def test_add_orchestration_to_existing_file(self, tmp_path: Path) -> None:
+        """Should append orchestration to existing file's orchestrations list."""
+        yaml_content = """
+orchestrations:
+  - name: "existing-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Existing"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.add_orchestration(
+            file_path,
+            {"name": "new-orch", "trigger": {"source": "jira", "project": "NEW"}, "agent": {"prompt": "New"}},
+            tmp_path,
+        )
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "existing-orch" in updated_content
+        assert "new-orch" in updated_content
+
+    def test_add_orchestration_creates_new_file(self, tmp_path: Path) -> None:
+        """Should create new file with proper YAML structure."""
+        file_path = tmp_path / "new-file.yaml"
+
+        writer = OrchestrationYamlWriter()
+        result = writer.add_orchestration(
+            file_path,
+            {"name": "new-orch", "trigger": {"source": "jira", "project": "TEST"}, "agent": {"prompt": "Test"}},
+            tmp_path,
+        )
+
+        assert result is True
+        assert file_path.exists()
+        updated_content = file_path.read_text()
+        assert "orchestrations" in updated_content
+        assert "new-orch" in updated_content
+
+    def test_add_orchestration_path_traversal_prevention(self, tmp_path: Path) -> None:
+        """Should raise error when file path is outside orchestrations directory."""
+        orch_dir = tmp_path / "orchestrations"
+        orch_dir.mkdir()
+        outside_path = tmp_path / "outside.yaml"
+
+        writer = OrchestrationYamlWriter()
+
+        with pytest.raises(OrchestrationYamlWriterError, match="not within orchestrations directory"):
+            writer.add_orchestration(
+                outside_path,
+                {"name": "bad-orch"},
+                orch_dir,
+            )
+
+    def test_add_orchestration_to_file_without_orchestrations_key(self, tmp_path: Path) -> None:
+        """Should create orchestrations key if it doesn't exist."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("some_key: value\n")
+
+        writer = OrchestrationYamlWriter()
+        result = writer.add_orchestration(
+            file_path,
+            {"name": "new-orch", "trigger": {"source": "jira"}, "agent": {"prompt": "Test"}},
+            tmp_path,
+        )
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "orchestrations" in updated_content
+        assert "new-orch" in updated_content
+        assert "some_key" in updated_content
+
+    def test_add_orchestration_preserves_formatting(self, tmp_path: Path) -> None:
+        """Should preserve existing YAML formatting and comments."""
+        yaml_content = """# File comment
+orchestrations:
+  # Existing orchestration
+  - name: "existing-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Existing"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        writer.add_orchestration(
+            file_path,
+            {"name": "new-orch", "trigger": {"source": "jira"}, "agent": {"prompt": "New"}},
+            tmp_path,
+        )
+
+        updated_content = file_path.read_text()
+        assert "# File comment" in updated_content
+        assert "existing-orch" in updated_content
+        assert "new-orch" in updated_content
+
+    def test_add_orchestration_with_backup(self, tmp_path: Path) -> None:
+        """Should create backup when backups are enabled."""
+        yaml_content = """
+orchestrations:
+  - name: "existing-orch"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+        backup_path = file_path.with_suffix(".yaml.bak")
+
+        writer = OrchestrationYamlWriter(create_backups=True)
+        writer.add_orchestration(
+            file_path,
+            {"name": "new-orch", "trigger": {"source": "jira"}, "agent": {"prompt": "New"}},
+            tmp_path,
+        )
+
+        assert backup_path.exists()
+        assert "new-orch" not in backup_path.read_text()
+        assert "new-orch" in file_path.read_text()
+
+    def test_add_orchestration_to_empty_file(self, tmp_path: Path) -> None:
+        """Should handle empty YAML file by creating orchestrations list."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("")
+
+        writer = OrchestrationYamlWriter()
+        result = writer.add_orchestration(
+            file_path,
+            {"name": "new-orch", "trigger": {"source": "jira"}, "agent": {"prompt": "Test"}},
+            tmp_path,
+        )
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "orchestrations" in updated_content
+        assert "new-orch" in updated_content
+
+    def test_add_orchestration_with_relative_path_traversal(self, tmp_path: Path) -> None:
+        """Should prevent path traversal using relative paths."""
+        orch_dir = tmp_path / "orchestrations"
+        orch_dir.mkdir()
+        traversal_path = orch_dir / ".." / "outside.yaml"
+
+        writer = OrchestrationYamlWriter()
+
+        with pytest.raises(OrchestrationYamlWriterError, match="not within orchestrations directory"):
+            writer.add_orchestration(
+                traversal_path,
+                {"name": "bad-orch"},
+                orch_dir,
+            )
+
+
 class TestDeleteOrchestration:
     """Tests for delete_orchestration method."""
 
