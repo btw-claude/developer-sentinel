@@ -174,6 +174,30 @@ class ExecutionSummaryStats:
     total_cost_usd: float
     avg_cost_usd: float
 
+    @classmethod
+    def empty(cls) -> ExecutionSummaryStats:
+        """Create a zeroed ExecutionSummaryStats instance.
+
+        Returns an ExecutionSummaryStats with all counters, rates, and
+        totals set to zero. Useful as a default value when no executions
+        have been recorded.
+
+        Returns:
+            An ExecutionSummaryStats instance with all fields set to zero.
+        """
+        return cls(
+            total_executions=0,
+            success_count=0,
+            failure_count=0,
+            success_rate=0.0,
+            avg_duration_seconds=0.0,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_tokens=0,
+            total_cost_usd=0.0,
+            avg_cost_usd=0.0,
+        )
+
 
 @dataclass(frozen=True)
 class OrchestrationStats:
@@ -266,18 +290,7 @@ class DashboardState:
 
     # Computed summary statistics
     execution_summary: ExecutionSummaryStats = field(
-        default_factory=lambda: ExecutionSummaryStats(
-            total_executions=0,
-            success_count=0,
-            failure_count=0,
-            success_rate=0.0,
-            avg_duration_seconds=0.0,
-            total_input_tokens=0,
-            total_output_tokens=0,
-            total_tokens=0,
-            total_cost_usd=0.0,
-            avg_cost_usd=0.0,
-        )
+        default_factory=ExecutionSummaryStats.empty
     )
     orchestration_stats: list[OrchestrationStats] = field(default_factory=list)
 
@@ -686,21 +699,7 @@ class SentinelStateAccessor:
             orchestration_stats contains per-orchestration stats.
         """
         if not executions:
-            return (
-                ExecutionSummaryStats(
-                    total_executions=0,
-                    success_count=0,
-                    failure_count=0,
-                    success_rate=0.0,
-                    avg_duration_seconds=0.0,
-                    total_input_tokens=0,
-                    total_output_tokens=0,
-                    total_tokens=0,
-                    total_cost_usd=0.0,
-                    avg_cost_usd=0.0,
-                ),
-                [],
-            )
+            return ExecutionSummaryStats.empty(), []
 
         # Compute global summary stats
         total = len(executions)

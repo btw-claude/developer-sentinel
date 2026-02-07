@@ -76,6 +76,38 @@ def _create_accessor() -> SentinelStateAccessor:
     return SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
 
+class TestExecutionSummaryStatsEmpty:
+    """Tests for ExecutionSummaryStats.empty() classmethod."""
+
+    def test_empty_returns_zeroed_instance(self) -> None:
+        """Test that empty() returns an ExecutionSummaryStats with all fields zeroed."""
+        stats = ExecutionSummaryStats.empty()
+
+        assert stats.total_executions == 0
+        assert stats.success_count == 0
+        assert stats.failure_count == 0
+        assert stats.success_rate == 0.0
+        assert stats.avg_duration_seconds == 0.0
+        assert stats.total_input_tokens == 0
+        assert stats.total_output_tokens == 0
+        assert stats.total_tokens == 0
+        assert stats.total_cost_usd == 0.0
+        assert stats.avg_cost_usd == 0.0
+
+    def test_empty_returns_correct_type(self) -> None:
+        """Test that empty() returns an ExecutionSummaryStats instance."""
+        stats = ExecutionSummaryStats.empty()
+
+        assert isinstance(stats, ExecutionSummaryStats)
+
+    def test_empty_returns_equal_instances(self) -> None:
+        """Test that multiple calls to empty() return equal instances."""
+        stats1 = ExecutionSummaryStats.empty()
+        stats2 = ExecutionSummaryStats.empty()
+
+        assert stats1 == stats2
+
+
 class TestComputeExecutionStatsEmpty:
     """Tests for _compute_execution_stats with empty input."""
 
@@ -94,6 +126,13 @@ class TestComputeExecutionStatsEmpty:
         assert summary.total_tokens == 0
         assert summary.total_cost_usd == 0.0
         assert summary.avg_cost_usd == 0.0
+
+    def test_empty_list_returns_empty_classmethod_result(self) -> None:
+        """Test that empty executions list returns same result as ExecutionSummaryStats.empty()."""
+        accessor = _create_accessor()
+        summary, _ = accessor._compute_execution_stats([])
+
+        assert summary == ExecutionSummaryStats.empty()
 
     def test_empty_list_returns_empty_orchestration_stats(self) -> None:
         """Test that empty executions list returns empty orchestration stats list."""
