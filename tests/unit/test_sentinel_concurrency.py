@@ -507,6 +507,7 @@ class TestPerOrchestrationConcurrencyLimits:
                 branch: str | None = None,
                 create_branch: bool = False,
                 base_branch: str = "main",
+                agent_teams: bool = False,
             ) -> AgentRunResult:
                 time.sleep(0.05)
                 return AgentRunResult(response="FAILURE: Error occurred", workdir=None)

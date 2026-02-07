@@ -181,6 +181,7 @@ class MockAgentClient(AgentClient):
         branch: str | None = None,
         create_branch: bool = False,
         base_branch: str = "main",
+        agent_teams: bool = False,
     ) -> AgentRunResult:
         """Async mock implementation of run_agent."""
         self.calls.append((prompt, context, timeout_seconds, issue_key, model))
@@ -393,6 +394,7 @@ class TrackingAgentClient(AgentClient):
         branch: str | None = None,
         create_branch: bool = False,
         base_branch: str = "main",
+        agent_teams: bool = False,
     ) -> AgentRunResult:
         """Async mock implementation of run_agent with tracking."""
         with self.lock:
