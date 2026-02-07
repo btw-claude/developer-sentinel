@@ -109,6 +109,7 @@ class TestDataclasses:
         assert agent.timeout_seconds is None
         assert agent.agent_type is None
         assert agent.cursor_mode is None
+        assert agent.agent_teams is False
         assert agent.strict_template_variables is False
 
     def test_agent_config_strict_template_variables_true(self) -> None:
@@ -142,6 +143,17 @@ class TestDataclasses:
         """AgentConfig should support cursor_mode='ask'."""
         agent = AgentConfig(agent_type="cursor", cursor_mode="ask")
         assert agent.cursor_mode == "ask"
+
+    def test_agent_config_agent_teams_true(self) -> None:
+        """AgentConfig should support agent_teams=True."""
+        agent = AgentConfig(agent_type="claude", agent_teams=True)
+        assert agent.agent_teams is True
+        assert agent.agent_type == "claude"
+
+    def test_agent_config_agent_teams_false(self) -> None:
+        """AgentConfig should support agent_teams=False."""
+        agent = AgentConfig(agent_teams=False)
+        assert agent.agent_teams is False
 
     def test_github_context_defaults(self) -> None:
         """GitHubContext should have sensible defaults."""
