@@ -2,33 +2,31 @@
 
 This module provides pytest fixtures and re-exports commonly used mocks and helpers.
 
-Test Setup Guidelines
-=====================
+Test Setup Guidelines:
 
-**Direct instantiation** is the preferred approach for most tests::
+    **Direct instantiation** is the preferred approach for most tests::
 
-    from tests.mocks import MockJiraClient, MockAgentClient, MockTagClient
-    from tests.helpers import make_config, make_orchestration
+        from tests.mocks import MockJiraClient, MockAgentClient, MockTagClient
+        from tests.helpers import make_config, make_orchestration
 
-    def test_example():
-        jira_client = MockJiraClient(issues=[...])
-        agent_client = MockAgentClient()
-        # ... explicit setup visible at call site ...
+        def test_example():
+            jira_client = MockJiraClient(issues=[...])
+            agent_client = MockAgentClient()
+            # ... explicit setup visible at call site ...
 
-Pytest fixtures are available for cases where dependency injection is preferred,
-particularly for shared test resources like temporary directories.
+    Pytest fixtures are available for cases where dependency injection is preferred,
+    particularly for shared test resources like temporary directories.
 
-Module Organization
-===================
+Module Organization:
 
-- ``tests/mocks.py`` - Mock implementations of core interfaces
-- ``tests/helpers.py`` - Test helper functions (make_config, make_orchestration, etc.)
-- ``tests/conftest.py`` - Pytest fixtures, type aliases, and re-exports for backwards compatibility
+    - ``tests/mocks.py`` - Mock implementations of core interfaces
+    - ``tests/helpers.py`` - Test helper functions (make_config, make_orchestration, etc.)
+    - ``tests/conftest.py`` - Pytest fixtures, type aliases, and re-exports for backwards
+      compatibility
 
-Dashboard Test Helpers
-======================
+Dashboard Test Helpers:
 
-- ``create_test_app()`` - Create a test FastAPI app with dashboard routes
+    - ``create_test_app()`` - Create a test FastAPI app with dashboard routes
 """
 
 from __future__ import annotations

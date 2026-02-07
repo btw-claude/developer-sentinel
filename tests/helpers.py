@@ -1,31 +1,28 @@
 """Test helper functions for Developer Sentinel tests.
 
-This module also provides helper functions for creating Sentinel instances
-with dependency injection, making it easier to write tests that don't rely
-on deprecated constructor parameters.
+This module provides utility functions for creating test fixtures, managing
+test data, and creating Sentinel instances with dependency injection. These
+helpers simplify test setup by providing sensible defaults while allowing
+customization, making it easier to write tests that don't rely on deprecated
+constructor parameters.
 
-This module provides utility functions for creating test fixtures and
-managing test data. These helpers simplify test setup by providing
-sensible defaults while allowing customization.
+Usage:
 
-Usage
-=====
+    Import and use helpers directly in tests::
 
-Import and use helpers directly in tests::
+        from tests.helpers import (
+            assert_call_args_length,
+            make_config,
+            make_orchestration,
+            make_issue,
+            set_mtime_in_future,
+        )
 
-    from tests.helpers import (
-        assert_call_args_length,
-        make_config,
-        make_orchestration,
-        make_issue,
-        set_mtime_in_future,
-    )
-
-    def test_example():
-        config = make_config(max_concurrent_executions=5)
-        orch = make_orchestration(name="test", tags=["review"])
-        issue = make_issue(key="TEST-1", summary="Test issue")
-        # ... use in test ...
+        def test_example():
+            config = make_config(max_concurrent_executions=5)
+            orch = make_orchestration(name="test", tags=["review"])
+            issue = make_issue(key="TEST-1", summary="Test issue")
+            # ... use in test ...
 """
 
 from __future__ import annotations

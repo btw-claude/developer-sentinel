@@ -3,24 +3,23 @@
 This module provides reusable mock implementations of core interfaces used in testing.
 These mocks enable isolated unit testing without requiring real API connections.
 
-Usage Guidelines
-================
+Usage Guidelines:
 
-**Direct instantiation** is the preferred approach for most tests::
+    **Direct instantiation** is the preferred approach for most tests::
 
-    from tests.mocks import MockJiraClient, MockAgentClient, MockTagClient
+        from tests.mocks import MockJiraClient, MockAgentClient, MockTagClient
 
-    def test_example():
-        jira_client = MockJiraClient(issues=[...])
-        agent_client = MockAgentClient(responses=["SUCCESS"])
-        tag_client = MockTagClient()
-        # ... use in test ...
+        def test_example():
+            jira_client = MockJiraClient(issues=[...])
+            agent_client = MockAgentClient(responses=["SUCCESS"])
+            tag_client = MockTagClient()
+            # ... use in test ...
 
-Rationale:
+    Rationale:
 
-- Direct instantiation is explicit and makes test setup clearer
-- Tests don't need to rely on pytest's fixture dependency injection
-- The class parameters are immediately visible at the call site
+    - Direct instantiation is explicit and makes test setup clearer
+    - Tests don't need to rely on pytest's fixture dependency injection
+    - The class parameters are immediately visible at the call site
 """
 
 from __future__ import annotations
