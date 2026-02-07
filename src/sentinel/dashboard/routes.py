@@ -471,13 +471,13 @@ def create_routes(
             HTTPException: 429 if rate limit is exceeded.
         """
         client_ip = request.client.host if request.client else "unknown"
-        if client_ip == "unknown":
+        current_count = csrf_rate_limit.get(client_ip, 0)
+        if client_ip == "unknown" and current_count == 0:
             logger.warning(
                 "CSRF token request from unknown client IP (request.client is None); "
                 "this may indicate the app is behind a proxy that does not set "
                 "X-Forwarded-For or similar headers"
             )
-        current_count = csrf_rate_limit.get(client_ip, 0)
         if current_count >= CSRF_TOKEN_RATE_LIMIT_PER_MINUTE:
             raise HTTPException(
                 status_code=429,
