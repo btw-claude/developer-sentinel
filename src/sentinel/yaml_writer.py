@@ -559,3 +559,60 @@ class OrchestrationYamlWriter:
             )
 
         return total_count
+
+    def delete_orchestration(self, file_path: Path, orch_name: str) -> bool:
+        """Delete a specific orchestration from a YAML file.
+
+        Removes the orchestration entry from the file's orchestrations list.
+        If this is the last orchestration in the file, leaves the file with
+        an empty ``orchestrations: []`` list rather than deleting the file.
+        This preserves file-level comments and avoids file watcher race
+        conditions.
+
+        Args:
+            file_path: Path to the orchestration YAML file.
+            orch_name: Name of the orchestration to delete.
+
+        Returns:
+            True if the orchestration was found and deleted, False if not found.
+
+        Raises:
+            OrchestrationYamlWriterError: If there's an error reading, parsing,
+                or writing the file.
+            FileLockTimeoutError: If the file lock cannot be acquired within
+                the configured timeout.
+        """
+        with _file_lock(
+            file_path,
+            max_wait_seconds=self._lock_timeout_seconds,
+            cleanup_lock_file=self._cleanup_lock_files,
+            retry_interval_seconds=self._retry_interval_seconds,
+        ):
+            data = self._load_yaml(file_path)
+
+            orchestrations = data.get("orchestrations")
+            if orchestrations is None:
+                logger.warning(
+                    "No orchestrations key found in %s",
+                    file_path,
+                )
+                return False
+
+            idx = self._find_orchestration_index(orchestrations, orch_name)
+            if idx is None:
+                logger.warning(
+                    "Orchestration '%s' not found in %s",
+                    orch_name,
+                    file_path,
+                )
+                return False
+
+            del orchestrations[idx]
+            self._save_yaml(file_path, data)
+
+            logger.info(
+                "Deleted orchestration '%s' from %s",
+                orch_name,
+                file_path,
+            )
+            return True

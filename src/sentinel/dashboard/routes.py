@@ -143,6 +143,13 @@ class BulkToggleResponse(BaseModel):
     toggled_count: int
 
 
+class DeleteResponse(BaseModel):
+    """Response model for orchestration deletion."""
+
+    success: bool
+    name: str
+
+
 def create_routes(
     state_accessor: SentinelStateAccessor,
     health_checker: HealthChecker | None = None,
@@ -996,6 +1003,86 @@ def create_routes(
                 request_body.identifier,
                 e,
             )
+            raise HTTPException(
+                status_code=500,
+                detail=str(e),
+            ) from e
+
+    @dashboard_router.delete(
+        "/api/orchestrations/{name}",
+        response_model=DeleteResponse,
+        summary="Delete an orchestration",
+        description="Delete an orchestration by name. Removes the orchestration from "
+        "its YAML file and hot-reload picks up the change. Rate limited to "
+        "prevent rapid file writes.",
+    )
+    async def delete_orchestration(name: str) -> DeleteResponse:
+        """Delete an orchestration by name.
+
+        This endpoint removes the orchestration from its YAML source file.
+        The change takes effect on the next hot-reload cycle.
+
+        Args:
+            name: The name of the orchestration to delete.
+
+        Returns:
+            DeleteResponse with success status and orchestration name.
+
+        Raises:
+            HTTPException: 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
+        """
+        logger.debug("delete_orchestration called for '%s'", name)
+        state = state_accessor.get_state()
+
+        # Find the orchestration to get its source file
+        orch_info = None
+        for orch in state.orchestrations:
+            if orch.name == name:
+                orch_info = orch
+                break
+
+        if orch_info is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found",
+            )
+
+        if not orch_info.source_file:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Source file not found for orchestration '{name}'",
+            )
+
+        source_file = Path(orch_info.source_file)
+        if not source_file.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration file not found: {source_file}",
+            )
+
+        # Check rate limit before writing
+        rate_limiter.check_rate_limit(str(source_file))
+
+        try:
+            writer = OrchestrationYamlWriter()
+            result = writer.delete_orchestration(source_file, name)
+
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Orchestration '{name}' not found in file {source_file}",
+                )
+
+            # Record successful write for rate limiting
+            rate_limiter.record_write(str(source_file))
+
+            return DeleteResponse(
+                success=True,
+                name=name,
+            )
+
+        except OrchestrationYamlWriterError as e:
+            logger.error("Failed to delete orchestration '%s': %s", name, e)
             raise HTTPException(
                 status_code=500,
                 detail=str(e),
