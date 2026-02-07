@@ -701,6 +701,122 @@ def create_routes(
 
         return EventSourceResponse(event_generator())
 
+    @dashboard_router.get("/api/orchestrations/{name}/detail")
+    async def api_orchestration_detail(name: str) -> dict[str, Any]:
+        """Return full orchestration configuration as JSON.
+
+        Retrieves detailed orchestration configuration including trigger,
+        agent, retry, outcome, and lifecycle settings.
+
+        Args:
+            name: The orchestration name.
+
+        Returns:
+            JSON representation of the full orchestration configuration.
+
+        Raises:
+            HTTPException: 404 if orchestration not found.
+        """
+        detail = state_accessor.get_orchestration_detail(name)
+        if detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found",
+            )
+        return {
+            "name": detail.name,
+            "enabled": detail.enabled,
+            "max_concurrent": detail.max_concurrent,
+            "source_file": detail.source_file,
+            "trigger": {
+                "source": detail.trigger.source,
+                "project": detail.trigger.project,
+                "jql_filter": detail.trigger.jql_filter,
+                "tags": detail.trigger.tags,
+                "project_number": detail.trigger.project_number,
+                "project_scope": detail.trigger.project_scope,
+                "project_owner": detail.trigger.project_owner,
+                "project_filter": detail.trigger.project_filter,
+                "labels": detail.trigger.labels,
+            },
+            "agent": {
+                "prompt": detail.agent.prompt,
+                "github": (
+                    {
+                        "host": detail.agent.github.host,
+                        "org": detail.agent.github.org,
+                        "repo": detail.agent.github.repo,
+                        "branch": detail.agent.github.branch,
+                        "create_branch": detail.agent.github.create_branch,
+                        "base_branch": detail.agent.github.base_branch,
+                    }
+                    if detail.agent.github
+                    else None
+                ),
+                "timeout_seconds": detail.agent.timeout_seconds,
+                "model": detail.agent.model,
+                "agent_type": detail.agent.agent_type,
+                "cursor_mode": detail.agent.cursor_mode,
+                "strict_template_variables": detail.agent.strict_template_variables,
+            },
+            "retry": {
+                "max_attempts": detail.retry.max_attempts,
+                "success_patterns": detail.retry.success_patterns,
+                "failure_patterns": detail.retry.failure_patterns,
+                "default_status": detail.retry.default_status,
+                "default_outcome": detail.retry.default_outcome,
+            },
+            "outcomes": [
+                {
+                    "name": outcome.name,
+                    "patterns": outcome.patterns,
+                    "add_tag": outcome.add_tag,
+                }
+                for outcome in detail.outcomes
+            ],
+            "lifecycle": {
+                "on_start_add_tag": detail.lifecycle.on_start_add_tag,
+                "on_complete_remove_tag": detail.lifecycle.on_complete_remove_tag,
+                "on_complete_add_tag": detail.lifecycle.on_complete_add_tag,
+                "on_failure_add_tag": detail.lifecycle.on_failure_add_tag,
+            },
+        }
+
+    @dashboard_router.get(
+        "/partials/orchestration_detail/{name}", response_class=HTMLResponse
+    )
+    async def partial_orchestration_detail(request: Request, name: str) -> HTMLResponse:
+        """Render the orchestration detail partial for HTMX inline expansion.
+
+        Returns rendered HTML for the full orchestration configuration,
+        displayed inline when a user clicks an orchestration row.
+
+        Args:
+            request: The incoming HTTP request.
+            name: The orchestration name.
+
+        Returns:
+            HTML response with the orchestration detail partial.
+
+        Raises:
+            HTTPException: 404 if orchestration not found.
+        """
+        detail = state_accessor.get_orchestration_detail(name)
+        if detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found",
+            )
+        templates = request.app.state.templates
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/orchestration_detail.html",
+                context={"detail": detail},
+            ),
+        )
+
     @dashboard_router.post(
         "/api/orchestrations/{name}/toggle",
         response_model=ToggleResponse,
