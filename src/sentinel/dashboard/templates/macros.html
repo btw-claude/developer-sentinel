@@ -21,16 +21,21 @@
   Macro to render a success rate with consistent color coding.
 
   Determines the text color class based on configurable success rate thresholds:
-  - text-success (green): When rate >= green_threshold (default 90%)
-  - text-warning (yellow): When rate >= yellow_threshold (default 70%)
+  - text-success (green): When rate >= green_threshold (default 90.0%)
+  - text-warning (yellow): When rate >= yellow_threshold (default 70.0%)
   - text-danger (red): When rate < yellow_threshold
 
+  Note: The default values (90.0, 70.0) match _DEFAULT_GREEN_THRESHOLD and
+  _DEFAULT_YELLOW_THRESHOLD in sentinel.config. In practice, callers always
+  pass explicit threshold values from DashboardState, so these defaults serve
+  only as a safety net.
+
   @param rate - Success rate as a percentage (0.0 - 100.0)
-  @param green_threshold - Minimum rate for green display (default 90)
-  @param yellow_threshold - Minimum rate for yellow display (default 70)
+  @param green_threshold - Minimum rate for green display (default 90.0)
+  @param yellow_threshold - Minimum rate for yellow display (default 70.0)
   @returns A span element with the rate formatted to one decimal place and appropriate color class
 #}
-{% macro success_rate_display(rate, green_threshold=90, yellow_threshold=70) %}
+{% macro success_rate_display(rate, green_threshold=90.0, yellow_threshold=70.0) %}
 <span class="{% if rate >= green_threshold %}text-success{% elif rate >= yellow_threshold %}text-warning{% else %}text-danger{% endif %}">{{ "%.1f" | format(rate) }}%</span>
 {%- endmacro %}
 

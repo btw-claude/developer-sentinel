@@ -14,6 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
+from sentinel.config import _DEFAULT_GREEN_THRESHOLD, _DEFAULT_YELLOW_THRESHOLD
 from sentinel.logging import generate_log_filename, parse_log_filename
 from sentinel.types import TriggerSource
 
@@ -400,8 +401,8 @@ class DashboardState:
     system_status: SystemStatusInfo | None = None
 
     # Configurable success rate thresholds for display coloring
-    success_rate_green_threshold: float = 90.0
-    success_rate_yellow_threshold: float = 70.0
+    success_rate_green_threshold: float = _DEFAULT_GREEN_THRESHOLD
+    success_rate_yellow_threshold: float = _DEFAULT_YELLOW_THRESHOLD
 
 
 @dataclass(frozen=True)
