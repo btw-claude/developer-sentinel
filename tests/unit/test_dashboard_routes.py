@@ -2005,6 +2005,10 @@ class TestCreateOrchestrationEndpoint:
         app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
+            # Get CSRF token first (DS-736)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations",
                 json={
@@ -2013,6 +2017,7 @@ class TestCreateOrchestrationEndpoint:
                     "trigger": {"source": "jira", "project": "TEST"},
                     "agent": {"prompt": "Test prompt"},
                 },
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200
@@ -2055,6 +2060,10 @@ class TestCreateOrchestrationEndpoint:
         app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
+            # Get CSRF token first (DS-736)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations",
                 json={
@@ -2063,6 +2072,7 @@ class TestCreateOrchestrationEndpoint:
                     "trigger": {"source": "jira", "project": "TEST"},
                     "agent": {"prompt": "Test"},
                 },
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 422
@@ -2084,6 +2094,10 @@ class TestCreateOrchestrationEndpoint:
         app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
+            # Get CSRF token first (DS-736)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations",
                 json={
@@ -2092,6 +2106,7 @@ class TestCreateOrchestrationEndpoint:
                     "trigger": {"source": "jira", "project": "TEST"},
                     "agent": {"prompt": "Test"},
                 },
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 422
@@ -2126,6 +2141,10 @@ orchestrations:
         app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
+            # Get CSRF token first (DS-736)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations",
                 json={
@@ -2134,6 +2153,7 @@ orchestrations:
                     "trigger": {"source": "jira", "project": "TEST"},
                     "agent": {"prompt": "Second"},
                 },
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200
