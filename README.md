@@ -195,6 +195,7 @@ The following template variables can be used in branch patterns:
 If your Jira issue summary is "Fix login/authentication bug" and you use this configuration:
 
 ```yaml
+# ... (inside an orchestration config)
 github:
   branch: "feature/{jira_summary}"
   create_branch: true
@@ -209,6 +210,7 @@ fatal: 'feature/Fix login/authentication bug' is not a valid branch name
 **Recommended approach:** Use `{jira_issue_key}` instead, which always produces valid branch names:
 
 ```yaml
+# ... (inside an orchestration config)
 github:
   branch: "feature/{jira_issue_key}"  # Results in: feature/DS-290
   create_branch: true
@@ -298,6 +300,7 @@ orchestrations:
 To enable Claude Code's experimental Agent Teams feature, use `agent_teams: true` in the `agent` block:
 
 ```yaml
+    # ... (inside an orchestration config)
     agent:
       agent_type: claude
 
@@ -342,6 +345,7 @@ Sentinel uses pattern matching to determine agent execution outcomes. Proper pat
 Example configuration:
 
 ```yaml
+# ... (inside an orchestration config)
 retry:
   max_attempts: 3
   failure_patterns:
