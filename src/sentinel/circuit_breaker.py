@@ -274,9 +274,11 @@ class CircuitBreaker:
     def is_open(self) -> bool:
         """Check if the circuit breaker is currently in the OPEN state.
 
-        Provides a clean, side-effect-free API for checking circuit state
-        without requiring callers to import CircuitState. Unlike allow_request(),
-        this property does not modify metrics or internal counters.
+        Provides a clean API for checking circuit state without requiring
+        callers to import CircuitState. Unlike allow_request(), this property
+        does not modify metrics or internal counters, though accessing state
+        may trigger automatic recovery transitions (e.g., OPEN to HALF_OPEN
+        when the recovery timeout has elapsed).
 
         Returns:
             True if the circuit is open (requests would be rejected), False otherwise.
