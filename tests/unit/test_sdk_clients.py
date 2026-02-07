@@ -15,6 +15,7 @@ import pytest
 from sentinel.agent_clients.base import AgentClientError, AgentTimeoutError, UsageInfo
 from sentinel.agent_clients.claude_sdk import (
     _AGENT_TEAMS_ENV_VAR,
+    _build_agent_teams_env,
     _extract_usage_from_message,
     request_shutdown,
     reset_shutdown,
@@ -1658,3 +1659,43 @@ class TestAgentTeamsEnvVar:
         assert len(captured_options) == 1
         options = captured_options[0]
         assert _AGENT_TEAMS_ENV_VAR not in options.env
+
+
+class TestBuildAgentTeamsEnv:
+    """Direct unit tests for _build_agent_teams_env() helper (DS-710).
+
+    These tests exercise the helper in isolation, complementing the indirect
+    integration-style tests in TestAgentTeamsEnvVar that verify the env dict
+    propagates through _run_query and _run_with_log.
+    """
+
+    def test_build_agent_teams_env_true_returns_env_dict(self) -> None:
+        """Should return a dict with the agent teams env var set to '1' when enabled."""
+        result = _build_agent_teams_env(agent_teams=True)
+        assert result == {_AGENT_TEAMS_ENV_VAR: "1"}
+
+    def test_build_agent_teams_env_false_returns_empty(self) -> None:
+        """Should return an empty dict when agent teams is disabled."""
+        result = _build_agent_teams_env(agent_teams=False)
+        assert result == {}
+
+    def test_build_agent_teams_env_true_value_is_string(self) -> None:
+        """Should set the env var value as a string '1', not an integer."""
+        result = _build_agent_teams_env(agent_teams=True)
+        assert isinstance(result[_AGENT_TEAMS_ENV_VAR], str)
+        assert result[_AGENT_TEAMS_ENV_VAR] == "1"
+
+    def test_build_agent_teams_env_false_has_no_keys(self) -> None:
+        """Should return a dict with no keys when disabled."""
+        result = _build_agent_teams_env(agent_teams=False)
+        assert len(result) == 0
+
+    def test_build_agent_teams_env_true_has_single_key(self) -> None:
+        """Should return a dict with exactly one key when enabled."""
+        result = _build_agent_teams_env(agent_teams=True)
+        assert len(result) == 1
+
+    def test_build_agent_teams_env_uses_correct_env_var_name(self) -> None:
+        """Should use the CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var name."""
+        result = _build_agent_teams_env(agent_teams=True)
+        assert "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" in result
