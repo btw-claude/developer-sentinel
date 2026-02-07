@@ -26,14 +26,14 @@ from typing import Any
 
 import pytest
 
+from tests.helpers import make_config
+
 # Ensure sphinx is available; skip gracefully if not installed (DS-692 item 3).
 pytest.importorskip(
     "sphinx.ext.napoleon",
     reason="sphinx is required for Napoleon docstring validation",
 )
 from sphinx.ext.napoleon import GoogleDocstring  # noqa: E402
-
-from tests.helpers import make_config  # noqa: E402
 
 
 def _get_docstring(func: Any) -> str:
@@ -140,7 +140,7 @@ def _extract_param_groups_from_source(func: Any) -> list[list[str]]:
         raise ValueError(f"Could not find {func_name} function signature")
     sig_section = sig_match.group(1)
 
-    group_comment_pattern = re.compile(r"#\s+\w[\w ]+\s+settings", re.IGNORECASE)
+    group_comment_pattern = re.compile(r"#\s+\w[\w ]+ +settings", re.IGNORECASE)
     groups: list[list[str]] = []
     current_group: list[str] = []
 
