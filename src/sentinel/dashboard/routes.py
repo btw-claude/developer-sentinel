@@ -1028,6 +1028,41 @@ def create_routes(
             ),
         )
 
+    @dashboard_router.get(
+        "/partials/orchestration_edit/{name}", response_class=HTMLResponse
+    )
+    async def partial_orchestration_edit(request: Request, name: str) -> HTMLResponse:
+        """Render the orchestration edit form partial for HTMX inline editing.
+
+        Returns a pre-populated edit form that replaces the detail view
+        when a user clicks the Edit button.
+
+        Args:
+            request: The incoming HTTP request.
+            name: The orchestration name.
+
+        Returns:
+            HTML response with the orchestration edit form partial.
+
+        Raises:
+            HTTPException: 404 if orchestration not found.
+        """
+        detail = state_accessor.get_orchestration_detail(name)
+        if detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found",
+            )
+        templates = request.app.state.templates
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/orchestration_edit_form.html",
+                context={"detail": detail},
+            ),
+        )
+
     @dashboard_router.post(
         "/api/orchestrations/{name}/toggle",
         response_model=ToggleResponse,
