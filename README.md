@@ -293,6 +293,25 @@ orchestrations:
       tools:
         - jira
         - github
+
+  - name: "claude-team-review"
+    trigger:
+      source: jira
+      project: "DEV"
+      tags:
+        - "team-review"
+    agent:
+      agent_type: claude
+
+      # Enable Claude Code's experimental Agent Teams feature
+      # (only valid when agent_type is "claude"; default: false)
+      agent_teams: true
+
+      prompt: |
+        Review the code changes for {jira_issue_key}.
+      tools:
+        - jira
+        - github
 ```
 
 **Agent Types:**
@@ -305,6 +324,11 @@ orchestrations:
 - `agent` - Full autonomous agent mode (default)
 - `plan` - Planning mode - creates plans without executing
 - `ask` - Ask mode - waits for user confirmation before actions
+
+**Agent Teams (only valid when `agent_type: claude`):**
+- `agent_teams` - Boolean flag to enable Claude Code's experimental Agent Teams feature (default: `false`)
+- When set to `true`, enables multi-agent collaboration via Claude Code's Agent Teams capability
+- Only supported when `agent_type` is `claude` (or unset, since the default agent type is `claude`)
 
 See `orchestrations/README.md` for full configuration reference.
 
