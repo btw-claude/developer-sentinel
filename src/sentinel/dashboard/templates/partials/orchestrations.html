@@ -1,4 +1,4 @@
-{% from "macros.html" import success_rate_display %}
+{% from "macros.html" import success_rate_display, stat_or_dash %}
 {# Build a lookup dict from orchestration_stats for O(1) access by name #}
 {% set stats_lookup = {} %}
 {% for stat in state.orchestration_stats %}
@@ -60,32 +60,24 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if orch_stats and orch_stats.last_run_at %}
+                        {% call(v) stat_or_dash(orch_stats and orch_stats.last_run_at) %}
                         {{ orch_stats.last_run_at.strftime('%b %d %H:%M') }}
-                        {% else %}
-                        <span style="color: var(--text-secondary);">-</span>
-                        {% endif %}
+                        {% endcall %}
                     </td>
                     <td>
-                        {% if orch_stats %}
-                        {{ orch_stats.total_runs }}
-                        {% else %}
-                        <span style="color: var(--text-secondary);">-</span>
-                        {% endif %}
+                        {% call(v) stat_or_dash(orch_stats) %}
+                        {{ v.total_runs }}
+                        {% endcall %}
                     </td>
                     <td>
-                        {% if orch_stats %}
-                        {{ success_rate_display(orch_stats.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}
-                        {% else %}
-                        <span style="color: var(--text-secondary);">-</span>
-                        {% endif %}
+                        {% call(v) stat_or_dash(orch_stats) %}
+                        {{ success_rate_display(v.success_rate, state.success_rate_green_threshold, state.success_rate_yellow_threshold) }}
+                        {% endcall %}
                     </td>
                     <td>
-                        {% if orch_stats %}
-                        {{ "%.1f" | format(orch_stats.avg_duration_seconds) }}s
-                        {% else %}
-                        <span style="color: var(--text-secondary);">-</span>
-                        {% endif %}
+                        {% call(v) stat_or_dash(orch_stats) %}
+                        {{ "%.1f" | format(v.avg_duration_seconds) }}s
+                        {% endcall %}
                     </td>
                     <td>
                         <label class="toggle-switch">

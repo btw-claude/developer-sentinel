@@ -1,11 +1,12 @@
 """Tests for Jinja2 template macros.
 
-Unit tests for status_badge macro in macros.html.
+Unit tests for status_badge and stat_or_dash macros in macros.html.
 Refactored to use BeautifulSoup for robust HTML parsing.
 Added helper assertion functions for reduced test repetition.
 
 This module tests the Jinja2 macros used in dashboard templates to ensure
-proper badge rendering for different states.
+proper badge rendering for different states and correct stat-or-dash
+placeholder behavior.
 """
 
 from __future__ import annotations
@@ -222,3 +223,141 @@ class TestStatusBadgeMacro:
         soup = parse_badge(active_count=7, total_count=12)
 
         assert_badge_text(soup, "7/12")
+
+
+# Helper assertion functions for stat_or_dash testing
+def assert_dash_placeholder(soup: BeautifulSoup) -> None:
+    """Assert that the rendered HTML contains a dash placeholder span.
+
+    Args:
+        soup: BeautifulSoup object containing the rendered HTML
+
+    Raises:
+        AssertionError: If dash placeholder is not found or has wrong content
+    """
+    span = soup.find("span", style="color: var(--text-secondary);")
+    assert span is not None, "Dash placeholder span not found"
+    assert span.text == "-", f"Expected dash '-', got '{span.text}'"
+
+
+def assert_no_dash_placeholder(soup: BeautifulSoup) -> None:
+    """Assert that the rendered HTML does NOT contain a dash placeholder span.
+
+    Args:
+        soup: BeautifulSoup object containing the rendered HTML
+
+    Raises:
+        AssertionError: If dash placeholder is unexpectedly found
+    """
+    span = soup.find("span", style="color: var(--text-secondary);")
+    assert span is None, "Dash placeholder span should not be present when value is truthy"
+
+
+class TestStatOrDashMacro:
+    """Tests for the stat_or_dash Jinja2 macro.
+
+    The stat_or_dash macro renders caller block content when the value is truthy,
+    or a styled dash placeholder when the value is falsy. It uses the Jinja2
+    call block pattern to pass the value back to the caller for rendering.
+
+    Tests use BeautifulSoup for semantic HTML assertions instead of
+    fragile string matching.
+    """
+
+    @pytest.fixture
+    def jinja_env(self) -> Environment:
+        """Create a Jinja2 environment with the templates directory."""
+        templates_dir = (
+            Path(__file__).parent.parent.parent / "src" / "sentinel" / "dashboard" / "templates"
+        )
+        env = Environment(loader=FileSystemLoader(str(templates_dir)))
+        return env
+
+    @pytest.fixture
+    def render_stat_or_dash(self, jinja_env: Environment) -> Callable[..., str]:
+        """Create a helper function to render the stat_or_dash macro with a value."""
+        def render(value: object, content_template: str = "{{ v }}") -> str:
+            template_str = (
+                '{%- from "macros.html" import stat_or_dash -%}'
+                "{% call(v) stat_or_dash(value) %}"
+                + content_template
+                + "{% endcall %}"
+            )
+            template = jinja_env.from_string(template_str)
+            return template.render(value=value).strip()
+
+        return render
+
+    @pytest.fixture
+    def parse_stat(
+        self, render_stat_or_dash: Callable[..., str]
+    ) -> Callable[..., BeautifulSoup]:
+        """Create a helper function to render and parse a stat_or_dash result."""
+
+        def parse(value: object, content_template: str = "{{ v }}") -> BeautifulSoup:
+            result = render_stat_or_dash(value=value, content_template=content_template)
+            return BeautifulSoup(result, "html.parser")
+
+        return parse
+
+    def test_dash_placeholder_when_value_is_none(self, parse_stat) -> None:
+        """Test that a dash placeholder is shown when value is None."""
+        soup = parse_stat(value=None)
+        assert_dash_placeholder(soup)
+
+    def test_dash_placeholder_when_value_is_empty_string(self, parse_stat) -> None:
+        """Test that a dash placeholder is shown when value is empty string."""
+        soup = parse_stat(value="")
+        assert_dash_placeholder(soup)
+
+    def test_dash_placeholder_when_value_is_false(self, parse_stat) -> None:
+        """Test that a dash placeholder is shown when value is False."""
+        soup = parse_stat(value=False)
+        assert_dash_placeholder(soup)
+
+    def test_renders_content_when_value_is_truthy_string(self, render_stat_or_dash) -> None:
+        """Test that caller content is rendered when value is a truthy string."""
+        result = render_stat_or_dash(value="hello")
+        assert "hello" in result
+
+    def test_renders_content_when_value_is_truthy_number(self, render_stat_or_dash) -> None:
+        """Test that caller content is rendered when value is a truthy number."""
+        result = render_stat_or_dash(value=42)
+        assert "42" in result
+
+    def test_no_dash_when_value_is_truthy(self, parse_stat) -> None:
+        """Test that no dash placeholder is present when value is truthy."""
+        soup = parse_stat(value="some value")
+        assert_no_dash_placeholder(soup)
+
+    def test_value_passed_to_caller_block(self, render_stat_or_dash) -> None:
+        """Test that the value is correctly passed to the caller block via v."""
+        result = render_stat_or_dash(value=99, content_template="Count: {{ v }}")
+        assert "Count: 99" in result
+
+    def test_caller_block_with_format_filter(self, render_stat_or_dash) -> None:
+        """Test that format filters work within the caller block."""
+        result = render_stat_or_dash(
+            value=3.14159, content_template='{{ "%.1f" | format(v) }}s'
+        )
+        assert "3.1s" in result
+
+    def test_dash_placeholder_html_structure(self, parse_stat) -> None:
+        """Test the exact HTML structure of the dash placeholder."""
+        soup = parse_stat(value=None)
+        span = soup.find("span")
+        assert span is not None, "Span element not found"
+        assert span.get("style") == "color: var(--text-secondary);"
+        assert span.text == "-"
+
+    @pytest.mark.parametrize("falsy_value", [None, "", False, 0, []])
+    def test_dash_shown_for_various_falsy_values(self, parse_stat, falsy_value) -> None:
+        """Test that dash placeholder is shown for various falsy values."""
+        soup = parse_stat(value=falsy_value)
+        assert_dash_placeholder(soup)
+
+    @pytest.mark.parametrize("truthy_value", ["text", 1, True, [1], {"key": "val"}])
+    def test_content_shown_for_various_truthy_values(self, parse_stat, truthy_value) -> None:
+        """Test that caller content is rendered for various truthy values."""
+        soup = parse_stat(value=truthy_value)
+        assert_no_dash_placeholder(soup)
