@@ -295,28 +295,15 @@ orchestrations:
         - github
 ```
 
-To enable Claude Code's experimental Agent Teams feature, use `agent_teams: true`:
+To enable Claude Code's experimental Agent Teams feature, use `agent_teams: true` in the `agent` block:
 
 ```yaml
-orchestrations:
-  - name: "claude-team-review"
-    trigger:
-      source: jira
-      project: "DEV"
-      tags:
-        - "team-review"
     agent:
       agent_type: claude
 
       # Enable Claude Code's experimental Agent Teams feature
       # (only valid when agent_type is "claude"; default: false)
       agent_teams: true
-
-      prompt: |
-        Review the code changes for {jira_issue_key}.
-      tools:
-        - jira
-        - github
 ```
 
 **Agent Types:**
