@@ -659,9 +659,9 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
         # cursor_mode is only valid when agent_type is 'cursor'.
         # NOTE: This uses an include-list approach (DS-646). Any agent type
         # NOT listed in the tuple below will silently accept cursor_mode
-        # without validation (the implicit default behavior). When adding
-        # new AgentType values that do NOT support cursor_mode, you must
-        # add them to the tuple below so the validation rejects them.
+        # without validation. When adding new AgentType values that do NOT
+        # support cursor_mode, you must add them to the tuple below so the
+        # validation rejects them.
         if agent_type is not None and agent_type in (
             AgentType.CLAUDE.value,
             AgentType.CODEX.value,
