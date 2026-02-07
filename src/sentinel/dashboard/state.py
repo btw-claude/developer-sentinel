@@ -265,7 +265,20 @@ class DashboardState:
     active_incomplete_tasks: int = 0
 
     # Computed summary statistics
-    execution_summary: ExecutionSummaryStats | None = None
+    execution_summary: ExecutionSummaryStats = field(
+        default_factory=lambda: ExecutionSummaryStats(
+            total_executions=0,
+            success_count=0,
+            failure_count=0,
+            success_rate=0.0,
+            avg_duration_seconds=0.0,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_tokens=0,
+            total_cost_usd=0.0,
+            avg_cost_usd=0.0,
+        )
+    )
     orchestration_stats: list[OrchestrationStats] = field(default_factory=list)
 
     # System status - thread pool, poll times, uptime
@@ -687,7 +700,7 @@ class SentinelStateAccessor:
         total = len(executions)
         successes = sum(1 for e in executions if e.status == "success")
         failures = total - successes
-        success_rate = (successes / total) * 100.0 if total > 0 else 0.0
+        success_rate = (successes / total) * 100.0
 
         total_duration = sum(e.duration_seconds for e in executions)
         avg_duration = total_duration / total
@@ -721,7 +734,7 @@ class SentinelStateAccessor:
             orch_total = len(orch_executions)
             orch_successes = sum(1 for e in orch_executions if e.status == "success")
             orch_failures = orch_total - orch_successes
-            orch_success_rate = (orch_successes / orch_total) * 100.0 if orch_total > 0 else 0.0
+            orch_success_rate = (orch_successes / orch_total) * 100.0
 
             orch_total_duration = sum(e.duration_seconds for e in orch_executions)
             orch_avg_duration = orch_total_duration / orch_total
