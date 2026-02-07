@@ -23,6 +23,8 @@ from ruamel.yaml.error import YAMLError
 from sentinel.logging import get_logger
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from ruamel.yaml.comments import CommentedSeq
 
 logger = get_logger(__name__)
@@ -559,6 +561,155 @@ class OrchestrationYamlWriter:
             )
 
         return total_count
+
+    def read_orchestration(self, file_path: Path, orch_name: str) -> dict[str, Any] | None:
+        """Read a single orchestration's data from a YAML file.
+
+        Returns the orchestration data as a plain dict for use in validation.
+        Does not modify the file.
+
+        Note: This method reads outside of a file lock. The write lock in
+        update_orchestration() provides the actual safety guarantee. In practice,
+        dashboard edits are low-concurrency so the TOCTOU window between read
+        and write is acceptable.
+
+        Args:
+            file_path: Path to the orchestration YAML file.
+            orch_name: Name of the orchestration to read.
+
+        Returns:
+            A plain dict of the orchestration data, or None if not found.
+
+        Raises:
+            OrchestrationYamlWriterError: If there's an error reading or parsing
+                the file.
+        """
+        data = self._load_yaml(file_path)
+
+        orchestrations = data.get("orchestrations")
+        if orchestrations is None:
+            return None
+
+        idx = self._find_orchestration_index(orchestrations, orch_name)
+        if idx is None:
+            return None
+
+        # Convert CommentedMap to plain dict recursively for validation
+        orch = orchestrations[idx]
+        return self._to_plain_dict(orch) if isinstance(orch, dict) else None
+
+    @staticmethod
+    def _to_plain_dict(data: Any) -> Any:
+        """Recursively convert CommentedMap/CommentedSeq to plain dict/list.
+
+        Args:
+            data: The data to convert.
+
+        Returns:
+            A plain dict/list/value with no ruamel.yaml types.
+        """
+        if isinstance(data, dict):
+            return {k: OrchestrationYamlWriter._to_plain_dict(v) for k, v in data.items()}
+        if isinstance(data, list):
+            return [OrchestrationYamlWriter._to_plain_dict(item) for item in data]
+        return data
+
+    @staticmethod
+    def _deep_update_commented_map(target: CommentedMap, updates: dict[str, Any]) -> None:
+        """Recursively merge updates into target CommentedMap.
+
+        Performs a deep merge of the updates dictionary into the target CommentedMap,
+        preserving YAML comments on unchanged keys. For each key in updates:
+        - If both target[key] and updates[key] are dicts/CommentedMaps, recurse
+        - Otherwise, replace target[key] with updates[key]
+
+        Lists are replaced entirely, not appended or element-wise merged.
+
+        Args:
+            target: The CommentedMap to update in place.
+            updates: A plain dict containing the updates to merge.
+        """
+        for key, value in updates.items():
+            if (
+                key in target
+                and isinstance(target[key], (dict, CommentedMap))
+                and isinstance(value, dict)
+            ):
+                # Both are dicts, recurse
+                OrchestrationYamlWriter._deep_update_commented_map(target[key], value)
+            else:
+                # Replace the value
+                target[key] = value
+
+    def update_orchestration(
+        self, file_path: Path, orch_name: str, updates: dict[str, Any]
+    ) -> bool:
+        """Update an orchestration's configuration with deep merging.
+
+        Loads the orchestration file, finds the orchestration by name, and
+        deep-merges the provided updates into the existing configuration.
+        The 'name' field is read-only and cannot be updated.
+
+        Args:
+            file_path: Path to the orchestration YAML file.
+            orch_name: Name of the orchestration to update.
+            updates: Dictionary of updates to merge into the orchestration.
+                Structure mirrors the YAML orchestration structure.
+
+        Returns:
+            True if the orchestration was found and updated, False if not found.
+
+        Raises:
+            OrchestrationYamlWriterError: If there's an error reading, parsing,
+                or writing the file, or if 'name' is included in updates.
+            FileLockTimeoutError: If the file lock cannot be acquired within
+                the configured timeout.
+        """
+        # Validate that 'name' is not in updates (read-only field)
+        if "name" in updates:
+            raise OrchestrationYamlWriterError(
+                "The 'name' field is read-only and cannot be updated"
+            )
+
+        # Early return if updates is empty to avoid unnecessary file I/O
+        if not updates:
+            return True
+
+        with _file_lock(
+            file_path,
+            max_wait_seconds=self._lock_timeout_seconds,
+            cleanup_lock_file=self._cleanup_lock_files,
+            retry_interval_seconds=self._retry_interval_seconds,
+        ):
+            data = self._load_yaml(file_path)
+
+            orchestrations = data.get("orchestrations")
+            if orchestrations is None:
+                logger.warning(
+                    "No orchestrations key found in %s",
+                    file_path,
+                )
+                return False
+
+            idx = self._find_orchestration_index(orchestrations, orch_name)
+            if idx is None:
+                logger.warning(
+                    "Orchestration '%s' not found in %s",
+                    orch_name,
+                    file_path,
+                )
+                return False
+
+            # Deep merge updates into the orchestration
+            self._deep_update_commented_map(orchestrations[idx], updates)
+            self._save_yaml(file_path, data)
+
+            logger.info(
+                "Updated orchestration '%s' in %s",
+                orch_name,
+                file_path,
+            )
+            return True
 
     def delete_orchestration(self, file_path: Path, orch_name: str) -> bool:
         """Delete a specific orchestration from a YAML file.

@@ -33,7 +33,8 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from sentinel.types import TriggerSource
+from sentinel.orchestration import OrchestrationError, _parse_orchestration
+from sentinel.types import AgentTypeLiteral, CursorModeLiteral, TriggerSource, TriggerSourceLiteral
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
 if TYPE_CHECKING:
@@ -143,11 +144,214 @@ class BulkToggleResponse(BaseModel):
     toggled_count: int
 
 
+# Pydantic models for orchestration edit endpoints (DS-727)
+class TriggerEditRequest(BaseModel):
+    """Request model for editing trigger configuration."""
+
+    source: TriggerSourceLiteral | None = None
+    project: str | None = None
+    jql_filter: str | None = None
+    tags: list[str] | None = None
+    project_number: int | None = None
+    project_scope: Literal["org", "user"] | None = None
+    project_owner: str | None = None
+    project_filter: str | None = None
+    labels: list[str] | None = None
+
+
+class GitHubContextEditRequest(BaseModel):
+    """Request model for editing GitHub context configuration."""
+
+    host: str | None = None
+    org: str | None = None
+    repo: str | None = None
+    branch: str | None = None
+    create_branch: bool | None = None
+    base_branch: str | None = None
+
+
+class AgentEditRequest(BaseModel):
+    """Request model for editing agent configuration."""
+
+    prompt: str | None = None
+    github: GitHubContextEditRequest | None = None
+    timeout_seconds: int | None = None
+    model: str | None = None
+    agent_type: AgentTypeLiteral | None = None
+    cursor_mode: CursorModeLiteral | None = None
+    agent_teams: bool | None = None
+    strict_template_variables: bool | None = None
+
+
+class RetryEditRequest(BaseModel):
+    """Request model for editing retry configuration."""
+
+    max_attempts: int | None = None
+    success_patterns: list[str] | None = None
+    failure_patterns: list[str] | None = None
+    default_status: Literal["success", "failure"] | None = None
+    default_outcome: str | None = None
+
+
+class OutcomeEditRequest(BaseModel):
+    """Request model for editing outcome configuration."""
+
+    name: str | None = None
+    patterns: list[str] | None = None
+    add_tag: str | None = None
+
+
+class LifecycleEditRequest(BaseModel):
+    """Request model for editing lifecycle configuration."""
+
+    on_start_add_tag: str | None = None
+    on_complete_remove_tag: str | None = None
+    on_complete_add_tag: str | None = None
+    on_failure_add_tag: str | None = None
+
+
+class OrchestrationEditRequest(BaseModel):
+    """Request model for editing an orchestration configuration.
+
+    All fields are optional. Only provided fields will be updated.
+    The 'name' field is read-only and cannot be edited.
+    """
+
+    enabled: bool | None = None
+    max_concurrent: int | None = None
+    trigger: TriggerEditRequest | None = None
+    agent: AgentEditRequest | None = None
+    retry: RetryEditRequest | None = None
+    outcomes: list[OutcomeEditRequest] | None = None
+    lifecycle: LifecycleEditRequest | None = None
+
+
+class OrchestrationEditResponse(BaseModel):
+    """Response model for orchestration edit."""
+
+    success: bool
+    name: str
+    errors: list[str] = []
+
+
 class DeleteResponse(BaseModel):
     """Response model for orchestration deletion."""
 
     success: bool
     name: str
+
+
+def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
+    """Convert an OrchestrationEditRequest to a YAML-compatible update dict.
+
+    Uses Pydantic v2 model_dump(exclude_none=True) for top-level and nested
+    models to avoid manual is-not-None checks. The lifecycle section requires
+    special post-processing to map flat Pydantic fields to the nested YAML
+    structure (on_start, on_complete, on_failure).
+
+    Args:
+        request: The edit request containing fields to update.
+
+    Returns:
+        A dictionary mirroring the YAML structure with only the
+        fields that should be updated.
+    """
+    # Use model_dump to get all non-None fields automatically
+    raw = request.model_dump(exclude_none=True)
+
+    updates: dict[str, Any] = {}
+
+    # Copy top-level scalar fields directly
+    for key in ("enabled", "max_concurrent"):
+        if key in raw:
+            updates[key] = raw[key]
+
+    # Nested models: model_dump already excludes None recursively
+    if "trigger" in raw and raw["trigger"]:
+        updates["trigger"] = raw["trigger"]
+
+    if "agent" in raw and raw["agent"]:
+        updates["agent"] = raw["agent"]
+
+    if "retry" in raw and raw["retry"]:
+        updates["retry"] = raw["retry"]
+
+    if "outcomes" in raw:
+        updates["outcomes"] = raw["outcomes"]
+
+    # Lifecycle requires special handling: flat Pydantic fields map to nested YAML
+    if "lifecycle" in raw and raw["lifecycle"]:
+        lc = raw["lifecycle"]
+        if "on_start_add_tag" in lc:
+            updates.setdefault("on_start", {})["add_tag"] = lc["on_start_add_tag"]
+        if "on_complete_remove_tag" in lc:
+            updates.setdefault("on_complete", {})["remove_tag"] = lc["on_complete_remove_tag"]
+        if "on_complete_add_tag" in lc:
+            updates.setdefault("on_complete", {})["add_tag"] = lc["on_complete_add_tag"]
+        if "on_failure_add_tag" in lc:
+            updates.setdefault("on_failure", {})["add_tag"] = lc["on_failure_add_tag"]
+
+    return updates
+
+
+def _validate_orchestration_updates(
+    orch_name: str,
+    current_data: dict[str, Any],
+    updates: dict[str, Any],
+) -> list[str]:
+    """Validate orchestration updates by passing through _parse_orchestration.
+
+    Merges the updates into a copy of the current orchestration data and
+    validates the result through the existing _parse_orchestration() function.
+    This reuses ALL existing validation (branch patterns, agent_type/cursor_mode
+    combos, project keys, etc.) without duplication.
+
+    Note: _parse_orchestration() raises on the first validation error, so this
+    function returns at most one error string. Users making multiple mistakes
+    will need to fix them one at a time.
+
+    Args:
+        orch_name: The name of the orchestration being updated.
+        current_data: The current orchestration data as a plain dict.
+        updates: The updates to merge.
+
+    Returns:
+        A list of validation error messages. Empty list means validation passed.
+    """
+    # Deep merge updates into a copy of current data
+    merged = _deep_merge_dicts(current_data, updates)
+
+    # Ensure name is preserved in merged data
+    merged["name"] = orch_name
+
+    try:
+        _parse_orchestration(merged)
+        return []
+    except OrchestrationError as e:
+        return [str(e)]
+
+
+def _deep_merge_dicts(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    """Deep merge updates into a copy of base dict.
+
+    Creates a new dict with base values overridden by updates.
+    Nested dicts are recursively merged. Lists are replaced entirely,
+    not appended or element-wise merged.
+
+    Args:
+        base: The base dictionary to merge into.
+        updates: The updates to apply.
+
+    Returns:
+        A new dictionary with merged values.
+    """
+    result = dict(base)
+    for key, value in updates.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge_dicts(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
 def create_routes(
@@ -1003,6 +1207,114 @@ def create_routes(
                 request_body.identifier,
                 e,
             )
+            raise HTTPException(
+                status_code=500,
+                detail=str(e),
+            ) from e
+
+    @dashboard_router.put(
+        "/api/orchestrations/{name}",
+        response_model=OrchestrationEditResponse,
+        summary="Edit orchestration configuration",
+        description="Update the configuration of an orchestration by name. "
+        "Only provided fields are updated; omitted fields are left unchanged. "
+        "The 'name' field is read-only. Validates changes through the existing "
+        "orchestration parser before writing to YAML. "
+        "Rate limited to prevent rapid file writes.",
+    )
+    async def edit_orchestration(
+        name: str, request_body: OrchestrationEditRequest
+    ) -> OrchestrationEditResponse:
+        """Edit the configuration of an orchestration.
+
+        This endpoint updates orchestration fields in the YAML file.
+        Changes are validated through _parse_orchestration() before writing.
+        The change takes effect on the next hot-reload cycle.
+
+        Args:
+            name: The name of the orchestration to edit.
+            request_body: The edit request containing fields to update.
+
+        Returns:
+            OrchestrationEditResponse with success status, name, and any errors.
+
+        Raises:
+            HTTPException: 404 if orchestration not found, 422 for validation errors,
+                429 for rate limit, 500 for YAML errors.
+        """
+        logger.debug("edit_orchestration called for '%s'", name)
+        state = state_accessor.get_state()
+
+        # Find the orchestration to get its source file
+        orch_info = None
+        for orch in state.orchestrations:
+            if orch.name == name:
+                orch_info = orch
+                break
+
+        if orch_info is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found",
+            )
+
+        if not orch_info.source_file:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Source file not found for orchestration '{name}'",
+            )
+
+        source_file = Path(orch_info.source_file)
+        if not source_file.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration file not found: {source_file}",
+            )
+
+        # Build YAML-compatible update dict from Pydantic model
+        updates = _build_yaml_updates(request_body)
+
+        if not updates:
+            return OrchestrationEditResponse(success=True, name=name)
+
+        # Read current orchestration data for validation
+        try:
+            writer = OrchestrationYamlWriter()
+            current_data = writer.read_orchestration(source_file, name)
+        except OrchestrationYamlWriterError as e:
+            logger.error("Failed to read orchestration '%s': %s", name, e)
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+        if current_data is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found in file {source_file}",
+            )
+
+        # Validate the merged result through _parse_orchestration()
+        errors = _validate_orchestration_updates(name, current_data, updates)
+        if errors:
+            raise HTTPException(status_code=422, detail=errors[0])
+
+        # Check rate limit before writing
+        rate_limiter.check_rate_limit(str(source_file))
+
+        try:
+            result = writer.update_orchestration(source_file, name, updates)
+
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Orchestration '{name}' not found in file {source_file}",
+                )
+
+            # Record successful write for rate limiting
+            rate_limiter.record_write(str(source_file))
+
+            return OrchestrationEditResponse(success=True, name=name)
+
+        except OrchestrationYamlWriterError as e:
+            logger.error("Failed to edit orchestration '%s': %s", name, e)
             raise HTTPException(
                 status_code=500,
                 detail=str(e),
