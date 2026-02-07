@@ -107,6 +107,13 @@ class TestExecutionSummaryStatsEmpty:
 
         assert stats1 == stats2
 
+    def test_empty_returns_cached_singleton(self) -> None:
+        """Test that empty() returns the same cached object (identity check)."""
+        stats1 = ExecutionSummaryStats.empty()
+        stats2 = ExecutionSummaryStats.empty()
+
+        assert stats1 is stats2
+
 
 class TestComputeExecutionStatsEmpty:
     """Tests for _compute_execution_stats with empty input."""
