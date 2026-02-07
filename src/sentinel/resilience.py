@@ -49,7 +49,7 @@ import types
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerError, CircuitState
+from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerError
 from sentinel.logging import get_logger
 from sentinel.rate_limiter import ClaudeRateLimiter, RateLimitExceededError
 
@@ -260,7 +260,7 @@ class ResilienceWrapper:
         Returns:
             True if circuit is open (requests would be rejected), False otherwise.
         """
-        return self._circuit_breaker.state == CircuitState.OPEN
+        return self._circuit_breaker.is_open
 
     def acquire(self, timeout: float | None = None) -> bool:
         """Acquire permission to make a request (synchronous).
@@ -409,7 +409,7 @@ class ResilienceWrapper:
                 "ResilienceWrapper does not support nested context manager usage"
             )
         if not self.acquire():
-            if self._circuit_breaker.state == CircuitState.OPEN:
+            if self._circuit_breaker.is_open:
                 raise CircuitBreakerError(
                     self._circuit_breaker.service_name,
                     self._circuit_breaker.state,
@@ -444,7 +444,7 @@ class ResilienceWrapper:
                 "ResilienceWrapper does not support nested context manager usage"
             )
         if not await self.acquire_async():
-            if self._circuit_breaker.state == CircuitState.OPEN:
+            if self._circuit_breaker.is_open:
                 raise CircuitBreakerError(
                     self._circuit_breaker.service_name,
                     self._circuit_breaker.state,
