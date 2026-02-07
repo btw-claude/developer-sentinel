@@ -61,19 +61,6 @@ class TestAgentClientsModuleAll:
             f"Symbol {symbol} in __all__ but not importable"
         )
 
-    def test_codex_agent_client_exported(self) -> None:
-        """Test that CodexAgentClient is importable from agent_clients package."""
-        from sentinel.agent_clients import CodexAgentClient
-
-        assert CodexAgentClient is not None
-        assert CodexAgentClient.__name__ == "CodexAgentClient"
-
-    def test_codex_agent_client_in_all(self) -> None:
-        """Test that CodexAgentClient is listed in __all__."""
-        from sentinel.agent_clients import __all__
-
-        assert "CodexAgentClient" in __all__
-
     def test_codex_agent_client_matches_source_module(self) -> None:
         """Test that CodexAgentClient from package matches the source module."""
         from sentinel.agent_clients import CodexAgentClient as PackageExport
