@@ -14,6 +14,7 @@ import pytest
 
 from sentinel.agent_clients.base import AgentClientError, AgentTimeoutError, UsageInfo
 from sentinel.agent_clients.claude_sdk import (
+    _AGENT_TEAMS_ENV_VAR,
     _extract_usage_from_message,
     request_shutdown,
     reset_shutdown,
@@ -1547,7 +1548,7 @@ class TestAgentTeamsEnvVar:
     """Tests for agent_teams env var passthrough to ClaudeAgentOptions."""
 
     def test_agent_teams_enabled_passes_env_var_simple(self, mock_config: Config) -> None:
-        """Should pass CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var when agent_teams=True via _run_simple."""
+        """Should pass agent teams env var when agent_teams=True via _run_simple."""
         captured_options: list[Any] = []
 
         def capture_query(prompt: str, **kwargs: Any) -> AsyncIterator[MockMessage]:
@@ -1562,7 +1563,7 @@ class TestAgentTeamsEnvVar:
 
         assert len(captured_options) == 1
         options = captured_options[0]
-        assert options.env == {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}
+        assert options.env == {_AGENT_TEAMS_ENV_VAR: "1"}
 
     def test_agent_teams_disabled_no_env_var_simple(self, mock_config: Config) -> None:
         """Should not pass agent teams env var when agent_teams=False via _run_simple."""
@@ -1580,7 +1581,7 @@ class TestAgentTeamsEnvVar:
 
         assert len(captured_options) == 1
         options = captured_options[0]
-        assert "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" not in options.env
+        assert _AGENT_TEAMS_ENV_VAR not in options.env
 
     def test_agent_teams_default_is_false(self, mock_config: Config) -> None:
         """Should default agent_teams to False when not specified."""
@@ -1598,12 +1599,12 @@ class TestAgentTeamsEnvVar:
 
         assert len(captured_options) == 1
         options = captured_options[0]
-        assert "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" not in options.env
+        assert _AGENT_TEAMS_ENV_VAR not in options.env
 
     def test_agent_teams_enabled_passes_env_var_streaming(
         self, tmp_path: Path, mock_config: Config
     ) -> None:
-        """Should pass CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var when agent_teams=True via _run_with_log."""
+        """Should pass agent teams env var when agent_teams=True via _run_with_log."""
         log_dir = tmp_path / "logs"
         captured_options: list[Any] = []
 
@@ -1627,7 +1628,7 @@ class TestAgentTeamsEnvVar:
 
         assert len(captured_options) == 1
         options = captured_options[0]
-        assert options.env == {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}
+        assert options.env == {_AGENT_TEAMS_ENV_VAR: "1"}
 
     def test_agent_teams_disabled_no_env_var_streaming(
         self, tmp_path: Path, mock_config: Config
@@ -1656,4 +1657,4 @@ class TestAgentTeamsEnvVar:
 
         assert len(captured_options) == 1
         options = captured_options[0]
-        assert "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" not in options.env
+        assert _AGENT_TEAMS_ENV_VAR not in options.env

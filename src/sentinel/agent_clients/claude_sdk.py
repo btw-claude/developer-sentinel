@@ -40,6 +40,22 @@ from sentinel.rate_limiter import ClaudeRateLimiter, RateLimitExceededError
 
 logger = get_logger(__name__)
 
+# Environment variable name for enabling Claude Code's experimental Agent Teams feature.
+# Extracted as a constant to avoid duplication across code paths (DS-699).
+_AGENT_TEAMS_ENV_VAR = "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"
+
+
+def _build_agent_teams_env(agent_teams: bool) -> dict[str, str]:
+    """Build the environment dict for the agent teams feature flag.
+
+    Args:
+        agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
+
+    Returns:
+        A dict with the agent teams env var set to "1" if enabled, or an empty dict.
+    """
+    return {_AGENT_TEAMS_ENV_VAR: "1"} if agent_teams else {}
+
 
 @dataclass
 class TimingMetrics:
@@ -414,7 +430,7 @@ async def _run_query(
     """
     metrics = TimingMetrics() if collect_metrics else None
 
-    env = {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"} if agent_teams else {}
+    env = _build_agent_teams_env(agent_teams)
     options = ClaudeAgentOptions(
         permission_mode="bypassPermissions",
         model=model,
@@ -996,7 +1012,7 @@ class ClaudeSdkAgentClient(AgentClient):
         status = "ERROR"
         usage_info: UsageInfo | None = None
         try:
-            env = {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"} if agent_teams else {}
+            env = _build_agent_teams_env(agent_teams)
             options = ClaudeAgentOptions(
                 permission_mode="bypassPermissions",
                 model=model,
