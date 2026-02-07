@@ -33,7 +33,7 @@ from sentinel.agent_clients.base import (
     AgentType,
     UsageInfo,
 )
-from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
+from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitState
 from sentinel.config import Config
 from sentinel.logging import generate_log_filename, get_logger
 from sentinel.rate_limiter import ClaudeRateLimiter, RateLimitExceededError
@@ -777,8 +777,8 @@ class ClaudeSdkAgentClient(AgentClient):
         Returns:
             A tuple of (response_text, usage_info).
         """
-        assert self._circuit_breaker.allow_request(), (
-            "Circuit breaker does not allow requests - "
+        assert self._circuit_breaker.state != CircuitState.OPEN, (
+            "Circuit breaker is OPEN - "
             "_run_simple() must be called via run_agent(). "
             f"State: {self._circuit_breaker.state.value}"
         )
@@ -898,11 +898,12 @@ class ClaudeSdkAgentClient(AgentClient):
         Returns:
             A tuple of (response_text, usage_info).
         """
-        assert self._circuit_breaker.allow_request(), (
-            "Circuit breaker does not allow requests - "
+        assert self._circuit_breaker.state != CircuitState.OPEN, (
+            "Circuit breaker is OPEN - "
             "_run_with_log() must be called via run_agent(). "
             f"State: {self._circuit_breaker.state.value}"
         )
+
         assert self.log_base_dir is not None
 
         # Acquire rate limit permit before making API call
