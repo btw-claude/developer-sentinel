@@ -1983,3 +1983,275 @@ class TestEditFormPartialEndpoint:
 
             assert response.status_code == 200
             assert "text/html" in response.headers["content-type"]
+
+
+class TestCreateOrchestrationEndpoint:
+    """Tests for POST /api/orchestrations endpoint (DS-729)."""
+
+    def test_create_orchestration_success(self, temp_logs_dir: Path) -> None:
+        """Test successful creation of a new orchestration."""
+        # Create orchestrations directory
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations",
+                json={
+                    "name": "new-orch",
+                    "target_file": "new-file.yaml",
+                    "trigger": {"source": "jira", "project": "TEST"},
+                    "agent": {"prompt": "Test prompt"},
+                },
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["name"] == "new-orch"
+
+            # Verify file was created
+            created_file = orch_dir / "new-file.yaml"
+            assert created_file.exists()
+            content = created_file.read_text()
+            assert "new-orch" in content
+
+    def test_create_orchestration_duplicate_name(self, temp_logs_dir: Path) -> None:
+        """Test 422 when orchestration name already exists."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        # Create existing orchestration
+        orch_info = OrchestrationInfo(
+            name="existing-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test",
+            source_file=str(orch_dir / "existing.yaml"),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations",
+                json={
+                    "name": "existing-orch",
+                    "target_file": "new-file.yaml",
+                    "trigger": {"source": "jira", "project": "TEST"},
+                    "agent": {"prompt": "Test"},
+                },
+            )
+
+            assert response.status_code == 422
+            assert "already exists" in response.json()["detail"]
+
+    def test_create_orchestration_path_traversal(self, temp_logs_dir: Path) -> None:
+        """Test 422 when target file is outside orchestrations directory."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations",
+                json={
+                    "name": "new-orch",
+                    "target_file": "../outside.yaml",
+                    "trigger": {"source": "jira", "project": "TEST"},
+                    "agent": {"prompt": "Test"},
+                },
+            )
+
+            assert response.status_code == 422
+            assert "not within" in response.json()["detail"]
+
+    def test_create_orchestration_appends_to_existing_file(self, temp_logs_dir: Path) -> None:
+        """Test that creation appends to an existing YAML file."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        # Create an existing YAML file with an orchestration
+        existing_file = orch_dir / "existing.yaml"
+        existing_file.write_text("""
+orchestrations:
+  - name: "first-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "First"
+""")
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/orchestrations",
+                json={
+                    "name": "second-orch",
+                    "target_file": "existing.yaml",
+                    "trigger": {"source": "jira", "project": "TEST"},
+                    "agent": {"prompt": "Second"},
+                },
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+
+            # Verify both orchestrations exist in the file
+            content = existing_file.read_text()
+            assert "first-orch" in content
+            assert "second-orch" in content
+
+    def test_create_endpoint_exists(self, temp_logs_dir: Path) -> None:
+        """Test that the create endpoint exists at the correct path."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        route_paths = [route.path for route in app.routes]
+        assert "/api/orchestrations" in route_paths
+
+
+class TestOrchestrationFilesEndpoint:
+    """Tests for GET /api/orchestrations/files endpoint (DS-729)."""
+
+    def test_returns_yaml_files(self, temp_logs_dir: Path) -> None:
+        """Test that endpoint returns list of YAML files."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+        (orch_dir / "file1.yaml").write_text("orchestrations: []")
+        (orch_dir / "file2.yml").write_text("orchestrations: []")
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.get("/api/orchestrations/files")
+
+            assert response.status_code == 200
+            files = response.json()
+            assert "file1.yaml" in files
+            assert "file2.yml" in files
+
+    def test_returns_empty_when_no_files(self, temp_logs_dir: Path) -> None:
+        """Test that endpoint returns empty list when no YAML files exist."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.get("/api/orchestrations/files")
+
+            assert response.status_code == 200
+            assert response.json() == []
+
+    def test_returns_sorted_files(self, temp_logs_dir: Path) -> None:
+        """Test that files are returned in sorted order."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+        (orch_dir / "c-file.yaml").write_text("orchestrations: []")
+        (orch_dir / "a-file.yaml").write_text("orchestrations: []")
+        (orch_dir / "b-file.yaml").write_text("orchestrations: []")
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.get("/api/orchestrations/files")
+
+            assert response.status_code == 200
+            files = response.json()
+            assert files == ["a-file.yaml", "b-file.yaml", "c-file.yaml"]
+
+    def test_files_endpoint_exists(self, temp_logs_dir: Path) -> None:
+        """Test that the files endpoint exists at the correct path."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        route_paths = [route.path for route in app.routes]
+        assert "/api/orchestrations/files" in route_paths

@@ -241,6 +241,28 @@ class DeleteResponse(BaseModel):
     name: str
 
 
+class OrchestrationCreateRequest(BaseModel):
+    """Request model for creating a new orchestration."""
+
+    name: str
+    target_file: str
+    enabled: bool | None = None
+    max_concurrent: int | None = None
+    trigger: TriggerEditRequest | None = None
+    agent: AgentEditRequest | None = None
+    retry: RetryEditRequest | None = None
+    outcomes: list[OutcomeEditRequest] | None = None
+    lifecycle: LifecycleEditRequest | None = None
+
+
+class OrchestrationCreateResponse(BaseModel):
+    """Response model for orchestration creation."""
+
+    success: bool
+    name: str
+    errors: list[str] = []
+
+
 def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
     """Convert an OrchestrationEditRequest to a YAML-compatible update dict.
 
@@ -912,6 +934,34 @@ def create_routes(
 
         return EventSourceResponse(event_generator())
 
+    @dashboard_router.get("/api/orchestrations/files")
+    async def api_orchestrations_files() -> list[str]:
+        """Return list of YAML files in the orchestrations directory.
+
+        Scans the orchestrations directory for .yaml and .yml files
+        and returns their relative paths for use in the file selector.
+
+        Returns:
+            List of relative file paths (strings) from orchestrations_dir.
+        """
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+
+        yaml_files = []
+        try:
+            if orchestrations_dir.exists() and orchestrations_dir.is_dir():
+                for pattern in ("*.yaml", "*.yml"):
+                    for file_path in orchestrations_dir.glob(pattern):
+                        if file_path.is_file():
+                            # Return relative path from orchestrations_dir
+                            relative_path = file_path.relative_to(orchestrations_dir)
+                            yaml_files.append(str(relative_path))
+        except OSError as e:
+            logger.warning("Error scanning orchestrations directory: %s", e)
+
+        # Sort for consistent ordering
+        yaml_files.sort()
+        return yaml_files
+
     @dashboard_router.get("/api/orchestrations/{name}/detail")
     async def api_orchestration_detail(name: str) -> dict[str, Any]:
         """Return full orchestration configuration as JSON.
@@ -1060,6 +1110,30 @@ def create_routes(
                 request=request,
                 name="partials/orchestration_edit_form.html",
                 context={"detail": detail},
+            ),
+        )
+
+    @dashboard_router.get(
+        "/partials/orchestration_create", response_class=HTMLResponse
+    )
+    async def partial_orchestration_create(request: Request) -> HTMLResponse:
+        """Render the orchestration creation form partial for HTMX.
+
+        Returns an empty creation form with a name field and file selector.
+
+        Args:
+            request: The incoming HTTP request.
+
+        Returns:
+            HTML response with the orchestration creation form partial.
+        """
+        templates = request.app.state.templates
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/orchestration_create_form.html",
+                context={},
             ),
         )
 
@@ -1430,6 +1504,107 @@ def create_routes(
 
         except OrchestrationYamlWriterError as e:
             logger.error("Failed to delete orchestration '%s': %s", name, e)
+            raise HTTPException(
+                status_code=500,
+                detail=str(e),
+            ) from e
+
+    @dashboard_router.post(
+        "/api/orchestrations",
+        response_model=OrchestrationCreateResponse,
+        summary="Create a new orchestration",
+        description="Create a new orchestration in the specified target file. "
+        "Validates name uniqueness and target file path. Rate limited to "
+        "prevent rapid file writes.",
+    )
+    async def create_orchestration(
+        request_body: OrchestrationCreateRequest,
+    ) -> OrchestrationCreateResponse:
+        """Create a new orchestration.
+
+        This endpoint creates a new orchestration in the target YAML file.
+        The change takes effect on the next hot-reload cycle.
+
+        Args:
+            request_body: The create request containing orchestration configuration.
+
+        Returns:
+            OrchestrationCreateResponse with success status, name, and any errors.
+
+        Raises:
+            HTTPException: 422 for validation errors (duplicate name, invalid path),
+                429 for rate limit, 500 for YAML errors.
+        """
+        logger.debug("create_orchestration called for '%s'", request_body.name)
+        state = state_accessor.get_state()
+
+        # Validate name uniqueness across all loaded orchestrations
+        for orch in state.orchestrations:
+            if orch.name == request_body.name:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Orchestration with name '{request_body.name}' already exists",
+                )
+
+        # Get orchestrations_dir from config
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+
+        # Validate target_file is within orchestrations_dir
+        target_file_path = Path(request_body.target_file)
+        if not target_file_path.is_absolute():
+            target_file_path = orchestrations_dir / target_file_path
+
+        try:
+            target_file_path.resolve().relative_to(orchestrations_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Target file '{request_body.target_file}' is not within "
+                    f"orchestrations directory"
+                ),
+            ) from None
+
+        # Build orchestration data dict from request
+        orch_data: dict[str, Any] = {"name": request_body.name}
+
+        # Add optional fields using _build_yaml_updates pattern
+        updates = _build_yaml_updates(
+            OrchestrationEditRequest(
+                enabled=request_body.enabled,
+                max_concurrent=request_body.max_concurrent,
+                trigger=request_body.trigger,
+                agent=request_body.agent,
+                retry=request_body.retry,
+                outcomes=request_body.outcomes,
+                lifecycle=request_body.lifecycle,
+            )
+        )
+        orch_data.update(updates)
+
+        # Validate via _parse_orchestration
+        try:
+            _parse_orchestration(orch_data)
+        except OrchestrationError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+
+        # Check rate limit before writing
+        rate_limiter.check_rate_limit(str(target_file_path))
+
+        try:
+            writer = OrchestrationYamlWriter()
+            writer.add_orchestration(target_file_path, orch_data, orchestrations_dir)
+
+            # Record successful write for rate limiting
+            rate_limiter.record_write(str(target_file_path))
+
+            return OrchestrationCreateResponse(
+                success=True,
+                name=request_body.name,
+            )
+
+        except OrchestrationYamlWriterError as e:
+            logger.error("Failed to create orchestration '%s': %s", request_body.name, e)
             raise HTTPException(
                 status_code=500,
                 detail=str(e),
