@@ -237,11 +237,11 @@ def create_routes(
         Raises:
             HTTPException: 429 if rate limit is exceeded.
         """
-        client_ip = request.client.host if request.client else "unknown"
-        current_count = csrf_rate_limit.get(client_ip, 0)
-        if client_ip == "unknown" and current_count == 0:
+        client_host = request.client.host if request.client else "unknown"
+        current_count = csrf_rate_limit.get(client_host, 0)
+        if client_host == "unknown" and current_count == 0:
             logger.warning(
-                "CSRF token request from unknown client IP (request.client is None); "
+                "CSRF token request from unknown client host (request.client is None); "
                 "this may indicate the app is behind a proxy that does not set "
                 "X-Forwarded-For or similar headers"
             )
@@ -250,7 +250,7 @@ def create_routes(
                 status_code=429,
                 detail="CSRF token request rate limit exceeded. Please try again later.",
             )
-        csrf_rate_limit[client_ip] = current_count + 1
+        csrf_rate_limit[client_host] = current_count + 1
         return {"csrf_token": _generate_csrf_token()}
 
     @dashboard_router.get("/", response_class=HTMLResponse)

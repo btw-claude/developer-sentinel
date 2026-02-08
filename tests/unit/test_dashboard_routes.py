@@ -2466,8 +2466,8 @@ class TestCsrfTokenRateLimiting:
             assert response.status_code == 429
             assert "rate limit" in response.json()["detail"].lower()
 
-    def test_csrf_token_rate_limit_per_client_ip(self, temp_logs_dir: Path) -> None:
-        """Test that CSRF rate limiting is per-client IP."""
+    def test_csrf_token_rate_limit_per_client_host(self, temp_logs_dir: Path) -> None:
+        """Test that CSRF rate limiting is per-client host."""
         config = Config(
             execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
         )
