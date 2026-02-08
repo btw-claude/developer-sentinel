@@ -42,14 +42,12 @@
                         <label class="detail-label" for="jira_project">Project</label>
                         <input type="text" id="jira_project" name="jira_project"
                                value="{{ detail.trigger.project or '' }}"
-                               aria-label="Jira project key"
                                class="form-input">
                     </div>
                     <div class="detail-row">
                         <label class="detail-label" for="jira_jql_filter">JQL Filter</label>
                         <input type="text" id="jira_jql_filter" name="jira_jql_filter"
                                value="{{ detail.trigger.jql_filter or '' }}"
-                               aria-label="JQL filter expression"
                                class="form-input">
                     </div>
                     <div class="detail-row">
@@ -57,7 +55,6 @@
                         <input type="text" id="jira_tags" name="jira_tags"
                                value="{% if detail.trigger.tags %}{{ detail.trigger.tags|join(', ') }}{% endif %}"
                                placeholder="comma-separated"
-                               aria-label="Jira tags, comma-separated"
                                class="form-input">
                     </div>
                 </div>
@@ -68,7 +65,6 @@
                         <label class="detail-label" for="github_project_number">Project Number</label>
                         <input type="number" id="github_project_number" name="github_project_number"
                                value="{{ detail.trigger.project_number or '' }}"
-                               aria-label="GitHub project number"
                                class="form-input">
                     </div>
                     <div class="detail-row">
@@ -92,14 +88,12 @@
                         <label class="detail-label" for="github_project_owner">Project Owner</label>
                         <input type="text" id="github_project_owner" name="github_project_owner"
                                value="{{ detail.trigger.project_owner or '' }}"
-                               aria-label="GitHub project owner"
                                class="form-input">
                     </div>
                     <div class="detail-row">
                         <label class="detail-label" for="github_project_filter">Project Filter</label>
                         <input type="text" id="github_project_filter" name="github_project_filter"
                                value="{{ detail.trigger.project_filter or '' }}"
-                               aria-label="GitHub project filter expression"
                                class="form-input">
                     </div>
                     <div class="detail-row">
@@ -107,7 +101,6 @@
                         <input type="text" id="github_labels" name="github_labels"
                                value="{% if detail.trigger.labels %}{{ detail.trigger.labels|join(', ') }}{% endif %}"
                                placeholder="comma-separated"
-                               aria-label="GitHub labels, comma-separated"
                                class="form-input">
                     </div>
                 </div>
@@ -123,7 +116,6 @@
                     <select id="agent_type" name="agent_type"
                             onchange="toggleCursorMode(this.value)"
                             aria-required="true"
-                            aria-label="Agent type selection"
                             class="form-input">
                         <option value="claude" {% if detail.agent.agent_type == 'claude' %}selected{% endif %}>Claude</option>
                         <option value="cursor" {% if detail.agent.agent_type == 'cursor' %}selected{% endif %}>Cursor</option>
@@ -134,7 +126,6 @@
                 <div class="detail-row" id="cursor-mode-row" style="display: none;">
                     <label class="detail-label" for="cursor_mode">Cursor Mode</label>
                     <select id="cursor_mode" name="cursor_mode"
-                            aria-label="Cursor mode selection"
                             class="form-input">
                         <option value="agent" {% if detail.agent.cursor_mode == 'agent' %}selected{% endif %}>Agent</option>
                         <option value="plan" {% if detail.agent.cursor_mode == 'plan' %}selected{% endif %}>Plan</option>
@@ -146,7 +137,6 @@
                     <label class="detail-label" for="model">Model</label>
                     <input type="text" id="model" name="model"
                            value="{{ detail.agent.model or '' }}"
-                           aria-label="AI model name"
                            class="form-input">
                 </div>
 
@@ -154,7 +144,6 @@
                     <label class="detail-label" for="timeout_seconds">Timeout (seconds)</label>
                     <input type="number" id="timeout_seconds" name="timeout_seconds"
                            value="{{ detail.agent.timeout_seconds or '' }}"
-                           aria-label="Agent timeout in seconds"
                            class="form-input">
                 </div>
             </div>
@@ -163,7 +152,6 @@
                 <label class="detail-label" for="prompt">Prompt</label>
                 <textarea id="prompt" name="prompt" rows="8"
                           aria-required="true"
-                          aria-label="Agent prompt text"
                           class="form-textarea--full">{{ detail.agent.prompt or '' }}</textarea>
             </div>
 
@@ -175,36 +163,31 @@
                         <label class="detail-label" for="github_host">Host</label>
                         <input type="text" id="github_host" name="github_host"
                                value="{{ detail.agent.github.host if detail.agent.github else '' }}"
-                               aria-label="GitHub host URL"
                                class="form-input--nested">
                     </div>
                     <div class="detail-row">
                         <label class="detail-label" for="github_org">Organization</label>
                         <input type="text" id="github_org" name="github_org"
                                value="{{ detail.agent.github.org if detail.agent.github else '' }}"
-                               aria-label="GitHub organization name"
                                class="form-input--nested">
                     </div>
                     <div class="detail-row">
                         <label class="detail-label" for="github_repo">Repository</label>
                         <input type="text" id="github_repo" name="github_repo"
                                value="{{ detail.agent.github.repo if detail.agent.github else '' }}"
-                               aria-label="GitHub repository name"
                                class="form-input--nested">
                     </div>
                     <div class="detail-row">
                         <label class="detail-label" for="github_branch">Branch</label>
                         <input type="text" id="github_branch" name="github_branch"
                                value="{{ detail.agent.github.branch if detail.agent.github else '' }}"
-                               aria-label="GitHub branch name"
                                class="form-input--nested">
                     </div>
                     <div class="detail-row">
                         <label class="detail-label" for="github_create_branch">Create Branch</label>
                         <label>
                             <input type="checkbox" id="github_create_branch" name="github_create_branch"
-                                   {% if detail.agent.github and detail.agent.github.create_branch %}checked{% endif %}
-                                   aria-label="Create branch automatically">
+                                   {% if detail.agent.github and detail.agent.github.create_branch %}checked{% endif %}>
                             Yes
                         </label>
                     </div>
@@ -212,7 +195,6 @@
                         <label class="detail-label" for="github_base_branch">Base Branch</label>
                         <input type="text" id="github_base_branch" name="github_base_branch"
                                value="{{ detail.agent.github.base_branch if detail.agent.github else '' }}"
-                               aria-label="GitHub base branch name"
                                class="form-input--nested">
                     </div>
                 </div>
@@ -229,21 +211,18 @@
                            value="{{ detail.retry.max_attempts or 1 }}"
                            min="1"
                            aria-required="true"
-                           aria-label="Maximum retry attempts"
                            class="form-input">
                 </div>
                 <div class="detail-row">
                     <label class="detail-label" for="success_patterns">Success Patterns</label>
                     <textarea id="success_patterns" name="success_patterns" rows="3"
                               placeholder="one pattern per line"
-                              aria-label="Success detection patterns, one per line"
                               class="form-textarea">{% if detail.retry.success_patterns %}{{ detail.retry.success_patterns|join('\n') }}{% endif %}</textarea>
                 </div>
                 <div class="detail-row">
                     <label class="detail-label" for="failure_patterns">Failure Patterns</label>
                     <textarea id="failure_patterns" name="failure_patterns" rows="3"
                               placeholder="one pattern per line"
-                              aria-label="Failure detection patterns, one per line"
                               class="form-textarea">{% if detail.retry.failure_patterns %}{{ detail.retry.failure_patterns|join('\n') }}{% endif %}</textarea>
                 </div>
                 <div class="detail-row">
@@ -267,7 +246,6 @@
                     <label class="detail-label" for="default_outcome">Default Outcome</label>
                     <input type="text" id="default_outcome" name="default_outcome"
                            value="{{ detail.retry.default_outcome or '' }}"
-                           aria-label="Default outcome value"
                            class="form-input">
                 </div>
             </div>
@@ -276,10 +254,10 @@
         {# Outcomes Section #}
         <div class="detail-section">
             <h4>Outcomes</h4>
-            <div id="outcomes-container" role="list" aria-label="Outcome definitions">
+            <ul id="outcomes-container" aria-label="Outcome definitions">
                 {% if detail.outcomes %}
                     {% for outcome in detail.outcomes %}
-                <div class="outcome-row" role="listitem">
+                <li class="outcome-row">
                     <input type="text" name="outcome_name" value="{{ outcome.name }}" placeholder="Outcome name"
                            aria-label="Outcome name"
                            class="form-input">
@@ -291,10 +269,10 @@
                            class="form-input">
                     <button type="button" onclick="removeOutcome(this)" class="btn-sm btn-danger" style="height: fit-content;"
                             aria-label="Remove outcome {{ outcome.name }}">Remove</button>
-                </div>
+                </li>
                     {% endfor %}
                 {% endif %}
-            </div>
+            </ul>
             <button type="button" onclick="addOutcome()" class="btn-sm btn-accent" style="margin-top: 0.5rem;"
                     aria-label="Add a new outcome">Add Outcome</button>
         </div>
@@ -307,28 +285,24 @@
                     <label class="detail-label" for="on_start_add_tag">On Start Add Tag</label>
                     <input type="text" id="on_start_add_tag" name="on_start_add_tag"
                            value="{{ detail.lifecycle.on_start_add_tag or '' }}"
-                           aria-label="Tag to add when orchestration starts"
                            class="form-input">
                 </div>
                 <div class="detail-row">
                     <label class="detail-label" for="on_complete_remove_tag">On Complete Remove Tag</label>
                     <input type="text" id="on_complete_remove_tag" name="on_complete_remove_tag"
                            value="{{ detail.lifecycle.on_complete_remove_tag or '' }}"
-                           aria-label="Tag to remove when orchestration completes"
                            class="form-input">
                 </div>
                 <div class="detail-row">
                     <label class="detail-label" for="on_complete_add_tag">On Complete Add Tag</label>
                     <input type="text" id="on_complete_add_tag" name="on_complete_add_tag"
                            value="{{ detail.lifecycle.on_complete_add_tag or '' }}"
-                           aria-label="Tag to add when orchestration completes"
                            class="form-input">
                 </div>
                 <div class="detail-row">
                     <label class="detail-label" for="on_failure_add_tag">On Failure Add Tag</label>
                     <input type="text" id="on_failure_add_tag" name="on_failure_add_tag"
                            value="{{ detail.lifecycle.on_failure_add_tag or '' }}"
-                           aria-label="Tag to add when orchestration fails"
                            class="form-input">
                 </div>
             </div>
@@ -371,9 +345,8 @@
     {# Add a new outcome row #}
     function addOutcome() {
         const container = document.getElementById('outcomes-container');
-        const row = document.createElement('div');
+        const row = document.createElement('li');
         row.className = 'outcome-row';
-        row.setAttribute('role', 'listitem');
         row.innerHTML = `
             <input type="text" name="outcome_name" placeholder="Outcome name"
                    aria-label="Outcome name"
