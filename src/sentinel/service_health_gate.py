@@ -56,7 +56,10 @@ from sentinel.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Probe endpoints for external services
+# Probe endpoints for external services.
+# NOTE: Adding a new service requires updating these constants AND adding
+# a corresponding _probe_<service>() method and branch in _execute_probe().
+# See probe_service() for the dispatch logic.
 JIRA_PROBE_PATH = "/rest/api/3/serverInfo"
 GITHUB_PROBE_PATH = "/rate_limit"
 
@@ -75,7 +78,7 @@ class ServiceHealthGateConfig:
         failure_threshold: Number of consecutive failures before gating.
         initial_probe_interval: Initial seconds between recovery probes.
         max_probe_interval: Maximum seconds between recovery probes.
-        probe_backoff_factor: Multiplier for probe interval on continued failure.
+        probe_backoff_factor: Multiplier for probe interval on continued failure (>= 1.0).
         probe_timeout: Timeout in seconds for individual probe checks.
     """
 
@@ -105,8 +108,9 @@ class ServiceHealthGateConfig:
         max_probe_interval = float(
             os.getenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "300.0")
         )
-        probe_backoff_factor = float(
-            os.getenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "2.0")
+        probe_backoff_factor = max(
+            1.0,
+            float(os.getenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "2.0")),
         )
         probe_timeout = float(os.getenv("SENTINEL_HEALTH_GATE_PROBE_TIMEOUT", "5.0"))
 
@@ -432,6 +436,10 @@ class ServiceHealthGate:
         token: str = "",
     ) -> bool:
         """Execute the actual HTTP probe for a service.
+
+        Currently dispatches to service-specific probe methods based on name.
+        Future improvement: consider a ProbeStrategy protocol to allow new
+        services to be added without modifying this dispatch logic.
 
         Args:
             service_name: Name of the service to probe.

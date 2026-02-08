@@ -45,7 +45,8 @@ class TestBootstrapServiceHealthGate:
         )
         sentinel = create_sentinel_from_context(context)
         assert sentinel.service_health_gate is not None
-        assert sentinel.service_health_gate.enabled is True
+        assert sentinel.service_health_gate.config.enabled is True
+        assert sentinel.service_health_gate.config.failure_threshold == 7
 
     def test_create_sentinel_from_context_health_gate_disabled(self) -> None:
         """Verify ServiceHealthGate can be disabled via config."""
@@ -62,4 +63,4 @@ class TestBootstrapServiceHealthGate:
         )
         sentinel = create_sentinel_from_context(context)
         assert sentinel.service_health_gate is not None
-        assert sentinel.service_health_gate.enabled is False
+        assert sentinel.service_health_gate.config.enabled is False
