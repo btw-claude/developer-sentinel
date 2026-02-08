@@ -10,8 +10,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Explicitly define public API - this makes it clear which symbols are intended for external use
-# NOTE: Update this list when adding new exports to this module.
+# Public API exports — update this list when adding new exports to this module.
 __all__ = [
     # Bounds constants for rate limiting configuration
     "MIN_TOGGLE_COOLDOWN",
