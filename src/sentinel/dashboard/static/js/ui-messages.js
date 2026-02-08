@@ -69,6 +69,7 @@ var UI_MESSAGES = Object.freeze({
     LOG_VIEWER: Object.freeze({
         NO_FILE_SELECTED: 'No log file selected',
         SELECT_PROMPT: '\uD83D\uDCCB Select an orchestration and log file to view',
+        SELECT_PROMPT_SUBTITLE: 'Log files are updated in real-time via SSE',
         LOADING: 'Loading...',
         CONNECTED: 'Connected',
         DISCONNECTED: 'Disconnected',

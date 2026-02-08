@@ -172,6 +172,11 @@
         margin: 0.5rem 0;
     }
 
+    .empty-state-subtitle {
+        font-size: 0.8rem;
+        opacity: 0.7;
+    }
+
     .scroll-indicator {
         position: absolute;
         bottom: 1rem;
@@ -277,13 +282,21 @@ const scrollIndicator = document.getElementById('scroll-indicator');
 /**
  * Wrap a plain-text message in empty-state HTML markup.
  * Keeps translatable strings free of HTML (i18n-ready).
+ * @param {string} text - Primary message text
+ * @param {string} [subtitle] - Optional secondary helper text rendered in a smaller font
  */
-function wrapEmptyState(text) {
+function wrapEmptyState(text, subtitle) {
     const div = document.createElement('div');
     div.className = 'empty-state';
     const p = document.createElement('p');
     p.textContent = text;
     div.appendChild(p);
+    if (subtitle) {
+        const sub = document.createElement('p');
+        sub.className = 'empty-state-subtitle';
+        sub.textContent = subtitle;
+        div.appendChild(sub);
+    }
     return div.outerHTML;
 }
 
@@ -320,7 +333,7 @@ function loadLogFile() {
     closeSSE();
 
     if (!currentOrchestration || !logFile) {
-        logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT);
+        logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT, UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT_SUBTITLE);
         logTitle.textContent = UI_MESSAGES.LOG_VIEWER.NO_FILE_SELECTED;
         pauseBtn.disabled = true;
         return;
@@ -509,7 +522,7 @@ scrollIndicator.addEventListener('click', scrollToBottom);
 // Initialize UI text from centralized constants (single source of truth)
 logTitle.textContent = UI_MESSAGES.LOG_VIEWER.NO_FILE_SELECTED;
 statusText.textContent = UI_MESSAGES.LOG_VIEWER.DISCONNECTED;
-logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT);
+logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT, UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT_SUBTITLE);
 
 // Auto-select from URL query parameters (for direct links from Running Steps)
 // Added user feedback when invalid URL parameters are detected
