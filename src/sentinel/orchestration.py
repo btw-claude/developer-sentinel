@@ -777,9 +777,9 @@ def _validate_agent_teams(agent_teams: Any, agent_type: Any) -> str | None:
     Checks both type validity and compatibility with *agent_type*.
 
     .. note::
-        This function uses an **exclude-list** approach for agent-type
-        compatibility.  Any ``AgentType`` value **not** listed in the
-        exclusion tuple will silently accept ``agent_teams`` without
+        This function uses an **exclude-list** approach (see DS-646) for
+        agent-type compatibility.  Any ``AgentType`` value **not** listed in
+        the exclusion tuple will silently accept ``agent_teams`` without
         validation.  When adding a new ``AgentType`` that does **not**
         support ``agent_teams``, you **must** add it to the exclusion tuple
         inside this function so the validation rejects it.
