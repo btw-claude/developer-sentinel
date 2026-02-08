@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sentinel.dashboard.routes import (
+from sentinel.dashboard.models import (
     AgentEditRequest,
     GitHubContextEditRequest,
     LifecycleEditRequest,
@@ -17,6 +17,8 @@ from sentinel.dashboard.routes import (
     OutcomeEditRequest,
     RetryEditRequest,
     TriggerEditRequest,
+)
+from sentinel.dashboard.routes import (
     _build_yaml_updates,
     _deep_merge_dicts,
     _validate_orchestration_updates,
@@ -393,7 +395,7 @@ class TestOrchestrationCreateModels:
 
     def test_create_request_required_fields(self) -> None:
         """Should require name and target_file fields."""
-        from sentinel.dashboard.routes import OrchestrationCreateRequest
+        from sentinel.dashboard.models import OrchestrationCreateRequest
         request = OrchestrationCreateRequest(
             name="test-orch",
             target_file="test.yaml",
@@ -403,7 +405,7 @@ class TestOrchestrationCreateModels:
 
     def test_create_request_optional_fields(self) -> None:
         """Should have all optional configuration fields default to None."""
-        from sentinel.dashboard.routes import OrchestrationCreateRequest
+        from sentinel.dashboard.models import OrchestrationCreateRequest
         request = OrchestrationCreateRequest(
             name="test-orch",
             target_file="test.yaml",
@@ -418,7 +420,7 @@ class TestOrchestrationCreateModels:
 
     def test_create_request_with_all_fields(self) -> None:
         """Should accept all configuration fields."""
-        from sentinel.dashboard.routes import OrchestrationCreateRequest
+        from sentinel.dashboard.models import OrchestrationCreateRequest
         request = OrchestrationCreateRequest(
             name="test-orch",
             target_file="test.yaml",
@@ -436,7 +438,7 @@ class TestOrchestrationCreateModels:
 
     def test_create_response_success(self) -> None:
         """Should create success response with no errors."""
-        from sentinel.dashboard.routes import OrchestrationCreateResponse
+        from sentinel.dashboard.models import OrchestrationCreateResponse
         response = OrchestrationCreateResponse(success=True, name="test-orch")
         assert response.success is True
         assert response.name == "test-orch"
@@ -444,7 +446,7 @@ class TestOrchestrationCreateModels:
 
     def test_create_response_with_errors(self) -> None:
         """Should create error response with error list."""
-        from sentinel.dashboard.routes import OrchestrationCreateResponse
+        from sentinel.dashboard.models import OrchestrationCreateResponse
         response = OrchestrationCreateResponse(
             success=False,
             name="test-orch",
