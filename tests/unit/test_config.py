@@ -573,6 +573,18 @@ class TestFormatNumber:
         """Test that small decimal values are preserved."""
         assert _format_number(0.1) == "0.1"
 
+    def test_positive_infinity(self) -> None:
+        """Test that positive infinity is formatted as 'inf' without error."""
+        assert _format_number(float("inf")) == "inf"
+
+    def test_negative_infinity(self) -> None:
+        """Test that negative infinity is formatted as '-inf' without error."""
+        assert _format_number(float("-inf")) == "-inf"
+
+    def test_nan(self) -> None:
+        """Test that NaN is formatted as 'nan' without error."""
+        assert _format_number(float("nan")) == "nan"
+
 
 class TestParseBool:
     """Tests for _parse_bool helper function."""
