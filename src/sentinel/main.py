@@ -644,19 +644,17 @@ class Sentinel:
             )
             return all_results, 0
 
-        # Group orchestrations by source
-        jira_orchestrations, github_orchestrations = (
-            self._poll_coordinator.group_orchestrations_by_source(self.orchestrations)
-        )
+        # Group orchestrations by source (DS-750: NamedTuple for self-documenting access)
+        grouped = self._poll_coordinator.group_orchestrations_by_source(self.orchestrations)
 
         submitted_count = 0
         submitted_pairs = self._poll_coordinator.create_cycle_dedup_set()
 
         # Poll Jira triggers
-        if jira_orchestrations:
+        if grouped.jira:
             self._state_tracker.last_jira_poll = datetime.now()
             routing_results, _ = self._poll_coordinator.poll_jira_triggers(
-                jira_orchestrations,
+                grouped.jira,
                 self.router,
                 self._shutdown_requested,
                 self._log_for_orchestration,
@@ -667,11 +665,11 @@ class Sentinel:
             submitted_count += jira_submitted
 
         # Poll GitHub triggers
-        if github_orchestrations:
+        if grouped.github:
             if self.github_poller:
                 self._state_tracker.last_github_poll = datetime.now()
                 routing_results, _ = self._poll_coordinator.poll_github_triggers(
-                    github_orchestrations,
+                    grouped.github,
                     self.router,
                     self._shutdown_requested,
                     self._log_for_orchestration,
@@ -684,7 +682,7 @@ class Sentinel:
                 logger.warning(
                     "Found %s GitHub-triggered orchestrations but GitHub client is not "
                     "configured. Set GITHUB_TOKEN to enable.",
-                    len(github_orchestrations)
+                    len(grouped.github)
                 )
 
         if submitted_count > 0:

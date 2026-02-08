@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from sentinel.deduplication import DeduplicationManager, build_github_trigger_key
 from sentinel.github_poller import GitHubIssue, GitHubIssueProtocol
@@ -54,6 +54,22 @@ logger = get_logger(__name__)
 
 # Module-level constant for GitHub issue/PR URL parsing
 GITHUB_ISSUE_PR_URL_PATTERN = re.compile(r"https?://[^/]+/([^/]+/[^/]+)/(?:issues|pull)/\d+")
+
+
+class GroupedOrchestrations(NamedTuple):
+    """Result of grouping orchestrations by their trigger source.
+
+    Using a NamedTuple instead of a plain tuple provides self-documenting
+    field access and prevents index-based access errors, especially as
+    additional trigger source types may be added in the future (DS-750).
+
+    Attributes:
+        jira: Orchestrations with Jira trigger sources.
+        github: Orchestrations with GitHub trigger sources.
+    """
+
+    jira: list[Orchestration]
+    github: list[Orchestration]
 
 
 def extract_repo_from_url(url: str) -> str | None:
@@ -506,14 +522,14 @@ class PollCoordinator:
     def group_orchestrations_by_source(
         self,
         orchestrations: list[Orchestration],
-    ) -> tuple[list[Orchestration], list[Orchestration]]:
+    ) -> GroupedOrchestrations:
         """Group orchestrations by their trigger source.
 
         Args:
             orchestrations: List of all orchestrations.
 
         Returns:
-            Tuple of (jira_orchestrations, github_orchestrations).
+            GroupedOrchestrations named tuple with ``jira`` and ``github`` fields.
         """
         jira_orchestrations: list[Orchestration] = []
         github_orchestrations: list[Orchestration] = []
@@ -524,4 +540,4 @@ class PollCoordinator:
             else:
                 jira_orchestrations.append(orch)
 
-        return jira_orchestrations, github_orchestrations
+        return GroupedOrchestrations(jira=jira_orchestrations, github=github_orchestrations)

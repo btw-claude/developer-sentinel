@@ -14,7 +14,7 @@ stub.  If that constant is ever removed from poll_coordinator.py, the
 from __future__ import annotations
 
 import re  # Used by GITHUB_ISSUE_PR_URL_PATTERN stub; remove if that constant is removed.
-from typing import Any
+from typing import Any, NamedTuple
 
 from sentinel.config import Config
 from sentinel.github_poller import GitHubIssue, GitHubIssueProtocol, GitHubPoller
@@ -23,6 +23,12 @@ from sentinel.poller import JiraIssue, JiraPoller
 from sentinel.router import Router, RoutingResult
 
 GITHUB_ISSUE_PR_URL_PATTERN: re.Pattern[str]
+
+class GroupedOrchestrations(NamedTuple):
+    """Result of grouping orchestrations by their trigger source (DS-750)."""
+
+    jira: list[Orchestration]
+    github: list[Orchestration]
 
 def extract_repo_from_url(url: str) -> str | None: ...
 
@@ -115,15 +121,13 @@ class PollCoordinator:
     def group_orchestrations_by_source(
         self,
         orchestrations: list[Orchestration],
-    ) -> tuple[list[Orchestration], list[Orchestration]]:
+    ) -> GroupedOrchestrations:
         """Group orchestrations by their trigger source.
 
         Args:
             orchestrations: List of all orchestrations.
 
         Returns:
-            Tuple of (jira_orchestrations, github_orchestrations).
-              - Index 0: orchestrations with Jira trigger sources.
-              - Index 1: orchestrations with GitHub trigger sources.
+            GroupedOrchestrations named tuple with ``jira`` and ``github`` fields.
         """
         ...
