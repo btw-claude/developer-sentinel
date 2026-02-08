@@ -245,6 +245,17 @@ docstrings should explicitly reference each other and explain each test's distin
 helps developers understand why seemingly similar tests both exist without reading the full test
 body.
 
+#### Quick-Reference Summary
+
+| Pattern | When to Use | Key Signal |
+|---------|-------------|------------|
+| [**See also**](#examples) | Pointing to a complementary test | Neutral forward pointer |
+| [**Unlike**](#examples) | Highlighting how the current test differs | Explicit contrast |
+| [**Two-way**](#two-way-vs-three-way-or-more-cross-references) | Exactly two tests form a natural pair | Success/failure, enabled/disabled |
+| [**Three-way+**](#two-way-vs-three-way-or-more-cross-references) | Three or more tests cover distinct variants | Parenthetical annotations |
+| [**Shared-grouping**](#examples) | More than ~4 related tests with a naming pattern | Reference the `test_*` glob, not each sibling |
+| [**Preserving context**](#examples) | Adding a cross-reference to a test that already has contextual info | Append reference after existing explanation |
+
 #### Reference Patterns
 
 Use one of two reference patterns depending on the relationship between tests:
