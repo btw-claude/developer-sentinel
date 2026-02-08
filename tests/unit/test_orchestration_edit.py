@@ -348,8 +348,8 @@ class TestValidateOrchestrationUpdates:
                 "agent": {"agent_type": "invalid-agent"},
             },
         )
-        # Should have at least 2 errors - one for trigger, one for agent
-        assert len(errors) >= 2
+        # Should have exactly 2 errors - one for trigger, one for agent
+        assert len(errors) == 2
         # Check that we have both trigger and agent errors
         error_text = " ".join(errors).lower()
         assert "trigger" in error_text or "source" in error_text
@@ -368,7 +368,7 @@ class TestValidateOrchestrationUpdates:
             },
         )
         # Should have multiple errors
-        assert len(errors) >= 2
+        assert len(errors) == 3
 
     def test_intra_agent_multi_error(self) -> None:
         """Should collect multiple errors within the agent section (DS-734)."""
@@ -384,7 +384,7 @@ class TestValidateOrchestrationUpdates:
             },
         )
         # Both agent_type and timeout_seconds errors should be reported
-        assert len(errors) >= 2
+        assert len(errors) == 2
         error_text = " ".join(errors).lower()
         assert "agent_type" in error_text
         assert "timeout_seconds" in error_text
@@ -405,7 +405,7 @@ class TestValidateOrchestrationUpdates:
             },
         )
         # project_number, project_scope, and project_owner errors all reported
-        assert len(errors) >= 3
+        assert len(errors) == 3
         error_text = " ".join(errors).lower()
         assert "project_number" in error_text
         assert "project_scope" in error_text
@@ -428,7 +428,7 @@ class TestValidateOrchestrationUpdates:
         )
         # Cross-section: trigger error, max_concurrent error
         # Intra-section: two agent errors (agent_type + timeout_seconds)
-        assert len(errors) >= 4
+        assert len(errors) == 4
         error_text = " ".join(errors).lower()
         assert "trigger" in error_text or "source" in error_text
         assert "agent_type" in error_text
@@ -448,7 +448,7 @@ class TestValidateOrchestrationUpdates:
                 },
             },
         )
-        assert len(errors) >= 2
+        assert len(errors) == 2
         error_text = " ".join(errors).lower()
         assert "agent_type" in error_text
         assert "model" in error_text
@@ -466,7 +466,7 @@ class TestValidateOrchestrationUpdates:
             current_data,
             {"max_concurrent": True},
         )
-        assert len(errors) >= 1
+        assert len(errors) == 1
         assert any("max_concurrent" in e for e in errors)
 
     def test_max_concurrent_boolean_false_rejected(self) -> None:
@@ -482,7 +482,7 @@ class TestValidateOrchestrationUpdates:
             current_data,
             {"max_concurrent": False},
         )
-        assert len(errors) >= 1
+        assert len(errors) == 1
         assert any("max_concurrent" in e for e in errors)
 
     def test_cross_section_validation_runs_with_section_errors(self) -> None:
@@ -500,8 +500,8 @@ class TestValidateOrchestrationUpdates:
             current_data,
             {"trigger": {"source": "gitlab"}},
         )
-        # Should have at least one error from the trigger section
-        assert len(errors) >= 1
+        # Should have exactly one error from the trigger section
+        assert len(errors) == 1
         assert any("trigger" in e.lower() or "source" in e.lower() for e in errors)
 
     def test_cross_section_errors_deduplicated(self) -> None:
@@ -807,7 +807,7 @@ class TestCollectTriggerErrors:
             "project_scope": "invalid",
             "project_owner": "",
         })
-        assert len(errors) >= 3
+        assert len(errors) == 3
 
     def test_invalid_tags_and_labels(self) -> None:
         """Should report invalid tags and labels."""
@@ -817,7 +817,7 @@ class TestCollectTriggerErrors:
             "tags": "not-a-list",
             "labels": "also-not-a-list",
         })
-        assert len(errors) >= 2
+        assert len(errors) == 2
 
 
 class TestCollectAgentErrors:
@@ -837,7 +837,7 @@ class TestCollectAgentErrors:
             "timeout_seconds": -10,
             "model": 999,
         })
-        assert len(errors) >= 3
+        assert len(errors) == 3
         error_text = " ".join(errors).lower()
         assert "agent_type" in error_text
         assert "timeout_seconds" in error_text
@@ -1186,7 +1186,7 @@ orchestrations:
             detail = response.json()["detail"]
             # Detail should be a list of errors
             assert isinstance(detail, list)
-            assert len(detail) >= 1
+            assert len(detail) == 1
             # Extract error text (handle both string list and dict list formats)
             if isinstance(detail[0], str):
                 error_text = " ".join(detail).lower()
@@ -1240,7 +1240,7 @@ orchestrations:
             detail = response.json()["detail"]
             # Should return multiple errors
             assert isinstance(detail, list)
-            assert len(detail) >= 2
+            assert len(detail) == 2
             # Extract error text (handle both string list and dict list formats)
             if isinstance(detail[0], str):
                 error_text = " ".join(detail).lower()
@@ -1306,7 +1306,7 @@ orchestrations:
             detail = response.json()["detail"]
             # Should return multiple errors from the same section
             assert isinstance(detail, list)
-            assert len(detail) >= 2
+            assert len(detail) == 2
             if isinstance(detail[0], str):
                 error_text = " ".join(detail).lower()
             else:
