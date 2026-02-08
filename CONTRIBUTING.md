@@ -287,14 +287,16 @@ When more than roughly four tests cover analogous behavior (e.g., field-parsing 
 across many fields), avoid enumerating every sibling. Instead, reference the shared naming
 pattern and the containing class. This keeps docstrings concise while still directing
 developers to the full family of related tests. Use it whenever the set of siblings is large
-enough that listing each one individually would add more noise than signal.
+enough that listing each one individually would add more noise than signal. See
+[Examples](#examples) below for a concrete illustration.
 
 #### Preserving Context
 
 When adding a cross-reference to a test that already has contextual information in its
 docstring (such as a ticket reference or behavioral explanation), append the cross-reference
 after the existing explanation rather than replacing it. This preserves the original context
-while still linking to related tests.
+while still linking to related tests. See [Examples](#examples) below for a concrete
+illustration.
 
 #### Format and Placement
 
