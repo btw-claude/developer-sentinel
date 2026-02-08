@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sse_starlette.sse import EventSourceResponse
 
 from sentinel.orchestration import OrchestrationError, _parse_orchestration
@@ -239,6 +239,121 @@ class DeleteResponse(BaseModel):
 
     success: bool
     name: str
+
+
+# Pydantic response models for orchestration detail endpoint (DS-754)
+# These use from_attributes=True to enable direct conversion from frozen
+# dataclass DTOs via model_validate(), eliminating manual field-by-field
+# construction and keeping the models in sync with domain objects automatically.
+
+
+class GitHubContextResponse(BaseModel):
+    """Response model for GitHub context in orchestration detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    host: str
+    org: str
+    repo: str
+    branch: str
+    create_branch: bool
+    base_branch: str
+
+
+class TriggerDetailResponse(BaseModel):
+    """Response model for trigger configuration in orchestration detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    source: str
+    project: str
+    jql_filter: str
+    tags: list[str]
+    project_number: int | None
+    project_scope: Literal["org", "user"]
+    project_owner: str
+    project_filter: str
+    labels: list[str]
+
+
+class AgentDetailResponse(BaseModel):
+    """Response model for agent configuration in orchestration detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    prompt: str
+    github: GitHubContextResponse | None
+    timeout_seconds: int | None
+    model: str | None
+    agent_type: str | None
+    cursor_mode: str | None
+    strict_template_variables: bool
+
+
+class RetryDetailResponse(BaseModel):
+    """Response model for retry configuration in orchestration detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    max_attempts: int
+    success_patterns: list[str]
+    failure_patterns: list[str]
+    default_status: str
+    default_outcome: str
+
+
+class OutcomeResponse(BaseModel):
+    """Response model for outcome configuration in orchestration detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    patterns: list[str]
+    add_tag: str
+
+
+class LifecycleDetailResponse(BaseModel):
+    """Response model for lifecycle configuration in orchestration detail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    on_start_add_tag: str
+    on_complete_remove_tag: str
+    on_complete_add_tag: str
+    on_failure_add_tag: str
+
+
+class OrchestrationDetailResponse(BaseModel):
+    """Response model for full orchestration detail.
+
+    Uses from_attributes=True to enable direct conversion from
+    OrchestrationDetailInfo frozen dataclass via model_validate().
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    enabled: bool
+    max_concurrent: int | None
+    source_file: str
+    trigger: TriggerDetailResponse
+    agent: AgentDetailResponse
+    retry: RetryDetailResponse
+    outcomes: list[OutcomeResponse]
+    lifecycle: LifecycleDetailResponse
+
+
+# Column definitions for orchestration tables, passed via route context
+# to keep the value closer to the table definition logic (DS-754).
+ORCH_TABLE_COLUMNS = [
+    "Name",
+    "Trigger Tags",
+    "Last Run",
+    "Runs",
+    "Success Rate",
+    "Avg Duration",
+    "Status",
+]
 
 
 def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
@@ -544,7 +659,12 @@ def create_routes(
             await templates.TemplateResponse(
                 request=request,
                 name="partials/orchestrations.html",
-                context={"projects": projects, "source_type": source_type, "state": state},
+                context={
+                    "projects": projects,
+                    "source_type": source_type,
+                    "state": state,
+                    "orch_table_columns": ORCH_TABLE_COLUMNS,
+                },
             ),
         )
 
@@ -912,18 +1032,23 @@ def create_routes(
 
         return EventSourceResponse(event_generator())
 
-    @dashboard_router.get("/api/orchestrations/{name}/detail")
-    async def api_orchestration_detail(name: str) -> dict[str, Any]:
+    @dashboard_router.get(
+        "/api/orchestrations/{name}/detail",
+        response_model=OrchestrationDetailResponse,
+    )
+    async def api_orchestration_detail(name: str) -> OrchestrationDetailResponse:
         """Return full orchestration configuration as JSON.
 
         Retrieves detailed orchestration configuration including trigger,
-        agent, retry, outcome, and lifecycle settings.
+        agent, retry, outcome, and lifecycle settings. Uses Pydantic
+        ``from_attributes`` to convert the frozen dataclass DTO directly
+        into the response model.
 
         Args:
             name: The orchestration name.
 
         Returns:
-            JSON representation of the full orchestration configuration.
+            OrchestrationDetailResponse with the full orchestration configuration.
 
         Raises:
             HTTPException: 404 if orchestration not found.
@@ -934,64 +1059,7 @@ def create_routes(
                 status_code=404,
                 detail=f"Orchestration '{name}' not found",
             )
-        return {
-            "name": detail.name,
-            "enabled": detail.enabled,
-            "max_concurrent": detail.max_concurrent,
-            "source_file": detail.source_file,
-            "trigger": {
-                "source": detail.trigger.source,
-                "project": detail.trigger.project,
-                "jql_filter": detail.trigger.jql_filter,
-                "tags": detail.trigger.tags,
-                "project_number": detail.trigger.project_number,
-                "project_scope": detail.trigger.project_scope,
-                "project_owner": detail.trigger.project_owner,
-                "project_filter": detail.trigger.project_filter,
-                "labels": detail.trigger.labels,
-            },
-            "agent": {
-                "prompt": detail.agent.prompt,
-                "github": (
-                    {
-                        "host": detail.agent.github.host,
-                        "org": detail.agent.github.org,
-                        "repo": detail.agent.github.repo,
-                        "branch": detail.agent.github.branch,
-                        "create_branch": detail.agent.github.create_branch,
-                        "base_branch": detail.agent.github.base_branch,
-                    }
-                    if detail.agent.github
-                    else None
-                ),
-                "timeout_seconds": detail.agent.timeout_seconds,
-                "model": detail.agent.model,
-                "agent_type": detail.agent.agent_type,
-                "cursor_mode": detail.agent.cursor_mode,
-                "strict_template_variables": detail.agent.strict_template_variables,
-            },
-            "retry": {
-                "max_attempts": detail.retry.max_attempts,
-                "success_patterns": detail.retry.success_patterns,
-                "failure_patterns": detail.retry.failure_patterns,
-                "default_status": detail.retry.default_status,
-                "default_outcome": detail.retry.default_outcome,
-            },
-            "outcomes": [
-                {
-                    "name": outcome.name,
-                    "patterns": outcome.patterns,
-                    "add_tag": outcome.add_tag,
-                }
-                for outcome in detail.outcomes
-            ],
-            "lifecycle": {
-                "on_start_add_tag": detail.lifecycle.on_start_add_tag,
-                "on_complete_remove_tag": detail.lifecycle.on_complete_remove_tag,
-                "on_complete_add_tag": detail.lifecycle.on_complete_add_tag,
-                "on_failure_add_tag": detail.lifecycle.on_failure_add_tag,
-            },
-        }
+        return OrchestrationDetailResponse.model_validate(detail)
 
     @dashboard_router.get(
         "/partials/orchestration_detail/{name}", response_class=HTMLResponse

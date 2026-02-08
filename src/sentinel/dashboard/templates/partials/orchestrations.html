@@ -38,13 +38,9 @@
         <div class="nested-accordion-content">
             <table class="nested-table">
                 <tr>
-                    <th>Name</th>
-                    <th>Trigger Tags</th>
-                    <th>Last Run</th>
-                    <th>Runs</th>
-                    <th>Success Rate</th>
-                    <th>Avg Duration</th>
-                    <th>Status</th>
+                    {% for col in orch_table_columns %}
+                    <th>{{ col }}</th>
+                    {% endfor %}
                 </tr>
                 {% for orch in project.orchestrations %}
                 {% set orch_stats = stats_lookup.get(orch.name) %}
