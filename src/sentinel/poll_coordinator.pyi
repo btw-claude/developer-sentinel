@@ -5,11 +5,15 @@ to enable IDE autocomplete and mypy static analysis (DS-748).
 
 Migrated from main.pyi after GitHubIssueWithRepo was refactored from
 main.py to poll_coordinator.py.
+
+Note: The ``import re`` is required for the GITHUB_ISSUE_PR_URL_PATTERN
+stub.  If that constant is ever removed from poll_coordinator.py, the
+``re`` import should be cleaned up here as well (DS-749).
 """
 
 from __future__ import annotations
 
-import re
+import re  # Used by GITHUB_ISSUE_PR_URL_PATTERN stub; remove if that constant is removed.
 from typing import Any
 
 from sentinel.config import Config
@@ -111,4 +115,15 @@ class PollCoordinator:
     def group_orchestrations_by_source(
         self,
         orchestrations: list[Orchestration],
-    ) -> tuple[list[Orchestration], list[Orchestration]]: ...
+    ) -> tuple[list[Orchestration], list[Orchestration]]:
+        """Group orchestrations by their trigger source.
+
+        Args:
+            orchestrations: List of all orchestrations.
+
+        Returns:
+            Tuple of (jira_orchestrations, github_orchestrations).
+              - Index 0: orchestrations with Jira trigger sources.
+              - Index 1: orchestrations with GitHub trigger sources.
+        """
+        ...
