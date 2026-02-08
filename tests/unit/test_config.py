@@ -27,6 +27,7 @@ from sentinel.config import (
     PollingConfig,
     RateLimitConfig,
     _format_bound_message,
+    _format_number,
     _parse_bool,
     _parse_bounded_float,
     _parse_non_negative_float,
@@ -395,7 +396,7 @@ class TestParseNonNegativeFloat:
         with caplog.at_level(logging.WARNING):
             result = _parse_non_negative_float("-1.5", "TEST_VAR", 1.0)
         assert result == 1.0
-        assert "Invalid TEST_VAR: -1.500000 must be >= 0.0" in caplog.text
+        assert "Invalid TEST_VAR: -1.5 must be >= 0" in caplog.text
 
     def test_invalid_non_numeric(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.WARNING):
@@ -484,21 +485,21 @@ class TestParseBoundedFloat:
         with caplog.at_level(logging.WARNING):
             result = _parse_bounded_float("-1.0", "TEST_VAR", 5.0, min_val=0.0)
         assert result == 5.0
-        assert "must be >= 0.0" in caplog.text
+        assert "must be >= 0" in caplog.text
 
     def test_above_max_only_logs_must_be_lte(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that exceeding max_val with no min_val logs 'must be <=' warning message."""
         with caplog.at_level(logging.WARNING):
             result = _parse_bounded_float("150.0", "TEST_VAR", 50.0, max_val=100.0)
         assert result == 50.0
-        assert "must be <= 100.0" in caplog.text
+        assert "must be <= 100" in caplog.text
 
     def test_both_bounds_logs_range_message(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test that violating bounds with both min and max set logs 'is not in range' message."""
         with caplog.at_level(logging.WARNING):
             result = _parse_bounded_float("1.5", "TEST_VAR", 0.5, min_val=0.0, max_val=1.0)
         assert result == 0.5
-        assert "is not in range 0.0 to 1.0" in caplog.text
+        assert "is not in range 0 to 1" in caplog.text
 
 
 class TestFormatBoundMessage:
@@ -506,15 +507,15 @@ class TestFormatBoundMessage:
 
     def test_both_bounds(self) -> None:
         """Test message when both min and max bounds are set."""
-        assert _format_bound_message(min_val=0.0, max_val=1.0) == "is not in range 0.0 to 1.0"
+        assert _format_bound_message(min_val=0.0, max_val=1.0) == "is not in range 0 to 1"
 
     def test_only_min_bound(self) -> None:
         """Test message when only min bound is set."""
-        assert _format_bound_message(min_val=0.0) == "must be >= 0.0"
+        assert _format_bound_message(min_val=0.0) == "must be >= 0"
 
     def test_only_max_bound(self) -> None:
         """Test message when only max bound is set."""
-        assert _format_bound_message(max_val=100.0) == "must be <= 100.0"
+        assert _format_bound_message(max_val=100.0) == "must be <= 100"
 
     def test_no_bounds(self) -> None:
         """Test message when no bounds are set."""
@@ -522,15 +523,67 @@ class TestFormatBoundMessage:
 
     def test_both_bounds_negative(self) -> None:
         """Test message with negative bound values."""
-        assert _format_bound_message(min_val=-10.0, max_val=-1.0) == "is not in range -10.0 to -1.0"
+        assert _format_bound_message(min_val=-10.0, max_val=-1.0) == "is not in range -10 to -1"
 
     def test_only_min_bound_positive(self) -> None:
         """Test message when only min bound is set to a positive value."""
-        assert _format_bound_message(min_val=5.0) == "must be >= 5.0"
+        assert _format_bound_message(min_val=5.0) == "must be >= 5"
 
     def test_only_max_bound_zero(self) -> None:
         """Test message when only max bound is set to zero."""
-        assert _format_bound_message(max_val=0.0) == "must be <= 0.0"
+        assert _format_bound_message(max_val=0.0) == "must be <= 0"
+
+    def test_both_bounds_with_decimals(self) -> None:
+        """Test message when bounds have non-whole decimal values."""
+        assert _format_bound_message(min_val=0.1, max_val=0.9) == "is not in range 0.1 to 0.9"
+
+    def test_mixed_whole_and_decimal_bounds(self) -> None:
+        """Test message with one whole and one decimal bound."""
+        assert _format_bound_message(min_val=0.0, max_val=0.5) == "is not in range 0 to 0.5"
+
+
+class TestFormatNumber:
+    """Tests for _format_number helper function."""
+
+    def test_whole_number_zero(self) -> None:
+        """Test that 0.0 is formatted as '0'."""
+        assert _format_number(0.0) == "0"
+
+    def test_whole_number_positive(self) -> None:
+        """Test that positive whole floats are formatted without decimal."""
+        assert _format_number(5.0) == "5"
+
+    def test_whole_number_negative(self) -> None:
+        """Test that negative whole floats are formatted without decimal."""
+        assert _format_number(-10.0) == "-10"
+
+    def test_decimal_value(self) -> None:
+        """Test that non-whole floats retain their decimal representation."""
+        assert _format_number(0.5) == "0.5"
+
+    def test_negative_decimal_value(self) -> None:
+        """Test that negative non-whole floats retain their decimal representation."""
+        assert _format_number(-3.14) == "-3.14"
+
+    def test_large_whole_number(self) -> None:
+        """Test that large whole floats are formatted without decimal."""
+        assert _format_number(1000.0) == "1000"
+
+    def test_small_decimal_value(self) -> None:
+        """Test that small decimal values are preserved."""
+        assert _format_number(0.1) == "0.1"
+
+    def test_positive_infinity(self) -> None:
+        """Test that positive infinity is formatted as 'inf' without error."""
+        assert _format_number(float("inf")) == "inf"
+
+    def test_negative_infinity(self) -> None:
+        """Test that negative infinity is formatted as '-inf' without error."""
+        assert _format_number(float("-inf")) == "-inf"
+
+    def test_nan(self) -> None:
+        """Test that NaN is formatted as 'nan' without error."""
+        assert _format_number(float("nan")) == "nan"
 
 
 class TestParseBool:
@@ -1184,7 +1237,7 @@ class TestToggleCooldownConfig:
             config = load_config()
 
         assert config.dashboard.toggle_cooldown_seconds == 2.0
-        assert "must be >= 0.0" in caplog.text
+        assert "must be >= 0" in caplog.text
 
     def test_invalid_value_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1564,7 +1617,7 @@ class TestSuccessRateGreenThreshold:
             config = load_config()
 
         assert config.dashboard.success_rate_green_threshold == DEFAULT_GREEN_THRESHOLD
-        assert "must be >= 0.0" in caplog.text
+        assert "must be >= 0" in caplog.text
 
     def test_invalid_string_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1616,7 +1669,7 @@ class TestSuccessRateYellowThreshold:
             config = load_config()
 
         assert config.dashboard.success_rate_yellow_threshold == DEFAULT_YELLOW_THRESHOLD
-        assert "must be >= 0.0" in caplog.text
+        assert "must be >= 0" in caplog.text
 
     def test_invalid_string_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture

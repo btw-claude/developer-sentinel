@@ -235,18 +235,14 @@
 
     <div class="log-container">
         <div class="log-header">
-            <span class="log-title" id="log-title">No log file selected</span>
+            <span class="log-title" id="log-title"></span>
             <span class="log-status">
                 <span class="status-indicator" id="status-indicator"></span>
-                <span id="status-text">Disconnected</span>
+                <span id="status-text"></span>
             </span>
         </div>
         <div class="log-wrapper">
             <div class="log-content" id="log-content">
-                <div class="empty-state">
-                    <p>📋 Select an orchestration and log file to view</p>
-                    <p style="font-size: 0.75rem;">Log files are updated in real-time via SSE</p>
-                </div>
             </div>
             <div class="scroll-indicator" id="scroll-indicator">
                 ↓ New content available
@@ -277,6 +273,19 @@ const statusIndicator = document.getElementById('status-indicator');
 const statusText = document.getElementById('status-text');
 const logTitle = document.getElementById('log-title');
 const scrollIndicator = document.getElementById('scroll-indicator');
+
+/**
+ * Wrap a plain-text message in empty-state HTML markup.
+ * Keeps translatable strings free of HTML (i18n-ready).
+ */
+function wrapEmptyState(text) {
+    const div = document.createElement('div');
+    div.className = 'empty-state';
+    const p = document.createElement('p');
+    p.textContent = text;
+    div.appendChild(p);
+    return div.outerHTML;
+}
 
 // Update log file dropdown when orchestration changes
 function updateLogFileOptions() {
@@ -311,7 +320,7 @@ function loadLogFile() {
     closeSSE();
 
     if (!currentOrchestration || !logFile) {
-        logContent.innerHTML = UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT_HTML;
+        logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT);
         logTitle.textContent = UI_MESSAGES.LOG_VIEWER.NO_FILE_SELECTED;
         pauseBtn.disabled = true;
         return;
@@ -322,7 +331,7 @@ function loadLogFile() {
     pauseBtn.disabled = false;
 
     // Clear content and show loading
-    logContent.innerHTML = UI_MESSAGES.LOG_VIEWER.LOADING_HTML;
+    logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.LOADING);
 
     // Connect to SSE endpoint
     connectSSE();
@@ -496,6 +505,11 @@ logfileSelect.addEventListener('change', loadLogFile);
 pauseBtn.addEventListener('click', togglePause);
 document.getElementById('refresh-btn').addEventListener('click', refreshLogFiles);
 scrollIndicator.addEventListener('click', scrollToBottom);
+
+// Initialize UI text from centralized constants (single source of truth)
+logTitle.textContent = UI_MESSAGES.LOG_VIEWER.NO_FILE_SELECTED;
+statusText.textContent = UI_MESSAGES.LOG_VIEWER.DISCONNECTED;
+logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT);
 
 // Auto-select from URL query parameters (for direct links from Running Steps)
 // Added user feedback when invalid URL parameters are detected

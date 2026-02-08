@@ -113,11 +113,20 @@ class TestExecutionSummaryStatsEmpty:
         assert stats1 == stats2
 
     def test_empty_returns_cached_singleton(self) -> None:
-        """Test that empty() returns the same cached object (identity check)."""
+        """Test that empty() returns the same cached object (identity check).
+
+        In addition to the identity check, this test verifies that the
+        lru_cache is functioning by asserting cache_info().hits == 1
+        after the second call.
+        """
+        # Clear the cache to ensure deterministic hit counting
+        ExecutionSummaryStats.empty.cache_clear()
+
         stats1 = ExecutionSummaryStats.empty()
         stats2 = ExecutionSummaryStats.empty()
 
         assert stats1 is stats2
+        assert ExecutionSummaryStats.empty.cache_info().hits == 1
 
 
 class TestComputeExecutionStatsEmpty:
