@@ -1914,3 +1914,64 @@ class TestServiceHealthGateConfig:
         assert config.service_health_gate.max_probe_interval == 120.0
         assert config.service_health_gate.probe_backoff_factor == 1.5
         assert config.service_health_gate.probe_timeout == 3.0
+
+    def test_initial_probe_interval_exceeds_max_swaps_values(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that initial > max probe interval triggers swap and warning."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "500.0")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "100.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # Values should be swapped
+        assert config.service_health_gate.initial_probe_interval == 100.0
+        assert config.service_health_gate.max_probe_interval == 500.0
+        assert "SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL (500) exceeds" in caplog.text
+        assert "SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL (100)" in caplog.text
+        assert "swapping values" in caplog.text
+
+    def test_initial_probe_interval_equals_max_no_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that initial == max probe interval does not trigger a warning."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "100.0")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "100.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == 100.0
+        assert config.service_health_gate.max_probe_interval == 100.0
+        assert "swapping values" not in caplog.text
+
+    def test_initial_probe_interval_less_than_max_no_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that initial < max probe interval does not trigger a warning."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "10.0")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "600.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == 10.0
+        assert config.service_health_gate.max_probe_interval == 600.0
+        assert "swapping values" not in caplog.text
+
+    def test_cross_field_validation_with_decimal_values(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test cross-field validation with non-whole decimal values."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "45.5")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "20.5")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # Values should be swapped
+        assert config.service_health_gate.initial_probe_interval == 20.5
+        assert config.service_health_gate.max_probe_interval == 45.5
+        assert "SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL (45.5) exceeds" in caplog.text
+        assert "SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL (20.5)" in caplog.text
