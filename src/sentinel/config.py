@@ -404,6 +404,24 @@ def _parse_bool(value: str) -> bool:
     return value.lower() in ("true", "1", "yes")
 
 
+def _format_number(value: float) -> str:
+    """Format a numeric value for user-facing messages.
+
+    Whole-number floats are displayed without a decimal point (e.g. ``0.0`` →
+    ``"0"``), while non-whole floats retain their decimal representation (e.g.
+    ``0.5`` → ``"0.5"``).
+
+    Args:
+        value: The numeric value to format.
+
+    Returns:
+        A clean string representation of *value*.
+    """
+    if value == int(value):
+        return str(int(value))
+    return str(value)
+
+
 def _format_bound_message(
     min_val: float | None = None,
     max_val: float | None = None,
@@ -415,15 +433,15 @@ def _format_bound_message(
         max_val: Optional maximum allowed value (inclusive). None means no upper bound.
 
     Returns:
-        A descriptive string such as "is not in range 0.0 to 1.0", "must be >= 0.0",
-        or "must be <= 1.0".
+        A descriptive string such as "is not in range 0 to 1", "must be >= 0",
+        or "must be <= 1".
     """
     if min_val is not None and max_val is not None:
-        return f"is not in range {min_val} to {max_val}"
+        return f"is not in range {_format_number(min_val)} to {_format_number(max_val)}"
     if min_val is not None:
-        return f"must be >= {min_val}"
+        return f"must be >= {_format_number(min_val)}"
     if max_val is not None:
-        return f"must be <= {max_val}"
+        return f"must be <= {_format_number(max_val)}"
     # Defensive fallback: unreachable in production since _parse_bounded_float
     # only calls this function when a non-None bound is violated.
     return "is out of range"
@@ -458,29 +476,29 @@ def _parse_bounded_float(
         parsed = float(value)
         if min_val is not None and parsed < min_val:
             logging.warning(
-                "Invalid %s: %f %s, using default %f",
+                "Invalid %s: %s %s, using default %s",
                 name,
-                parsed,
+                _format_number(parsed),
                 _format_bound_message(min_val, max_val),
-                default,
+                _format_number(default),
             )
             return default
         if max_val is not None and parsed > max_val:
             logging.warning(
-                "Invalid %s: %f %s, using default %f",
+                "Invalid %s: %s %s, using default %s",
                 name,
-                parsed,
+                _format_number(parsed),
                 _format_bound_message(min_val, max_val),
-                default,
+                _format_number(default),
             )
             return default
         return parsed
     except ValueError:
         logging.warning(
-            "Invalid %s: '%s' is not a valid number, using default %f",
+            "Invalid %s: '%s' is not a valid number, using default %s",
             name,
             value,
-            default,
+            _format_number(default),
         )
         return default
 
