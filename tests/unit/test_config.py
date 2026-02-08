@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from sentinel.config import (
-    _DEFAULT_GREEN_THRESHOLD,
-    _DEFAULT_YELLOW_THRESHOLD,
+    DEFAULT_GREEN_THRESHOLD,
+    DEFAULT_YELLOW_THRESHOLD,
     MAX_PORT,
     MIN_PORT,
     VALID_AGENT_TYPES,
@@ -106,8 +106,8 @@ class TestSubConfigs:
         assert dashboard.toggle_cooldown_seconds == 2.0
         assert dashboard.rate_limit_cache_ttl == 3600
         assert dashboard.rate_limit_cache_maxsize == 10000
-        assert dashboard.success_rate_green_threshold == _DEFAULT_GREEN_THRESHOLD
-        assert dashboard.success_rate_yellow_threshold == _DEFAULT_YELLOW_THRESHOLD
+        assert dashboard.success_rate_green_threshold == DEFAULT_GREEN_THRESHOLD
+        assert dashboard.success_rate_yellow_threshold == DEFAULT_YELLOW_THRESHOLD
 
     def test_rate_limit_config_defaults(self) -> None:
         rate_limit = RateLimitConfig()
@@ -394,7 +394,7 @@ class TestParseNonNegativeFloat:
         with caplog.at_level(logging.WARNING):
             result = _parse_non_negative_float("-1.5", "TEST_VAR", 1.0)
         assert result == 1.0
-        assert "Invalid TEST_VAR: -1.500000 is negative" in caplog.text
+        assert "Invalid TEST_VAR: -1.500000 is not in range" in caplog.text
 
     def test_invalid_non_numeric(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.WARNING):
@@ -409,19 +409,19 @@ class TestParseNonNegativeFloat:
 
 
 class TestDefaultThresholdConstants:
-    """Tests for _DEFAULT_GREEN_THRESHOLD and _DEFAULT_YELLOW_THRESHOLD constants."""
+    """Tests for DEFAULT_GREEN_THRESHOLD and DEFAULT_YELLOW_THRESHOLD constants."""
 
     def test_green_threshold_value(self) -> None:
-        """Test that _DEFAULT_GREEN_THRESHOLD is 90.0."""
-        assert _DEFAULT_GREEN_THRESHOLD == 90.0
+        """Test that DEFAULT_GREEN_THRESHOLD is 90.0."""
+        assert DEFAULT_GREEN_THRESHOLD == 90.0
 
     def test_yellow_threshold_value(self) -> None:
-        """Test that _DEFAULT_YELLOW_THRESHOLD is 70.0."""
-        assert _DEFAULT_YELLOW_THRESHOLD == 70.0
+        """Test that DEFAULT_YELLOW_THRESHOLD is 70.0."""
+        assert DEFAULT_YELLOW_THRESHOLD == 70.0
 
     def test_green_greater_than_yellow(self) -> None:
         """Test that green threshold is greater than yellow threshold."""
-        assert _DEFAULT_GREEN_THRESHOLD > _DEFAULT_YELLOW_THRESHOLD
+        assert DEFAULT_GREEN_THRESHOLD > DEFAULT_YELLOW_THRESHOLD
 
 
 class TestParseBoundedFloat:
@@ -479,11 +479,11 @@ class TestParseBoundedFloat:
         assert _parse_bounded_float("-5.0", "TEST_VAR", 1.0, max_val=100.0) == -5.0
 
     def test_negative_below_zero_min(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test that negative value with min_val=0.0 logs 'is negative' message."""
+        """Test that negative value with min_val=0.0 logs range-based warning message."""
         with caplog.at_level(logging.WARNING):
             result = _parse_bounded_float("-1.0", "TEST_VAR", 5.0, min_val=0.0)
         assert result == 5.0
-        assert "is negative" in caplog.text
+        assert "is not in range" in caplog.text
 
 
 class TestParseBool:
@@ -1137,7 +1137,7 @@ class TestToggleCooldownConfig:
             config = load_config()
 
         assert config.dashboard.toggle_cooldown_seconds == 2.0
-        assert "negative" in caplog.text
+        assert "is not in range" in caplog.text
 
     def test_invalid_value_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1484,12 +1484,12 @@ class TestSuccessRateGreenThreshold:
     """Tests for success_rate_green_threshold configuration."""
 
     def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that success_rate_green_threshold defaults to _DEFAULT_GREEN_THRESHOLD."""
+        """Test that success_rate_green_threshold defaults to DEFAULT_GREEN_THRESHOLD."""
         monkeypatch.delenv("SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", raising=False)
 
         config = load_config()
 
-        assert config.dashboard.success_rate_green_threshold == _DEFAULT_GREEN_THRESHOLD
+        assert config.dashboard.success_rate_green_threshold == DEFAULT_GREEN_THRESHOLD
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that success_rate_green_threshold loads from environment variable."""
@@ -1516,8 +1516,8 @@ class TestSuccessRateGreenThreshold:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.dashboard.success_rate_green_threshold == _DEFAULT_GREEN_THRESHOLD
-        assert "negative" in caplog.text
+        assert config.dashboard.success_rate_green_threshold == DEFAULT_GREEN_THRESHOLD
+        assert "is not in range" in caplog.text
 
     def test_invalid_string_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1528,7 +1528,7 @@ class TestSuccessRateGreenThreshold:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.dashboard.success_rate_green_threshold == _DEFAULT_GREEN_THRESHOLD
+        assert config.dashboard.success_rate_green_threshold == DEFAULT_GREEN_THRESHOLD
         assert "not a valid number" in caplog.text
 
 
@@ -1536,12 +1536,12 @@ class TestSuccessRateYellowThreshold:
     """Tests for success_rate_yellow_threshold configuration."""
 
     def test_default_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that success_rate_yellow_threshold defaults to _DEFAULT_YELLOW_THRESHOLD."""
+        """Test that success_rate_yellow_threshold defaults to DEFAULT_YELLOW_THRESHOLD."""
         monkeypatch.delenv("SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", raising=False)
 
         config = load_config()
 
-        assert config.dashboard.success_rate_yellow_threshold == _DEFAULT_YELLOW_THRESHOLD
+        assert config.dashboard.success_rate_yellow_threshold == DEFAULT_YELLOW_THRESHOLD
 
     def test_loads_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that success_rate_yellow_threshold loads from environment variable."""
@@ -1568,8 +1568,8 @@ class TestSuccessRateYellowThreshold:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.dashboard.success_rate_yellow_threshold == _DEFAULT_YELLOW_THRESHOLD
-        assert "negative" in caplog.text
+        assert config.dashboard.success_rate_yellow_threshold == DEFAULT_YELLOW_THRESHOLD
+        assert "is not in range" in caplog.text
 
     def test_invalid_string_uses_default(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1580,5 +1580,5 @@ class TestSuccessRateYellowThreshold:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.dashboard.success_rate_yellow_threshold == _DEFAULT_YELLOW_THRESHOLD
+        assert config.dashboard.success_rate_yellow_threshold == DEFAULT_YELLOW_THRESHOLD
         assert "not a valid number" in caplog.text
