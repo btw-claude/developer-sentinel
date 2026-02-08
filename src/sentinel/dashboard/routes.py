@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 # Used in both Deprecation and Sunset headers
 HEALTH_ENDPOINT_SUNSET_DATE = "Sat, 01 Jun 2026 00:00:00 GMT"
 
-# Maximum CSRF token requests allowed per client IP per minute (DS-738).
+# Maximum CSRF token requests allowed per client host per minute (DS-738).
 # Guards against TTLCache exhaustion in the csrf_tokens cache (maxsize=1000).
 CSRF_TOKEN_RATE_LIMIT_PER_MINUTE = 30
 
@@ -224,12 +224,12 @@ def create_routes(
         Tokens are single-use and expire after 1 hour.
 
         Rate limited to CSRF_TOKEN_RATE_LIMIT_PER_MINUTE requests per minute
-        per client IP to prevent potential TTLCache exhaustion (DS-737). The
+        per client host to prevent potential TTLCache exhaustion (DS-737). The
         csrf_tokens cache has maxsize=1000, so unbounded generation could fill
         and evict valid tokens.
 
         Args:
-            request: The incoming HTTP request (used for client IP extraction).
+            request: The incoming HTTP request (used for client host extraction).
 
         Returns:
             Dict containing the CSRF token.
