@@ -8,6 +8,7 @@
  * Dependencies:
  * - htmx: For AJAX requests and DOM updates
  * - showToast: Global toast notification function (defined in base.html)
+ * - UI_MESSAGES: Centralized message constants (defined in ui-messages.js)
  *
  * CSRF Token Auto-Refresh (DS-737):
  * When a page is refreshed, embedded CSRF tokens become invalid (single-use).
@@ -77,7 +78,7 @@ function splitList(value, separator) {
  */
 function submitOrchestrationEdit(formElement, name) {
     if (!formElement) {
-        console.error('submitOrchestrationEdit: formElement is null');
+        console.error(UI_MESSAGES.DEBUG.EDIT_FORM_NULL);
         return;
     }
 
@@ -197,7 +198,7 @@ function submitOrchestrationEdit(formElement, name) {
         });
     }).then(function(result) {
         if (result.status >= 200 && result.status < 300 && result.data.success) {
-            showToast('success', 'Orchestration \'' + name + '\' updated successfully');
+            showToast('success', UI_MESSAGES.TOAST.EDIT_SUCCESS(name));
             // Reload the detail view to show updated values
             var detailContainer = formElement.closest('.orchestration-detail');
             if (detailContainer) {
@@ -207,15 +208,15 @@ function submitOrchestrationEdit(formElement, name) {
                 });
             }
         } else if (result.status === 422) {
-            showToast('error', result.data.detail || 'Validation error');
+            showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
         } else if (result.status === 429) {
-            showToast('warning', 'Rate limit exceeded. Please wait before trying again.');
+            showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
         } else {
-            showToast('error', result.data.detail || 'Failed to update orchestration');
+            showToast('error', result.data.detail || UI_MESSAGES.TOAST.EDIT_FAILED);
         }
     }).catch(function(error) {
-        console.error('submitOrchestrationEdit: fetch error:', error);
-        showToast('error', 'Network error while updating orchestration');
+        console.error(UI_MESSAGES.DEBUG.EDIT_FETCH_ERROR, error);
+        showToast('error', UI_MESSAGES.TOAST.EDIT_NETWORK_ERROR);
     });
 }
 
@@ -230,14 +231,14 @@ function submitOrchestrationEdit(formElement, name) {
  */
 function submitOrchestrationCreate(formElement) {
     if (!formElement) {
-        console.error('submitOrchestrationCreate: formElement is null');
+        console.error(UI_MESSAGES.DEBUG.CREATE_FORM_NULL);
         return;
     }
 
     // Get orchestration name (required)
     var nameInput = formElement.querySelector('#create_name');
     if (!nameInput || !nameInput.value.trim()) {
-        showToast('error', 'Orchestration name is required');
+        showToast('error', UI_MESSAGES.FORM_VALIDATION.NAME_REQUIRED);
         return;
     }
     var name = nameInput.value.trim();
@@ -248,13 +249,13 @@ function submitOrchestrationCreate(formElement) {
     var targetFile = '';
 
     if (!targetFileSelector || !targetFileSelector.value) {
-        showToast('error', 'Target file must be selected');
+        showToast('error', UI_MESSAGES.FORM_VALIDATION.TARGET_FILE_REQUIRED);
         return;
     }
 
     if (targetFileSelector.value === '__new__') {
         if (!newFileNameInput || !newFileNameInput.value.trim()) {
-            showToast('error', 'New file name is required');
+            showToast('error', UI_MESSAGES.FORM_VALIDATION.NEW_FILE_NAME_REQUIRED);
             return;
         }
         targetFile = newFileNameInput.value.trim();
@@ -406,7 +407,7 @@ function submitOrchestrationCreate(formElement) {
             });
         }).then(function(result) {
             if (result.status >= 200 && result.status < 300 && result.data.success) {
-                showToast('success', 'Orchestration \'' + name + '\' created successfully');
+                showToast('success', UI_MESSAGES.TOAST.CREATE_SUCCESS(name));
                 // Hide the creation form
                 document.getElementById('create-form-container').style.display = 'none';
                 // Reload the orchestrations list (HTMX will auto-refresh on next poll)
@@ -416,21 +417,21 @@ function submitOrchestrationCreate(formElement) {
                     if (newToken) {
                         doCreate(newToken, true);
                     } else {
-                        showToast('error', 'CSRF token refresh failed. Please reload the page.');
+                        showToast('error', UI_MESSAGES.TOAST.CREATE_CSRF_REFRESH_FAILED);
                     }
                 });
             } else if (result.status === 403) {
-                showToast('error', 'CSRF token validation failed. Please reload the page.');
+                showToast('error', UI_MESSAGES.TOAST.CREATE_CSRF_VALIDATION_FAILED);
             } else if (result.status === 422) {
-                showToast('error', result.data.detail || 'Validation error');
+                showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
             } else if (result.status === 429) {
-                showToast('warning', 'Rate limit exceeded. Please wait before trying again.');
+                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
             } else {
-                showToast('error', result.data.detail || 'Failed to create orchestration');
+                showToast('error', result.data.detail || UI_MESSAGES.TOAST.CREATE_FAILED);
             }
         }).catch(function(error) {
-            console.error('submitOrchestrationCreate: fetch error:', error);
-            showToast('error', 'Network error while creating orchestration');
+            console.error(UI_MESSAGES.DEBUG.CREATE_FETCH_ERROR, error);
+            showToast('error', UI_MESSAGES.TOAST.CREATE_NETWORK_ERROR);
         });
     }
 

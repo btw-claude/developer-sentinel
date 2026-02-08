@@ -247,19 +247,19 @@
         function toggleCollapsibleSection(headerElement) {
             const section = headerElement.closest('.collapsible-section');
             if (!section) {
-                console.warn('toggleCollapsibleSection: Could not find parent .collapsible-section');
+                console.warn(UI_MESSAGES.DEBUG.COLLAPSIBLE_NO_PARENT);
                 return;
             }
 
             const content = section.querySelector('.collapsible-content');
             if (!content) {
-                console.warn('toggleCollapsibleSection: Could not find .collapsible-content within section');
+                console.warn(UI_MESSAGES.DEBUG.COLLAPSIBLE_NO_CONTENT);
                 return;
             }
 
             const icon = headerElement.querySelector('.collapse-icon');
             if (!icon) {
-                console.warn('toggleCollapsibleSection: Could not find .collapse-icon within header');
+                console.warn(UI_MESSAGES.DEBUG.COLLAPSIBLE_NO_ICON);
                 return;
             }
 
@@ -276,7 +276,7 @@
         function toggleNestedAccordion(headerElement) {
             const item = headerElement.closest('.nested-accordion-item');
             if (!item) {
-                console.warn('toggleNestedAccordion: Could not find parent .nested-accordion-item');
+                console.warn(UI_MESSAGES.DEBUG.NESTED_NO_PARENT);
                 return;
             }
             item.classList.toggle('expanded');
@@ -293,7 +293,7 @@
         function toggleOrchestrationDetail(rowElement, orchName) {
             const detailRow = document.getElementById('detail-row-' + orchName);
             if (!detailRow) {
-                console.warn('toggleOrchestrationDetail: Could not find detail row for: ' + orchName);
+                console.warn(UI_MESSAGES.DEBUG.DETAIL_ROW_NOT_FOUND(orchName));
                 return;
             }
             const isExpanded = detailRow.classList.contains('expanded');
@@ -310,7 +310,7 @@
         function isExpanded(contentId) {
             const element = document.querySelector('#' + contentId);
             if (!element) {
-                console.warn('isExpanded: Element not found: ' + contentId);
+                console.warn(UI_MESSAGES.DEBUG.ELEMENT_NOT_FOUND(contentId));
                 return false;
             }
             return element.classList.contains('expanded');
@@ -347,7 +347,7 @@
         function initCollapsibleSections() {
             const mainContainer = document.querySelector('main');
             if (!mainContainer) {
-                console.warn('initCollapsibleSections: Could not find main container for event delegation');
+                console.warn(UI_MESSAGES.DEBUG.INIT_NO_CONTAINER);
                 return;
             }
 
@@ -381,10 +381,10 @@
             try {
                 data = JSON.parse(response);
             } catch (parseError) {
-                console.error('handleToggleResponse: Failed to parse JSON response:', parseError);
+                console.error(UI_MESSAGES.DEBUG.TOGGLE_PARSE_ERROR, parseError);
                 // Revert checkbox state on parse error
                 event.target.checked = !event.target.checked;
-                showToast('error', 'Failed to process server response');
+                showToast('error', UI_MESSAGES.TOAST.PARSE_RESPONSE_FAILED);
                 return;
             }
 
@@ -392,7 +392,7 @@
                 // Revert checkbox state
                 event.target.checked = !event.target.checked;
                 // Show error toast/notification
-                showToast('error', data.message || 'Toggle operation failed');
+                showToast('error', data.message || UI_MESSAGES.TOAST.TOGGLE_FAILED);
             } else {
                 // Add null check for event.target.closest('td') to prevent potential errors
                 const parentCell = event.target.closest('td');
@@ -405,8 +405,7 @@
                     }
                 }
                 // Add success toast notification for positive user feedback
-                const statusMessage = data.enabled ? 'Enabled' : 'Disabled';
-                showToast('success', 'Orchestration ' + statusMessage.toLowerCase() + ' successfully');
+                showToast('success', data.enabled ? UI_MESSAGES.TOAST.ORCHESTRATION_ENABLED : UI_MESSAGES.TOAST.ORCHESTRATION_DISABLED);
             }
         }
 
@@ -429,13 +428,13 @@
                 try {
                     data = JSON.parse(xhr.response);
                 } catch (parseError) {
-                    console.error('handleDeleteResponse: Failed to parse JSON response:', parseError);
-                    showToast('error', 'Failed to process server response');
+                    console.error(UI_MESSAGES.DEBUG.DELETE_PARSE_ERROR, parseError);
+                    showToast('error', UI_MESSAGES.TOAST.PARSE_RESPONSE_FAILED);
                     return;
                 }
 
                 if (data.success) {
-                    showToast('success', `Orchestration '${name}' deleted successfully`);
+                    showToast('success', UI_MESSAGES.TOAST.DELETE_SUCCESS(name));
                     // Refresh the orchestrations list by triggering HTMX on the partials
                     htmx.trigger(document.body, 'orchestration-deleted');
                     // Also trigger a page-level refresh of orchestrations partial if present
@@ -444,12 +443,12 @@
                         htmx.trigger(orchPartial, 'revealed');
                     }
                 } else {
-                    showToast('error', `Failed to delete orchestration '${name}'`);
+                    showToast('error', UI_MESSAGES.TOAST.DELETE_FAILED(name));
                 }
             } else if (status === 429) {
-                showToast('warning', 'Rate limit exceeded. Please wait before trying again.');
+                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
             } else {
-                let errorMessage = `Failed to delete orchestration '${name}'`;
+                let errorMessage = UI_MESSAGES.TOAST.DELETE_FAILED(name);
                 try {
                     const errorData = JSON.parse(xhr.response);
                     if (errorData.detail) {
@@ -520,6 +519,7 @@
             }, duration);
         }
     </script>
+    <script src="/static/js/ui-messages.js"></script>
     <script src="/static/js/orchestration-forms.js"></script>
     {% block extra_head %}{% endblock %}
 </head>
