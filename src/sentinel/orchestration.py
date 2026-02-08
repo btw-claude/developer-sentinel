@@ -599,6 +599,74 @@ def _validate_branch_name(branch: str) -> ValidationResult:
     return ValidationResult.failure(result.error_message)
 
 
+def _collect_trigger_errors(data: dict[str, Any]) -> list[str]:
+    """Collect all validation errors from trigger configuration (DS-734).
+
+    Unlike ``_parse_trigger`` which raises on the first error, this function
+    collects every validation error so the API can report them all at once.
+
+    Args:
+        data: The trigger configuration dict to validate.
+
+    Returns:
+        A list of validation error messages. Empty list means no errors.
+    """
+    errors: list[str] = []
+
+    source = data.get("source", TriggerSource.JIRA.value)
+    if not TriggerSource.is_valid(source):
+        valid_sources = ", ".join(f"'{s}'" for s in sorted(TriggerSource.values()))
+        errors.append(f"Invalid trigger source '{source}': must be {valid_sources}")
+
+    tags = data.get("tags", [])
+    labels = data.get("labels", [])
+
+    # Validate labels field (used by GitHub triggers)
+    try:
+        _validate_string_list(labels, "labels")
+    except OrchestrationError as e:
+        errors.append(str(e))
+
+    # Validate tags field (used by Jira triggers)
+    try:
+        _validate_string_list(tags, "tags")
+    except OrchestrationError as e:
+        errors.append(str(e))
+
+    # Validation for GitHub triggers
+    project_number = data.get("project_number")
+    project_scope = data.get("project_scope", "org")
+    project_owner = data.get("project_owner", "")
+
+    if source == TriggerSource.GITHUB.value:
+        # Validate project_number is set for GitHub triggers
+        if project_number is None:
+            errors.append(
+                "GitHub triggers require 'project_number' to be set. "
+                "Please configure project_number, project_scope, and project_owner "
+                "for GitHub Project-based polling."
+            )
+        elif not isinstance(project_number, int) or project_number <= 0:
+            errors.append(
+                f"Invalid project_number '{project_number}': must be a positive integer"
+            )
+
+        # Validate project_scope
+        if project_scope not in ("org", "user"):
+            errors.append(
+                f"Invalid project_scope '{project_scope}': must be 'org' or 'user'"
+            )
+
+        # Validate project_owner is set
+        if not project_owner:
+            errors.append(
+                "GitHub triggers require 'project_owner' to be set "
+                "(organization name or username)"
+            )
+
+    return errors
+
+
 def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
     """Parse trigger configuration from dict.
 
@@ -727,6 +795,92 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
         create_branch=create_branch,
         base_branch=base_branch,
     )
+
+
+def _collect_agent_errors(data: dict[str, Any]) -> list[str]:
+    """Collect all validation errors from agent configuration (DS-734).
+
+    Unlike ``_parse_agent`` which raises on the first error, this function
+    collects every validation error so the API can report them all at once.
+
+    Args:
+        data: The agent configuration dict to validate.
+
+    Returns:
+        A list of validation error messages. Empty list means no errors.
+    """
+    errors: list[str] = []
+
+    timeout = data.get("timeout_seconds")
+    if timeout is not None and (not isinstance(timeout, int) or timeout <= 0):
+        errors.append(f"Invalid timeout_seconds '{timeout}': must be a positive integer")
+
+    model = data.get("model")
+    if model is not None and not isinstance(model, str):
+        errors.append(f"Invalid model '{model}': must be a string")
+
+    agent_type = data.get("agent_type")
+    if agent_type is not None and not AgentType.is_valid(agent_type):
+        valid_types = ", ".join(f"'{t}'" for t in sorted(AgentType.values()))
+        errors.append(f"Invalid agent_type '{agent_type}': must be {valid_types}")
+
+    cursor_mode = data.get("cursor_mode")
+    if cursor_mode is not None:
+        if not CursorMode.is_valid(cursor_mode):
+            valid_modes = ", ".join(f"'{m}'" for m in sorted(CursorMode.values()))
+            errors.append(f"Invalid cursor_mode '{cursor_mode}': must be {valid_modes}")
+        # cursor_mode is only valid when agent_type is 'cursor'.
+        # NOTE: This uses an exclude-list approach (DS-646). Any agent type
+        # NOT listed in the tuple below will silently accept cursor_mode
+        # without validation. When adding new AgentType values that do NOT
+        # support cursor_mode, you must add them to the tuple below so the
+        # validation rejects them.
+        elif agent_type is not None and agent_type in (
+            AgentType.CLAUDE.value,
+            AgentType.CODEX.value,
+        ):
+            errors.append(
+                f"cursor_mode '{cursor_mode}' is only valid when agent_type is "
+                f"'{AgentType.CURSOR.value}'"
+            )
+
+    # Parse agent_teams (defaults to False)
+    agent_teams = data.get("agent_teams", False)
+    if not isinstance(agent_teams, bool):
+        errors.append(
+            f"Invalid agent_teams '{agent_teams}': must be a boolean"
+        )
+    else:
+        # agent_teams is only valid when agent_type is "claude" (Agent Teams is a
+        # Claude Code feature, not available in Cursor or Codex).
+        # NOTE: This uses an exclude-list approach. When adding new AgentType values
+        # that do NOT support agent_teams, you must add them to the tuple below so
+        # the validation rejects them.
+        if agent_teams and agent_type is not None and agent_type in (
+            AgentType.CURSOR.value,
+            AgentType.CODEX.value,
+        ):
+            errors.append(
+                f"agent_teams is only valid when agent_type is "
+                f"'{AgentType.CLAUDE.value}', got agent_type='{agent_type}'"
+            )
+
+    # Parse strict_template_variables (defaults to False for backwards compatibility)
+    strict_template_variables = data.get("strict_template_variables", False)
+    if not isinstance(strict_template_variables, bool):
+        errors.append(
+            f"Invalid strict_template_variables '{strict_template_variables}': must be a boolean"
+        )
+
+    # Validate github context if present
+    github_data = data.get("github")
+    if github_data:
+        try:
+            _parse_github_context(github_data)
+        except OrchestrationError as e:
+            errors.append(str(e))
+
+    return errors
 
 
 def _parse_agent(data: dict[str, Any]) -> AgentConfig:
