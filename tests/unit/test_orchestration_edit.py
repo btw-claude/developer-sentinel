@@ -366,6 +366,180 @@ class TestValidateOrchestrationUpdates:
         # Should have multiple errors
         assert len(errors) >= 2
 
+    def test_intra_agent_multi_error(self) -> None:
+        """Should collect multiple errors within the agent section (DS-734)."""
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {
+                "agent": {
+                    "agent_type": "invalid-type",
+                    "timeout_seconds": -5,
+                },
+            },
+        )
+        # Both agent_type and timeout_seconds errors should be reported
+        assert len(errors) >= 2
+        error_text = " ".join(errors).lower()
+        assert "agent_type" in error_text
+        assert "timeout_seconds" in error_text
+
+    def test_intra_trigger_multi_error_github(self) -> None:
+        """Should collect multiple errors within the trigger section (DS-734)."""
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {
+                "trigger": {
+                    "source": "github",
+                    "project_number": -1,
+                    "project_scope": "invalid-scope",
+                    "project_owner": "",
+                },
+            },
+        )
+        # project_number, project_scope, and project_owner errors all reported
+        assert len(errors) >= 3
+        error_text = " ".join(errors).lower()
+        assert "project_number" in error_text
+        assert "project_scope" in error_text
+        assert "project_owner" in error_text
+
+    def test_intra_and_cross_section_errors_combined(self) -> None:
+        """Should collect errors from within and across sections (DS-734)."""
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {
+                "trigger": {"source": "invalid-source"},
+                "agent": {
+                    "agent_type": "invalid-type",
+                    "timeout_seconds": -1,
+                },
+                "max_concurrent": 0,
+            },
+        )
+        # Cross-section: trigger error, max_concurrent error
+        # Intra-section: two agent errors (agent_type + timeout_seconds)
+        assert len(errors) >= 4
+        error_text = " ".join(errors).lower()
+        assert "trigger" in error_text or "source" in error_text
+        assert "agent_type" in error_text
+        assert "timeout_seconds" in error_text
+        assert "max_concurrent" in error_text
+
+    def test_intra_agent_model_and_agent_type_errors(self) -> None:
+        """Should report both model and agent_type errors simultaneously (DS-734)."""
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {
+                "agent": {
+                    "agent_type": "nonexistent",
+                    "model": 12345,
+                },
+            },
+        )
+        assert len(errors) >= 2
+        error_text = " ".join(errors).lower()
+        assert "agent_type" in error_text
+        assert "model" in error_text
+
+
+class TestCollectTriggerErrors:
+    """Tests for _collect_trigger_errors function (DS-734)."""
+
+    def test_valid_jira_trigger(self) -> None:
+        """Should return empty list for valid Jira trigger."""
+        from sentinel.orchestration import _collect_trigger_errors
+        errors = _collect_trigger_errors({"source": "jira", "project": "TEST"})
+        assert errors == []
+
+    def test_invalid_source(self) -> None:
+        """Should report invalid source."""
+        from sentinel.orchestration import _collect_trigger_errors
+        errors = _collect_trigger_errors({"source": "gitlab"})
+        assert len(errors) == 1
+        assert "source" in errors[0].lower()
+
+    def test_github_multiple_errors(self) -> None:
+        """Should collect multiple GitHub trigger errors at once."""
+        from sentinel.orchestration import _collect_trigger_errors
+        errors = _collect_trigger_errors({
+            "source": "github",
+            "project_number": -1,
+            "project_scope": "invalid",
+            "project_owner": "",
+        })
+        assert len(errors) >= 3
+
+    def test_invalid_tags_and_labels(self) -> None:
+        """Should report invalid tags and labels."""
+        from sentinel.orchestration import _collect_trigger_errors
+        errors = _collect_trigger_errors({
+            "source": "jira",
+            "tags": "not-a-list",
+            "labels": "also-not-a-list",
+        })
+        assert len(errors) >= 2
+
+
+class TestCollectAgentErrors:
+    """Tests for _collect_agent_errors function (DS-734)."""
+
+    def test_valid_agent(self) -> None:
+        """Should return empty list for valid agent config."""
+        from sentinel.orchestration import _collect_agent_errors
+        errors = _collect_agent_errors({"prompt": "Test", "agent_type": "claude"})
+        assert errors == []
+
+    def test_multiple_field_errors(self) -> None:
+        """Should collect errors from multiple agent fields."""
+        from sentinel.orchestration import _collect_agent_errors
+        errors = _collect_agent_errors({
+            "agent_type": "invalid",
+            "timeout_seconds": -10,
+            "model": 999,
+        })
+        assert len(errors) >= 3
+        error_text = " ".join(errors).lower()
+        assert "agent_type" in error_text
+        assert "timeout_seconds" in error_text
+        assert "model" in error_text
+
+    def test_cursor_mode_with_invalid_agent_type(self) -> None:
+        """Should report cursor_mode incompatibility with claude agent_type."""
+        from sentinel.orchestration import _collect_agent_errors
+        errors = _collect_agent_errors({
+            "agent_type": "claude",
+            "cursor_mode": "agent",
+        })
+        assert len(errors) == 1
+        assert "cursor_mode" in errors[0].lower()
+
+    def test_invalid_cursor_mode_value(self) -> None:
+        """Should report invalid cursor_mode value."""
+        from sentinel.orchestration import _collect_agent_errors
+        errors = _collect_agent_errors({
+            "agent_type": "cursor",
+            "cursor_mode": "invalid-mode",
+        })
+        assert len(errors) == 1
+        assert "cursor_mode" in errors[0].lower()
+
+    def test_invalid_strict_template_variables(self) -> None:
+        """Should report invalid strict_template_variables."""
+        from sentinel.orchestration import _collect_agent_errors
+        errors = _collect_agent_errors({
+            "strict_template_variables": "not-a-bool",
+        })
+        assert len(errors) == 1
+        assert "strict_template_variables" in errors[0].lower()
+
 
 class TestOrchestrationEditResponse:
     """Tests for OrchestrationEditResponse model."""
@@ -743,6 +917,70 @@ orchestrations:
                 error_text = " ".join(str(item) for item in detail).lower()
             assert "trigger" in error_text or "source" in error_text
             assert "agent" in error_text
+
+    def test_intra_section_multi_error_via_api(self, temp_logs_dir: Path) -> None:
+        """Test intra-section multi-error reporting via PUT endpoint (DS-734).
+
+        Uses values that pass Pydantic model validation (valid Literal types)
+        but fail orchestration-level validation (invalid combinations and
+        out-of-range integers). This ensures we test the multi-error
+        collectors in orchestration_edit, not Pydantic schema validation.
+        """
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            # cursor_mode="agent" with agent_type="claude" is invalid combo,
+            # timeout_seconds=-5 is out-of-range — both pass Pydantic but
+            # fail orchestration validation, testing intra-section collection.
+            response = client.put(
+                "/api/orchestrations/test-orch",
+                json={
+                    "agent": {
+                        "agent_type": "claude",
+                        "cursor_mode": "agent",
+                        "timeout_seconds": -5,
+                    },
+                },
+            )
+
+            assert response.status_code == 422
+            detail = response.json()["detail"]
+            # Should return multiple errors from the same section
+            assert isinstance(detail, list)
+            assert len(detail) >= 2
+            if isinstance(detail[0], str):
+                error_text = " ".join(detail).lower()
+            else:
+                error_text = " ".join(str(item) for item in detail).lower()
+            assert "cursor_mode" in error_text
+            assert "timeout_seconds" in error_text
 
     def test_not_found(self, temp_logs_dir: Path) -> None:
         """Test 404 when orchestration doesn't exist."""

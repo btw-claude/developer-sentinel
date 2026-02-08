@@ -3,6 +3,10 @@
 This module provides functions for building YAML updates from Pydantic models
 and validating orchestration updates. Extracted from dashboard.routes (DS-733).
 
+Validation uses section-specific error collectors (DS-734) that gather all
+validation errors within a section before returning, so the API can report
+every issue in a single response instead of one error at a time.
+
 Functions:
     _build_yaml_updates: Convert OrchestrationEditRequest to YAML-compatible dict
     _validate_orchestration_updates: Validate merged orchestration data
@@ -16,14 +20,14 @@ from typing import Any
 from sentinel.dashboard.models import OrchestrationEditRequest
 from sentinel.orchestration import (
     OrchestrationError,
-    _parse_agent,
+    _collect_agent_errors,
+    _collect_trigger_errors,
     _parse_on_complete,
     _parse_on_failure,
     _parse_on_start,
     _parse_orchestration,
     _parse_outcomes,
     _parse_retry,
-    _parse_trigger,
 )
 
 
@@ -123,19 +127,15 @@ def _validate_orchestration_updates(
         if max_conc is not None and (not isinstance(max_conc, int) or max_conc < 1):
             errors.append(f"Invalid max_concurrent: must be positive integer, got {max_conc}")
 
-    # Validate trigger section
+    # Validate trigger section — use collector to report all errors (DS-734)
     if "trigger" in merged:
-        try:
-            _parse_trigger(merged["trigger"])
-        except OrchestrationError as e:
-            errors.append(f"Trigger error: {e}")
+        trigger_errors = _collect_trigger_errors(merged["trigger"])
+        errors.extend(f"Trigger error: {e}" for e in trigger_errors)
 
-    # Validate agent section
+    # Validate agent section — use collector to report all errors (DS-734)
     if "agent" in merged:
-        try:
-            _parse_agent(merged["agent"])
-        except OrchestrationError as e:
-            errors.append(f"Agent error: {e}")
+        agent_errors = _collect_agent_errors(merged["agent"])
+        errors.extend(f"Agent error: {e}" for e in agent_errors)
 
     # Validate retry section
     if "retry" in merged:
