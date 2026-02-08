@@ -740,6 +740,7 @@ class TestGetDedupThreshold:
         ("env_value", "expected"),
         [
             ("0.8", 0.8),     # valid float
+            ("0.5", 0.5),     # mid-range passthrough (DS-793)
             ("1.5", 1.0),     # clamped above 1.0
             ("-0.3", 0.0),    # clamped negative to 0.0
             ("0.0", 0.0),     # boundary: lower end passes through (DS-774)
@@ -747,6 +748,7 @@ class TestGetDedupThreshold:
         ],
         ids=[
             "valid_float",
+            "midrange_passthrough",
             "clamps_above_one",
             "clamps_negative_to_zero",
             "boundary_zero",
