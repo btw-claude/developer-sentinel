@@ -116,7 +116,7 @@ class TestExecutionSummaryStatsEmpty:
         """Test that empty() returns the same cached object (identity check).
 
         In addition to the identity check, this test verifies that the
-        lru_cache is functioning by asserting cache_info().hits >= 1
+        lru_cache is functioning by asserting cache_info().hits == 1
         after the second call.
         """
         # Clear the cache to ensure deterministic hit counting
@@ -126,7 +126,7 @@ class TestExecutionSummaryStatsEmpty:
         stats2 = ExecutionSummaryStats.empty()
 
         assert stats1 is stats2
-        assert ExecutionSummaryStats.empty.cache_info().hits >= 1
+        assert ExecutionSummaryStats.empty.cache_info().hits == 1
 
 
 class TestComputeExecutionStatsEmpty:
