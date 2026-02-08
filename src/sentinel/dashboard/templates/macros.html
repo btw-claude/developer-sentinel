@@ -1,5 +1,11 @@
 {# Security audit complete - no external links (target="_blank") in this template #}
 {# Reusable Jinja2 macros for badge components #}
+{#
+  Escaping convention: Within Jinja2 comment blocks, use doubled percent
+  signs (%%) instead of single % when showing Jinja2 tag examples. This
+  prevents the template engine from interpreting the examples as real
+  Jinja2 tags. See stat_or_dash below for an example of this convention.
+#}
 
 {#
   Macro to render a badge with automatic state-based styling.
@@ -50,7 +56,7 @@
   {%% call stat_or_dash(value) %%}...{%% endcall %%} syntax so that the
   content between the tags is available via caller().
 
-  Usage (%% is escaped for this comment block; use single % in actual templates):
+  Usage (see top-of-file note on %% escaping convention):
     {%% call(v) stat_or_dash(orch_stats) %%}
         {{ v.total_runs }}
     {%% endcall %%}
