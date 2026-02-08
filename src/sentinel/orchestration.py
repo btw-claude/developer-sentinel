@@ -733,6 +733,14 @@ def _validate_cursor_mode(cursor_mode: Any, agent_type: Any) -> str | None:
 
     Checks both value validity and compatibility with *agent_type*.
 
+    .. note::
+        This function uses an **exclude-list** approach (see DS-646) for
+        agent-type compatibility.  Any ``AgentType`` value **not** listed in
+        the exclusion tuple will silently accept ``cursor_mode`` without
+        validation.  When adding a new ``AgentType`` that does **not**
+        support ``cursor_mode``, you **must** add it to the exclusion tuple
+        inside this function so the validation rejects it.
+
     Args:
         cursor_mode: The cursor_mode value to validate.
         agent_type: The agent_type value (used for compatibility check).
@@ -767,6 +775,14 @@ def _validate_agent_teams(agent_teams: Any, agent_type: Any) -> str | None:
     """Validate agent_teams for agent configuration.
 
     Checks both type validity and compatibility with *agent_type*.
+
+    .. note::
+        This function uses an **exclude-list** approach for agent-type
+        compatibility.  Any ``AgentType`` value **not** listed in the
+        exclusion tuple will silently accept ``agent_teams`` without
+        validation.  When adding a new ``AgentType`` that does **not**
+        support ``agent_teams``, you **must** add it to the exclusion tuple
+        inside this function so the validation rejects it.
 
     Args:
         agent_teams: The agent_teams value to validate.
