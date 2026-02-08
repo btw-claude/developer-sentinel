@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sentinel.dashboard.state import ExecutionStateSnapshot, OrchestrationVersionSnapshot
+    from sentinel.service_health_gate import ServiceHealthGate
 
 from sentinel.agent_clients.claude_sdk import request_shutdown as request_claude_shutdown
 from sentinel.agent_clients.factory import AgentClientFactory
@@ -89,6 +90,7 @@ class Sentinel:
         router: Router | None = None,
         github_poller: GitHubPoller | None = None,
         github_tag_client: GitHubTagClient | None = None,
+        service_health_gate: ServiceHealthGate | None = None,
     ) -> None:
         """Initialize the Sentinel orchestrator.
 
@@ -104,11 +106,13 @@ class Sentinel:
             router: Router for matching issues to orchestrations.
             github_poller: Optional poller for GitHub issues/PRs.
             github_tag_client: Optional GitHub client for tag/label operations.
+            service_health_gate: Optional service health gate for availability tracking.
         """
         self.config = config
         self.orchestrations = orchestrations
         self.jira_poller = jira_poller
         self.github_poller = github_poller
+        self.service_health_gate = service_health_gate
 
         # Initialize or create router
         if router is not None:

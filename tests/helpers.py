@@ -51,6 +51,7 @@ from sentinel.config import (
     LoggingConfig,
     PollingConfig,
     RateLimitConfig,
+    ServiceHealthGateConfig,
 )
 from sentinel.orchestration import (
     AgentConfig,
@@ -122,6 +123,13 @@ def make_config(
     # Health check settings
     health_check_enabled: bool = True,
     health_check_timeout: float = 5.0,
+    # Service health gate settings
+    health_gate_enabled: bool = True,
+    health_gate_failure_threshold: int = 3,
+    health_gate_initial_probe_interval: float = 30.0,
+    health_gate_max_probe_interval: float = 300.0,
+    health_gate_probe_backoff_factor: float = 2.0,
+    health_gate_probe_timeout: float = 5.0,
     # Shutdown settings
     shutdown_timeout_seconds: float = 300.0,
 ) -> Config:
@@ -188,6 +196,13 @@ def make_config(
 
         health_check_enabled: Enable health checks.
         health_check_timeout: Health check timeout in seconds.
+
+        health_gate_enabled: Enable service health gate.
+        health_gate_failure_threshold: Failures before marking unavailable.
+        health_gate_initial_probe_interval: Initial probe interval in seconds.
+        health_gate_max_probe_interval: Maximum probe interval in seconds.
+        health_gate_probe_backoff_factor: Exponential backoff multiplier.
+        health_gate_probe_timeout: Probe request timeout in seconds.
 
         shutdown_timeout_seconds: Graceful shutdown timeout in seconds.
             Set to 0 to wait indefinitely.
@@ -287,6 +302,14 @@ def make_config(
         health_check=HealthCheckConfig(
             enabled=health_check_enabled,
             timeout=health_check_timeout,
+        ),
+        service_health_gate=ServiceHealthGateConfig(
+            enabled=health_gate_enabled,
+            failure_threshold=health_gate_failure_threshold,
+            initial_probe_interval=health_gate_initial_probe_interval,
+            max_probe_interval=health_gate_max_probe_interval,
+            probe_backoff_factor=health_gate_probe_backoff_factor,
+            probe_timeout=health_gate_probe_timeout,
         ),
     )
 
