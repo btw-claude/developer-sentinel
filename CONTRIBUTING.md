@@ -317,6 +317,28 @@ def test_create_branch_true_without_branch_pattern_raises_error(self) -> None:
     ...
 ```
 
+**Shared-grouping reference (many related tests):**
+
+When more than roughly four tests cover analogous behavior (e.g., field-parsing
+validation across many fields), avoid enumerating every sibling. Instead,
+reference the shared naming pattern and the containing class:
+
+```python
+def test_parse_priority_field_missing(self) -> None:
+    """Test that a missing priority field falls back to the default.
+
+    Validates that omitting the priority key from the YAML mapping
+    produces the documented default value without raising an error.
+    See the other test_parse_*_field tests in this class for
+    analogous validation of remaining orchestration fields.
+    """
+    ...
+```
+
+This keeps docstrings concise while still directing developers to the full
+family of related tests. Use it whenever the set of siblings is large enough
+that listing each one individually would add more noise than signal.
+
 **Preserving existing context alongside cross-references:**
 
 ```python
