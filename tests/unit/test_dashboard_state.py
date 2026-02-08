@@ -10,8 +10,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from sentinel.config import (
-    _DEFAULT_GREEN_THRESHOLD,
-    _DEFAULT_YELLOW_THRESHOLD,
+    DEFAULT_GREEN_THRESHOLD,
+    DEFAULT_YELLOW_THRESHOLD,
     Config,
     ExecutionConfig,
 )
@@ -607,8 +607,8 @@ class TestDashboardStateSuccessRateThresholds:
         accessor = _create_accessor()
         state = accessor.get_state()
 
-        assert state.success_rate_green_threshold == _DEFAULT_GREEN_THRESHOLD
-        assert state.success_rate_yellow_threshold == _DEFAULT_YELLOW_THRESHOLD
+        assert state.success_rate_green_threshold == DEFAULT_GREEN_THRESHOLD
+        assert state.success_rate_yellow_threshold == DEFAULT_YELLOW_THRESHOLD
 
     def test_custom_thresholds_propagate_to_state(self) -> None:
         """Test that custom threshold config values propagate to DashboardState."""

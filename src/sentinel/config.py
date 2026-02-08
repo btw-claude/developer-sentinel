@@ -43,8 +43,8 @@ MIN_PORT = 1
 MAX_PORT = 65535
 
 # Default success rate thresholds for dashboard display coloring
-_DEFAULT_GREEN_THRESHOLD = 90.0
-_DEFAULT_YELLOW_THRESHOLD = 70.0
+DEFAULT_GREEN_THRESHOLD = 90.0
+DEFAULT_YELLOW_THRESHOLD = 70.0
 
 
 @dataclass(frozen=True)
@@ -108,8 +108,8 @@ class DashboardConfig:
     toggle_cooldown_seconds: float = 2.0
     rate_limit_cache_ttl: int = 3600
     rate_limit_cache_maxsize: int = 10000
-    success_rate_green_threshold: float = _DEFAULT_GREEN_THRESHOLD
-    success_rate_yellow_threshold: float = _DEFAULT_YELLOW_THRESHOLD
+    success_rate_green_threshold: float = DEFAULT_GREEN_THRESHOLD
+    success_rate_yellow_threshold: float = DEFAULT_YELLOW_THRESHOLD
 
 
 @dataclass(frozen=True)
@@ -432,22 +432,14 @@ def _parse_bounded_float(
     try:
         parsed = float(value)
         if min_val is not None and parsed < min_val:
-            if min_val == 0.0:
-                logging.warning(
-                    "Invalid %s: %f is negative, using default %f",
-                    name,
-                    parsed,
-                    default,
-                )
-            else:
-                logging.warning(
-                    "Invalid %s: %f is not in range %s-%s, using default %f",
-                    name,
-                    parsed,
-                    min_val,
-                    max_val,
-                    default,
-                )
+            logging.warning(
+                "Invalid %s: %f is not in range %s-%s, using default %f",
+                name,
+                parsed,
+                min_val,
+                max_val,
+                default,
+            )
             return default
         if max_val is not None and parsed > max_val:
             logging.warning(
@@ -772,17 +764,17 @@ def load_config(env_file: Path | None = None) -> Config:
     # Parse success rate threshold configuration
     success_rate_green_threshold = _parse_non_negative_float(
         os.getenv(
-            "SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", str(_DEFAULT_GREEN_THRESHOLD)
+            "SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", str(DEFAULT_GREEN_THRESHOLD)
         ),
         "SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD",
-        _DEFAULT_GREEN_THRESHOLD,
+        DEFAULT_GREEN_THRESHOLD,
     )
     success_rate_yellow_threshold = _parse_non_negative_float(
         os.getenv(
-            "SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", str(_DEFAULT_YELLOW_THRESHOLD)
+            "SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", str(DEFAULT_YELLOW_THRESHOLD)
         ),
         "SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD",
-        _DEFAULT_YELLOW_THRESHOLD,
+        DEFAULT_YELLOW_THRESHOLD,
     )
 
     # Parse Claude API rate limiting configuration

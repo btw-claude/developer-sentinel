@@ -69,8 +69,8 @@ class TestShutdownTimeoutConfig:
     @pytest.mark.parametrize(
         ("env_value", "expected_log_fragment"),
         [
-            ("-10.0", "negative"),  # Negative float
-            ("-1", "negative"),  # Negative integer
+            ("-10.0", "is not in range"),  # Negative float
+            ("-1", "is not in range"),  # Negative integer
             ("not-a-number", "Invalid SENTINEL_SHUTDOWN_TIMEOUT_SECONDS"),  # Non-numeric
             ("", "Invalid SENTINEL_SHUTDOWN_TIMEOUT_SECONDS"),  # Empty string
             ("abc123", "Invalid SENTINEL_SHUTDOWN_TIMEOUT_SECONDS"),  # Alphanumeric
