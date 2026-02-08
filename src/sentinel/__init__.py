@@ -12,6 +12,7 @@ except PackageNotFoundError:
 from sentinel.app import main
 from sentinel.main import Sentinel
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     "__version__",
     "Sentinel",

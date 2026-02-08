@@ -14,6 +14,7 @@ from sentinel.agents.registry import (
     get_tools_for_orchestration,
 )
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     # Base classes
     "ParameterType",

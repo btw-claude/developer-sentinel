@@ -329,6 +329,7 @@ def create_sentinel_from_context(context: BootstrapContext) -> Sentinel:
     )
 
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     "BootstrapContext",
     "apply_cli_overrides",

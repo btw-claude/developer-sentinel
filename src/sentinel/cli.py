@@ -70,4 +70,5 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = ["parse_args"]

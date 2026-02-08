@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     "Operator",
     "BooleanOperator",

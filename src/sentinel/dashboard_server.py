@@ -129,4 +129,5 @@ class DashboardServer:
             logger.info("Dashboard server shutdown complete")
 
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = ["DashboardServer"]

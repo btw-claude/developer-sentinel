@@ -216,6 +216,7 @@ def main(args: list[str] | None = None) -> int:
     return run_application(parsed, context)
 
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     "main",
     "run_application",
