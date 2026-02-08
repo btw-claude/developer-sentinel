@@ -6,9 +6,11 @@ This module contains tests for:
 - Cursor mode configuration
 - Agent Teams timeout handling (DS-697)
 - Agent Teams timeout configurability via environment variables (DS-701)
+- Error message template regression tests for _parse_env_int() (DS-744)
 """
 
 import logging
+import re
 from pathlib import Path
 from unittest import mock
 
@@ -1370,4 +1372,168 @@ class TestParseEnvIntValidationAndLogging:
         with mock.patch.dict("os.environ", {"TEST_PARSE_ENV_INT": "-11"}):
             with pytest.raises(ValueError, match=r"must be >= -10, got -11"):
                 _parse_env_int("TEST_PARSE_ENV_INT", 0, min_value=-10)
+
+
+class TestParseEnvIntErrorMessageTemplates:
+    """Regression tests for _parse_env_int() error message template formats (DS-744).
+
+    These tests use ``re.fullmatch`` to verify the *exact* structure of every
+    error/log message produced by ``_parse_env_int()``.  By matching the full
+    template (with placeholder groups for the variable parts) rather than a
+    specific instance, we catch accidental regressions in wording, punctuation,
+    or field order even when the function is refactored or gains new callers.
+
+    Follow-up from DS-721 code review (PR #733).
+    """
+
+    # -- Non-integer error template ------------------------------------------
+
+    _NON_INTEGER_TEMPLATE = (
+        r"Environment variable \S+ must be an integer, got '.+'"
+    )
+
+    def test_non_integer_error_matches_template(self) -> None:
+        """Non-integer error message should match the expected template."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "abc"}):
+            with pytest.raises(ValueError) as exc_info:
+                _parse_env_int("TEST_TMPL_VAR", 1)
+
+        assert re.fullmatch(self._NON_INTEGER_TEMPLATE, str(exc_info.value)), (
+            f"Non-integer error message does not match template "
+            f"{self._NON_INTEGER_TEMPLATE!r}: {str(exc_info.value)!r}"
+        )
+
+    def test_non_integer_error_contains_variable_name(self) -> None:
+        """Non-integer error message should embed the env-var name."""
+        with mock.patch.dict("os.environ", {"MY_CUSTOM_VAR": "xyz"}):
+            with pytest.raises(ValueError) as exc_info:
+                _parse_env_int("MY_CUSTOM_VAR", 1)
+
+        assert "MY_CUSTOM_VAR" in str(exc_info.value)
+
+    def test_non_integer_error_contains_raw_value(self) -> None:
+        """Non-integer error message should embed the rejected raw value."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "not_a_number"}):
+            with pytest.raises(ValueError) as exc_info:
+                _parse_env_int("TEST_TMPL_VAR", 1)
+
+        assert "not_a_number" in str(exc_info.value)
+
+    # -- Below-minimum error template ----------------------------------------
+
+    _BELOW_MIN_TEMPLATE = (
+        r"Environment variable \S+ must be >= -?\d+, got -?\d+"
+    )
+
+    def test_below_min_error_matches_template_default(self) -> None:
+        """Below-min error (default min_value=1) should match the template."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "0"}):
+            with pytest.raises(ValueError) as exc_info:
+                _parse_env_int("TEST_TMPL_VAR", 10)
+
+        assert re.fullmatch(self._BELOW_MIN_TEMPLATE, str(exc_info.value)), (
+            f"Below-min error message does not match template "
+            f"{self._BELOW_MIN_TEMPLATE!r}: {str(exc_info.value)!r}"
+        )
+
+    def test_below_min_error_matches_template_custom_min(self) -> None:
+        """Below-min error with custom min_value should match the template."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "2"}):
+            with pytest.raises(ValueError) as exc_info:
+                _parse_env_int("TEST_TMPL_VAR", 10, min_value=5)
+
+        assert re.fullmatch(self._BELOW_MIN_TEMPLATE, str(exc_info.value)), (
+            f"Below-min error message does not match template "
+            f"{self._BELOW_MIN_TEMPLATE!r}: {str(exc_info.value)!r}"
+        )
+
+    def test_below_min_error_matches_template_negative_min(self) -> None:
+        """Below-min error with negative min_value should match the template."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "-20"}):
+            with pytest.raises(ValueError) as exc_info:
+                _parse_env_int("TEST_TMPL_VAR", 0, min_value=-10)
+
+        assert re.fullmatch(self._BELOW_MIN_TEMPLATE, str(exc_info.value)), (
+            f"Below-min error message does not match template "
+            f"{self._BELOW_MIN_TEMPLATE!r}: {str(exc_info.value)!r}"
+        )
+
+    def test_below_min_error_contains_variable_name(self) -> None:
+        """Below-min error message should embed the env-var name."""
+        with mock.patch.dict("os.environ", {"MY_CUSTOM_VAR": "0"}):
+            with pytest.raises(ValueError) as exc_info:
+                _parse_env_int("MY_CUSTOM_VAR", 10)
+
+        assert "MY_CUSTOM_VAR" in str(exc_info.value)
+
+    def test_below_min_error_contains_min_value(self) -> None:
+        """Below-min error message should embed the min_value threshold."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "2"}):
+            with pytest.raises(ValueError) as exc_info:
+                _parse_env_int("TEST_TMPL_VAR", 10, min_value=5)
+
+        assert ">= 5" in str(exc_info.value)
+
+    def test_below_min_error_contains_actual_value(self) -> None:
+        """Below-min error message should embed the actual rejected value."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "-3"}):
+            with pytest.raises(ValueError) as exc_info:
+                _parse_env_int("TEST_TMPL_VAR", 10)
+
+        assert "got -3" in str(exc_info.value)
+
+    # -- Info-log message template -------------------------------------------
+
+    _LOG_MESSAGE_TEMPLATE = (
+        r"Using \S+=\d+ from environment \(default: \d+\)"
+    )
+
+    def test_log_message_matches_template(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Info log message should match the expected template format."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "7"}):
+            with caplog.at_level(logging.INFO, logger="sentinel.orchestration"):
+                _parse_env_int("TEST_TMPL_VAR", 42)
+
+        info_messages = [
+            r.message for r in caplog.records if r.levelno == logging.INFO
+        ]
+        matched = [
+            msg for msg in info_messages if re.fullmatch(self._LOG_MESSAGE_TEMPLATE, msg)
+        ]
+        assert matched, (
+            f"No info log matched template {self._LOG_MESSAGE_TEMPLATE!r}; "
+            f"got: {info_messages}"
+        )
+
+    def test_log_message_contains_variable_name_and_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Info log should embed the variable name and override value."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "99"}):
+            with caplog.at_level(logging.INFO, logger="sentinel.orchestration"):
+                _parse_env_int("TEST_TMPL_VAR", 1)
+
+        info_messages = [
+            r.message for r in caplog.records if r.levelno == logging.INFO
+        ]
+        assert any(
+            "TEST_TMPL_VAR=99" in msg for msg in info_messages
+        ), f"Expected 'TEST_TMPL_VAR=99' in log messages: {info_messages}"
+
+    def test_log_message_contains_default_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Info log should embed the default value."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "5"}):
+            with caplog.at_level(logging.INFO, logger="sentinel.orchestration"):
+                _parse_env_int("TEST_TMPL_VAR", 42)
+
+        info_messages = [
+            r.message for r in caplog.records if r.levelno == logging.INFO
+        ]
+        assert any(
+            "default: 42" in msg for msg in info_messages
+        ), f"Expected 'default: 42' in log messages: {info_messages}"
 
