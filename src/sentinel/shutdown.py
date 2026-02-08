@@ -95,6 +95,7 @@ def create_shutdown_handler(on_shutdown: Callable[[], None] | None = None) -> Sh
     return handler
 
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     "ShutdownHandler",
     "create_shutdown_handler",

@@ -25,6 +25,7 @@ from sentinel.dashboard.state import (
     SentinelStateProvider,
 )
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     "create_app",
     "DashboardState",

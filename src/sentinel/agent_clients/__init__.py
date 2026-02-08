@@ -22,6 +22,7 @@ from sentinel.agent_clients.codex import CodexAgentClient
 from sentinel.agent_clients.cursor import CursorAgentClient, CursorMode
 from sentinel.agent_clients.factory import AgentClientFactory, create_default_factory
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     # Base classes and types
     "AgentClient",

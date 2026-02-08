@@ -74,6 +74,7 @@ from tests.mocks import (
 # Used by tests that mock signal handling behavior
 SignalHandler = Callable[[int, FrameType | None], None]
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     # Type aliases (alphabetized)
     "SignalHandler",

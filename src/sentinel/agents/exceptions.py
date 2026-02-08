@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# NOTE: Update this list when adding new exports to this module.
 __all__ = [
     "ConfigurationError",
     "ValidationError",
