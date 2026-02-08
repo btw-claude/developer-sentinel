@@ -431,7 +431,7 @@
                 }
 
                 if (data.success) {
-                    showToast('success', 'Orchestration \'' + name + '\' deleted successfully');
+                    showToast('success', `Orchestration '${name}' deleted successfully`);
                     // Refresh the orchestrations list by triggering HTMX on the partials
                     htmx.trigger(document.body, 'orchestration-deleted');
                     // Also trigger a page-level refresh of orchestrations partial if present
@@ -440,12 +440,12 @@
                         htmx.trigger(orchPartial, 'revealed');
                     }
                 } else {
-                    showToast('error', 'Failed to delete orchestration \'' + name + '\'');
+                    showToast('error', `Failed to delete orchestration '${name}'`);
                 }
             } else if (status === 429) {
                 showToast('warning', 'Rate limit exceeded. Please wait before trying again.');
             } else {
-                let errorMessage = 'Failed to delete orchestration \'' + name + '\'';
+                let errorMessage = `Failed to delete orchestration '${name}'`;
                 try {
                     const errorData = JSON.parse(xhr.response);
                     if (errorData.detail) {
