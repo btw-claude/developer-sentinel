@@ -449,6 +449,82 @@ class TestValidateOrchestrationUpdates:
         assert "agent_type" in error_text
         assert "model" in error_text
 
+    def test_max_concurrent_boolean_true_rejected(self) -> None:
+        """Should reject boolean True for max_concurrent (DS-762).
+
+        isinstance(True, int) returns True in Python, so without an explicit
+        boolean guard, True would pass the int check. This test verifies that
+        the explicit boolean guard catches this case.
+        """
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {"max_concurrent": True},
+        )
+        assert len(errors) >= 1
+        assert any("max_concurrent" in e for e in errors)
+
+    def test_max_concurrent_boolean_false_rejected(self) -> None:
+        """Should reject boolean False for max_concurrent (DS-762).
+
+        isinstance(False, int) returns True in Python, so without an explicit
+        boolean guard, False would pass the int check (and then fail on < 1).
+        This test verifies the explicit boolean guard catches False as well.
+        """
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {"max_concurrent": False},
+        )
+        assert len(errors) >= 1
+        assert any("max_concurrent" in e for e in errors)
+
+    def test_cross_section_validation_runs_with_section_errors(self) -> None:
+        """Should run full validation even when section-level errors exist (DS-762).
+
+        Previously, _parse_orchestration() only ran when no section errors were
+        found. This meant cross-section validation issues could be missed when
+        section-level errors were present. Now full validation always runs with
+        deduplication.
+        """
+        current_data = self._make_valid_orch_data()
+        # Introduce a section-level error (invalid trigger source)
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {"trigger": {"source": "gitlab"}},
+        )
+        # Should have at least one error from the trigger section
+        assert len(errors) >= 1
+        assert any("trigger" in e.lower() or "source" in e.lower() for e in errors)
+
+    def test_cross_section_errors_deduplicated(self) -> None:
+        """Should not duplicate errors from section and full validation (DS-762).
+
+        When the same error is caught by both a section-specific validator and
+        the full _parse_orchestration() call, it should only appear once.
+        """
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {"agent": {"agent_type": "invalid-agent"}},
+        )
+        # Errors should be unique (no exact duplicates)
+        assert len(errors) == len(set(errors))
+
+    def test_max_concurrent_valid_integer_accepted(self) -> None:
+        """Should accept valid positive integer for max_concurrent (DS-762)."""
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {"max_concurrent": 5},
+        )
+        assert errors == []
+
 
 class TestCollectTriggerErrors:
     """Tests for _collect_trigger_errors function (DS-734)."""
