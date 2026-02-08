@@ -5,7 +5,7 @@ All handlers receive state through the SentinelStateAccessor to ensure
 read-only access to the orchestrator's state.
 
 Pydantic request/response models are defined in ``sentinel.dashboard.models``
-(extracted in DS-755 for better maintainability).
+(extracted in DS-755/DS-756 for better maintainability).
 
 Health check endpoints provide:
 - /health: Legacy health endpoint (deprecated, use /health/live)
