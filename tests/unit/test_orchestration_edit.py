@@ -736,38 +736,29 @@ class TestGetDedupThreshold:
         monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "   ")
         assert _get_dedup_threshold() == _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
 
-    def test_reads_valid_float_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should parse a valid float from SENTINEL_DEDUP_THRESHOLD."""
-        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "0.8")
-        assert _get_dedup_threshold() == 0.8
-
-    def test_clamps_value_above_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should clamp values above 1.0 to 1.0."""
-        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "1.5")
-        assert _get_dedup_threshold() == 1.0
-
-    def test_clamps_negative_value_to_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should clamp negative values to 0.0."""
-        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "-0.3")
-        assert _get_dedup_threshold() == 0.0
-
-    def test_boundary_value_zero_passes_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should pass through 0.0 without modification (DS-774).
-
-        Boundary value at the lower end of the valid range [0.0, 1.0] should
-        not be altered by the clamping logic.
-        """
-        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "0.0")
-        assert _get_dedup_threshold() == 0.0
-
-    def test_boundary_value_one_passes_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should pass through 1.0 without modification (DS-774).
-
-        Boundary value at the upper end of the valid range [0.0, 1.0] should
-        not be altered by the clamping logic.
-        """
-        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "1.0")
-        assert _get_dedup_threshold() == 1.0
+    @pytest.mark.parametrize(
+        ("env_value", "expected"),
+        [
+            ("0.8", 0.8),     # valid float
+            ("1.5", 1.0),     # clamped above 1.0
+            ("-0.3", 0.0),    # clamped negative to 0.0
+            ("0.0", 0.0),     # boundary: lower end passes through (DS-774)
+            ("1.0", 1.0),     # boundary: upper end passes through (DS-774)
+        ],
+        ids=[
+            "valid_float",
+            "clamps_above_one",
+            "clamps_negative_to_zero",
+            "boundary_zero",
+            "boundary_one",
+        ],
+    )
+    def test_parses_and_clamps_env_value(
+        self, monkeypatch: pytest.MonkeyPatch, env_value: str, expected: float,
+    ) -> None:
+        """Should parse SENTINEL_DEDUP_THRESHOLD and clamp to [0.0, 1.0]."""
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", env_value)
+        assert _get_dedup_threshold() == expected
 
     def test_returns_default_for_non_numeric(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should return default when env var is not a valid number."""
