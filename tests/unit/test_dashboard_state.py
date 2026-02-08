@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sentinel.config import Config, ExecutionConfig
+from sentinel.config import (
+    _DEFAULT_GREEN_THRESHOLD,
+    _DEFAULT_YELLOW_THRESHOLD,
+    Config,
+    ExecutionConfig,
+)
 from sentinel.dashboard.state import (
     CompletedExecutionInfoView,
     ExecutionSummaryStats,
@@ -106,6 +111,13 @@ class TestExecutionSummaryStatsEmpty:
         stats2 = ExecutionSummaryStats.empty()
 
         assert stats1 == stats2
+
+    def test_empty_returns_cached_singleton(self) -> None:
+        """Test that empty() returns the same cached object (identity check)."""
+        stats1 = ExecutionSummaryStats.empty()
+        stats2 = ExecutionSummaryStats.empty()
+
+        assert stats1 is stats2
 
 
 class TestComputeExecutionStatsEmpty:
@@ -595,8 +607,8 @@ class TestDashboardStateSuccessRateThresholds:
         accessor = _create_accessor()
         state = accessor.get_state()
 
-        assert state.success_rate_green_threshold == 90.0
-        assert state.success_rate_yellow_threshold == 70.0
+        assert state.success_rate_green_threshold == _DEFAULT_GREEN_THRESHOLD
+        assert state.success_rate_yellow_threshold == _DEFAULT_YELLOW_THRESHOLD
 
     def test_custom_thresholds_propagate_to_state(self) -> None:
         """Test that custom threshold config values propagate to DashboardState."""

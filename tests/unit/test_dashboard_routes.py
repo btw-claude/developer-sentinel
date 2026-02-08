@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sentinel.config import Config, DashboardConfig, ExecutionConfig
@@ -25,6 +26,13 @@ from sentinel.dashboard.state import (
     OrchestrationInfo,
     OrchestrationVersionSnapshot,
     SentinelStateAccessor,
+)
+from sentinel.orchestration import (
+    AgentConfig,
+    GitHubContext,
+    Orchestration,
+    RetryConfig,
+    TriggerConfig,
 )
 from sentinel.state_tracker import CompletedExecutionInfo
 from tests.conftest import create_test_app
@@ -1764,3 +1772,566 @@ class TestCreateRoutesLogging:
             call_args = mock_logger.debug.call_args
             assert_call_args_length(call_args, 5)
             assert call_args[0][4] == 20000
+
+
+class MockSentinelForEditForm(MockSentinel):
+    """Mock Sentinel with real orchestrations for edit form endpoint tests.
+
+    Extends MockSentinel to return actual Orchestration instances, which is
+    required by SentinelStateAccessor.get_orchestration_detail(). This enables
+    testing the GET /partials/orchestration_edit/{name} endpoint that renders
+    the edit form template.
+    """
+
+    def __init__(
+        self,
+        config: Config,
+        orchestration_list: list[Orchestration] | None = None,
+        active_versions: list[OrchestrationVersionSnapshot] | None = None,
+    ) -> None:
+        super().__init__(config)
+        self._orchestration_list = orchestration_list or []
+        self._active_versions = active_versions or []
+
+    @property
+    def orchestrations(self) -> list[Any]:
+        """Return the list of active orchestrations."""
+        return self._orchestration_list
+
+    def get_active_versions(self) -> list[OrchestrationVersionSnapshot]:
+        """Return active version snapshots."""
+        return self._active_versions
+
+
+class TestEditFormPartialEndpoint:
+    """Tests for GET /partials/orchestration_edit/{name} endpoint (DS-728).
+
+    Tests the edit form partial that renders a pre-populated HTMX form
+    for inline orchestration editing.
+    """
+
+    @staticmethod
+    def _create_app_with_templates(
+        accessor: SentinelStateAccessor,
+        config: Config | None = None,
+    ) -> FastAPI:
+        """Create a test FastAPI app with Jinja2 templates configured.
+
+        The edit form endpoint requires Jinja2 templates, so this helper
+        configures the template environment the same way the production
+        create_app() does.
+        """
+        from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+        from sentinel.dashboard.app import TemplateEnvironmentWrapper, format_duration
+
+        app = create_test_app(accessor, config)
+
+        templates_dir = Path(__file__).parent.parent.parent / "src" / "sentinel" / "dashboard" / "templates"
+        template_env = Environment(
+            loader=FileSystemLoader(str(templates_dir)),
+            autoescape=select_autoescape(["html", "xml"]),
+            enable_async=True,
+        )
+        template_env.filters["format_duration"] = format_duration
+        app.state.templates = TemplateEnvironmentWrapper(template_env)
+
+        return app
+
+    def _make_orchestration(
+        self,
+        name: str = "test-orch",
+        source: str = "jira",
+        project: str = "TEST",
+        prompt: str = "Test prompt",
+        github: GitHubContext | None = None,
+        agent_type: str | None = None,
+    ) -> Orchestration:
+        """Create a test Orchestration instance."""
+        return Orchestration(
+            name=name,
+            trigger=TriggerConfig(source=source, project=project),
+            agent=AgentConfig(
+                prompt=prompt,
+                github=github,
+                agent_type=agent_type,
+            ),
+            retry=RetryConfig(),
+        )
+
+    def test_edit_form_returns_200_for_existing_orchestration(self, temp_logs_dir: Path) -> None:
+        """Test that edit form partial returns 200 for an existing orchestration."""
+        orch = self._make_orchestration(name="my-orch", prompt="Review the code")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/my-orch")
+
+            assert response.status_code == 200
+
+    def test_edit_form_returns_404_for_nonexistent_orchestration(
+        self, temp_logs_dir: Path
+    ) -> None:
+        """Test that edit form partial returns 404 for unknown orchestration name."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/nonexistent")
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    def test_edit_form_contains_orchestration_name(self, temp_logs_dir: Path) -> None:
+        """Test that edit form HTML contains the orchestration name."""
+        orch = self._make_orchestration(name="review-orch", prompt="Review code")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/review-orch")
+
+            assert response.status_code == 200
+            assert "review-orch" in response.text
+
+    def test_edit_form_contains_prompt_text(self, temp_logs_dir: Path) -> None:
+        """Test that edit form HTML contains the agent prompt text."""
+        orch = self._make_orchestration(name="test-orch", prompt="Analyze and fix the bug")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/test-orch")
+
+            assert response.status_code == 200
+            assert "Analyze and fix the bug" in response.text
+
+    def test_edit_form_contains_form_element(self, temp_logs_dir: Path) -> None:
+        """Test that edit form HTML contains a form element with correct ID."""
+        orch = self._make_orchestration(name="form-orch")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/form-orch")
+
+            assert response.status_code == 200
+            assert 'id="edit-form-form-orch"' in response.text
+
+    def test_edit_form_contains_save_and_cancel_buttons(self, temp_logs_dir: Path) -> None:
+        """Test that edit form HTML contains Save and Cancel action buttons."""
+        orch = self._make_orchestration(name="btn-orch")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/btn-orch")
+
+            assert response.status_code == 200
+            assert "Save" in response.text
+            assert "Cancel" in response.text
+
+    def test_edit_form_contains_trigger_source_radio(self, temp_logs_dir: Path) -> None:
+        """Test that edit form contains trigger source radio buttons."""
+        orch = self._make_orchestration(name="radio-orch", source="jira")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/radio-orch")
+
+            assert response.status_code == 200
+            assert 'name="trigger_source"' in response.text
+            assert 'value="jira"' in response.text
+            assert 'value="github"' in response.text
+
+    def test_edit_form_endpoint_exists(self, temp_logs_dir: Path) -> None:
+        """Test that the edit form endpoint exists at the correct path."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        route_paths = [route.path for route in app.routes]
+        assert "/partials/orchestration_edit/{name}" in route_paths
+
+    def test_edit_form_returns_html_content_type(self, temp_logs_dir: Path) -> None:
+        """Test that edit form endpoint returns HTML content type."""
+        orch = self._make_orchestration(name="html-orch")
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelForEditForm(config, orchestration_list=[orch])
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = self._create_app_with_templates(accessor)
+
+        with TestClient(app) as client:
+            response = client.get("/partials/orchestration_edit/html-orch")
+
+            assert response.status_code == 200
+            assert "text/html" in response.headers["content-type"]
+
+
+class TestCreateOrchestrationEndpoint:
+    """Tests for POST /api/orchestrations endpoint (DS-729)."""
+
+    def test_create_orchestration_success(self, temp_logs_dir: Path) -> None:
+        """Test successful creation of a new orchestration."""
+        # Create orchestrations directory
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # Get CSRF token first (DS-736)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
+            response = client.post(
+                "/api/orchestrations",
+                json={
+                    "name": "new-orch",
+                    "target_file": "new-file.yaml",
+                    "trigger": {"source": "jira", "project": "TEST"},
+                    "agent": {"prompt": "Test prompt"},
+                },
+                headers={"X-CSRF-Token": csrf_token},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["name"] == "new-orch"
+
+            # Verify file was created
+            created_file = orch_dir / "new-file.yaml"
+            assert created_file.exists()
+            content = created_file.read_text()
+            assert "new-orch" in content
+
+    def test_create_orchestration_duplicate_name(self, temp_logs_dir: Path) -> None:
+        """Test 422 when orchestration name already exists."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        # Create existing orchestration
+        orch_info = OrchestrationInfo(
+            name="existing-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test",
+            source_file=str(orch_dir / "existing.yaml"),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # Get CSRF token first (DS-736)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
+            response = client.post(
+                "/api/orchestrations",
+                json={
+                    "name": "existing-orch",
+                    "target_file": "new-file.yaml",
+                    "trigger": {"source": "jira", "project": "TEST"},
+                    "agent": {"prompt": "Test"},
+                },
+                headers={"X-CSRF-Token": csrf_token},
+            )
+
+            assert response.status_code == 422
+            assert "already exists" in response.json()["detail"]
+
+    def test_create_orchestration_path_traversal(self, temp_logs_dir: Path) -> None:
+        """Test 422 when target file is outside orchestrations directory."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # Get CSRF token first (DS-736)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
+            response = client.post(
+                "/api/orchestrations",
+                json={
+                    "name": "new-orch",
+                    "target_file": "../outside.yaml",
+                    "trigger": {"source": "jira", "project": "TEST"},
+                    "agent": {"prompt": "Test"},
+                },
+                headers={"X-CSRF-Token": csrf_token},
+            )
+
+            assert response.status_code == 422
+            assert "not within" in response.json()["detail"]
+
+    def test_create_orchestration_appends_to_existing_file(self, temp_logs_dir: Path) -> None:
+        """Test that creation appends to an existing YAML file."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        # Create an existing YAML file with an orchestration
+        existing_file = orch_dir / "existing.yaml"
+        existing_file.write_text("""
+orchestrations:
+  - name: "first-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "First"
+""")
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # Get CSRF token first (DS-736)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
+            response = client.post(
+                "/api/orchestrations",
+                json={
+                    "name": "second-orch",
+                    "target_file": "existing.yaml",
+                    "trigger": {"source": "jira", "project": "TEST"},
+                    "agent": {"prompt": "Second"},
+                },
+                headers={"X-CSRF-Token": csrf_token},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+
+            # Verify both orchestrations exist in the file
+            content = existing_file.read_text()
+            assert "first-orch" in content
+            assert "second-orch" in content
+
+    def test_create_endpoint_exists(self, temp_logs_dir: Path) -> None:
+        """Test that the create endpoint exists at the correct path."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        route_paths = [route.path for route in app.routes]
+        assert "/api/orchestrations" in route_paths
+
+
+class TestOrchestrationFilesEndpoint:
+    """Tests for GET /api/orchestrations/files endpoint (DS-729)."""
+
+    def test_returns_yaml_files(self, temp_logs_dir: Path) -> None:
+        """Test that endpoint returns list of YAML files."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+        (orch_dir / "file1.yaml").write_text("orchestrations: []")
+        (orch_dir / "file2.yml").write_text("orchestrations: []")
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.get("/api/orchestrations/files")
+
+            assert response.status_code == 200
+            files = response.json()
+            assert "file1.yaml" in files
+            assert "file2.yml" in files
+
+    def test_returns_empty_when_no_files(self, temp_logs_dir: Path) -> None:
+        """Test that endpoint returns empty list when no YAML files exist."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.get("/api/orchestrations/files")
+
+            assert response.status_code == 200
+            assert response.json() == []
+
+    def test_returns_sorted_files(self, temp_logs_dir: Path) -> None:
+        """Test that files are returned in sorted order."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+        (orch_dir / "c-file.yaml").write_text("orchestrations: []")
+        (orch_dir / "a-file.yaml").write_text("orchestrations: []")
+        (orch_dir / "b-file.yaml").write_text("orchestrations: []")
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.get("/api/orchestrations/files")
+
+            assert response.status_code == 200
+            files = response.json()
+            assert files == ["a-file.yaml", "b-file.yaml", "c-file.yaml"]
+
+    def test_files_endpoint_exists(self, temp_logs_dir: Path) -> None:
+        """Test that the files endpoint exists at the correct path."""
+        orch_dir = temp_logs_dir / "orchestrations"
+        orch_dir.mkdir()
+
+        config = Config(
+            execution=ExecutionConfig(
+                agent_logs_dir=temp_logs_dir,
+                orchestrations_dir=orch_dir,
+            ),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor, config=config)
+
+        route_paths = [route.path for route in app.routes]
+        assert "/api/orchestrations/files" in route_paths
+
+
+class TestCsrfTokenRateLimiting:
+    """Tests for CSRF token endpoint rate limiting (DS-737)."""
+
+    def test_csrf_token_returns_token(self, temp_logs_dir: Path) -> None:
+        """Test that the CSRF token endpoint returns a token."""
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            response = client.get("/api/csrf-token")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "csrf_token" in data
+            assert len(data["csrf_token"]) > 0
+
+    def test_csrf_token_rate_limited_after_30_requests(self, temp_logs_dir: Path) -> None:
+        """Test that CSRF token endpoint returns 429 after 30 requests per minute."""
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # Make 30 requests - should all succeed
+            for i in range(30):
+                response = client.get("/api/csrf-token")
+                assert response.status_code == 200, f"Request {i+1} should succeed"
+
+            # 31st request should be rate limited
+            response = client.get("/api/csrf-token")
+            assert response.status_code == 429
+            assert "rate limit" in response.json()["detail"].lower()
+
+    def test_csrf_token_rate_limit_per_client_ip(self, temp_logs_dir: Path) -> None:
+        """Test that CSRF rate limiting is per-client IP."""
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # A single TestClient IP can make 30 requests
+            for _ in range(30):
+                response = client.get("/api/csrf-token")
+                assert response.status_code == 200
+
+            # Verify the 31st is blocked
+            response = client.get("/api/csrf-token")
+            assert response.status_code == 429

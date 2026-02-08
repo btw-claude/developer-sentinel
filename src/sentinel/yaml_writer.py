@@ -767,3 +767,75 @@ class OrchestrationYamlWriter:
                 file_path,
             )
             return True
+
+    def add_orchestration(
+        self,
+        file_path: Path,
+        orchestration_data: dict[str, Any],
+        orchestrations_dir: Path,
+    ) -> bool:
+        """Add a new orchestration to a YAML file.
+
+        Appends the orchestration to an existing file's orchestrations list,
+        or creates a new file with proper YAML structure if it doesn't exist.
+        Validates that the target file path is within the orchestrations
+        directory to prevent path traversal attacks.
+
+        Args:
+            file_path: Path to the target YAML file (must be within orchestrations_dir).
+            orchestration_data: Dictionary containing the orchestration configuration.
+            orchestrations_dir: Base directory for orchestration files (for validation).
+
+        Returns:
+            True if the orchestration was successfully added.
+
+        Raises:
+            OrchestrationYamlWriterError: If path validation fails, file operations
+                fail, or YAML operations fail.
+            FileLockTimeoutError: If the file lock cannot be acquired within
+                the configured timeout.
+        """
+        # Validate that file_path is within orchestrations_dir (path traversal prevention)
+        try:
+            file_path.resolve().relative_to(orchestrations_dir.resolve())
+        except ValueError as e:
+            raise OrchestrationYamlWriterError(
+                f"Target file '{file_path}' is not within orchestrations directory "
+                f"'{orchestrations_dir}'"
+            ) from e
+
+        with _file_lock(
+            file_path,
+            max_wait_seconds=self._lock_timeout_seconds,
+            cleanup_lock_file=self._cleanup_lock_files,
+            retry_interval_seconds=self._retry_interval_seconds,
+        ):
+            if file_path.exists():
+                # Load existing file and append to orchestrations list
+                data = self._load_yaml(file_path)
+
+                # Get or create orchestrations list
+                if "orchestrations" not in data:
+                    data["orchestrations"] = []
+
+                # Ensure orchestrations is a list
+                if not isinstance(data["orchestrations"], list):
+                    raise OrchestrationYamlWriterError(
+                        f"'orchestrations' key in {file_path} is not a list"
+                    )
+
+                data["orchestrations"].append(orchestration_data)
+            else:
+                # Create new file with orchestrations structure
+                data = CommentedMap()
+                data["orchestrations"] = [orchestration_data]
+
+            self._save_yaml(file_path, data)
+
+            orch_name = orchestration_data.get("name", "<unnamed>")
+            logger.info(
+                "Added orchestration '%s' to %s",
+                orch_name,
+                file_path,
+            )
+            return True

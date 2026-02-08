@@ -42,6 +42,10 @@ VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 MIN_PORT = 1
 MAX_PORT = 65535
 
+# Default success rate thresholds for dashboard display coloring
+_DEFAULT_GREEN_THRESHOLD = 90.0
+_DEFAULT_YELLOW_THRESHOLD = 70.0
+
 
 @dataclass(frozen=True)
 class JiraConfig:
@@ -104,8 +108,8 @@ class DashboardConfig:
     toggle_cooldown_seconds: float = 2.0
     rate_limit_cache_ttl: int = 3600
     rate_limit_cache_maxsize: int = 10000
-    success_rate_green_threshold: float = 90.0
-    success_rate_yellow_threshold: float = 70.0
+    success_rate_green_threshold: float = _DEFAULT_GREEN_THRESHOLD
+    success_rate_yellow_threshold: float = _DEFAULT_YELLOW_THRESHOLD
 
 
 @dataclass(frozen=True)
@@ -400,6 +404,72 @@ def _parse_bool(value: str) -> bool:
     return value.lower() in ("true", "1", "yes")
 
 
+def _parse_bounded_float(
+    value: str,
+    name: str,
+    default: float,
+    min_val: float | None = None,
+    max_val: float | None = None,
+) -> float:
+    """Parse a string as a float with optional bounds validation.
+
+    This is a shared helper for parsing float values with range checks.
+    Both ``_parse_non_negative_float`` and ``_parse_warning_threshold``
+    delegate to this function.
+
+    Args:
+        value: The string value to parse.
+        name: The name of the setting (for error messages).
+        default: The default value to use if parsing fails.
+        min_val: Optional minimum allowed value (inclusive). None means no lower bound.
+        max_val: Optional maximum allowed value (inclusive). None means no upper bound.
+
+    Returns:
+        The parsed float within the specified bounds, or the default if invalid.
+
+    Logs a warning if the value is invalid or out of range.
+    """
+    try:
+        parsed = float(value)
+        if min_val is not None and parsed < min_val:
+            if min_val == 0.0:
+                logging.warning(
+                    "Invalid %s: %f is negative, using default %f",
+                    name,
+                    parsed,
+                    default,
+                )
+            else:
+                logging.warning(
+                    "Invalid %s: %f is not in range %s-%s, using default %f",
+                    name,
+                    parsed,
+                    min_val,
+                    max_val,
+                    default,
+                )
+            return default
+        if max_val is not None and parsed > max_val:
+            logging.warning(
+                "Invalid %s: %f is not in range %s-%s, using default %f",
+                name,
+                parsed,
+                min_val,
+                max_val,
+                default,
+            )
+            return default
+        return parsed
+    except ValueError:
+        logging.warning(
+            "Invalid %s: '%s' is not a valid number, using default %f",
+            name,
+            value,
+            default,
+        )
+        return default
+
+
 def _parse_non_negative_float(value: str, name: str, default: float) -> float:
     """Parse a string as a non-negative float with validation.
 
@@ -413,25 +483,7 @@ def _parse_non_negative_float(value: str, name: str, default: float) -> float:
 
     Logs a warning if the value is invalid.
     """
-    try:
-        parsed = float(value)
-        if parsed < 0:
-            logging.warning(
-                "Invalid %s: %f is negative, using default %f",
-                name,
-                parsed,
-                default,
-            )
-            return default
-        return parsed
-    except ValueError:
-        logging.warning(
-            "Invalid %s: '%s' is not a valid number, using default %f",
-            name,
-            value,
-            default,
-        )
-        return default
+    return _parse_bounded_float(value, name, default, min_val=0.0)
 
 
 def _validate_cursor_mode(value: str, default: str = CursorMode.AGENT.value) -> str:
@@ -549,25 +601,7 @@ def _parse_warning_threshold(value: str, name: str, default: float) -> float:
 
     Logs a warning if the value is invalid or out of range.
     """
-    try:
-        parsed = float(value)
-        if parsed < 0.0 or parsed > 1.0:
-            logging.warning(
-                "Invalid %s: %f is not in range 0.0-1.0, using default %f",
-                name,
-                parsed,
-                default,
-            )
-            return default
-        return parsed
-    except ValueError:
-        logging.warning(
-            "Invalid %s: '%s' is not a valid number, using default %f",
-            name,
-            value,
-            default,
-        )
-        return default
+    return _parse_bounded_float(value, name, default, min_val=0.0, max_val=1.0)
 
 
 def _validate_branch_name(value: str, default: str = "main") -> str:
@@ -737,14 +771,18 @@ def load_config(env_file: Path | None = None) -> Config:
 
     # Parse success rate threshold configuration
     success_rate_green_threshold = _parse_non_negative_float(
-        os.getenv("SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", "90.0"),
+        os.getenv(
+            "SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD", str(_DEFAULT_GREEN_THRESHOLD)
+        ),
         "SENTINEL_SUCCESS_RATE_GREEN_THRESHOLD",
-        90.0,
+        _DEFAULT_GREEN_THRESHOLD,
     )
     success_rate_yellow_threshold = _parse_non_negative_float(
-        os.getenv("SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", "70.0"),
+        os.getenv(
+            "SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD", str(_DEFAULT_YELLOW_THRESHOLD)
+        ),
         "SENTINEL_SUCCESS_RATE_YELLOW_THRESHOLD",
-        70.0,
+        _DEFAULT_YELLOW_THRESHOLD,
     )
 
     # Parse Claude API rate limiting configuration

@@ -22,13 +22,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import secrets
 import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from cachetools import TTLCache
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
 from sse_starlette.sse import EventSourceResponse
@@ -48,6 +49,10 @@ logger = logging.getLogger(__name__)
 # Sunset date for the deprecated /health endpoint (RFC 8594 HTTP-date format)
 # Used in both Deprecation and Sunset headers
 HEALTH_ENDPOINT_SUNSET_DATE = "Sat, 01 Jun 2026 00:00:00 GMT"
+
+# Maximum CSRF token requests allowed per client IP per minute (DS-738).
+# Guards against TTLCache exhaustion in the csrf_tokens cache (maxsize=1000).
+CSRF_TOKEN_RATE_LIMIT_PER_MINUTE = 30
 
 
 class RateLimiter:
@@ -241,13 +246,35 @@ class DeleteResponse(BaseModel):
     name: str
 
 
+class OrchestrationCreateRequest(BaseModel):
+    """Request model for creating a new orchestration."""
+
+    name: str
+    target_file: str
+    enabled: bool | None = None
+    max_concurrent: int | None = None
+    trigger: TriggerEditRequest | None = None
+    agent: AgentEditRequest | None = None
+    retry: RetryEditRequest | None = None
+    outcomes: list[OutcomeEditRequest] | None = None
+    lifecycle: LifecycleEditRequest | None = None
+
+
+class OrchestrationCreateResponse(BaseModel):
+    """Response model for orchestration creation."""
+
+    success: bool
+    name: str
+    errors: list[str] = []
+
+
 # Pydantic response models for orchestration detail endpoint (DS-754)
 # These use from_attributes=True to enable direct conversion from frozen
 # dataclass DTOs via model_validate(), eliminating manual field-by-field
 # construction and keeping the models in sync with domain objects automatically.
 
 
-class GitHubContextResponse(BaseModel):
+class GitHubContextDetailResponse(BaseModel):
     """Response model for GitHub context in orchestration detail."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -282,7 +309,7 @@ class AgentDetailResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     prompt: str
-    github: GitHubContextResponse | None
+    github: GitHubContextDetailResponse | None
     timeout_seconds: int | None
     model: str | None
     agent_type: str | None
@@ -302,8 +329,8 @@ class RetryDetailResponse(BaseModel):
     default_outcome: str
 
 
-class OutcomeResponse(BaseModel):
-    """Response model for outcome configuration in orchestration detail."""
+class OutcomeDetailResponse(BaseModel):
+    """Response model for an outcome in orchestration detail."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -339,12 +366,13 @@ class OrchestrationDetailResponse(BaseModel):
     trigger: TriggerDetailResponse
     agent: AgentDetailResponse
     retry: RetryDetailResponse
-    outcomes: list[OutcomeResponse]
+    outcomes: list[OutcomeDetailResponse]
     lifecycle: LifecycleDetailResponse
 
 
 # Column definitions for orchestration tables, passed via route context
 # to keep the value closer to the table definition logic (DS-754).
+# NOTE: Must stay in sync with the <td> cells in partials/orchestrations.html.
 ORCH_TABLE_COLUMNS = [
     "Name",
     "Trigger Tags",
@@ -354,6 +382,7 @@ ORCH_TABLE_COLUMNS = [
     "Avg Duration",
     "Status",
 ]
+
 
 
 def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
@@ -506,7 +535,73 @@ def create_routes(
     # Create rate limiter with config values
     rate_limiter = RateLimiter(effective_config)
 
+    # CSRF protection for state-changing endpoints (DS-736)
+    csrf_tokens: TTLCache[str, bool] = TTLCache(maxsize=1000, ttl=3600)
+
+    # Rate limiting for CSRF token endpoint to prevent TTLCache exhaustion (DS-737)
+    csrf_rate_limit: TTLCache[str, int] = TTLCache(maxsize=256, ttl=60)
+
+    def _generate_csrf_token() -> str:
+        """Generate a CSRF token and store it for validation."""
+        token = secrets.token_urlsafe(32)
+        csrf_tokens[token] = True
+        return token
+
+    def _validate_csrf_token(token: str | None) -> None:
+        """Validate and consume a CSRF token.
+
+        Args:
+            token: The CSRF token to validate.
+
+        Raises:
+            HTTPException: 403 if token is missing or invalid.
+        """
+        if not token or token not in csrf_tokens:
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid or missing CSRF token",
+            )
+        # Consume token (single-use)
+        del csrf_tokens[token]
+
     dashboard_router = APIRouter()
+
+    @dashboard_router.get("/api/csrf-token")
+    async def api_csrf_token(request: Request) -> dict[str, str]:
+        """Generate and return a CSRF token.
+
+        Provides a CSRF token for use in state-changing API requests.
+        Tokens are single-use and expire after 1 hour.
+
+        Rate limited to CSRF_TOKEN_RATE_LIMIT_PER_MINUTE requests per minute
+        per client IP to prevent potential TTLCache exhaustion (DS-737). The
+        csrf_tokens cache has maxsize=1000, so unbounded generation could fill
+        and evict valid tokens.
+
+        Args:
+            request: The incoming HTTP request (used for client IP extraction).
+
+        Returns:
+            Dict containing the CSRF token.
+
+        Raises:
+            HTTPException: 429 if rate limit is exceeded.
+        """
+        client_ip = request.client.host if request.client else "unknown"
+        current_count = csrf_rate_limit.get(client_ip, 0)
+        if client_ip == "unknown" and current_count == 0:
+            logger.warning(
+                "CSRF token request from unknown client IP (request.client is None); "
+                "this may indicate the app is behind a proxy that does not set "
+                "X-Forwarded-For or similar headers"
+            )
+        if current_count >= CSRF_TOKEN_RATE_LIMIT_PER_MINUTE:
+            raise HTTPException(
+                status_code=429,
+                detail="CSRF token request rate limit exceeded. Please try again later.",
+            )
+        csrf_rate_limit[client_ip] = current_count + 1
+        return {"csrf_token": _generate_csrf_token()}
 
     @dashboard_router.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
@@ -546,7 +641,7 @@ def create_routes(
             await templates.TemplateResponse(
                 request=request,
                 name="orchestrations.html",
-                context={"state": state},
+                context={"state": state, "csrf_token": _generate_csrf_token()},
             ),
         )
 
@@ -1032,6 +1127,34 @@ def create_routes(
 
         return EventSourceResponse(event_generator())
 
+    @dashboard_router.get("/api/orchestrations/files")
+    async def api_orchestrations_files() -> list[str]:
+        """Return list of YAML files in the orchestrations directory.
+
+        Recursively scans the orchestrations directory for .yaml and .yml files
+        and returns their relative paths for use in the file selector.
+
+        Returns:
+            List of relative file paths (strings) from orchestrations_dir.
+        """
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+
+        yaml_files = []
+        try:
+            if orchestrations_dir.exists() and orchestrations_dir.is_dir():
+                for pattern in ("*.yaml", "*.yml"):
+                    for file_path in orchestrations_dir.rglob(pattern):
+                        if file_path.is_file():
+                            # Return relative path from orchestrations_dir
+                            relative_path = file_path.relative_to(orchestrations_dir)
+                            yaml_files.append(str(relative_path))
+        except OSError as e:
+            logger.warning("Error scanning orchestrations directory: %s", e)
+
+        # Sort for consistent ordering
+        yaml_files.sort()
+        return yaml_files
+
     @dashboard_router.get(
         "/api/orchestrations/{name}/detail",
         response_model=OrchestrationDetailResponse,
@@ -1093,6 +1216,65 @@ def create_routes(
                 request=request,
                 name="partials/orchestration_detail.html",
                 context={"detail": detail},
+            ),
+        )
+
+    @dashboard_router.get(
+        "/partials/orchestration_edit/{name}", response_class=HTMLResponse
+    )
+    async def partial_orchestration_edit(request: Request, name: str) -> HTMLResponse:
+        """Render the orchestration edit form partial for HTMX inline editing.
+
+        Returns a pre-populated edit form that replaces the detail view
+        when a user clicks the Edit button.
+
+        Args:
+            request: The incoming HTTP request.
+            name: The orchestration name.
+
+        Returns:
+            HTML response with the orchestration edit form partial.
+
+        Raises:
+            HTTPException: 404 if orchestration not found.
+        """
+        detail = state_accessor.get_orchestration_detail(name)
+        if detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Orchestration '{name}' not found",
+            )
+        templates = request.app.state.templates
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/orchestration_edit_form.html",
+                context={"detail": detail},
+            ),
+        )
+
+    @dashboard_router.get(
+        "/partials/orchestration_create", response_class=HTMLResponse
+    )
+    async def partial_orchestration_create(request: Request) -> HTMLResponse:
+        """Render the orchestration creation form partial for HTMX.
+
+        Returns an empty creation form with a name field and file selector.
+
+        Args:
+            request: The incoming HTTP request.
+
+        Returns:
+            HTML response with the orchestration creation form partial.
+        """
+        templates = request.app.state.templates
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/orchestration_create_form.html",
+                context={"csrf_token": _generate_csrf_token()},
             ),
         )
 
@@ -1463,6 +1645,111 @@ def create_routes(
 
         except OrchestrationYamlWriterError as e:
             logger.error("Failed to delete orchestration '%s': %s", name, e)
+            raise HTTPException(
+                status_code=500,
+                detail=str(e),
+            ) from e
+
+    @dashboard_router.post(
+        "/api/orchestrations",
+        response_model=OrchestrationCreateResponse,
+        summary="Create a new orchestration",
+        description="Create a new orchestration in the specified target file. "
+        "Validates name uniqueness and target file path. Rate limited to "
+        "prevent rapid file writes.",
+    )
+    async def create_orchestration(
+        request_body: OrchestrationCreateRequest,
+        x_csrf_token: str | None = Header(None),
+    ) -> OrchestrationCreateResponse:
+        """Create a new orchestration.
+
+        This endpoint creates a new orchestration in the target YAML file.
+        The change takes effect on the next hot-reload cycle.
+
+        Args:
+            request_body: The create request containing orchestration configuration.
+            x_csrf_token: CSRF token from X-CSRF-Token header.
+
+        Returns:
+            OrchestrationCreateResponse with success status, name, and any errors.
+
+        Raises:
+            HTTPException: 403 for CSRF validation failure,
+                422 for validation errors (duplicate name, invalid path),
+                429 for rate limit, 500 for YAML errors.
+        """
+        _validate_csrf_token(x_csrf_token)
+        logger.debug("create_orchestration called for '%s'", request_body.name)
+        state = state_accessor.get_state()
+
+        # Validate name uniqueness across all loaded orchestrations
+        for orch in state.orchestrations:
+            if orch.name == request_body.name:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Orchestration with name '{request_body.name}' already exists",
+                )
+
+        # Get orchestrations_dir from config
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+
+        # Validate target_file is within orchestrations_dir
+        target_file_path = Path(request_body.target_file)
+        if not target_file_path.is_absolute():
+            target_file_path = orchestrations_dir / target_file_path
+
+        try:
+            target_file_path.resolve().relative_to(orchestrations_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Target file '{request_body.target_file}' is not within "
+                    f"orchestrations directory"
+                ),
+            ) from None
+
+        # Build orchestration data dict from request
+        orch_data: dict[str, Any] = {"name": request_body.name}
+
+        # Add optional fields using _build_yaml_updates pattern
+        updates = _build_yaml_updates(
+            OrchestrationEditRequest(
+                enabled=request_body.enabled,
+                max_concurrent=request_body.max_concurrent,
+                trigger=request_body.trigger,
+                agent=request_body.agent,
+                retry=request_body.retry,
+                outcomes=request_body.outcomes,
+                lifecycle=request_body.lifecycle,
+            )
+        )
+        orch_data.update(updates)
+
+        # Validate via _parse_orchestration
+        try:
+            _parse_orchestration(orch_data)
+        except OrchestrationError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+
+        # Check rate limit before writing
+        rate_limiter.check_rate_limit(str(target_file_path))
+
+        try:
+            writer = OrchestrationYamlWriter()
+            writer.add_orchestration(target_file_path, orch_data, orchestrations_dir)
+
+            # Record successful write for rate limiting
+            rate_limiter.record_write(str(target_file_path))
+
+            return OrchestrationCreateResponse(
+                success=True,
+                name=request_body.name,
+            )
+
+        except OrchestrationYamlWriterError as e:
+            logger.error("Failed to create orchestration '%s': %s", request_body.name, e)
             raise HTTPException(
                 status_code=500,
                 detail=str(e),

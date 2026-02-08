@@ -1051,7 +1051,7 @@
     font-size: 0.85em;
     line-height: 1.5;
     margin: 0.5rem 0 0 0;
-    max-height: 400px;
+    max-height: var(--prompt-max-height, 400px);
     overflow: auto;
     padding: 0.75rem;
     white-space: pre-wrap;
@@ -1119,4 +1119,109 @@
 
 .clickable-row:hover td {
     background-color: var(--accordion-hover, var(--accent-hover, rgba(15, 52, 96, 0.3)));
+}
+
+/* =============================================================================
+   ORCHESTRATION FORM COMPONENT
+   Styles for the orchestration create/edit form inputs and controls.
+   Extracted from inline styles for consistency and maintainability (DS-736).
+
+   DRY Refactor (DS-737):
+   - .form-input-base: Shared properties for all form input variants
+   - .form-textarea-base: Shared properties for all form textarea variants
+   - Variant classes override only the properties that differ (e.g., background)
+
+   Note: .form-input-base and .form-textarea-base exist solely for CSS
+   grouping purposes (DRY shared declarations) and are NOT used directly
+   in HTML markup. Only the variant classes (.form-input, .form-input--nested,
+   .form-textarea, .form-textarea--full) should be applied to elements.
+   ============================================================================= */
+
+/* Base form input styling shared by .form-input and .form-input--nested
+ * Note: .form-input-base is for CSS grouping only; not used directly in HTML. */
+.form-input-base,
+.form-input,
+.form-input--nested {
+    border: 1px solid var(--accent, #0f3460);
+    border-radius: 4px;
+    color: var(--text-primary, #eee);
+    flex: 1;
+    padding: 0.25rem;
+}
+
+/* Standard form input styling for text, number, and select elements */
+.form-input {
+    background: var(--bg-secondary, #16213e);
+}
+
+/* Form input with primary background (used in nested subsections) */
+.form-input--nested {
+    background: var(--bg-primary, #1a1a2e);
+}
+
+/* Base textarea styling shared by .form-textarea and .form-textarea--full
+ * Note: .form-textarea-base is for CSS grouping only; not used directly in HTML. */
+.form-textarea-base,
+.form-textarea,
+.form-textarea--full {
+    border: 1px solid var(--accent, #0f3460);
+    border-radius: 4px;
+    color: var(--text-primary, #eee);
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85em;
+    padding: 0.5rem;
+    resize: vertical;
+}
+
+/* Textarea styling for multiline form fields (prompts, patterns) */
+.form-textarea {
+    background: var(--bg-secondary, #16213e);
+    flex: 1;
+}
+
+/* Full-width textarea variant for prompt blocks */
+.form-textarea--full {
+    background: var(--bg-secondary, #16213e);
+    width: 100%;
+}
+
+/* Subsection container for nested form groups (e.g., GitHub Context) */
+.form-subsection {
+    background: var(--bg-secondary, #16213e);
+    border: 1px solid var(--accent, #0f3460);
+    border-radius: 4px;
+    margin-top: 1rem;
+    padding: 0.75rem;
+}
+
+/* Subsection heading */
+.form-subsection__heading {
+    color: var(--text-primary, #eee);
+    font-size: 0.85rem;
+    margin: 0 0 0.75rem 0;
+}
+
+/* Radio/checkbox label with right margin spacing */
+.form-radio-label {
+    margin-right: 1rem;
+}
+
+/* Secondary/cancel button style */
+.btn-sm--secondary {
+    background-color: var(--bg-secondary, #16213e);
+    border: 1px solid var(--accent, #0f3460);
+    border-radius: 4px;
+    color: var(--text-primary, #eee);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.75rem;
+}
+
+/* Outcome row grid layout */
+.outcome-row {
+    align-items: start;
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: 1fr 2fr 1fr auto;
+    margin-bottom: 0.5rem;
 }

@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from sentinel.deduplication import DeduplicationManager, build_github_trigger_key
 from sentinel.github_poller import GitHubIssue, GitHubIssueProtocol
@@ -54,6 +54,29 @@ logger = get_logger(__name__)
 
 # Module-level constant for GitHub issue/PR URL parsing
 GITHUB_ISSUE_PR_URL_PATTERN = re.compile(r"https?://[^/]+/([^/]+/[^/]+)/(?:issues|pull)/\d+")
+
+
+class GroupedOrchestrations(NamedTuple):
+    """Result of grouping orchestrations by their trigger source.
+
+    Using a NamedTuple instead of a plain tuple provides self-documenting
+    field access and prevents index-based access errors, especially as
+    additional trigger source types may be added in the future (DS-750).
+
+    Note:
+        Adding new fields to this NamedTuple will change the tuple length and
+        positional indices. Any callers that use positional unpacking (e.g.,
+        ``jira, github = group_orchestrations_by_source(...)``) will break if
+        a third field is added. Prefer named field access (e.g., ``result.jira``,
+        ``result.github``) in new code to avoid this fragility (DS-751).
+
+    Attributes:
+        jira: Orchestrations with Jira trigger sources.
+        github: Orchestrations with GitHub trigger sources.
+    """
+
+    jira: list[Orchestration]
+    github: list[Orchestration]
 
 
 def extract_repo_from_url(url: str) -> str | None:
@@ -79,7 +102,11 @@ class GitHubIssueWithRepo:
 
     The GitHubIssue.key property returns "#123" but tag operations need "org/repo#123".
     This wrapper provides the full key while delegating all other GitHubIssueProtocol
-    properties to the wrapped issue via __getattr__.
+    properties to the wrapped issue.
+
+    Explicit forwarding properties are provided for all GitHubIssueProtocol attributes
+    to enable mypy static analysis and IDE autocompletion (DS-748). The __getattr__
+    fallback is retained for any additional attributes not covered by the protocol.
     """
 
     __slots__ = ("_issue", "_repo")
@@ -99,8 +126,80 @@ class GitHubIssueWithRepo:
         """Return the full issue key including repo context."""
         return f"{self._repo}#{self._issue.number}"
 
+    # Explicit forwarding properties for GitHubIssueProtocol attributes.
+    # These enable mypy verification and IDE autocompletion (DS-748).
+
+    @property
+    def number(self) -> int:
+        """Return the issue/PR number."""
+        return self._issue.number
+
+    @property
+    def title(self) -> str:
+        """Return the issue/PR title."""
+        return self._issue.title
+
+    @property
+    def body(self) -> str:
+        """Return the issue/PR body/description."""
+        return self._issue.body
+
+    @property
+    def state(self) -> str:
+        """Return the issue/PR state."""
+        return self._issue.state
+
+    @property
+    def author(self) -> str:
+        """Return the author username."""
+        return self._issue.author
+
+    @property
+    def assignees(self) -> list[str]:
+        """Return the list of assigned usernames."""
+        return self._issue.assignees
+
+    @property
+    def labels(self) -> list[str]:
+        """Return the list of label names."""
+        return self._issue.labels
+
+    @property
+    def is_pull_request(self) -> bool:
+        """Return whether this is a pull request."""
+        return self._issue.is_pull_request
+
+    @property
+    def head_ref(self) -> str:
+        """Return the head branch reference."""
+        return self._issue.head_ref
+
+    @property
+    def base_ref(self) -> str:
+        """Return the base branch reference."""
+        return self._issue.base_ref
+
+    @property
+    def draft(self) -> bool:
+        """Return whether this is a draft PR."""
+        return self._issue.draft
+
+    @property
+    def repo_url(self) -> str:
+        """Return the full URL to the issue/PR."""
+        return self._issue.repo_url
+
+    @property
+    def parent_issue_number(self) -> int | None:
+        """Return the parent issue number, if any."""
+        return self._issue.parent_issue_number
+
     def __getattr__(self, name: str) -> Any:
-        """Delegate attribute access to the wrapped GitHubIssue."""
+        """Delegate attribute access to the wrapped GitHubIssue.
+
+        This fallback handles any attributes not explicitly defined as forwarding
+        properties above. It is retained for backwards compatibility.
+        """
         return getattr(self._issue, name)
 
 
@@ -403,7 +502,7 @@ class PollCoordinator:
         Returns:
             The URL to the issue, or empty string if URL cannot be constructed.
         """
-        trigger_source = getattr(orchestration.trigger, "source", TriggerSource.JIRA.value)
+        trigger_source = orchestration.trigger.source
 
         if trigger_source == TriggerSource.JIRA.value:
             # Construct Jira URL from config base URL and issue key
@@ -430,14 +529,14 @@ class PollCoordinator:
     def group_orchestrations_by_source(
         self,
         orchestrations: list[Orchestration],
-    ) -> tuple[list[Orchestration], list[Orchestration]]:
+    ) -> GroupedOrchestrations:
         """Group orchestrations by their trigger source.
 
         Args:
             orchestrations: List of all orchestrations.
 
         Returns:
-            Tuple of (jira_orchestrations, github_orchestrations).
+            GroupedOrchestrations named tuple with ``jira`` and ``github`` fields.
         """
         jira_orchestrations: list[Orchestration] = []
         github_orchestrations: list[Orchestration] = []
@@ -448,4 +547,4 @@ class PollCoordinator:
             else:
                 jira_orchestrations.append(orch)
 
-        return jira_orchestrations, github_orchestrations
+        return GroupedOrchestrations(jira=jira_orchestrations, github=github_orchestrations)

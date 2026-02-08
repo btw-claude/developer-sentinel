@@ -386,3 +386,69 @@ class TestPydanticModelValidation:
         assert request.retry is None
         assert request.outcomes is None
         assert request.lifecycle is None
+
+
+class TestOrchestrationCreateModels:
+    """Tests for OrchestrationCreateRequest and OrchestrationCreateResponse models (DS-729)."""
+
+    def test_create_request_required_fields(self) -> None:
+        """Should require name and target_file fields."""
+        from sentinel.dashboard.routes import OrchestrationCreateRequest
+        request = OrchestrationCreateRequest(
+            name="test-orch",
+            target_file="test.yaml",
+        )
+        assert request.name == "test-orch"
+        assert request.target_file == "test.yaml"
+
+    def test_create_request_optional_fields(self) -> None:
+        """Should have all optional configuration fields default to None."""
+        from sentinel.dashboard.routes import OrchestrationCreateRequest
+        request = OrchestrationCreateRequest(
+            name="test-orch",
+            target_file="test.yaml",
+        )
+        assert request.enabled is None
+        assert request.max_concurrent is None
+        assert request.trigger is None
+        assert request.agent is None
+        assert request.retry is None
+        assert request.outcomes is None
+        assert request.lifecycle is None
+
+    def test_create_request_with_all_fields(self) -> None:
+        """Should accept all configuration fields."""
+        from sentinel.dashboard.routes import OrchestrationCreateRequest
+        request = OrchestrationCreateRequest(
+            name="test-orch",
+            target_file="test.yaml",
+            enabled=True,
+            max_concurrent=3,
+            trigger=TriggerEditRequest(source="jira", project="TEST"),
+            agent=AgentEditRequest(prompt="Test prompt"),
+            retry=RetryEditRequest(max_attempts=3),
+        )
+        assert request.name == "test-orch"
+        assert request.enabled is True
+        assert request.max_concurrent == 3
+        assert request.trigger is not None
+        assert request.agent is not None
+
+    def test_create_response_success(self) -> None:
+        """Should create success response with no errors."""
+        from sentinel.dashboard.routes import OrchestrationCreateResponse
+        response = OrchestrationCreateResponse(success=True, name="test-orch")
+        assert response.success is True
+        assert response.name == "test-orch"
+        assert response.errors == []
+
+    def test_create_response_with_errors(self) -> None:
+        """Should create error response with error list."""
+        from sentinel.dashboard.routes import OrchestrationCreateResponse
+        response = OrchestrationCreateResponse(
+            success=False,
+            name="test-orch",
+            errors=["Name already exists"],
+        )
+        assert response.success is False
+        assert len(response.errors) == 1

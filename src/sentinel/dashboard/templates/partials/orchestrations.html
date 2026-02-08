@@ -4,6 +4,7 @@
 {% for stat in state.orchestration_stats %}
     {% set _ = stats_lookup.update({stat.orchestration_name: stat}) %}
 {% endfor %}
+{# orch_table_columns is passed from route context as a list of column names #}
 {% if projects %}
 <div class="nested-accordion">
     {% for project in projects %}
@@ -92,9 +93,9 @@
                     </td>
                 </tr>
                 <tr class="orchestration-detail-row" id="detail-row-{{ orch.name }}">
-                    <td colspan="7"
+                    <td colspan="{{ orch_table_columns|length }}"
                         hx-get="/partials/orchestration_detail/{{ orch.name }}"
-                        hx-trigger="revealed"
+                        hx-trigger="revealed once"
                         hx-swap="innerHTML">
                     </td>
                 </tr>
