@@ -112,7 +112,6 @@ class Sentinel:
         self.orchestrations = orchestrations
         self.jira_poller = jira_poller
         self.github_poller = github_poller
-        self.service_health_gate = service_health_gate
 
         # Initialize or create router
         if router is not None:
@@ -170,6 +169,11 @@ class Sentinel:
                 "Per-orchestration logging enabled, logs will be written to: %s",
                 config.execution.orchestration_logs_dir
             )
+
+    @property
+    def service_health_gate(self) -> ServiceHealthGate:
+        """Public accessor for the service health gate (delegates to _health_gate)."""
+        return self._health_gate
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the polling loop."""
@@ -472,7 +476,7 @@ class Sentinel:
                 if service_name == "github":
                     return self._health_gate.probe_service(
                         service_name,
-                        base_url=self.config.github.api_url or "https://api.github.com",
+                        base_url=self.config.github.effective_api_url,
                         token=self.config.github.token,
                     )
                 else:
@@ -714,6 +718,13 @@ class Sentinel:
                     self._health_gate.record_poll_success("jira")
                 elif _jira_errors > 0 and _jira_found == 0:
                     self._health_gate.record_poll_failure("jira")
+                elif _jira_errors > 0 and _jira_found > 0:
+                    logger.warning(
+                        "Partial Jira polling failure: %s trigger(s) succeeded, "
+                        "%s trigger(s) failed",
+                        _jira_found,
+                        _jira_errors,
+                    )
             else:
                 # Service is gated — probe for recovery
                 if self._health_gate.should_probe("jira"):
@@ -747,12 +758,19 @@ class Sentinel:
                         self._health_gate.record_poll_success("github")
                     elif _gh_errors > 0 and _gh_found == 0:
                         self._health_gate.record_poll_failure("github")
+                    elif _gh_errors > 0 and _gh_found > 0:
+                        logger.warning(
+                            "Partial GitHub polling failure: %s trigger(s) succeeded, "
+                            "%s trigger(s) failed",
+                            _gh_found,
+                            _gh_errors,
+                        )
                 else:
                     # Service is gated — probe for recovery
                     if self._health_gate.should_probe("github"):
                         self._health_gate.probe_service(
                             "github",
-                            base_url=self.config.github.api_url or "https://api.github.com",
+                            base_url=self.config.github.effective_api_url,
                             token=self.config.github.token,
                         )
             else:

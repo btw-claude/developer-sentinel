@@ -84,6 +84,11 @@ class GitHubConfig:
     api_url: str = ""
 
     @property
+    def effective_api_url(self) -> str:
+        """Return the API URL with a default fallback for public GitHub."""
+        return self.api_url or "https://api.github.com"
+
+    @property
     def configured(self) -> bool:
         """Check if GitHub REST API is configured."""
         return bool(self.token)
