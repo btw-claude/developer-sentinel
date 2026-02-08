@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from sentinel.service_health_gate import (
+    GITHUB_API_VERSION,
     GITHUB_PROBE_PATH,
     JIRA_PROBE_PATH,
     ServiceAvailability,
@@ -353,22 +354,57 @@ class TestServiceHealthGateShouldProbe:
 
     def test_should_probe_after_initial_interval(self) -> None:
         """Test that probing is allowed after the initial probe interval."""
+        current_time = 1000.0
         config = ServiceHealthGateConfig(
             failure_threshold=1,
-            initial_probe_interval=0.1,  # 100ms for fast testing
+            initial_probe_interval=30.0,
         )
-        gate = ServiceHealthGate(config=config)
+        gate = ServiceHealthGate(config=config, time_func=lambda: current_time)
 
         # Gate the service
         gate.record_poll_failure("jira", Exception("fail"))
         assert gate.should_poll("jira") is False
 
         # Not enough time has passed
+        current_time = 1010.0  # only 10s later
         assert gate.should_probe("jira") is False
 
-        # Wait for the probe interval
-        time.sleep(0.15)
+        # Enough time has passed
+        current_time = 1031.0  # 31s later, past the 30s interval
         assert gate.should_probe("jira") is True
+
+    def test_exponential_backoff_with_time_func(self) -> None:
+        """Test that probe interval increases exponentially using time_func."""
+        current_time = 1000.0
+        config = ServiceHealthGateConfig(
+            failure_threshold=1,
+            initial_probe_interval=10.0,
+            probe_backoff_factor=2.0,
+            max_probe_interval=300.0,
+        )
+        gate = ServiceHealthGate(config=config, time_func=lambda: current_time)
+
+        # Gate the service at t=1000
+        gate.record_poll_failure("jira", Exception("fail"))
+
+        # probe_count=0: interval = 10.0 * 2.0^0 = 10.0
+        current_time = 1005.0  # 5s after gating
+        assert gate.should_probe("jira") is False  # 5.0 < 10.0
+
+        current_time = 1011.0  # 11s after gating
+        assert gate.should_probe("jira") is True  # 11.0 >= 10.0
+
+        # Simulate a failed probe to increment probe_count
+        with patch.object(gate, "_execute_probe", return_value=False):
+            gate.probe_service("jira", base_url="https://jira.example.com")
+
+        # probe_count=1: interval = 10.0 * 2.0^1 = 20.0
+        # last_check_at was set to 1011.0 during probe_service
+        current_time = 1025.0  # 14s after last check
+        assert gate.should_probe("jira") is False  # 14.0 < 20.0
+
+        current_time = 1032.0  # 21s after last check
+        assert gate.should_probe("jira") is True  # 21.0 >= 20.0
 
     def test_exponential_backoff(self) -> None:
         """Test that probe interval increases exponentially."""
@@ -415,13 +451,14 @@ class TestServiceHealthGateShouldProbe:
 
     def test_max_probe_interval_cap(self) -> None:
         """Test that probe interval is capped at max_probe_interval."""
+        current_time = 1000.0
         config = ServiceHealthGateConfig(
             failure_threshold=1,
             initial_probe_interval=1.0,
             probe_backoff_factor=10.0,
             max_probe_interval=5.0,
         )
-        gate = ServiceHealthGate(config=config)
+        gate = ServiceHealthGate(config=config, time_func=lambda: current_time)
 
         gate.record_poll_failure("jira", Exception("fail"))
 
@@ -429,9 +466,8 @@ class TestServiceHealthGateShouldProbe:
             service = gate._get_or_create_service("jira")
             # probe_count=5: interval = 1.0 * 10.0^5 = 100000 -> capped at 5.0
             service.probe_count = 5
-            service.paused_at = time.time() - 6.0
-            service.last_check_at = service.paused_at
 
+        current_time = 1006.0  # 6s after gating
         assert gate.should_probe("jira") is True  # 6.0 >= 5.0 (capped)
 
 
@@ -778,3 +814,258 @@ class TestProbeEndpointConstants:
     def test_github_probe_path(self) -> None:
         """Test GitHub probe endpoint matches expected path."""
         assert GITHUB_PROBE_PATH == "/rate_limit"
+
+    def test_github_api_version(self) -> None:
+        """Test GitHub API version constant matches expected value."""
+        assert GITHUB_API_VERSION == "2022-11-28"
+
+    def test_github_api_version_used_in_probe(self) -> None:
+        """Test that GitHub probe uses the GITHUB_API_VERSION constant."""
+        config = ServiceHealthGateConfig(failure_threshold=1, probe_timeout=5.0)
+        gate = ServiceHealthGate(config=config)
+
+        gate.record_poll_failure("github", Exception("fail"))
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            gate.probe_service("github", base_url="https://api.github.com", token="ghp_test")
+
+            # Verify the headers include the GITHUB_API_VERSION constant
+            call_args = mock_client.get.call_args
+            headers = call_args[1]["headers"]
+            assert headers["X-GitHub-Api-Version"] == GITHUB_API_VERSION
+
+
+class TestProbeMetricsCounters:
+    """Tests for probe success/failure metrics counters."""
+
+    def test_initial_counters_are_zero(self) -> None:
+        """Test that all probe counters start at zero."""
+        gate = ServiceHealthGate()
+        assert gate.probe_success_count == 0
+        assert gate.probe_expected_failure_count == 0
+        assert gate.probe_unexpected_error_count == 0
+
+    def test_probe_success_increments_success_counter(self) -> None:
+        """Test that successful probe increments success counter."""
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config)
+
+        gate.record_poll_failure("jira", Exception("fail"))
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            gate.probe_service("jira", base_url="https://jira.example.com", auth=("user", "token"))
+
+        assert gate.probe_success_count == 1
+        assert gate.probe_expected_failure_count == 0
+        assert gate.probe_unexpected_error_count == 0
+
+    def test_probe_expected_failure_increments_expected_counter(self) -> None:
+        """Test that expected HTTP failure increments expected failure counter."""
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config)
+
+        gate.record_poll_failure("jira", Exception("fail"))
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.side_effect = httpx.TimeoutException("timed out")
+            mock_client_cls.return_value = mock_client
+
+            gate.probe_service("jira", base_url="https://jira.example.com", auth=("user", "token"))
+
+        assert gate.probe_success_count == 0
+        assert gate.probe_expected_failure_count == 1
+        assert gate.probe_unexpected_error_count == 0
+
+    def test_probe_unexpected_error_increments_unexpected_counter(self) -> None:
+        """Test that unexpected error increments unexpected error counter."""
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config)
+
+        gate.record_poll_failure("jira", Exception("fail"))
+
+        with patch.object(gate, "_execute_probe", side_effect=RuntimeError("unexpected")):
+            gate.probe_service("jira", base_url="https://jira.example.com")
+
+        assert gate.probe_success_count == 0
+        assert gate.probe_expected_failure_count == 0
+        assert gate.probe_unexpected_error_count == 1
+
+    def test_multiple_probes_accumulate_counters(self) -> None:
+        """Test that counters accumulate across multiple probe attempts."""
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config)
+
+        # First: expected failure (timeout)
+        gate.record_poll_failure("jira", Exception("fail"))
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.side_effect = httpx.TimeoutException("timed out")
+            mock_client_cls.return_value = mock_client
+            gate.probe_service("jira", base_url="https://jira.example.com", auth=("user", "token"))
+
+        # Second: unexpected error
+        with patch.object(gate, "_execute_probe", side_effect=RuntimeError("unexpected")):
+            gate.probe_service("jira", base_url="https://jira.example.com")
+
+        # Third: success
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+            gate.probe_service("jira", base_url="https://jira.example.com", auth=("user", "token"))
+
+        assert gate.probe_success_count == 1
+        assert gate.probe_expected_failure_count == 1
+        assert gate.probe_unexpected_error_count == 1
+
+    def test_unknown_service_counted_as_expected_failure(self) -> None:
+        """Test that probing an unknown service counts as expected failure."""
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config)
+
+        gate.record_poll_failure("unknown_service", Exception("fail"))
+        gate.probe_service("unknown_service", base_url="https://example.com")
+
+        assert gate.probe_expected_failure_count == 1
+        assert gate.probe_unexpected_error_count == 0
+
+
+class TestTimeFuncInjection:
+    """Tests for time_func clock injection in ServiceHealthGate."""
+
+    def test_default_time_func_is_time_time(self) -> None:
+        """Test that default time_func uses time.time."""
+        gate = ServiceHealthGate()
+        # Should be very close to time.time()
+        now = time.time()
+        gate_now = gate._time_func()
+        assert abs(gate_now - now) < 1.0
+
+    def test_custom_time_func_used_in_record_poll_success(self) -> None:
+        """Test that custom time_func is used in record_poll_success."""
+        fixed_time = 5000.0
+        gate = ServiceHealthGate(time_func=lambda: fixed_time)
+
+        gate.record_poll_success("jira")
+        status = gate.get_all_status()
+        assert status["jira"]["last_check_at"] == 5000.0
+        assert status["jira"]["last_available_at"] == 5000.0
+
+    def test_custom_time_func_used_in_record_poll_failure(self) -> None:
+        """Test that custom time_func is used in record_poll_failure."""
+        fixed_time = 6000.0
+        gate = ServiceHealthGate(time_func=lambda: fixed_time)
+
+        gate.record_poll_failure("jira", Exception("fail"))
+        status = gate.get_all_status()
+        assert status["jira"]["last_check_at"] == 6000.0
+
+    def test_custom_time_func_used_in_should_probe(self) -> None:
+        """Test that custom time_func is used in should_probe."""
+        current_time = 1000.0
+        config = ServiceHealthGateConfig(
+            failure_threshold=1,
+            initial_probe_interval=10.0,
+        )
+        gate = ServiceHealthGate(config=config, time_func=lambda: current_time)
+
+        # Gate the service at t=1000
+        gate.record_poll_failure("jira", Exception("fail"))
+
+        # At t=1005: not enough time (5 < 10)
+        current_time = 1005.0
+        assert gate.should_probe("jira") is False
+
+        # At t=1011: enough time (11 >= 10)
+        current_time = 1011.0
+        assert gate.should_probe("jira") is True
+
+    def test_custom_time_func_used_in_probe_service(self) -> None:
+        """Test that custom time_func is used in probe_service."""
+        fixed_time = 7000.0
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config, time_func=lambda: fixed_time)
+
+        gate.record_poll_failure("jira", Exception("fail"))
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            gate.probe_service("jira", base_url="https://jira.example.com", auth=("user", "token"))
+
+        status = gate.get_all_status()
+        assert status["jira"]["last_check_at"] == 7000.0
+        assert status["jira"]["last_available_at"] == 7000.0
+
+    def test_probe_service_success_uses_single_timestamp(self) -> None:
+        """Test that probe_service success path uses a single timestamp for consistency."""
+        call_count = 0
+
+        def counting_time() -> float:
+            nonlocal call_count
+            call_count += 1
+            return 8000.0 + call_count
+
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config, time_func=counting_time)
+
+        gate.record_poll_failure("jira", Exception("fail"))
+
+        # Reset counter before probe_service call
+        call_count = 10
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            gate.probe_service("jira", base_url="https://jira.example.com", auth=("user", "token"))
+
+        status = gate.get_all_status()
+        # last_check_at and last_available_at should be identical since
+        # time is captured once and reused
+        assert status["jira"]["last_check_at"] == status["jira"]["last_available_at"]

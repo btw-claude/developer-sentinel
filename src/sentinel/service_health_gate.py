@@ -47,6 +47,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,6 +63,7 @@ logger = get_logger(__name__)
 # See probe_service() for the dispatch logic.
 JIRA_PROBE_PATH = "/rest/api/3/serverInfo"
 GITHUB_PROBE_PATH = "/rate_limit"
+GITHUB_API_VERSION = "2022-11-28"
 
 
 @dataclass(frozen=True)
@@ -182,6 +184,11 @@ class ServiceHealthGate:
 
     Attributes:
         config: Health gate configuration.
+        probe_success_count: Total successful probe attempts across all services.
+        probe_expected_failure_count: Probe failures from expected HTTP errors
+            (timeouts, HTTP status errors, connection errors).
+        probe_unexpected_error_count: Probe failures from unexpected exceptions
+            (programming errors, unforeseen runtime errors).
 
     Usage:
         gate = ServiceHealthGate()
@@ -197,15 +204,26 @@ class ServiceHealthGate:
             gate.probe_service("jira", base_url=url, auth=auth)
     """
 
-    def __init__(self, config: ServiceHealthGateConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: ServiceHealthGateConfig | None = None,
+        time_func: Callable[[], float] | None = None,
+    ) -> None:
         """Initialize the service health gate.
 
         Args:
             config: Health gate configuration. If not provided, loads from env.
+            time_func: Optional callable returning the current time as a float
+                (seconds since epoch). Defaults to ``time.time``. Providing a
+                custom function decouples backoff tests from wall-clock time.
         """
         self.config = config or ServiceHealthGateConfig.from_env()
+        self._time_func: Callable[[], float] = time_func or time.time
         self._services: dict[str, ServiceAvailability] = {}
         self._lock = threading.RLock()
+        self.probe_success_count: int = 0
+        self.probe_expected_failure_count: int = 0
+        self.probe_unexpected_error_count: int = 0
 
     def _get_or_create_service(self, service_name: str) -> ServiceAvailability:
         """Get or create a ServiceAvailability tracker for a service.
@@ -255,7 +273,7 @@ class ServiceHealthGate:
 
         with self._lock:
             service = self._get_or_create_service(service_name)
-            now = time.time()
+            now = self._time_func()
             was_unavailable = not service.available
 
             service.consecutive_failures = 0
@@ -287,7 +305,7 @@ class ServiceHealthGate:
 
         with self._lock:
             service = self._get_or_create_service(service_name)
-            now = time.time()
+            now = self._time_func()
 
             service.consecutive_failures += 1
             service.last_check_at = now
@@ -341,7 +359,7 @@ class ServiceHealthGate:
             if service.paused_at is None:
                 return False
 
-            now = time.time()
+            now = self._time_func()
 
             # Calculate the current probe interval with exponential backoff
             interval = self.config.initial_probe_interval * (
@@ -389,6 +407,7 @@ class ServiceHealthGate:
             return True
 
         success = False
+        unexpected_error = False
         try:
             success = self._execute_probe(service_name, base_url=base_url, auth=auth, token=token)
         except Exception as e:
@@ -401,23 +420,30 @@ class ServiceHealthGate:
                 e,
             )
             success = False
+            unexpected_error = True
 
         with self._lock:
             service = self._get_or_create_service(service_name)
-            service.last_check_at = time.time()
+            now = self._time_func()
+            service.last_check_at = now
 
             if success:
+                self.probe_success_count += 1
                 service.available = True
                 service.consecutive_failures = 0
                 service.paused_at = None
                 service.probe_count = 0
-                service.last_available_at = time.time()
+                service.last_available_at = now
                 service.last_error = None
                 logger.info(
                     "[HEALTH_GATE] %s: Probe succeeded, service is now available",
                     service_name,
                 )
             else:
+                if unexpected_error:
+                    self.probe_unexpected_error_count += 1
+                else:
+                    self.probe_expected_failure_count += 1
                 service.probe_count += 1
                 logger.info(
                     "[HEALTH_GATE] %s: Probe failed (probe count: %d)",
@@ -510,7 +536,7 @@ class ServiceHealthGate:
         url = f"{base_url.rstrip('/')}{GITHUB_PROBE_PATH}"
         headers: dict[str, str] = {
             "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
+            "X-GitHub-Api-Version": GITHUB_API_VERSION,
         }
         if token:
             headers["Authorization"] = f"Bearer {token}"
