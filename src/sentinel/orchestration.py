@@ -599,6 +599,219 @@ def _validate_branch_name(branch: str) -> ValidationResult:
     return ValidationResult.failure(result.error_message)
 
 
+# ---------------------------------------------------------------------------
+# Shared validation helpers (DS-763)
+#
+# Each helper validates a single field or cross-field invariant and returns
+# an error message string when validation fails, or ``None`` when the value
+# is valid.  Both the ``_collect_*_errors`` functions (which append to a
+# list) and the ``_parse_*`` functions (which raise OrchestrationError) call
+# these helpers so that the validation logic is defined in exactly one place.
+# ---------------------------------------------------------------------------
+
+
+def _validate_trigger_source(source: str) -> str | None:
+    """Validate trigger source value.
+
+    Args:
+        source: The trigger source string to validate.
+
+    Returns:
+        An error message if *source* is not a recognised trigger source,
+        or ``None`` if valid.
+    """
+    if not TriggerSource.is_valid(source):
+        valid_sources = ", ".join(f"'{s}'" for s in sorted(TriggerSource.values()))
+        return f"Invalid trigger source '{source}': must be {valid_sources}"
+    return None
+
+
+def _validate_project_number(project_number: Any) -> str | None:
+    """Validate project_number for GitHub triggers.
+
+    Checks that *project_number* is present (not ``None``) and is a positive
+    integer.
+
+    Args:
+        project_number: The project_number value to validate.
+
+    Returns:
+        An error message if validation fails, or ``None`` if valid.
+    """
+    if project_number is None:
+        return (
+            "GitHub triggers require 'project_number' to be set. "
+            "Please configure project_number, project_scope, and project_owner "
+            "for GitHub Project-based polling."
+        )
+    if not isinstance(project_number, int) or project_number <= 0:
+        return f"Invalid project_number '{project_number}': must be a positive integer"
+    return None
+
+
+def _validate_project_scope(project_scope: str) -> str | None:
+    """Validate project_scope for GitHub triggers.
+
+    Args:
+        project_scope: The project_scope value to validate.
+
+    Returns:
+        An error message if *project_scope* is not ``'org'`` or ``'user'``,
+        or ``None`` if valid.
+    """
+    if project_scope not in ("org", "user"):
+        return f"Invalid project_scope '{project_scope}': must be 'org' or 'user'"
+    return None
+
+
+def _validate_project_owner(project_owner: str) -> str | None:
+    """Validate project_owner for GitHub triggers.
+
+    Args:
+        project_owner: The project_owner value to validate.
+
+    Returns:
+        An error message if *project_owner* is empty/falsy, or ``None``
+        if valid.
+    """
+    if not project_owner:
+        return (
+            "GitHub triggers require 'project_owner' to be set "
+            "(organization name or username)"
+        )
+    return None
+
+
+def _validate_timeout_seconds(timeout: Any) -> str | None:
+    """Validate timeout_seconds for agent configuration.
+
+    Args:
+        timeout: The timeout_seconds value to validate.
+
+    Returns:
+        An error message if *timeout* is not ``None`` and is not a positive
+        integer, or ``None`` if valid.
+    """
+    if timeout is not None and (not isinstance(timeout, int) or timeout <= 0):
+        return f"Invalid timeout_seconds '{timeout}': must be a positive integer"
+    return None
+
+
+def _validate_model(model: Any) -> str | None:
+    """Validate model for agent configuration.
+
+    Args:
+        model: The model value to validate.
+
+    Returns:
+        An error message if *model* is not ``None`` and is not a string,
+        or ``None`` if valid.
+    """
+    if model is not None and not isinstance(model, str):
+        return f"Invalid model '{model}': must be a string"
+    return None
+
+
+def _validate_agent_type(agent_type: Any) -> str | None:
+    """Validate agent_type for agent configuration.
+
+    Args:
+        agent_type: The agent_type value to validate.
+
+    Returns:
+        An error message if *agent_type* is not ``None`` and is not a
+        recognised agent type, or ``None`` if valid.
+    """
+    if agent_type is not None and not AgentType.is_valid(agent_type):
+        valid_types = ", ".join(f"'{t}'" for t in sorted(AgentType.values()))
+        return f"Invalid agent_type '{agent_type}': must be {valid_types}"
+    return None
+
+
+def _validate_cursor_mode(cursor_mode: Any, agent_type: Any) -> str | None:
+    """Validate cursor_mode for agent configuration.
+
+    Checks both value validity and compatibility with *agent_type*.
+
+    Args:
+        cursor_mode: The cursor_mode value to validate.
+        agent_type: The agent_type value (used for compatibility check).
+
+    Returns:
+        An error message if *cursor_mode* is invalid or incompatible with
+        *agent_type*, or ``None`` if valid.
+    """
+    if cursor_mode is None:
+        return None
+    if not CursorMode.is_valid(cursor_mode):
+        valid_modes = ", ".join(f"'{m}'" for m in sorted(CursorMode.values()))
+        return f"Invalid cursor_mode '{cursor_mode}': must be {valid_modes}"
+    # cursor_mode is only valid when agent_type is 'cursor'.
+    # NOTE: This uses an exclude-list approach (DS-646). Any agent type
+    # NOT listed in the tuple below will silently accept cursor_mode
+    # without validation. When adding new AgentType values that do NOT
+    # support cursor_mode, you must add them to the tuple below so the
+    # validation rejects them.
+    if agent_type is not None and agent_type in (
+        AgentType.CLAUDE.value,
+        AgentType.CODEX.value,
+    ):
+        return (
+            f"cursor_mode '{cursor_mode}' is only valid when agent_type is "
+            f"'{AgentType.CURSOR.value}'"
+        )
+    return None
+
+
+def _validate_agent_teams(agent_teams: Any, agent_type: Any) -> str | None:
+    """Validate agent_teams for agent configuration.
+
+    Checks both type validity and compatibility with *agent_type*.
+
+    Args:
+        agent_teams: The agent_teams value to validate.
+        agent_type: The agent_type value (used for compatibility check).
+
+    Returns:
+        An error message if *agent_teams* is not a boolean or is
+        incompatible with *agent_type*, or ``None`` if valid.
+    """
+    if not isinstance(agent_teams, bool):
+        return f"Invalid agent_teams '{agent_teams}': must be a boolean"
+    # agent_teams is only valid when agent_type is "claude" (Agent Teams is a
+    # Claude Code feature, not available in Cursor or Codex).
+    # NOTE: This uses an exclude-list approach. When adding new AgentType values
+    # that do NOT support agent_teams, you must add them to the tuple below so
+    # the validation rejects them.
+    if agent_teams and agent_type is not None and agent_type in (
+        AgentType.CURSOR.value,
+        AgentType.CODEX.value,
+    ):
+        return (
+            f"agent_teams is only valid when agent_type is "
+            f"'{AgentType.CLAUDE.value}', got agent_type='{agent_type}'"
+        )
+    return None
+
+
+def _validate_strict_template_variables(strict_template_variables: Any) -> str | None:
+    """Validate strict_template_variables for agent configuration.
+
+    Args:
+        strict_template_variables: The value to validate.
+
+    Returns:
+        An error message if *strict_template_variables* is not a boolean,
+        or ``None`` if valid.
+    """
+    if not isinstance(strict_template_variables, bool):
+        return (
+            f"Invalid strict_template_variables '{strict_template_variables}': "
+            f"must be a boolean"
+        )
+    return None
+
+
 def _collect_trigger_errors(data: dict[str, Any]) -> list[str]:
     """Collect all validation errors from trigger configuration (DS-734).
 
@@ -614,9 +827,9 @@ def _collect_trigger_errors(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
 
     source = data.get("source", TriggerSource.JIRA.value)
-    if not TriggerSource.is_valid(source):
-        valid_sources = ", ".join(f"'{s}'" for s in sorted(TriggerSource.values()))
-        errors.append(f"Invalid trigger source '{source}': must be {valid_sources}")
+    error = _validate_trigger_source(source)
+    if error:
+        errors.append(error)
 
     tags = data.get("tags", [])
     labels = data.get("labels", [])
@@ -639,30 +852,17 @@ def _collect_trigger_errors(data: dict[str, Any]) -> list[str]:
     project_owner = data.get("project_owner", "")
 
     if source == TriggerSource.GITHUB.value:
-        # Validate project_number is set for GitHub triggers
-        if project_number is None:
-            errors.append(
-                "GitHub triggers require 'project_number' to be set. "
-                "Please configure project_number, project_scope, and project_owner "
-                "for GitHub Project-based polling."
-            )
-        elif not isinstance(project_number, int) or project_number <= 0:
-            errors.append(
-                f"Invalid project_number '{project_number}': must be a positive integer"
-            )
+        error = _validate_project_number(project_number)
+        if error:
+            errors.append(error)
 
-        # Validate project_scope
-        if project_scope not in ("org", "user"):
-            errors.append(
-                f"Invalid project_scope '{project_scope}': must be 'org' or 'user'"
-            )
+        error = _validate_project_scope(project_scope)
+        if error:
+            errors.append(error)
 
-        # Validate project_owner is set
-        if not project_owner:
-            errors.append(
-                "GitHub triggers require 'project_owner' to be set "
-                "(organization name or username)"
-            )
+        error = _validate_project_owner(project_owner)
+        if error:
+            errors.append(error)
 
     return errors
 
@@ -679,9 +879,9 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
         OrchestrationError: If trigger configuration is invalid.
     """
     source = data.get("source", TriggerSource.JIRA.value)
-    if not TriggerSource.is_valid(source):
-        valid_sources = ", ".join(f"'{s}'" for s in sorted(TriggerSource.values()))
-        raise OrchestrationError(f"Invalid trigger source '{source}': must be {valid_sources}")
+    error = _validate_trigger_source(source)
+    if error:
+        raise OrchestrationError(error)
 
     tags = data.get("tags", [])
 
@@ -700,32 +900,17 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
 
     # Validation for GitHub triggers
     if source == TriggerSource.GITHUB.value:
-        # Validate project_number is set for GitHub triggers
-        if project_number is None:
-            raise OrchestrationError(
-                "GitHub triggers require 'project_number' to be set. "
-                "Please configure project_number, project_scope, and project_owner "
-                "for GitHub Project-based polling."
-            )
+        error = _validate_project_number(project_number)
+        if error:
+            raise OrchestrationError(error)
 
-        # Validate project_number is a positive integer
-        if not isinstance(project_number, int) or project_number <= 0:
-            raise OrchestrationError(
-                f"Invalid project_number '{project_number}': must be a positive integer"
-            )
+        error = _validate_project_scope(project_scope)
+        if error:
+            raise OrchestrationError(error)
 
-        # Validate project_scope
-        if project_scope not in ("org", "user"):
-            raise OrchestrationError(
-                f"Invalid project_scope '{project_scope}': must be 'org' or 'user'"
-            )
-
-        # Validate project_owner is set
-        if not project_owner:
-            raise OrchestrationError(
-                "GitHub triggers require 'project_owner' to be set "
-                "(organization name or username)"
-            )
+        error = _validate_project_owner(project_owner)
+        if error:
+            raise OrchestrationError(error)
 
     return TriggerConfig(
         source=source,
@@ -812,65 +997,36 @@ def _collect_agent_errors(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
 
     timeout = data.get("timeout_seconds")
-    if timeout is not None and (not isinstance(timeout, int) or timeout <= 0):
-        errors.append(f"Invalid timeout_seconds '{timeout}': must be a positive integer")
+    error = _validate_timeout_seconds(timeout)
+    if error:
+        errors.append(error)
 
     model = data.get("model")
-    if model is not None and not isinstance(model, str):
-        errors.append(f"Invalid model '{model}': must be a string")
+    error = _validate_model(model)
+    if error:
+        errors.append(error)
 
     agent_type = data.get("agent_type")
-    if agent_type is not None and not AgentType.is_valid(agent_type):
-        valid_types = ", ".join(f"'{t}'" for t in sorted(AgentType.values()))
-        errors.append(f"Invalid agent_type '{agent_type}': must be {valid_types}")
+    error = _validate_agent_type(agent_type)
+    if error:
+        errors.append(error)
 
     cursor_mode = data.get("cursor_mode")
-    if cursor_mode is not None:
-        if not CursorMode.is_valid(cursor_mode):
-            valid_modes = ", ".join(f"'{m}'" for m in sorted(CursorMode.values()))
-            errors.append(f"Invalid cursor_mode '{cursor_mode}': must be {valid_modes}")
-        # cursor_mode is only valid when agent_type is 'cursor'.
-        # NOTE: This uses an exclude-list approach (DS-646). Any agent type
-        # NOT listed in the tuple below will silently accept cursor_mode
-        # without validation. When adding new AgentType values that do NOT
-        # support cursor_mode, you must add them to the tuple below so the
-        # validation rejects them.
-        elif agent_type is not None and agent_type in (
-            AgentType.CLAUDE.value,
-            AgentType.CODEX.value,
-        ):
-            errors.append(
-                f"cursor_mode '{cursor_mode}' is only valid when agent_type is "
-                f"'{AgentType.CURSOR.value}'"
-            )
+    error = _validate_cursor_mode(cursor_mode, agent_type)
+    if error:
+        errors.append(error)
 
     # Parse agent_teams (defaults to False)
     agent_teams = data.get("agent_teams", False)
-    if not isinstance(agent_teams, bool):
-        errors.append(
-            f"Invalid agent_teams '{agent_teams}': must be a boolean"
-        )
-    else:
-        # agent_teams is only valid when agent_type is "claude" (Agent Teams is a
-        # Claude Code feature, not available in Cursor or Codex).
-        # NOTE: This uses an exclude-list approach. When adding new AgentType values
-        # that do NOT support agent_teams, you must add them to the tuple below so
-        # the validation rejects them.
-        if agent_teams and agent_type is not None and agent_type in (
-            AgentType.CURSOR.value,
-            AgentType.CODEX.value,
-        ):
-            errors.append(
-                f"agent_teams is only valid when agent_type is "
-                f"'{AgentType.CLAUDE.value}', got agent_type='{agent_type}'"
-            )
+    error = _validate_agent_teams(agent_teams, agent_type)
+    if error:
+        errors.append(error)
 
     # Parse strict_template_variables (defaults to False for backwards compatibility)
     strict_template_variables = data.get("strict_template_variables", False)
-    if not isinstance(strict_template_variables, bool):
-        errors.append(
-            f"Invalid strict_template_variables '{strict_template_variables}': must be a boolean"
-        )
+    error = _validate_strict_template_variables(strict_template_variables)
+    if error:
+        errors.append(error)
 
     # Validate github context if present
     github_data = data.get("github")
@@ -886,57 +1042,30 @@ def _collect_agent_errors(data: dict[str, Any]) -> list[str]:
 def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     """Parse agent configuration from dict."""
     timeout = data.get("timeout_seconds")
-    if timeout is not None and (not isinstance(timeout, int) or timeout <= 0):
-        raise OrchestrationError(f"Invalid timeout_seconds '{timeout}': must be a positive integer")
+    error = _validate_timeout_seconds(timeout)
+    if error:
+        raise OrchestrationError(error)
 
     model = data.get("model")
-    if model is not None and not isinstance(model, str):
-        raise OrchestrationError(f"Invalid model '{model}': must be a string")
+    error = _validate_model(model)
+    if error:
+        raise OrchestrationError(error)
 
     agent_type = data.get("agent_type")
-    if agent_type is not None and not AgentType.is_valid(agent_type):
-        valid_types = ", ".join(f"'{t}'" for t in sorted(AgentType.values()))
-        raise OrchestrationError(f"Invalid agent_type '{agent_type}': must be {valid_types}")
+    error = _validate_agent_type(agent_type)
+    if error:
+        raise OrchestrationError(error)
 
     cursor_mode = data.get("cursor_mode")
-    if cursor_mode is not None:
-        if not CursorMode.is_valid(cursor_mode):
-            valid_modes = ", ".join(f"'{m}'" for m in sorted(CursorMode.values()))
-            raise OrchestrationError(f"Invalid cursor_mode '{cursor_mode}': must be {valid_modes}")
-        # cursor_mode is only valid when agent_type is 'cursor'.
-        # NOTE: This uses an exclude-list approach (DS-646). Any agent type
-        # NOT listed in the tuple below will silently accept cursor_mode
-        # without validation. When adding new AgentType values that do NOT
-        # support cursor_mode, you must add them to the tuple below so the
-        # validation rejects them.
-        if agent_type is not None and agent_type in (
-            AgentType.CLAUDE.value,
-            AgentType.CODEX.value,
-        ):
-            raise OrchestrationError(
-                f"cursor_mode '{cursor_mode}' is only valid when agent_type is "
-                f"'{AgentType.CURSOR.value}'"
-            )
+    error = _validate_cursor_mode(cursor_mode, agent_type)
+    if error:
+        raise OrchestrationError(error)
 
     # Parse agent_teams (defaults to False)
     agent_teams = data.get("agent_teams", False)
-    if not isinstance(agent_teams, bool):
-        raise OrchestrationError(
-            f"Invalid agent_teams '{agent_teams}': must be a boolean"
-        )
-    # agent_teams is only valid when agent_type is "claude" (Agent Teams is a
-    # Claude Code feature, not available in Cursor or Codex).
-    # NOTE: This uses an exclude-list approach. When adding new AgentType values
-    # that do NOT support agent_teams, you must add them to the tuple below so
-    # the validation rejects them.
-    if agent_teams and agent_type is not None and agent_type in (
-        AgentType.CURSOR.value,
-        AgentType.CODEX.value,
-    ):
-        raise OrchestrationError(
-            f"agent_teams is only valid when agent_type is "
-            f"'{AgentType.CLAUDE.value}', got agent_type='{agent_type}'"
-        )
+    error = _validate_agent_teams(agent_teams, agent_type)
+    if error:
+        raise OrchestrationError(error)
 
     # Warn if agent_teams is enabled but timeout_seconds is below the recommended
     # minimum (DS-697).  This is a parse-time warning so operators see it as
@@ -956,10 +1085,9 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
 
     # Parse strict_template_variables (defaults to False for backwards compatibility)
     strict_template_variables = data.get("strict_template_variables", False)
-    if not isinstance(strict_template_variables, bool):
-        raise OrchestrationError(
-            f"Invalid strict_template_variables '{strict_template_variables}': must be a boolean"
-        )
+    error = _validate_strict_template_variables(strict_template_variables)
+    if error:
+        raise OrchestrationError(error)
 
     return AgentConfig(
         prompt=data.get("prompt", ""),
