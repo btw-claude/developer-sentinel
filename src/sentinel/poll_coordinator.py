@@ -342,6 +342,24 @@ class PollCoordinator:
                         logging.INFO,
                         f"Found {len(issues)} Jira issues for '{orch.name}'",
                     )
+            except JiraClientError as e:
+                logger.error(
+                    "Failed to poll Jira for '%s' due to client error: %s",
+                    orch.name,
+                    e,
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                error_count += 1
+                continue
+            except CircuitBreakerError as e:
+                logger.error(
+                    "Failed to poll Jira for '%s' due to circuit breaker open: %s",
+                    orch.name,
+                    e,
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                error_count += 1
+                continue
             except (OSError, TimeoutError) as e:
                 logger.error(
                     "Failed to poll Jira for '%s': %s",
@@ -363,24 +381,6 @@ class PollCoordinator:
             except RuntimeError as e:
                 logger.error(
                     "Failed to poll Jira for '%s' due to runtime error: %s",
-                    orch.name,
-                    e,
-                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
-                )
-                error_count += 1
-                continue
-            except JiraClientError as e:
-                logger.error(
-                    "Failed to poll Jira for '%s' due to client error: %s",
-                    orch.name,
-                    e,
-                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
-                )
-                error_count += 1
-                continue
-            except CircuitBreakerError as e:
-                logger.error(
-                    "Failed to poll Jira for '%s' due to circuit breaker open: %s",
                     orch.name,
                     e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
@@ -453,6 +453,24 @@ class PollCoordinator:
                         logging.INFO,
                         f"Found {len(issues)} GitHub issues/PRs for '{orch.name}'",
                     )
+            except GitHubClientError as e:
+                logger.error(
+                    "Failed to poll GitHub for '%s' due to client error: %s",
+                    orch.name,
+                    e,
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                error_count += 1
+                continue
+            except CircuitBreakerError as e:
+                logger.error(
+                    "Failed to poll GitHub for '%s' due to circuit breaker open: %s",
+                    orch.name,
+                    e,
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                error_count += 1
+                continue
             except (OSError, TimeoutError) as e:
                 logger.error(
                     "Failed to poll GitHub for '%s': %s",
@@ -474,24 +492,6 @@ class PollCoordinator:
             except RuntimeError as e:
                 logger.error(
                     "Failed to poll GitHub for '%s' due to runtime error: %s",
-                    orch.name,
-                    e,
-                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
-                )
-                error_count += 1
-                continue
-            except GitHubClientError as e:
-                logger.error(
-                    "Failed to poll GitHub for '%s' due to client error: %s",
-                    orch.name,
-                    e,
-                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
-                )
-                error_count += 1
-                continue
-            except CircuitBreakerError as e:
-                logger.error(
-                    "Failed to poll GitHub for '%s' due to circuit breaker open: %s",
                     orch.name,
                     e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
