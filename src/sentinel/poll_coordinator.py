@@ -63,6 +63,13 @@ class GroupedOrchestrations(NamedTuple):
     field access and prevents index-based access errors, especially as
     additional trigger source types may be added in the future (DS-750).
 
+    Note:
+        Adding new fields to this NamedTuple will change the tuple length and
+        positional indices. Any callers that use positional unpacking (e.g.,
+        ``jira, github = group_orchestrations_by_source(...)``) will break if
+        a third field is added. Prefer named field access (e.g., ``result.jira``,
+        ``result.github``) in new code to avoid this fragility (DS-751).
+
     Attributes:
         jira: Orchestrations with Jira trigger sources.
         github: Orchestrations with GitHub trigger sources.
