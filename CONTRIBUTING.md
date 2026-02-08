@@ -253,8 +253,8 @@ body.
 | [**Unlike**](#reference-patterns) | Highlighting how the current test differs | Explicit contrast |
 | [**Two-way**](#two-way-vs-three-way-or-more-cross-references) | Exactly two tests form a natural pair | Success/failure, enabled/disabled |
 | [**Three-way+**](#two-way-vs-three-way-or-more-cross-references) | Three or more tests cover distinct variants | Parenthetical annotations |
-| [**Shared-grouping**](#examples) | More than ~4 related tests with a naming pattern | Reference the `test_*` glob, not each sibling |
-| [**Preserving context**](#examples) | Adding a cross-reference to a test that already has contextual info | Append reference after existing explanation |
+| [**Shared-grouping**](#shared-grouping) | More than ~4 related tests with a naming pattern | Reference the `test_*` glob, not each sibling |
+| [**Preserving context**](#preserving-context) | Adding a cross-reference to a test that already has contextual info | Append reference after existing explanation |
 
 #### Reference Patterns
 
@@ -280,6 +280,21 @@ Both patterns can be combined in the same docstring when appropriate.
 - **Avoid exhaustive cross-references** when the set of related tests exceeds roughly four.
   In such cases, reference only the most closely related tests or reference a shared grouping
   (e.g., "See the other `test_parse_*_field` tests in this class for analogous validation").
+
+#### Shared-Grouping
+
+When more than roughly four tests cover analogous behavior (e.g., field-parsing validation
+across many fields), avoid enumerating every sibling. Instead, reference the shared naming
+pattern and the containing class. This keeps docstrings concise while still directing
+developers to the full family of related tests. Use it whenever the set of siblings is large
+enough that listing each one individually would add more noise than signal.
+
+#### Preserving Context
+
+When adding a cross-reference to a test that already has contextual information in its
+docstring (such as a ticket reference or behavioral explanation), append the cross-reference
+after the existing explanation rather than replacing it. This preserves the original context
+while still linking to related tests.
 
 #### Format and Placement
 
