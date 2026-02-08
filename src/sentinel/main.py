@@ -130,8 +130,10 @@ class Sentinel:
         # Initialize tag manager
         self.tag_manager = TagManager(tag_client, github_client=github_tag_client)
 
-        # Initialize service health gate
-        self._health_gate = ServiceHealthGate(config=config.service_health_gate)
+        # Initialize service health gate — prefer injected instance over new
+        self._health_gate = (
+            service_health_gate or ServiceHealthGate(config=config.service_health_gate)
+        )
 
         # Initialize components
         self._state_tracker = StateTracker(
@@ -691,32 +693,68 @@ class Sentinel:
 
         # Poll Jira triggers
         if grouped.jira:
-            self._state_tracker.last_jira_poll = datetime.now()
-            routing_results, _, _jira_errors = self._poll_coordinator.poll_jira_triggers(
-                grouped.jira,
-                self.router,
-                self._shutdown_requested,
-                self._log_for_orchestration,
-            )
-            jira_submitted = self._submit_execution_tasks(
-                routing_results, all_results, submitted_pairs
-            )
-            submitted_count += jira_submitted
+            if self._health_gate.should_poll("jira"):
+                self._state_tracker.last_jira_poll = datetime.now()
+                routing_results, _jira_found, _jira_errors = (
+                    self._poll_coordinator.poll_jira_triggers(
+                        grouped.jira,
+                        self.router,
+                        self._shutdown_requested,
+                        self._log_for_orchestration,
+                    )
+                )
+                jira_submitted = self._submit_execution_tasks(
+                    routing_results, all_results, submitted_pairs
+                )
+                submitted_count += jira_submitted
+
+                # Record health gate outcome based on polling errors.
+                # Only record failure when ALL triggers failed (partial success is OK).
+                if _jira_errors == 0:
+                    self._health_gate.record_poll_success("jira")
+                elif _jira_errors > 0 and _jira_found == 0:
+                    self._health_gate.record_poll_failure("jira")
+            else:
+                # Service is gated — probe for recovery
+                if self._health_gate.should_probe("jira"):
+                    self._health_gate.probe_service(
+                        "jira",
+                        base_url=self.config.jira.base_url,
+                        auth=(self.config.jira.email, self.config.jira.api_token),
+                    )
 
         # Poll GitHub triggers
         if grouped.github:
             if self.github_poller:
-                self._state_tracker.last_github_poll = datetime.now()
-                routing_results, _, _gh_errors = self._poll_coordinator.poll_github_triggers(
-                    grouped.github,
-                    self.router,
-                    self._shutdown_requested,
-                    self._log_for_orchestration,
-                )
-                github_submitted = self._submit_execution_tasks(
-                    routing_results, all_results, submitted_pairs
-                )
-                submitted_count += github_submitted
+                if self._health_gate.should_poll("github"):
+                    self._state_tracker.last_github_poll = datetime.now()
+                    routing_results, _gh_found, _gh_errors = (
+                        self._poll_coordinator.poll_github_triggers(
+                            grouped.github,
+                            self.router,
+                            self._shutdown_requested,
+                            self._log_for_orchestration,
+                        )
+                    )
+                    github_submitted = self._submit_execution_tasks(
+                        routing_results, all_results, submitted_pairs
+                    )
+                    submitted_count += github_submitted
+
+                    # Record health gate outcome based on polling errors.
+                    # Only record failure when ALL triggers failed (partial success is OK).
+                    if _gh_errors == 0:
+                        self._health_gate.record_poll_success("github")
+                    elif _gh_errors > 0 and _gh_found == 0:
+                        self._health_gate.record_poll_failure("github")
+                else:
+                    # Service is gated — probe for recovery
+                    if self._health_gate.should_probe("github"):
+                        self._health_gate.probe_service(
+                            "github",
+                            base_url=self.config.github.api_url or "https://api.github.com",
+                            token=self.config.github.token,
+                        )
             else:
                 logger.warning(
                     "Found %s GitHub-triggered orchestrations but GitHub client is not "
