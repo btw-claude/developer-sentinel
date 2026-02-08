@@ -5,7 +5,7 @@ All handlers receive state through the SentinelStateAccessor to ensure
 read-only access to the orchestrator's state.
 
 Pydantic request/response models are defined in ``sentinel.dashboard.models``
-(extracted in DS-755 for better maintainability).
+(extracted in DS-755/DS-756 for better maintainability).
 
 Health check endpoints provide:
 - /health: Legacy health endpoint (deprecated, use /health/live)
@@ -1252,7 +1252,6 @@ def create_routes(
             HTTPException: 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
         logger.info("Received request to delete orchestration '%s'", name)
-        logger.debug("delete_orchestration called for '%s'", name)
         state = state_accessor.get_state()
 
         # Find the orchestration to get its source file

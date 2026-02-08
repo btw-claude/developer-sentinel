@@ -373,6 +373,7 @@ class DashboardState:
 
     # Execution state
     active_execution_count: int = 0
+    # Used by the Capacity display in both metrics.html and partials/status.html (DS-765)
     available_slots: int = 0
 
     # Running steps - active execution details for dashboard display
