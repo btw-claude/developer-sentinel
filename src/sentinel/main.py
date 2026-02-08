@@ -653,7 +653,7 @@ class Sentinel:
         # Poll Jira triggers
         if grouped.jira:
             self._state_tracker.last_jira_poll = datetime.now()
-            routing_results, _ = self._poll_coordinator.poll_jira_triggers(
+            routing_results, _, _jira_errors = self._poll_coordinator.poll_jira_triggers(
                 grouped.jira,
                 self.router,
                 self._shutdown_requested,
@@ -668,7 +668,7 @@ class Sentinel:
         if grouped.github:
             if self.github_poller:
                 self._state_tracker.last_github_poll = datetime.now()
-                routing_results, _ = self._poll_coordinator.poll_github_triggers(
+                routing_results, _, _gh_errors = self._poll_coordinator.poll_github_triggers(
                     grouped.github,
                     self.router,
                     self._shutdown_requested,
@@ -789,6 +789,13 @@ class Sentinel:
                 except (KeyError, ValueError) as e:
                     logger.error(
                         "Error in polling cycle due to data error: %s",
+                        e,
+                        extra={"error_type": type(e).__name__},
+                    )
+                    submitted_count = 0
+                except Exception as e:
+                    logger.exception(
+                        "Unexpected error in polling cycle: %s",
                         e,
                         extra={"error_type": type(e).__name__},
                     )

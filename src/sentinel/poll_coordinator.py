@@ -37,11 +37,12 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from sentinel.circuit_breaker import CircuitBreakerError
 from sentinel.deduplication import DeduplicationManager, build_github_trigger_key
-from sentinel.github_poller import GitHubIssue, GitHubIssueProtocol
+from sentinel.github_poller import GitHubClientError, GitHubIssue, GitHubIssueProtocol
 from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration, TriggerConfig
-from sentinel.poller import JiraIssue
+from sentinel.poller import JiraClientError, JiraIssue
 from sentinel.types import TriggerSource
 
 if TYPE_CHECKING:
@@ -288,7 +289,7 @@ class PollCoordinator:
         router: Router,
         shutdown_requested: bool = False,
         log_callback: Any | None = None,
-    ) -> tuple[list[RoutingResult], int]:
+    ) -> tuple[list[RoutingResult], int, int]:
         """Poll Jira for issues matching orchestration triggers.
 
         Args:
@@ -298,10 +299,10 @@ class PollCoordinator:
             log_callback: Optional callback for logging (orchestration_name, level, message).
 
         Returns:
-            Tuple of (routing_results, total_issues_found).
+            Tuple of (routing_results, total_issues_found, error_count).
         """
         if self._jira_poller is None:
-            return [], 0
+            return [], 0, 0
 
         # Collect unique trigger configs to avoid duplicate polling
         seen_triggers: set[str] = set()
@@ -315,12 +316,13 @@ class PollCoordinator:
 
         all_routing_results: list[RoutingResult] = []
         total_issues_found = 0
+        error_count = 0
 
         # Poll for each unique trigger
         for orch, trigger in triggers_to_poll:
             if shutdown_requested:
                 logger.info("Shutdown requested, stopping polling")
-                return all_routing_results, total_issues_found
+                return all_routing_results, total_issues_found, error_count
 
             # Log polling
             if log_callback:
@@ -347,6 +349,7 @@ class PollCoordinator:
                     e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
+                error_count += 1
                 continue
             except (KeyError, ValueError) as e:
                 logger.error(
@@ -355,6 +358,7 @@ class PollCoordinator:
                     e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
+                error_count += 1
                 continue
             except RuntimeError as e:
                 logger.error(
@@ -363,13 +367,32 @@ class PollCoordinator:
                     e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
+                error_count += 1
+                continue
+            except JiraClientError as e:
+                logger.error(
+                    "Failed to poll Jira for '%s' due to client error: %s",
+                    orch.name,
+                    e,
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                error_count += 1
+                continue
+            except CircuitBreakerError as e:
+                logger.error(
+                    "Failed to poll Jira for '%s' due to circuit breaker open: %s",
+                    orch.name,
+                    e,
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                error_count += 1
                 continue
 
             # Route issues to matching orchestrations
             routing_results = router.route_matched_only(issues)
             all_routing_results.extend(routing_results)
 
-        return all_routing_results, total_issues_found
+        return all_routing_results, total_issues_found, error_count
 
     def poll_github_triggers(
         self,
@@ -377,7 +400,7 @@ class PollCoordinator:
         router: Router,
         shutdown_requested: bool = False,
         log_callback: Any | None = None,
-    ) -> tuple[list[RoutingResult], int]:
+    ) -> tuple[list[RoutingResult], int, int]:
         """Poll GitHub for issues/PRs matching orchestration triggers.
 
         Args:
@@ -387,10 +410,10 @@ class PollCoordinator:
             log_callback: Optional callback for logging (orchestration_name, level, message).
 
         Returns:
-            Tuple of (routing_results, total_issues_found).
+            Tuple of (routing_results, total_issues_found, error_count).
         """
         if self._github_poller is None:
-            return [], 0
+            return [], 0, 0
 
         # Collect unique trigger configs to avoid duplicate polling
         seen_triggers: set[str] = set()
@@ -404,12 +427,13 @@ class PollCoordinator:
 
         all_routing_results: list[RoutingResult] = []
         total_issues_found = 0
+        error_count = 0
 
         # Poll for each unique trigger
         for orch, trigger in triggers_to_poll:
             if shutdown_requested:
                 logger.info("Shutdown requested, stopping polling")
-                return all_routing_results, total_issues_found
+                return all_routing_results, total_issues_found, error_count
 
             # Log polling
             if log_callback:
@@ -436,6 +460,7 @@ class PollCoordinator:
                     e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
+                error_count += 1
                 continue
             except (KeyError, ValueError) as e:
                 logger.error(
@@ -444,6 +469,7 @@ class PollCoordinator:
                     e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
+                error_count += 1
                 continue
             except RuntimeError as e:
                 logger.error(
@@ -452,6 +478,25 @@ class PollCoordinator:
                     e,
                     extra={"orchestration": orch.name, "error_type": type(e).__name__},
                 )
+                error_count += 1
+                continue
+            except GitHubClientError as e:
+                logger.error(
+                    "Failed to poll GitHub for '%s' due to client error: %s",
+                    orch.name,
+                    e,
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                error_count += 1
+                continue
+            except CircuitBreakerError as e:
+                logger.error(
+                    "Failed to poll GitHub for '%s' due to circuit breaker open: %s",
+                    orch.name,
+                    e,
+                    extra={"orchestration": orch.name, "error_type": type(e).__name__},
+                )
+                error_count += 1
                 continue
 
             # Convert GitHub issues to include repo context
@@ -461,7 +506,7 @@ class PollCoordinator:
             routing_results = router.route_matched_only(issues_with_context)
             all_routing_results.extend(routing_results)
 
-        return all_routing_results, total_issues_found
+        return all_routing_results, total_issues_found, error_count
 
     def _add_repo_context_from_urls(
         self,
