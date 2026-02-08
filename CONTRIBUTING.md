@@ -249,8 +249,8 @@ body.
 
 | Pattern | When to Use | Key Signal |
 |---------|-------------|------------|
-| [**See also**](#examples) | Pointing to a complementary test | Neutral forward pointer |
-| [**Unlike**](#examples) | Highlighting how the current test differs | Explicit contrast |
+| [**See also**](#reference-patterns) | Pointing to a complementary test | Neutral forward pointer |
+| [**Unlike**](#reference-patterns) | Highlighting how the current test differs | Explicit contrast |
 | [**Two-way**](#two-way-vs-three-way-or-more-cross-references) | Exactly two tests form a natural pair | Success/failure, enabled/disabled |
 | [**Three-way+**](#two-way-vs-three-way-or-more-cross-references) | Three or more tests cover distinct variants | Parenthetical annotations |
 | [**Shared-grouping**](#examples) | More than ~4 related tests with a naming pattern | Reference the `test_*` glob, not each sibling |
