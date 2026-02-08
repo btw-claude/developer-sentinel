@@ -27,9 +27,11 @@ from sentinel.dashboard.models import (
 )
 from sentinel.dashboard.state import OrchestrationInfo, SentinelStateAccessor
 from sentinel.orchestration_edit import (
+    _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD,
     _build_yaml_updates,
     _deep_merge_dicts,
     _extract_error_tokens,
+    _get_dedup_threshold,
     _is_semantically_duplicate,
     _validate_orchestration_updates,
 )
@@ -713,6 +715,71 @@ class TestSemanticDeduplicationIntegration:
         )
         # Should have at least one error about missing agent
         assert any("agent" in e.lower() for e in errors)
+
+
+class TestGetDedupThreshold:
+    """Tests for _get_dedup_threshold and env var configurability (DS-773)."""
+
+    def test_returns_default_when_env_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should return compiled-in default when SENTINEL_DEDUP_THRESHOLD is not set."""
+        monkeypatch.delenv("SENTINEL_DEDUP_THRESHOLD", raising=False)
+        assert _get_dedup_threshold() == _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+
+    def test_returns_default_when_env_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should return default when SENTINEL_DEDUP_THRESHOLD is empty string."""
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "")
+        assert _get_dedup_threshold() == _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+
+    def test_returns_default_when_env_whitespace(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should return default when SENTINEL_DEDUP_THRESHOLD is whitespace."""
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "   ")
+        assert _get_dedup_threshold() == _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+
+    def test_reads_valid_float_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should parse a valid float from SENTINEL_DEDUP_THRESHOLD."""
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "0.8")
+        assert _get_dedup_threshold() == 0.8
+
+    def test_clamps_value_above_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should clamp values above 1.0 to 1.0."""
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "1.5")
+        assert _get_dedup_threshold() == 1.0
+
+    def test_clamps_negative_value_to_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should clamp negative values to 0.0."""
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "-0.3")
+        assert _get_dedup_threshold() == 0.0
+
+    def test_returns_default_for_non_numeric(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should return default when env var is not a valid number."""
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "not-a-number")
+        assert _get_dedup_threshold() == _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+
+    def test_env_var_affects_deduplication(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should use env-var threshold when no explicit threshold is passed.
+
+        With threshold=1.0, partially overlapping errors should NOT match
+        unless every token in the shorter set is present in the longer set.
+        """
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "1.0")
+        # These messages share some tokens (invalid, bad) but differ in the
+        # domain-specific tokens (agent_type vs trigger/source/gitlab), so
+        # at threshold=1.0 the overlap ratio < 1.0 and they should not match.
+        existing = ["Retry error: Invalid default_status 'bad': must be 'success' or 'failure'"]
+        new_error = "Invalid agent_type 'bad': must be 'claude', 'codex', 'cursor'"
+        assert _is_semantically_duplicate(new_error, existing) is False
+
+        # Now lower the threshold via env var so the same pair DOES match.
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "0.1")
+        assert _is_semantically_duplicate(new_error, existing) is True
+
+    def test_explicit_threshold_overrides_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Explicit threshold parameter should take precedence over env var."""
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "1.0")
+        existing = ["Agent error: Invalid agent_type 'bad'"]
+        new_error = "Invalid agent_type 'bad': extra details here"
+        # Env says 1.0 but explicit kwarg says 0.6 — should match
+        assert _is_semantically_duplicate(new_error, existing, threshold=0.6) is True
 
 
 class TestCollectTriggerErrors:

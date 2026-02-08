@@ -19,6 +19,11 @@ wording differs between the section-specific validator and the full
 _parse_orchestration() validator (e.g., different prefixes, varied phrasing,
 or orchestration-name-qualified messages).
 
+Configurable deduplication threshold (DS-773): The similarity threshold is
+configurable via the SENTINEL_DEDUP_THRESHOLD environment variable, allowing
+operators to tune sensitivity without code changes.  The _NOISE_WORDS
+frozenset is documented with rationale and maintenance guidelines.
+
 Functions:
     _build_yaml_updates: Convert OrchestrationEditRequest to YAML-compatible dict
     _validate_orchestration_updates: Validate merged orchestration data
@@ -27,10 +32,13 @@ Functions:
         any existing error using normalized token overlap
     _extract_error_tokens: Extract meaningful tokens from an error message for
         semantic comparison
+    _get_dedup_threshold: Return the semantic similarity threshold, with env
+        var override support (SENTINEL_DEDUP_THRESHOLD)
 """
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -53,7 +61,33 @@ from sentinel.orchestration import (
 # errors are considered duplicates.  This is intentionally conservative
 # enough to avoid false positives while still catching common reformulations
 # (e.g., prefixed vs unprefixed, orchestration-name-qualified variants).
-_SEMANTIC_SIMILARITY_THRESHOLD = 0.6
+#
+# Configurable via SENTINEL_DEDUP_THRESHOLD environment variable (DS-773).
+# Operators can tune this value to adjust deduplication sensitivity without
+# code changes.  Valid range is 0.0–1.0.  Lower values are more aggressive
+# (more duplicates detected); higher values are more conservative.
+_DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD = 0.6
+
+
+def _get_dedup_threshold() -> float:
+    """Return the semantic similarity threshold, optionally overridden by env var.
+
+    Reads ``SENTINEL_DEDUP_THRESHOLD`` from the environment.  If set, the
+    value is parsed as a float and clamped to the [0.0, 1.0] range.  If unset
+    or empty, the compiled-in default (0.6) is used.
+
+    Returns:
+        The effective similarity threshold as a float in [0.0, 1.0].
+    """
+    raw = os.getenv("SENTINEL_DEDUP_THRESHOLD", "").strip()
+    if not raw:
+        return _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+    try:
+        value = float(raw)
+    except ValueError:
+        return _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+    return max(0.0, min(1.0, value))
+
 
 # Section-prefix pattern: strips prefixes like "Agent error: ", "Trigger error: "
 # that are added by section-level validation in _validate_orchestration_updates.
@@ -69,7 +103,25 @@ _ORCH_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Noise words that carry no semantic meaning for error comparison.
+# Noise words that carry no semantic meaning for error comparison (DS-773).
+#
+# Rationale: These are common English stop words and generic terms that
+# frequently appear in validation error messages but do not distinguish one
+# error from another.  Removing them before token comparison prevents false
+# positive matches caused by shared boilerplate language (e.g., "must be a"
+# appearing in many unrelated errors) while still retaining domain-specific
+# tokens (field names, allowed values, types) that convey actual meaning.
+#
+# Guidelines for future maintainers:
+#   - ADD a word here when it appears in multiple *unrelated* error messages
+#     and causes false-positive deduplication matches.
+#   - DO NOT add domain-specific terms (field names like "agent_type",
+#     type names like "integer", or allowed values like "claude") — these
+#     carry important semantic signal for distinguishing errors.
+#   - When new validators are added, review their error messages to see if
+#     any new generic filler words (e.g., "cannot", "expected") should be
+#     included.  Run the existing test suite to verify that additions do not
+#     break the expected token extraction or deduplication behaviour.
 _NOISE_WORDS = frozenset({
     "a", "an", "the", "is", "are", "was", "were", "be", "been",
     "has", "have", "had", "got", "must", "should", "value",
@@ -114,7 +166,7 @@ def _extract_error_tokens(message: str) -> set[str]:
 def _is_semantically_duplicate(
     new_error: str,
     existing_errors: list[str],
-    threshold: float = _SEMANTIC_SIMILARITY_THRESHOLD,
+    threshold: float | None = None,
 ) -> bool:
     """Check whether *new_error* is semantically equivalent to any existing error (DS-772).
 
@@ -132,11 +184,17 @@ def _is_semantically_duplicate(
         new_error: The candidate error message to check.
         existing_errors: Already-collected error messages.
         threshold: Minimum overlap ratio (0.0–1.0) to treat as duplicate.
+            When ``None`` (the default), the value is read from the
+            ``SENTINEL_DEDUP_THRESHOLD`` environment variable, falling back
+            to the compiled-in default of 0.6 (DS-773).
 
     Returns:
         ``True`` if *new_error* is a semantic duplicate of any entry in
         *existing_errors*.
     """
+    if threshold is None:
+        threshold = _get_dedup_threshold()
+
     # Fast path: exact substring match (original DS-762 behaviour)
     if any(new_error in existing for existing in existing_errors):
         return True
