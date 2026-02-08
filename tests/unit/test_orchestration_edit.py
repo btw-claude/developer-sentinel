@@ -6,6 +6,7 @@ and _validate_orchestration_updates validation function.
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
@@ -750,10 +751,46 @@ class TestGetDedupThreshold:
         monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "-0.3")
         assert _get_dedup_threshold() == 0.0
 
+    def test_boundary_value_zero_passes_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should pass through 0.0 without modification (DS-774).
+
+        Boundary value at the lower end of the valid range [0.0, 1.0] should
+        not be altered by the clamping logic.
+        """
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "0.0")
+        assert _get_dedup_threshold() == 0.0
+
+    def test_boundary_value_one_passes_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should pass through 1.0 without modification (DS-774).
+
+        Boundary value at the upper end of the valid range [0.0, 1.0] should
+        not be altered by the clamping logic.
+        """
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "1.0")
+        assert _get_dedup_threshold() == 1.0
+
     def test_returns_default_for_non_numeric(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should return default when env var is not a valid number."""
         monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "not-a-number")
         assert _get_dedup_threshold() == _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+
+    def test_logs_debug_on_invalid_env_var(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Should emit a debug log when env var is set but non-numeric (DS-774).
+
+        This aids operator troubleshooting when deduplication behaviour does not
+        match expectations due to a misconfigured SENTINEL_DEDUP_THRESHOLD.
+        """
+        monkeypatch.setenv("SENTINEL_DEDUP_THRESHOLD", "not-a-number")
+        with caplog.at_level(logging.DEBUG, logger="sentinel.orchestration_edit"):
+            result = _get_dedup_threshold()
+        assert result == _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+        assert len(caplog.records) == 1
+        record = caplog.records[0]
+        assert record.levelno == logging.DEBUG
+        assert "not-a-number" in record.message
+        assert "falling back" in record.message.lower()
 
     def test_env_var_affects_deduplication(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should use env-var threshold when no explicit threshold is passed.

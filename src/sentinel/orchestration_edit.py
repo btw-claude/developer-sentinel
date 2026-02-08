@@ -38,6 +38,7 @@ Functions:
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Any
@@ -54,6 +55,8 @@ from sentinel.orchestration import (
     _parse_outcomes,
     _parse_retry,
 )
+
+logger = logging.getLogger(__name__)
 
 # Threshold for token overlap ratio to consider two errors semantically
 # equivalent.  A value of 0.6 means that if 60% or more of the meaningful
@@ -85,6 +88,12 @@ def _get_dedup_threshold() -> float:
     try:
         value = float(raw)
     except ValueError:
+        logger.debug(
+            "SENTINEL_DEDUP_THRESHOLD env var contains invalid non-numeric "
+            "value %r; falling back to compiled-in default %s",
+            raw,
+            _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD,
+        )
         return _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
     return max(0.0, min(1.0, value))
 
