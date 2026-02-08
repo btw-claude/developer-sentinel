@@ -123,6 +123,9 @@ pytest --cov=sentinel --cov-report=html
    - **Two-way**: Default for test pairs covering complementary aspects
    - **Three-way+**: Use when three or more tests cover distinct variants of the same behavior;
      include parenthetical annotations for clarity
+   - **Shared-grouping**: When related tests exceed ~4, reference the shared naming pattern
+     instead of enumerating each sibling (e.g., "See the other `test_parse_*_field` tests in
+     this class")
 
 ### Integration Test Guidelines
 
