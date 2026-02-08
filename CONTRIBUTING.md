@@ -302,7 +302,7 @@ illustration.
 
 Cross-references belong in the extended description of the docstring, after the summary line
 and any behavioral explanation. Place them at the end of the description paragraph, before
-any Args/Returns/Raises sections.
+any Args/Returns/Raises sections. See [Examples](#examples) below for a concrete illustration.
 
 #### Examples
 
