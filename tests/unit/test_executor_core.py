@@ -545,3 +545,201 @@ class TestAgentExecutorMatchesPattern:
         executor = AgentExecutor(client)
 
         assert executor._matches_pattern("error [unclosed", ["regex:[unclosed"]) is True
+
+
+class TestAgentExecutorPreRetryCheck:
+    """Tests for AgentExecutor.execute with pre_retry_check callback."""
+
+    @pytest.mark.asyncio
+    async def test_pre_retry_check_none_allows_retries(self) -> None:
+        """When pre_retry_check is None, normal retry behavior occurs."""
+        client = MockAgentClient(responses=["Task failed", "Task failed", "SUCCESS"])
+        client.should_error = False
+        executor = AgentExecutor(client)
+        issue = make_issue(key="TEST-1")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=3,
+            success_patterns=["SUCCESS"],
+            failure_patterns=["failed"],
+        )
+
+        result = await executor.execute(issue, orch, pre_retry_check=None)
+
+        assert result.succeeded is True
+        assert result.attempts == 3
+        assert client.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_pre_retry_check_returns_true_allows_retry(self) -> None:
+        """When check returns True, retry proceeds."""
+        client = MockAgentClient(responses=["Task failed", "SUCCESS"])
+        executor = AgentExecutor(client)
+        issue = make_issue(key="TEST-2")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=3,
+            success_patterns=["SUCCESS"],
+            failure_patterns=["failed"],
+        )
+
+        check_calls = []
+
+        def _check() -> bool:
+            check_calls.append(True)
+            return True
+
+        result = await executor.execute(issue, orch, pre_retry_check=_check)
+
+        assert result.succeeded is True
+        assert result.attempts == 2
+        assert client.call_count == 2
+        assert len(check_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_pre_retry_check_returns_false_stops_retries_on_failure(self) -> None:
+        """When check returns False on FAILURE, stops retrying."""
+        client = MockAgentClient(responses=["Task failed", "SUCCESS"])
+        executor = AgentExecutor(client)
+        issue = make_issue(key="TEST-3")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=3,
+            success_patterns=["SUCCESS"],
+            failure_patterns=["failed"],
+        )
+
+        check_calls = []
+
+        def _check() -> bool:
+            check_calls.append(False)
+            return False
+
+        result = await executor.execute(issue, orch, pre_retry_check=_check)
+
+        assert result.succeeded is False
+        assert result.status == ExecutionStatus.FAILURE
+        assert result.attempts == 1
+        assert client.call_count == 1
+        assert len(check_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_pre_retry_check_returns_false_stops_retries_on_timeout(self) -> None:
+        """When check returns False on timeout, stops retrying."""
+        client = MockAgentClient(responses=["SUCCESS"])
+        client.should_timeout = True
+        client.max_timeouts = 1
+        executor = AgentExecutor(client)
+        issue = make_issue(key="TEST-4")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=3,
+            success_patterns=["SUCCESS"],
+        )
+
+        check_calls = []
+
+        def _check() -> bool:
+            check_calls.append(False)
+            return False
+
+        result = await executor.execute(issue, orch, pre_retry_check=_check)
+
+        assert result.succeeded is False
+        assert result.status == ExecutionStatus.ERROR
+        assert result.attempts == 1
+        assert len(client.calls) == 1
+        assert len(check_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_pre_retry_check_returns_false_stops_retries_on_client_error(
+        self,
+    ) -> None:
+        """When check returns False on client error, stops retrying."""
+        client = MockAgentClient(responses=["SUCCESS"])
+        client.should_error = True
+        client.max_errors = 1
+        executor = AgentExecutor(client)
+        issue = make_issue(key="TEST-5")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=3,
+            success_patterns=["SUCCESS"],
+        )
+
+        check_calls = []
+
+        def _check() -> bool:
+            check_calls.append(False)
+            return False
+
+        result = await executor.execute(issue, orch, pre_retry_check=_check)
+
+        assert result.succeeded is False
+        assert result.status == ExecutionStatus.ERROR
+        assert result.attempts == 1
+        assert len(client.calls) == 1
+        assert len(check_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_pre_retry_check_called_before_each_retry(self) -> None:
+        """Check is called before each retry attempt."""
+        client = MockAgentClient(responses=["failed", "failed", "failed", "SUCCESS"])
+        executor = AgentExecutor(client)
+        issue = make_issue(key="TEST-6")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=4,
+            success_patterns=["SUCCESS"],
+            failure_patterns=["failed"],
+        )
+
+        check_calls = []
+
+        def _check() -> bool:
+            check_calls.append(True)
+            return True
+
+        result = await executor.execute(issue, orch, pre_retry_check=_check)
+
+        assert result.succeeded is True
+        assert result.attempts == 4
+        assert client.call_count == 4
+        assert len(check_calls) == 3
+
+    @pytest.mark.asyncio
+    async def test_pre_retry_check_mixed_results_stops_at_first_false(self) -> None:
+        """When check returns False after returning True, stops retrying."""
+        client = MockAgentClient(responses=["failed", "failed", "SUCCESS"])
+        executor = AgentExecutor(client)
+        issue = make_issue(key="TEST-7")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=5,
+            success_patterns=["SUCCESS"],
+            failure_patterns=["failed"],
+        )
+
+        check_results = [True, False]
+        check_index = 0
+
+        def _check() -> bool:
+            nonlocal check_index
+            result = check_results[check_index]
+            check_index += 1
+            return result
+
+        result = await executor.execute(issue, orch, pre_retry_check=_check)
+
+        assert result.succeeded is False
+        assert result.status == ExecutionStatus.FAILURE
+        assert result.attempts == 2
+        assert client.call_count == 2
+        assert check_index == 2
