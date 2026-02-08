@@ -9,11 +9,15 @@ These tests guard against regressions by explicitly verifying:
 3. group_orchestrations_by_source() correctly separating Jira vs GitHub orchestrations
 4. Edge cases: empty list input, all-Jira, all-GitHub, mixed sources
 5. Docstring note about positional unpacking impact when adding new fields.
+6. Characterization test for the else fallback routing non-GitHub sources to .jira (DS-752).
 
 Origin: Code review of DS-750 / PR #740.
+Amended: DS-752 — differentiated docstrings, added else-fallback characterization test.
 """
 
 from __future__ import annotations
+
+import dataclasses
 
 from sentinel.orchestration import Orchestration
 from sentinel.poll_coordinator import GroupedOrchestrations, PollCoordinator
@@ -89,7 +93,12 @@ class TestGroupedOrchestrationsTupleUnpacking:
     """Tests for backward-compatible tuple unpacking of GroupedOrchestrations."""
 
     def test_tuple_unpacking_two_variables(self) -> None:
-        """GroupedOrchestrations supports unpacking into two variables."""
+        """Unpacking into two variables yields the correct positional references.
+
+        Verifies that positional tuple unpacking maps variable 1 to .jira and
+        variable 2 to .github, confirming the NamedTuple field ordering contract
+        that callers rely on.
+        """
         jira_list: list[Orchestration] = [make_orchestration(name="j1")]
         github_list: list[Orchestration] = [make_orchestration(name="g1", source="github")]
 
@@ -100,7 +109,13 @@ class TestGroupedOrchestrationsTupleUnpacking:
         assert github_result is github_list
 
     def test_tuple_unpacking_preserves_order(self) -> None:
-        """Tuple unpacking yields jira first, github second."""
+        """Construction order is preserved: jira is first, github is second.
+
+        Unlike test_tuple_unpacking_two_variables (which checks that unpacked
+        variables point to the correct lists), this test focuses on verifying
+        that the NamedTuple construction preserves the declared field order
+        so that ``first, second = grouped`` always yields jira then github.
+        """
         jira_orchs = [make_orchestration(name="jira-orch")]
         github_orchs = [make_orchestration(name="github-orch", source="github")]
 
@@ -183,7 +198,12 @@ class TestGroupOrchestrationsEdgeCases:
         assert all(o.trigger.source == "github" for o in result.github)
 
     def test_mixed_sources_separated_correctly(self) -> None:
-        """Mixed Jira and GitHub orchestrations are separated into correct groups."""
+        """Mixed sources are grouped correctly: each orchestration lands in the right bucket.
+
+        Verifies that group_orchestrations_by_source() places each orchestration
+        into the correct group (.jira or .github) based on its trigger source,
+        and that the group sizes match the expected counts.
+        """
         coordinator = self._make_coordinator()
         orchestrations = [
             make_orchestration(name="j1", source="jira"),
@@ -204,7 +224,13 @@ class TestGroupOrchestrationsEdgeCases:
         assert github_names == ["g1", "g2"]
 
     def test_preserves_orchestration_order_within_groups(self) -> None:
-        """Orchestrations maintain their relative order within each group."""
+        """Relative insertion order is preserved within each group.
+
+        Unlike test_mixed_sources_separated_correctly (which checks grouping
+        correctness and counts), this test verifies that the relative ordering
+        of orchestrations within each bucket matches the original input order,
+        ensuring stable iteration for downstream consumers.
+        """
         coordinator = self._make_coordinator()
         orchestrations = [
             make_orchestration(name="j-alpha", source="jira"),
@@ -277,6 +303,29 @@ class TestGroupOrchestrationsEdgeCases:
 
         assert len(result.jira) == 1
         assert result.github == []
+
+    def test_unrecognized_source_falls_back_to_jira_bucket(self) -> None:
+        """Orchestrations with an unrecognized source fall into the .jira bucket.
+
+        Characterization test (DS-752): the production else clause in
+        group_orchestrations_by_source() routes any non-GitHub source to
+        .jira. This test documents that behavior so it acts as a canary if
+        a third source type is ever added — the new source would silently
+        land in .jira unless the routing logic is updated.
+        """
+        coordinator = self._make_coordinator()
+        orch = make_orchestration(name="unknown-source")
+        # Force an unrecognized source value at runtime to exercise the else branch.
+        # TriggerConfig.source is typed as a Literal but not enforced at runtime.
+        patched_trigger = dataclasses.replace(orch.trigger, source="slack")  # type: ignore[arg-type]
+        patched_orch = dataclasses.replace(orch, trigger=patched_trigger)
+
+        result = coordinator.group_orchestrations_by_source([patched_orch])
+
+        # The else clause routes non-GitHub sources to .jira
+        assert len(result.jira) == 1
+        assert result.github == []
+        assert result.jira[0].name == "unknown-source"
 
 
 class TestGroupedOrchestrationsDocstring:
