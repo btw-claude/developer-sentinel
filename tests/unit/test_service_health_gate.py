@@ -98,6 +98,26 @@ class TestServiceHealthGateConfig:
                 config = ServiceHealthGateConfig.from_env()
                 assert config.enabled is False, f"Expected enabled=False for '{value}'"
 
+    def test_from_env_probe_backoff_factor_clamped_to_minimum(self) -> None:
+        """Test that probe_backoff_factor below 1.0 is clamped to 1.0."""
+        with mock.patch.dict(
+            os.environ,
+            {"SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR": "0.5"},
+            clear=True,
+        ):
+            config = ServiceHealthGateConfig.from_env()
+            assert config.probe_backoff_factor == 1.0
+
+    def test_from_env_probe_backoff_factor_zero_clamped(self) -> None:
+        """Test that probe_backoff_factor of 0.0 is clamped to 1.0."""
+        with mock.patch.dict(
+            os.environ,
+            {"SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR": "0.0"},
+            clear=True,
+        ):
+            config = ServiceHealthGateConfig.from_env()
+            assert config.probe_backoff_factor == 1.0
+
 
 class TestServiceAvailability:
     """Tests for ServiceAvailability dataclass."""

@@ -185,7 +185,7 @@ class ServiceHealthGateConfig:
         failure_threshold: Number of consecutive failures before gating.
         initial_probe_interval: Initial seconds between recovery probes.
         max_probe_interval: Maximum seconds between recovery probes.
-        probe_backoff_factor: Multiplier for probe interval on continued failure.
+        probe_backoff_factor: Multiplier for probe interval on continued failure (>= 1.0).
         probe_timeout: Timeout in seconds for individual probe checks.
     """
 
@@ -924,10 +924,11 @@ def load_config(env_file: Path | None = None) -> Config:
         "SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL",
         300.0,
     )
-    health_gate_probe_backoff_factor = _parse_non_negative_float(
+    health_gate_probe_backoff_factor = _parse_bounded_float(
         os.getenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "2.0"),
         "SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR",
         2.0,
+        min_val=1.0,
     )
     health_gate_probe_timeout = _parse_non_negative_float(
         os.getenv("SENTINEL_HEALTH_GATE_PROBE_TIMEOUT", "5.0"),

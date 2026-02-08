@@ -20,6 +20,7 @@ from sentinel.github_rest_client import GitHubTagClient
 from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraPoller
 from sentinel.router import Router
+from sentinel.service_health_gate import ServiceHealthGate
 from sentinel.tag_manager import JiraTagClient, TagManager
 
 class AttemptCountEntry:
@@ -76,6 +77,7 @@ class Sentinel:
         router: Router | None = ...,
         github_poller: GitHubPoller | None = ...,
         github_tag_client: GitHubTagClient | None = ...,
+        service_health_gate: ServiceHealthGate | None = ...,
     ) -> None: ...
     def request_shutdown(self) -> None: ...
     def get_hot_reload_metrics(self) -> dict[str, int]: ...

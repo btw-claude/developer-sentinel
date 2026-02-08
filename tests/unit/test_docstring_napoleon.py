@@ -337,8 +337,9 @@ class TestDocstringGroupStructure:
         )
 
         # Guard against silent group merging (DS-692 item 5).
-        # make_config() currently has 13 distinct "# <Name> settings" groups.
-        expected_group_count = 13
+        # make_config() currently has 14 distinct "# <Name> settings" groups.
+        # Bumped from 13 to 14 in DS-818 (added "# Service health gate settings").
+        expected_group_count = 14
         assert len(MAKE_CONFIG_PARAM_GROUPS) == expected_group_count, (
             f"Expected {expected_group_count} parameter groups, "
             f"got {len(MAKE_CONFIG_PARAM_GROUPS)}. "

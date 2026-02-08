@@ -7,6 +7,7 @@ application, including:
 - Agent factory creation
 - Orchestration loading
 - Circuit breaker registry creation
+- Service health gate creation
 - Sentinel instance assembly
 
 The bootstrap module acts as the composition root, wiring together all
@@ -15,6 +16,9 @@ dependencies before the application starts running.
 Circuit breakers are created via dependency injection pattern. The
 CircuitBreakerRegistry is created during bootstrap and circuit breakers
 are injected into components that need them, avoiding global mutable state.
+
+The ServiceHealthGate is created from configuration and injected into the
+Sentinel instance, enabling polling-level service availability tracking.
 """
 
 from __future__ import annotations
@@ -34,6 +38,8 @@ from sentinel.orchestration import Orchestration, OrchestrationError, load_orche
 from sentinel.poller import JiraClient
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.sdk_clients import JiraSdkClient, JiraSdkTagClient
+from sentinel.service_health_gate import ServiceHealthGate
+from sentinel.service_health_gate import ServiceHealthGateConfig as _SHGConfig
 from sentinel.tag_manager import JiraTagClient
 from sentinel.types import TriggerSource
 
@@ -299,6 +305,9 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
 def create_sentinel_from_context(context: BootstrapContext) -> Sentinel:
     """Create a Sentinel instance from a bootstrap context.
 
+    Creates and injects all dependencies including the ServiceHealthGate
+    for polling-level service availability tracking.
+
     Args:
         context: Bootstrap context with all initialized dependencies.
 
@@ -317,6 +326,24 @@ def create_sentinel_from_context(context: BootstrapContext) -> Sentinel:
         GitHubPoller(context.github_client) if context.github_client else None
     )
 
+    # Create ServiceHealthGate from configuration
+    # Bridge between config.ServiceHealthGateConfig and service_health_gate.ServiceHealthGateConfig
+    shg_cfg = context.config.service_health_gate
+    gate_config = _SHGConfig(
+        enabled=shg_cfg.enabled,
+        failure_threshold=shg_cfg.failure_threshold,
+        initial_probe_interval=shg_cfg.initial_probe_interval,
+        max_probe_interval=shg_cfg.max_probe_interval,
+        probe_backoff_factor=shg_cfg.probe_backoff_factor,
+        probe_timeout=shg_cfg.probe_timeout,
+    )
+    service_health_gate = ServiceHealthGate(gate_config)
+    if context.config.service_health_gate.enabled:
+        logger.info("Service health gate enabled with failure_threshold=%d",
+                     context.config.service_health_gate.failure_threshold)
+    else:
+        logger.info("Service health gate disabled")
+
     return Sentinel(
         config=context.config,
         orchestrations=context.orchestrations,
@@ -326,6 +353,7 @@ def create_sentinel_from_context(context: BootstrapContext) -> Sentinel:
         jira_poller=jira_poller,
         github_poller=github_poller,
         github_tag_client=context.github_tag_client,
+        service_health_gate=service_health_gate,
     )
 
 

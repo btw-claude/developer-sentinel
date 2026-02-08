@@ -1841,6 +1841,30 @@ class TestServiceHealthGateConfig:
         assert config.service_health_gate.probe_backoff_factor == 2.0
         assert "Invalid SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR" in caplog.text
 
+    def test_probe_backoff_factor_below_minimum_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that probe_backoff_factor below 1.0 uses the default."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "0.5")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.probe_backoff_factor == 2.0
+        assert "Invalid SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR" in caplog.text
+
+    def test_probe_backoff_factor_zero_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that probe_backoff_factor of 0.0 uses the default."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "0.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.probe_backoff_factor == 2.0
+        assert "Invalid SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR" in caplog.text
+
     def test_probe_timeout_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that probe_timeout loads from environment variable."""
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_TIMEOUT", "10.0")
