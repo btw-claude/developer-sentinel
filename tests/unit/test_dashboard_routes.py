@@ -1287,8 +1287,10 @@ orchestrations:
                     break
 
             assert delete_debug_call is not None
-            # The method argument is at position [0][6] (7th positional arg)
-            assert delete_debug_call[0][6] == "DELETE"
+            # Render the full log message and assert on the output
+            # instead of using fragile positional indexing into call args
+            rendered = delete_debug_call[0][0] % delete_debug_call[0][1:]
+            assert "method=DELETE" in rendered
 
     def test_delete_orchestration_debug_log_not_found_still_logs(
         self, temp_logs_dir: Path
