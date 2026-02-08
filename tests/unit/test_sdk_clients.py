@@ -1669,9 +1669,17 @@ class TestBuildAgentTeamsEnv:
     propagates through _run_query and _run_with_log.
     """
 
+    def test_agent_teams_env_var_constant_value(self) -> None:
+        """Should have the expected constant value for the agent teams env var.
+
+        Extracted from test_build_agent_teams_env_true_returns_env_dict (DS-742)
+        so that a failure clearly indicates the constant value changed vs. the
+        function behavior changed.
+        """
+        assert _AGENT_TEAMS_ENV_VAR == "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"
+
     def test_build_agent_teams_env_true_returns_env_dict(self) -> None:
         """Should return a dict with the agent teams env var set to '1' when enabled."""
-        assert _AGENT_TEAMS_ENV_VAR == "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"
         result = _build_agent_teams_env(agent_teams=True)
         assert result == {_AGENT_TEAMS_ENV_VAR: "1"}
 
