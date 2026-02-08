@@ -12,14 +12,26 @@ always runs regardless of section-level errors, with deduplication to avoid
 reporting the same error twice. The max_concurrent check includes an explicit
 boolean guard since isinstance(True, int) returns True in Python.
 
+Semantic error deduplication (DS-772): Error deduplication uses semantic
+matching via normalized token overlap rather than simple substring matching.
+This identifies conceptually equivalent errors even when the error message
+wording differs between the section-specific validator and the full
+_parse_orchestration() validator (e.g., different prefixes, varied phrasing,
+or orchestration-name-qualified messages).
+
 Functions:
     _build_yaml_updates: Convert OrchestrationEditRequest to YAML-compatible dict
     _validate_orchestration_updates: Validate merged orchestration data
     _deep_merge_dicts: Deep merge two dictionaries
+    _is_semantically_duplicate: Check if an error is semantically equivalent to
+        any existing error using normalized token overlap
+    _extract_error_tokens: Extract meaningful tokens from an error message for
+        semantic comparison
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from sentinel.dashboard.models import OrchestrationEditRequest
@@ -34,6 +46,117 @@ from sentinel.orchestration import (
     _parse_outcomes,
     _parse_retry,
 )
+
+# Threshold for token overlap ratio to consider two errors semantically
+# equivalent.  A value of 0.6 means that if 60% or more of the meaningful
+# tokens in the shorter message also appear in the longer message, the two
+# errors are considered duplicates.  This is intentionally conservative
+# enough to avoid false positives while still catching common reformulations
+# (e.g., prefixed vs unprefixed, orchestration-name-qualified variants).
+_SEMANTIC_SIMILARITY_THRESHOLD = 0.6
+
+# Section-prefix pattern: strips prefixes like "Agent error: ", "Trigger error: "
+# that are added by section-level validation in _validate_orchestration_updates.
+_SECTION_PREFIX_RE = re.compile(
+    r"^(?:Agent|Trigger|Retry|Outcomes|on_start|on_complete|on_failure)\s+error:\s*",
+    re.IGNORECASE,
+)
+
+# Orchestration-name qualifier pattern: strips prefixes like
+# "Orchestration 'my-orch' has " that _parse_orchestration adds.
+_ORCH_NAME_RE = re.compile(
+    r"^Orchestration\s+'[^']+'\s+(?:has\s+)?",
+    re.IGNORECASE,
+)
+
+# Noise words that carry no semantic meaning for error comparison.
+_NOISE_WORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "be", "been",
+    "has", "have", "had", "got", "must", "should", "value",
+})
+
+
+def _extract_error_tokens(message: str) -> set[str]:
+    """Extract meaningful, normalised tokens from an error message (DS-772).
+
+    Processing steps:
+    1. Strip common section prefixes ("Agent error: ", etc.)
+    2. Strip orchestration-name qualifiers ("Orchestration 'name' has ")
+    3. Lowercase and split on non-alphanumeric boundaries
+    4. Remove noise words and very short tokens (length <= 1)
+
+    The resulting token set captures the semantic content of the error so that
+    two messages describing the same validation failure will share a high
+    proportion of tokens regardless of superficial wording differences.
+
+    Args:
+        message: The raw error message string.
+
+    Returns:
+        A set of normalised, meaningful tokens.
+    """
+    # Strip section prefix (e.g., "Agent error: ")
+    stripped = _SECTION_PREFIX_RE.sub("", message)
+
+    # Strip orchestration-name qualifier (e.g., "Orchestration 'test-orch' has ")
+    stripped = _ORCH_NAME_RE.sub("", stripped)
+
+    # Lowercase and tokenize on non-alphanumeric boundaries
+    tokens = set(re.findall(r"[a-z0-9_]+", stripped.lower()))
+
+    # Remove noise words and very short tokens
+    tokens -= _NOISE_WORDS
+    tokens = {t for t in tokens if len(t) > 1}
+
+    return tokens
+
+
+def _is_semantically_duplicate(
+    new_error: str,
+    existing_errors: list[str],
+    threshold: float = _SEMANTIC_SIMILARITY_THRESHOLD,
+) -> bool:
+    """Check whether *new_error* is semantically equivalent to any existing error (DS-772).
+
+    Two errors are considered semantically equivalent when the token overlap
+    ratio (intersection / min-set-size) meets or exceeds *threshold*.  Using
+    the **minimum** set size as the denominator means that the shorter message
+    only needs to be well-represented inside the longer one, which is the
+    correct behaviour when one message is a prefix-stripped variant of the other.
+
+    The function also retains the original substring check from DS-762 as a
+    fast path so that exact substring matches are still caught without the
+    overhead of tokenisation.
+
+    Args:
+        new_error: The candidate error message to check.
+        existing_errors: Already-collected error messages.
+        threshold: Minimum overlap ratio (0.0–1.0) to treat as duplicate.
+
+    Returns:
+        ``True`` if *new_error* is a semantic duplicate of any entry in
+        *existing_errors*.
+    """
+    # Fast path: exact substring match (original DS-762 behaviour)
+    if any(new_error in existing for existing in existing_errors):
+        return True
+
+    new_tokens = _extract_error_tokens(new_error)
+    if not new_tokens:
+        return False
+
+    for existing in existing_errors:
+        existing_tokens = _extract_error_tokens(existing)
+        if not existing_tokens:
+            continue
+
+        overlap = len(new_tokens & existing_tokens)
+        min_size = min(len(new_tokens), len(existing_tokens))
+
+        if overlap / min_size >= threshold:
+            return True
+
+    return False
 
 
 def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
@@ -181,16 +304,15 @@ def _validate_orchestration_updates(
 
     # Always run full validation as safety net to catch cross-section issues
     # (e.g., interactions between trigger and agent config) that section-specific
-    # validators may miss. Deduplicate against already-collected errors (DS-762).
-    # Section-level errors are prefixed (e.g., "Agent error: ..."), so we check
-    # whether the full-validation error message appears as a substring of any
-    # existing error to avoid near-duplicate reporting.
+    # validators may miss. Deduplicate against already-collected errors using
+    # semantic matching (DS-772) so that conceptually equivalent errors are
+    # suppressed even when the wording differs between section-specific and
+    # full-validation error messages.
     try:
         _parse_orchestration(merged)
     except OrchestrationError as e:
         full_error = str(e)
-        already_reported = any(full_error in existing for existing in errors)
-        if not already_reported:
+        if not _is_semantically_duplicate(full_error, errors):
             errors.append(full_error)
 
     return errors

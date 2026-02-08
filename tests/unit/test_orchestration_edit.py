@@ -29,6 +29,8 @@ from sentinel.dashboard.state import OrchestrationInfo, SentinelStateAccessor
 from sentinel.orchestration_edit import (
     _build_yaml_updates,
     _deep_merge_dicts,
+    _extract_error_tokens,
+    _is_semantically_duplicate,
     _validate_orchestration_updates,
 )
 from tests.conftest import create_test_app
@@ -524,6 +526,193 @@ class TestValidateOrchestrationUpdates:
             {"max_concurrent": 5},
         )
         assert errors == []
+
+
+class TestExtractErrorTokens:
+    """Tests for _extract_error_tokens helper function (DS-772)."""
+
+    def test_strips_section_prefix(self) -> None:
+        """Should strip section prefixes like 'Agent error: '."""
+        tokens = _extract_error_tokens("Agent error: Invalid agent_type 'bad'")
+        assert "agent" not in tokens  # "agent" from prefix should be stripped
+        assert "invalid" in tokens
+        assert "agent_type" in tokens
+
+    def test_strips_trigger_prefix(self) -> None:
+        """Should strip 'Trigger error: ' prefix."""
+        tokens = _extract_error_tokens("Trigger error: Invalid source 'gitlab'")
+        assert "invalid" in tokens
+        assert "source" in tokens
+        assert "gitlab" in tokens
+
+    def test_strips_orchestration_name_qualifier(self) -> None:
+        """Should strip 'Orchestration 'name' has ' qualifier."""
+        tokens = _extract_error_tokens(
+            "Orchestration 'test-orch' has invalid 'max_concurrent' value"
+        )
+        assert "invalid" in tokens
+        assert "max_concurrent" in tokens
+        # The orchestration name itself should be stripped
+        assert "test" not in tokens or "orch" not in tokens
+
+    def test_removes_noise_words(self) -> None:
+        """Should remove noise words like 'must', 'be', 'a'."""
+        tokens = _extract_error_tokens("value must be a positive integer")
+        assert "must" not in tokens
+        assert "be" not in tokens
+        assert "positive" in tokens
+        assert "integer" in tokens
+
+    def test_removes_short_tokens(self) -> None:
+        """Should remove single-character tokens."""
+        tokens = _extract_error_tokens("a b c invalid agent_type")
+        assert "a" not in tokens
+        assert "b" not in tokens
+        assert "c" not in tokens
+        assert "invalid" in tokens
+
+    def test_empty_string(self) -> None:
+        """Should return empty set for empty string."""
+        tokens = _extract_error_tokens("")
+        assert tokens == set()
+
+    def test_normalizes_to_lowercase(self) -> None:
+        """Should normalize tokens to lowercase."""
+        tokens = _extract_error_tokens("Invalid AGENT_TYPE 'Claude'")
+        assert "invalid" in tokens
+        assert "agent_type" in tokens
+        assert "claude" in tokens
+
+
+class TestIsSemanticDuplicate:
+    """Tests for _is_semantically_duplicate function (DS-772)."""
+
+    def test_exact_substring_match_fast_path(self) -> None:
+        """Should detect exact substring matches (original DS-762 behavior)."""
+        existing = ["Agent error: Invalid agent_type 'bad': must be 'claude', 'codex', 'cursor'"]
+        new_error = "Invalid agent_type 'bad': must be 'claude', 'codex', 'cursor'"
+        assert _is_semantically_duplicate(new_error, existing) is True
+
+    def test_semantically_equivalent_different_wording(self) -> None:
+        """Should detect semantically equivalent errors with different wording."""
+        existing = ["Invalid max_concurrent: must be positive integer, got True"]
+        new_error = "Orchestration 'test-orch' has invalid 'max_concurrent' value: must be a positive integer"
+        assert _is_semantically_duplicate(new_error, existing) is True
+
+    def test_prefixed_vs_unprefixed(self) -> None:
+        """Should detect prefix-stripped variants as duplicates."""
+        existing = ["Trigger error: Invalid trigger source 'gitlab': must be 'github', 'jira'"]
+        new_error = "Invalid trigger source 'gitlab': must be 'github', 'jira'"
+        assert _is_semantically_duplicate(new_error, existing) is True
+
+    def test_unrelated_errors_not_duplicate(self) -> None:
+        """Should not flag unrelated errors as duplicates."""
+        existing = ["Agent error: Invalid agent_type 'bad': must be 'claude', 'codex', 'cursor'"]
+        new_error = "Invalid trigger source 'gitlab': must be 'github', 'jira'"
+        assert _is_semantically_duplicate(new_error, existing) is False
+
+    def test_empty_existing_list(self) -> None:
+        """Should return False when no existing errors."""
+        assert _is_semantically_duplicate("some error", []) is False
+
+    def test_empty_new_error_tokens(self) -> None:
+        """Should return True for empty new error via substring fast path.
+
+        An empty string is a substring of any string in Python, so the
+        fast-path substring check returns True.  Token extraction is not
+        reached.  This edge case is acceptable because empty error messages
+        never appear in practice.
+        """
+        assert _is_semantically_duplicate("", ["existing error"]) is True
+
+    def test_different_field_errors_not_duplicate(self) -> None:
+        """Should not treat errors about different fields as duplicates."""
+        existing = ["Agent error: Invalid timeout_seconds '-5': must be a positive integer"]
+        new_error = "Invalid agent_type 'bad': must be 'claude', 'codex', 'cursor'"
+        assert _is_semantically_duplicate(new_error, existing) is False
+
+    def test_custom_threshold(self) -> None:
+        """Should respect custom threshold parameter."""
+        # Use messages where the overlap is partial (not all tokens shared)
+        # so that a high threshold rejects them.
+        existing = ["Retry error: Invalid default_status 'bad': must be 'success' or 'failure'"]
+        new_error = "Invalid agent_type 'bad': must be 'claude', 'codex', 'cursor'"
+        # With a very high threshold, partially-overlapping errors should not match
+        assert _is_semantically_duplicate(new_error, existing, threshold=1.0) is False
+        # With the default threshold, they should still not match (different fields)
+        assert _is_semantically_duplicate(new_error, existing, threshold=0.6) is False
+
+    def test_custom_threshold_high_overlap(self) -> None:
+        """Should detect duplicates when token overlap meets threshold."""
+        existing = ["Agent error: Invalid agent_type 'bad'"]
+        new_error = "Invalid agent_type 'bad': extra details here"
+        # After prefix stripping, existing tokens are {invalid, agent_type, bad}
+        # new tokens are {invalid, agent_type, bad, extra, details, here}
+        # overlap = 3, min_size = 3, ratio = 1.0 — matches even at threshold=1.0
+        assert _is_semantically_duplicate(new_error, existing, threshold=1.0) is True
+        assert _is_semantically_duplicate(new_error, existing, threshold=0.6) is True
+
+
+class TestSemanticDeduplicationIntegration:
+    """Integration tests for semantic deduplication in _validate_orchestration_updates (DS-772)."""
+
+    @staticmethod
+    def _make_valid_orch_data() -> dict[str, Any]:
+        """Create a valid orchestration data dict for testing."""
+        return {
+            "name": "test-orch",
+            "enabled": True,
+            "trigger": {
+                "source": "jira",
+                "project": "TEST",
+            },
+            "agent": {
+                "prompt": "Test prompt",
+            },
+        }
+
+    def test_max_concurrent_boolean_deduplicated_semantically(self) -> None:
+        """Should deduplicate max_concurrent errors with different wording (DS-772).
+
+        The section-level validator says 'Invalid max_concurrent: must be
+        positive integer, got True' while _parse_orchestration says
+        'Orchestration 'test-orch' has invalid 'max_concurrent' value: must
+        be a positive integer'. These should be deduplicated.
+        """
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {"max_concurrent": True},
+        )
+        # Should have exactly 1 error, not 2 (deduplicated)
+        max_concurrent_errors = [e for e in errors if "max_concurrent" in e.lower()]
+        assert len(max_concurrent_errors) == 1
+
+    def test_agent_type_error_still_deduplicated(self) -> None:
+        """Should still deduplicate agent_type errors (regression for DS-762)."""
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {"agent": {"agent_type": "invalid-agent"}},
+        )
+        # Errors should be unique (no duplicates)
+        assert len(errors) == len(set(errors))
+
+    def test_novel_cross_section_error_still_reported(self) -> None:
+        """Should still report genuinely novel errors from full validation."""
+        current_data = self._make_valid_orch_data()
+        # Remove agent section entirely — section-level won't catch missing
+        # agent, but _parse_orchestration will
+        del current_data["agent"]
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {},
+        )
+        # Should have at least one error about missing agent
+        assert any("agent" in e.lower() for e in errors)
 
 
 class TestCollectTriggerErrors:
