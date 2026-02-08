@@ -8,6 +8,7 @@ sub-configs for each subsystem:
 - DashboardConfig: Dashboard server settings
 - RateLimitConfig: Claude API rate limiting settings
 - CircuitBreakerConfig: Circuit breaker settings for external services
+- ServiceHealthGateConfig: Service health gate settings for external service availability
 - ExecutionConfig: Agent execution settings (paths, concurrency, timeouts)
 - CodexConfig: Codex CLI settings
 
@@ -171,6 +172,32 @@ class HealthCheckConfig:
 
 
 @dataclass(frozen=True)
+class ServiceHealthGateConfig:
+    """Service health gate configuration.
+
+    Controls how the system gates operations based on external service
+    availability. When a service fails health checks beyond the failure
+    threshold, operations depending on that service are paused until
+    probe checks confirm recovery.
+
+    Attributes:
+        enabled: Enable/disable service health gating.
+        failure_threshold: Number of consecutive failures before gating.
+        initial_probe_interval: Initial seconds between recovery probes.
+        max_probe_interval: Maximum seconds between recovery probes.
+        probe_backoff_factor: Multiplier for probe interval on continued failure.
+        probe_timeout: Timeout in seconds for individual probe checks.
+    """
+
+    enabled: bool = True
+    failure_threshold: int = 3
+    initial_probe_interval: float = 30.0
+    max_probe_interval: float = 300.0
+    probe_backoff_factor: float = 2.0
+    probe_timeout: float = 5.0
+
+
+@dataclass(frozen=True)
 class ExecutionConfig:
     """Agent execution configuration.
 
@@ -278,6 +305,7 @@ class Config:
         rate_limit: Claude API rate limiting settings
         circuit_breaker: Circuit breaker settings
         health_check: Health check settings
+        service_health_gate: Service health gate settings
         execution: Agent execution settings
         cursor: Cursor CLI settings
         codex: Codex CLI settings
@@ -292,6 +320,7 @@ class Config:
     rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
     circuit_breaker: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
     health_check: HealthCheckConfig = field(default_factory=HealthCheckConfig)
+    service_health_gate: ServiceHealthGateConfig = field(default_factory=ServiceHealthGateConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     cursor: CursorConfig = field(default_factory=CursorConfig)
     codex: CodexConfig = field(default_factory=CodexConfig)
@@ -878,6 +907,34 @@ def load_config(env_file: Path | None = None) -> Config:
         5.0,
     )
 
+    # Parse service health gate configuration
+    health_gate_enabled = _parse_bool(os.getenv("SENTINEL_HEALTH_GATE_ENABLED", "true"))
+    health_gate_failure_threshold = _parse_positive_int(
+        os.getenv("SENTINEL_HEALTH_GATE_FAILURE_THRESHOLD", "3"),
+        "SENTINEL_HEALTH_GATE_FAILURE_THRESHOLD",
+        3,
+    )
+    health_gate_initial_probe_interval = _parse_non_negative_float(
+        os.getenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "30.0"),
+        "SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL",
+        30.0,
+    )
+    health_gate_max_probe_interval = _parse_non_negative_float(
+        os.getenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "300.0"),
+        "SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL",
+        300.0,
+    )
+    health_gate_probe_backoff_factor = _parse_non_negative_float(
+        os.getenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "2.0"),
+        "SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR",
+        2.0,
+    )
+    health_gate_probe_timeout = _parse_non_negative_float(
+        os.getenv("SENTINEL_HEALTH_GATE_PROBE_TIMEOUT", "5.0"),
+        "SENTINEL_HEALTH_GATE_PROBE_TIMEOUT",
+        5.0,
+    )
+
     # Parse default base branch
     default_base_branch = _validate_branch_name(
         os.getenv("SENTINEL_DEFAULT_BASE_BRANCH", "main"),
@@ -943,6 +1000,15 @@ def load_config(env_file: Path | None = None) -> Config:
         timeout=health_check_timeout,
     )
 
+    service_health_gate_config = ServiceHealthGateConfig(
+        enabled=health_gate_enabled,
+        failure_threshold=health_gate_failure_threshold,
+        initial_probe_interval=health_gate_initial_probe_interval,
+        max_probe_interval=health_gate_max_probe_interval,
+        probe_backoff_factor=health_gate_probe_backoff_factor,
+        probe_timeout=health_gate_probe_timeout,
+    )
+
     execution_config = ExecutionConfig(
         orchestrations_dir=Path(os.getenv("SENTINEL_ORCHESTRATIONS_DIR", "./orchestrations")),
         agent_workdir=Path(os.getenv("SENTINEL_AGENT_WORKDIR", "./workdir")),
@@ -989,6 +1055,7 @@ def load_config(env_file: Path | None = None) -> Config:
         rate_limit=rate_limit_config,
         circuit_breaker=circuit_breaker_config,
         health_check=health_check_config,
+        service_health_gate=service_health_gate_config,
         execution=execution_config,
         cursor=cursor_config,
         codex=codex_config,
