@@ -317,7 +317,7 @@ class TestUrlQuoteFilter:
         # Hyphens, dots, underscores, and tildes are RFC 3986 unreserved
         # characters that urllib.parse.quote never encodes, regardless of
         # the safe parameter value.
-        assert url_quote("a-b.c") == "a-b.c"
+        assert url_quote("a-b.c_d~e") == "a-b.c_d~e"
 
     def test_unicode_characters(self) -> None:
         """Test that unicode characters are percent-encoded."""
