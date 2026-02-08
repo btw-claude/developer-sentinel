@@ -1236,7 +1236,7 @@ def create_routes(
         "its YAML file and hot-reload picks up the change. Rate limited to "
         "prevent rapid file writes.",
     )
-    async def delete_orchestration(name: str) -> DeleteResponse:
+    async def delete_orchestration(name: str, request: Request) -> DeleteResponse:
         """Delete an orchestration by name.
 
         This endpoint removes the orchestration from its YAML source file.
@@ -1244,6 +1244,7 @@ def create_routes(
 
         Args:
             name: The name of the orchestration to delete.
+            request: The incoming HTTP request (used for enriched debug logging).
 
         Returns:
             DeleteResponse with success status and orchestration name.
@@ -1252,6 +1253,19 @@ def create_routes(
             HTTPException: 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
         logger.info("Received request to delete orchestration '%s'", name)
+        client_host = request.client.host if request.client else "unknown"
+        client_port = request.client.port if request.client else None
+        logger.debug(
+            "delete_orchestration called for '%s' | client=%s:%s user_agent=%s "
+            "query_params=%s method=%s url=%s",
+            name,
+            client_host,
+            client_port,
+            request.headers.get("user-agent", "unknown"),
+            dict(request.query_params),
+            request.method,
+            str(request.url),
+        )
         state = state_accessor.get_state()
 
         # Find the orchestration to get its source file
