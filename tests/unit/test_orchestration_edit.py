@@ -6,8 +6,15 @@ and _validate_orchestration_updates validation function.
 
 from __future__ import annotations
 
+import tempfile
+from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
+import pytest
+from fastapi.testclient import TestClient
+
+from sentinel.config import Config, DashboardConfig, ExecutionConfig
 from sentinel.dashboard.models import (
     AgentEditRequest,
     GitHubContextEditRequest,
@@ -18,11 +25,13 @@ from sentinel.dashboard.models import (
     RetryEditRequest,
     TriggerEditRequest,
 )
-from sentinel.dashboard.routes import (
+from sentinel.dashboard.state import OrchestrationInfo, SentinelStateAccessor
+from sentinel.orchestration_edit import (
     _build_yaml_updates,
     _deep_merge_dicts,
     _validate_orchestration_updates,
 )
+from tests.conftest import create_test_app
 
 
 class TestBuildYamlUpdates:
@@ -324,6 +333,39 @@ class TestValidateOrchestrationUpdates:
         )
         assert errors == []
 
+    def test_multi_error_validation_trigger_and_agent(self) -> None:
+        """Should collect errors from both trigger AND agent sections (DS-733)."""
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {
+                "trigger": {"source": "gitlab"},
+                "agent": {"agent_type": "invalid-agent"},
+            },
+        )
+        # Should have at least 2 errors - one for trigger, one for agent
+        assert len(errors) >= 2
+        # Check that we have both trigger and agent errors
+        error_text = " ".join(errors).lower()
+        assert "trigger" in error_text or "source" in error_text
+        assert "agent" in error_text
+
+    def test_multi_error_validation_collects_all_errors(self) -> None:
+        """Should collect errors from multiple sections independently (DS-733)."""
+        current_data = self._make_valid_orch_data()
+        errors = _validate_orchestration_updates(
+            "test-orch",
+            current_data,
+            {
+                "trigger": {"source": "invalid-source"},
+                "agent": {"agent_type": "invalid-type"},
+                "max_concurrent": -1,
+            },
+        )
+        # Should have multiple errors
+        assert len(errors) >= 2
+
 
 class TestOrchestrationEditResponse:
     """Tests for OrchestrationEditResponse model."""
@@ -454,3 +496,361 @@ class TestOrchestrationCreateModels:
         )
         assert response.success is False
         assert len(response.errors) == 1
+
+
+@pytest.fixture
+def temp_logs_dir() -> Generator[Path, None, None]:
+    """Fixture that provides a temporary directory for logs."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)
+
+
+class MockSentinel:
+    """Mock Sentinel instance for testing dashboard state accessor."""
+
+    def __init__(self, config: Config) -> None:
+        self.config = config
+        self._shutdown_requested = False
+
+    @property
+    def orchestrations(self) -> list[Any]:
+        return []
+
+    def get_hot_reload_metrics(self) -> dict[str, int]:
+        return {
+            "orchestrations_loaded_total": 0,
+            "orchestrations_unloaded_total": 0,
+            "orchestrations_reloaded_total": 0,
+        }
+
+    def get_running_steps(self) -> list[Any]:
+        return []
+
+    def get_issue_queue(self) -> list[Any]:
+        return []
+
+    def get_start_time(self) -> Any:
+        from datetime import datetime
+        return datetime.now()
+
+    def get_last_jira_poll(self) -> Any:
+        return None
+
+    def get_last_github_poll(self) -> Any:
+        return None
+
+    def get_active_versions(self) -> list[Any]:
+        return []
+
+    def get_pending_removal_versions(self) -> list[Any]:
+        return []
+
+    def get_execution_state(self) -> Any:
+        from sentinel.dashboard.state import ExecutionStateSnapshot
+        return ExecutionStateSnapshot(active_count=0)
+
+    def get_completed_executions(self) -> list[Any]:
+        return []
+
+    def is_shutdown_requested(self) -> bool:
+        return self._shutdown_requested
+
+
+class MockSentinelWithOrchestrations(MockSentinel):
+    """Mock Sentinel with configurable orchestrations for edit endpoint tests."""
+
+    def __init__(self, config: Config, orchestrations_data: list[OrchestrationInfo]) -> None:
+        super().__init__(config)
+        self._orchestrations_data = orchestrations_data
+
+    @property
+    def orchestrations(self) -> list[Any]:
+        """Return mock orchestrations for state accessor."""
+        return []
+
+
+class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
+    """Mock state accessor that returns configured orchestration info."""
+
+    def __init__(self, sentinel: Any, orchestrations_data: list[OrchestrationInfo]) -> None:
+        self._sentinel = sentinel
+        self._orchestrations_data = orchestrations_data
+
+    def get_state(self) -> Any:
+        """Return a mock state with the configured orchestrations."""
+        from sentinel.dashboard.state import DashboardState
+
+        return DashboardState(
+            poll_interval=60,
+            max_concurrent_executions=5,
+            max_issues_per_poll=10,
+            orchestrations=self._orchestrations_data,
+        )
+
+
+class TestEditOrchestrationEndpoint:
+    """Integration tests for PUT /api/orchestrations/{name} endpoint (DS-733)."""
+
+    def test_successful_edit(self, temp_logs_dir: Path) -> None:
+        """Test successful orchestration edit returns 200."""
+        # Create a temporary YAML file with a valid orchestration
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Original prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Original prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.put(
+                "/api/orchestrations/test-orch",
+                json={"agent": {"prompt": "Updated prompt"}},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["name"] == "test-orch"
+            assert data["errors"] == []
+
+            # Verify file was updated
+            updated_content = orch_file.read_text()
+            assert "Updated prompt" in updated_content
+
+    def test_validation_error(self, temp_logs_dir: Path) -> None:
+        """Test validation error returns 422 with error details."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.put(
+                "/api/orchestrations/test-orch",
+                json={"agent": {"agent_type": "invalid-agent"}},
+            )
+
+            assert response.status_code == 422
+            detail = response.json()["detail"]
+            # Detail should be a list of errors
+            assert isinstance(detail, list)
+            assert len(detail) >= 1
+            # Extract error text (handle both string list and dict list formats)
+            if isinstance(detail[0], str):
+                error_text = " ".join(detail).lower()
+            else:
+                # FastAPI may wrap as ValidationError format with 'msg' field
+                error_text = " ".join(str(item) for item in detail).lower()
+            assert "agent" in error_text
+
+    def test_multi_error_validation(self, temp_logs_dir: Path) -> None:
+        """Test multiple validation errors are returned together (DS-733)."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            # Send updates with errors in both trigger and agent sections
+            response = client.put(
+                "/api/orchestrations/test-orch",
+                json={
+                    "trigger": {"source": "gitlab"},
+                    "agent": {"agent_type": "invalid-agent"},
+                },
+            )
+
+            assert response.status_code == 422
+            detail = response.json()["detail"]
+            # Should return multiple errors
+            assert isinstance(detail, list)
+            assert len(detail) >= 2
+            # Extract error text (handle both string list and dict list formats)
+            if isinstance(detail[0], str):
+                error_text = " ".join(detail).lower()
+            else:
+                # FastAPI may wrap as ValidationError format
+                error_text = " ".join(str(item) for item in detail).lower()
+            assert "trigger" in error_text or "source" in error_text
+            assert "agent" in error_text
+
+    def test_not_found(self, temp_logs_dir: Path) -> None:
+        """Test 404 when orchestration doesn't exist."""
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        # No orchestrations configured
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.put(
+                "/api/orchestrations/nonexistent",
+                json={"enabled": False},
+            )
+
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    def test_rate_limiting(self, temp_logs_dir: Path) -> None:
+        """Test rate limiting with two rapid edits returns 429."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+        # Use a short cooldown for testing
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+            dashboard=DashboardConfig(toggle_cooldown_seconds=2.0),
+        )
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor, config=config)
+
+        with TestClient(app) as client:
+            # First edit should succeed
+            response1 = client.put(
+                "/api/orchestrations/test-orch",
+                json={"enabled": False},
+            )
+            assert response1.status_code == 200
+
+            # Immediate second edit should be rate limited
+            response2 = client.put(
+                "/api/orchestrations/test-orch",
+                json={"enabled": True},
+            )
+            assert response2.status_code == 429
+            assert "Rate limit exceeded" in response2.json()["detail"]
+
+    def test_empty_request(self, temp_logs_dir: Path) -> None:
+        """Test empty request returns 200 with no changes."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with TestClient(app) as client:
+            response = client.put(
+                "/api/orchestrations/test-orch",
+                json={},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["name"] == "test-orch"
