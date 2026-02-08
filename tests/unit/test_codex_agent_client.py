@@ -356,7 +356,9 @@ class TestCodexAgentClientRunAgent:
         """Test that run_agent falls back to subprocess_timeout from config.
 
         When timeout_seconds is not provided and config.execution.subprocess_timeout
-        is set, the config value should be used as the effective timeout.
+        is set, the config value should be used as the effective timeout. See also
+        test_run_agent_no_timeout_when_subprocess_timeout_zero, which tests the
+        special case where the config timeout is explicitly zero (disabled).
         """
         mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
         mock_codex_subprocess.output_path.read_text.return_value = "Response"
@@ -377,8 +379,10 @@ class TestCodexAgentClientRunAgent:
     ) -> None:
         """Test that no timeout is applied when subprocess_timeout is zero.
 
-        When timeout_seconds is not provided and config.execution.subprocess_timeout
-        is 0, the effective timeout should remain None (no timeout).
+        Unlike test_run_agent_uses_config_subprocess_timeout (which tests a
+        non-zero config timeout being applied), this test verifies the edge
+        case where subprocess_timeout is explicitly 0, meaning no timeout
+        should be enforced (effective timeout remains None).
         """
         mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
         mock_codex_subprocess.output_path.read_text.return_value = "Response"
@@ -505,7 +509,12 @@ class TestCodexAgentClientRunAgent:
         mock_codex_subprocess: CodexSubprocessMocks,
         codex_config: Config,
     ) -> None:
-        """Test that response falls back to stdout when output file is empty."""
+        """Test that response falls back to stdout when output file is empty.
+
+        Covers the case where the output file exists but has zero bytes
+        (st_size=0). See also test_run_agent_success_output_file_missing,
+        which covers the case where the output file is never created at all.
+        """
         # Output file exists but is empty
         mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=0)
         mock_codex_subprocess.run.return_value = MagicMock(
@@ -547,8 +556,10 @@ class TestCodexAgentClientRunAgent:
     ) -> None:
         """Test that run_agent falls back to stdout when output file does not exist.
 
-        Covers the edge case where returncode=0 but the output file was never
-        created (exists() returns False). The response should fall back to stdout.
+        Unlike test_run_agent_falls_back_to_stdout (which tests an existing but
+        empty output file), this test covers the edge case where returncode=0
+        but the output file was never created (exists() returns False). The
+        response should fall back to stdout.
         """
         mock_codex_subprocess.output_path.exists.return_value = False
         mock_codex_subprocess.run.return_value = MagicMock(
@@ -596,7 +607,9 @@ class TestCodexAgentClientRunAgent:
 
         Verifies that newline and carriage return characters in context
         keys and values are replaced with spaces to prevent prompt
-        injection from untrusted sources (DS-666).
+        injection from untrusted sources (DS-666). See also
+        test_run_agent_context_truncates_long_values, which tests the
+        complementary length-based truncation of context keys and values.
         """
         mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
         mock_codex_subprocess.output_path.read_text.return_value = "Response"
@@ -630,9 +643,11 @@ class TestCodexAgentClientRunAgent:
     ) -> None:
         """Test that overly long context values are truncated.
 
-        Verifies that context keys are truncated to 200 characters and
-        values to 2000 characters to prevent excessive prompt size from
-        untrusted sources (DS-666).
+        Unlike test_run_agent_context_sanitizes_newlines (which tests
+        character-level sanitization of newlines), this test verifies
+        length-based truncation: context keys are capped at 200 characters
+        and values at 2000 characters to prevent excessive prompt size
+        from untrusted sources (DS-666).
         """
         mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
         mock_codex_subprocess.output_path.read_text.return_value = "Response"

@@ -253,7 +253,14 @@ class TestClaudeRateLimiter:
         assert metrics["total_requests"] == 0
 
     def test_pause_metrics_context_manager_basic(self) -> None:
-        """pause_metrics context manager pauses metrics recording."""
+        """pause_metrics context manager pauses metrics recording.
+
+        Verifies the core behavior: requests made inside the pause_metrics
+        context are not counted. See also test_pause_metrics_with_reset (which
+        tests resetting metrics within the pause context) and
+        test_pause_metrics_restores_on_exit_without_reset (which verifies
+        that original metrics are preserved when no reset is performed).
+        """
         limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100, enabled=True)
         # Record some initial requests
         limiter.acquire(timeout=0)
@@ -272,7 +279,13 @@ class TestClaudeRateLimiter:
         assert metrics["total_requests"] == 2
 
     def test_pause_metrics_with_reset(self) -> None:
-        """pause_metrics allows safe reset of metrics."""
+        """pause_metrics allows safe reset of metrics.
+
+        Unlike test_pause_metrics_context_manager_basic (which tests that
+        requests are silently discarded during pause), this test verifies
+        the reset workflow: calling reset_metrics() inside the pause context
+        clears all counters, and new requests after exit are recorded fresh.
+        """
         limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100, enabled=True)
         # Record some requests
         limiter.acquire(timeout=0)
@@ -292,7 +305,13 @@ class TestClaudeRateLimiter:
         assert metrics["total_requests"] == 1
 
     def test_pause_metrics_restores_on_exit_without_reset(self) -> None:
-        """pause_metrics restores original metrics if reset is not called."""
+        """pause_metrics restores original metrics if reset is not called.
+
+        Unlike test_pause_metrics_with_reset (which tests the reset-inside-pause
+        workflow), this test verifies the no-op path: when the pause context
+        exits without calling reset_metrics(), the original metrics are fully
+        preserved and no data is lost.
+        """
         limiter = ClaudeRateLimiter(requests_per_minute=10, requests_per_hour=100, enabled=True)
         # Record some requests
         limiter.acquire(timeout=0)
@@ -370,7 +389,14 @@ class TestClaudeRateLimiterAsync:
 
     @pytest.mark.asyncio
     async def test_acquire_async_reject_strategy(self) -> None:
-        """Async reject strategy raises exception."""
+        """Async reject strategy raises exception.
+
+        Verifies that when the REJECT strategy is configured and the rate
+        limit is exceeded, acquire_async raises RateLimitExceededError. See
+        also test_acquire_async_queue_strategy_waits, which tests the
+        alternative QUEUE strategy that waits for token availability instead
+        of raising.
+        """
         limiter = ClaudeRateLimiter(
             requests_per_minute=1,
             requests_per_hour=100,
@@ -383,7 +409,13 @@ class TestClaudeRateLimiterAsync:
 
     @pytest.mark.asyncio
     async def test_acquire_async_queue_strategy_waits(self) -> None:
-        """Async queue strategy waits using asyncio.sleep."""
+        """Async queue strategy waits using asyncio.sleep.
+
+        Unlike test_acquire_async_reject_strategy (which raises an exception
+        when the limit is exceeded), this test verifies that the QUEUE strategy
+        waits for token replenishment via asyncio.sleep and eventually succeeds
+        once a token becomes available.
+        """
         limiter = ClaudeRateLimiter(
             requests_per_minute=60,  # 1 token per second refill
             requests_per_hour=1000,
