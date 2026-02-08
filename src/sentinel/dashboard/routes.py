@@ -4,6 +4,9 @@ This module defines the HTTP route handlers for the dashboard web interface.
 All handlers receive state through the SentinelStateAccessor to ensure
 read-only access to the orchestrator's state.
 
+Pydantic request/response models are defined in ``sentinel.dashboard.models``
+(extracted in DS-755 for better maintainability).
+
 Health check endpoints provide:
 - /health: Legacy health endpoint (deprecated, use /health/live)
 - /health/live: Liveness probe (basic health check)
@@ -26,16 +29,27 @@ import secrets
 import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from cachetools import TTLCache
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, ConfigDict
 from sse_starlette.sse import EventSourceResponse
 
+from sentinel.dashboard.models import (
+    BulkToggleRequest,
+    BulkToggleResponse,
+    DeleteResponse,
+    OrchestrationCreateRequest,
+    OrchestrationCreateResponse,
+    OrchestrationDetailResponse,
+    OrchestrationEditRequest,
+    OrchestrationEditResponse,
+    ToggleRequest,
+    ToggleResponse,
+)
 from sentinel.orchestration import OrchestrationError, _parse_orchestration
-from sentinel.types import AgentTypeLiteral, CursorModeLiteral, TriggerSource, TriggerSourceLiteral
+from sentinel.types import TriggerSource
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
 if TYPE_CHECKING:
@@ -117,257 +131,6 @@ class RateLimiter:
             file_path: The path to the file that was written.
         """
         self._last_write_times[file_path] = time.monotonic()
-
-
-# Request/Response models for orchestration toggle endpoints
-class ToggleRequest(BaseModel):
-    """Request model for single orchestration toggle."""
-
-    enabled: bool
-
-
-class ToggleResponse(BaseModel):
-    """Response model for single orchestration toggle."""
-
-    success: bool
-    enabled: bool
-    name: str
-
-
-class BulkToggleRequest(BaseModel):
-    """Request model for bulk orchestration toggle."""
-
-    source: Literal["jira", "github"]
-    identifier: str
-    enabled: bool
-
-
-class BulkToggleResponse(BaseModel):
-    """Response model for bulk orchestration toggle."""
-
-    success: bool
-    toggled_count: int
-
-
-# Pydantic models for orchestration edit endpoints (DS-727)
-class TriggerEditRequest(BaseModel):
-    """Request model for editing trigger configuration."""
-
-    source: TriggerSourceLiteral | None = None
-    project: str | None = None
-    jql_filter: str | None = None
-    tags: list[str] | None = None
-    project_number: int | None = None
-    project_scope: Literal["org", "user"] | None = None
-    project_owner: str | None = None
-    project_filter: str | None = None
-    labels: list[str] | None = None
-
-
-class GitHubContextEditRequest(BaseModel):
-    """Request model for editing GitHub context configuration."""
-
-    host: str | None = None
-    org: str | None = None
-    repo: str | None = None
-    branch: str | None = None
-    create_branch: bool | None = None
-    base_branch: str | None = None
-
-
-class AgentEditRequest(BaseModel):
-    """Request model for editing agent configuration."""
-
-    prompt: str | None = None
-    github: GitHubContextEditRequest | None = None
-    timeout_seconds: int | None = None
-    model: str | None = None
-    agent_type: AgentTypeLiteral | None = None
-    cursor_mode: CursorModeLiteral | None = None
-    agent_teams: bool | None = None
-    strict_template_variables: bool | None = None
-
-
-class RetryEditRequest(BaseModel):
-    """Request model for editing retry configuration."""
-
-    max_attempts: int | None = None
-    success_patterns: list[str] | None = None
-    failure_patterns: list[str] | None = None
-    default_status: Literal["success", "failure"] | None = None
-    default_outcome: str | None = None
-
-
-class OutcomeEditRequest(BaseModel):
-    """Request model for editing outcome configuration."""
-
-    name: str | None = None
-    patterns: list[str] | None = None
-    add_tag: str | None = None
-
-
-class LifecycleEditRequest(BaseModel):
-    """Request model for editing lifecycle configuration."""
-
-    on_start_add_tag: str | None = None
-    on_complete_remove_tag: str | None = None
-    on_complete_add_tag: str | None = None
-    on_failure_add_tag: str | None = None
-
-
-class OrchestrationEditRequest(BaseModel):
-    """Request model for editing an orchestration configuration.
-
-    All fields are optional. Only provided fields will be updated.
-    The 'name' field is read-only and cannot be edited.
-    """
-
-    enabled: bool | None = None
-    max_concurrent: int | None = None
-    trigger: TriggerEditRequest | None = None
-    agent: AgentEditRequest | None = None
-    retry: RetryEditRequest | None = None
-    outcomes: list[OutcomeEditRequest] | None = None
-    lifecycle: LifecycleEditRequest | None = None
-
-
-class OrchestrationEditResponse(BaseModel):
-    """Response model for orchestration edit."""
-
-    success: bool
-    name: str
-    errors: list[str] = []
-
-
-class DeleteResponse(BaseModel):
-    """Response model for orchestration deletion."""
-
-    success: bool
-    name: str
-
-
-class OrchestrationCreateRequest(BaseModel):
-    """Request model for creating a new orchestration."""
-
-    name: str
-    target_file: str
-    enabled: bool | None = None
-    max_concurrent: int | None = None
-    trigger: TriggerEditRequest | None = None
-    agent: AgentEditRequest | None = None
-    retry: RetryEditRequest | None = None
-    outcomes: list[OutcomeEditRequest] | None = None
-    lifecycle: LifecycleEditRequest | None = None
-
-
-class OrchestrationCreateResponse(BaseModel):
-    """Response model for orchestration creation."""
-
-    success: bool
-    name: str
-    errors: list[str] = []
-
-
-# Pydantic response models for orchestration detail endpoint (DS-754)
-# These use from_attributes=True to enable direct conversion from frozen
-# dataclass DTOs via model_validate(), eliminating manual field-by-field
-# construction and keeping the models in sync with domain objects automatically.
-
-
-class GitHubContextDetailResponse(BaseModel):
-    """Response model for GitHub context in orchestration detail."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    host: str
-    org: str
-    repo: str
-    branch: str
-    create_branch: bool
-    base_branch: str
-
-
-class TriggerDetailResponse(BaseModel):
-    """Response model for trigger configuration in orchestration detail."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    source: str
-    project: str
-    jql_filter: str
-    tags: list[str]
-    project_number: int | None
-    project_scope: Literal["org", "user"]
-    project_owner: str
-    project_filter: str
-    labels: list[str]
-
-
-class AgentDetailResponse(BaseModel):
-    """Response model for agent configuration in orchestration detail."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    prompt: str
-    github: GitHubContextDetailResponse | None
-    timeout_seconds: int | None
-    model: str | None
-    agent_type: str | None
-    cursor_mode: str | None
-    strict_template_variables: bool
-
-
-class RetryDetailResponse(BaseModel):
-    """Response model for retry configuration in orchestration detail."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    max_attempts: int
-    success_patterns: list[str]
-    failure_patterns: list[str]
-    default_status: str
-    default_outcome: str
-
-
-class OutcomeDetailResponse(BaseModel):
-    """Response model for an outcome in orchestration detail."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    name: str
-    patterns: list[str]
-    add_tag: str
-
-
-class LifecycleDetailResponse(BaseModel):
-    """Response model for lifecycle configuration in orchestration detail."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    on_start_add_tag: str
-    on_complete_remove_tag: str
-    on_complete_add_tag: str
-    on_failure_add_tag: str
-
-
-class OrchestrationDetailResponse(BaseModel):
-    """Response model for full orchestration detail.
-
-    Uses from_attributes=True to enable direct conversion from
-    OrchestrationDetailInfo frozen dataclass via model_validate().
-    """
-
-    model_config = ConfigDict(from_attributes=True)
-
-    name: str
-    enabled: bool
-    max_concurrent: int | None
-    source_file: str
-    trigger: TriggerDetailResponse
-    agent: AgentDetailResponse
-    retry: RetryDetailResponse
-    outcomes: list[OutcomeDetailResponse]
-    lifecycle: LifecycleDetailResponse
 
 
 # Column definitions for orchestration tables, passed via route context
