@@ -110,6 +110,20 @@ pytest --cov=sentinel --cov-report=html
    - No network calls or subprocess execution
    - No sleeps or time-dependent operations
 
+4. **Use cross-referencing docstrings for related tests:**
+   When two or more tests cover overlapping aspects of the same behavior, add cross-references
+   in their docstrings so developers can understand the relationship at a glance. See the
+   [Test Docstring Cross-References](../CONTRIBUTING.md#test-docstring-cross-references) section
+   in CONTRIBUTING.md for the full convention, including when to use two-way vs. three-way
+   references and the "See also" vs. "Unlike" patterns.
+
+   Quick reference:
+   - **"See also"**: Forward reference to a complementary test
+   - **"Unlike"**: Contrast reference highlighting a specific distinction
+   - **Two-way**: Default for test pairs covering complementary aspects
+   - **Three-way+**: Use when three or more tests cover distinct variants of the same behavior;
+     include parenthetical annotations for clarity
+
 ### Integration Test Guidelines
 
 1. **Mark tests with `@pytest.mark.integration`:**
