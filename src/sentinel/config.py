@@ -17,6 +17,7 @@ The main Config class composes these sub-configs into a single configuration obj
 from __future__ import annotations
 
 import logging
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -417,7 +418,7 @@ def _format_number(value: float) -> str:
     Returns:
         A clean string representation of *value*.
     """
-    if value == int(value):
+    if math.isfinite(value) and value.is_integer():
         return str(int(value))
     return str(value)
 
