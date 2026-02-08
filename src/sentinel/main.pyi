@@ -1,9 +1,8 @@
-"""Type stubs for main.py to improve IDE autocomplete for GitHubIssueWithRepo.
-
-This stub file provides explicit type hints for properties delegated via __getattr__
-in GitHubIssueWithRepo, enabling IDE autocomplete while maintaining DRY runtime code.
+"""Type stubs for main.py to improve IDE autocomplete.
 
 See DS-402 for background on why this stub file was created.
+GitHubIssueWithRepo stubs moved to poll_coordinator.pyi in DS-748
+after the class was refactored from main.py to poll_coordinator.py.
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ from sentinel.agent_clients.factory import AgentClientFactory
 from sentinel.agent_logger import AgentLogger
 from sentinel.config import Config
 from sentinel.executor import AgentExecutor, ExecutionResult
-from sentinel.github_poller import GitHubIssue, GitHubPoller
+from sentinel.github_poller import GitHubPoller
 from sentinel.github_rest_client import GitHubTagClient
 from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraPoller
@@ -53,54 +52,6 @@ class QueuedIssueInfo:
         orchestration_name: str,
         queued_at: datetime,
     ) -> None: ...
-
-class GitHubIssueWithRepo:
-    """Wrapper for GitHubIssue that provides full key with repo context.
-
-    Type stub provides explicit type hints for properties delegated via __getattr__
-    to enable IDE autocomplete while maintaining DRY runtime code.
-    """
-
-    _issue: GitHubIssue
-    _repo: str
-
-    def __init__(self, issue: GitHubIssue, repo: str) -> None: ...
-
-    # Explicit property override
-    @property
-    def key(self) -> str: ...
-
-    # Properties delegated to GitHubIssue via __getattr__
-    # These type hints enable IDE autocomplete for the delegated properties
-    @property
-    def number(self) -> int: ...
-    @property
-    def title(self) -> str: ...
-    @property
-    def body(self) -> str: ...
-    @property
-    def state(self) -> str: ...
-    @property
-    def author(self) -> str: ...
-    @property
-    def assignees(self) -> list[str]: ...
-    @property
-    def labels(self) -> list[str]: ...
-    @property
-    def is_pull_request(self) -> bool: ...
-    @property
-    def head_ref(self) -> str: ...
-    @property
-    def base_ref(self) -> str: ...
-    @property
-    def draft(self) -> bool: ...
-    @property
-    def repo_url(self) -> str: ...
-    @property
-    def parent_issue_number(self) -> int | None: ...
-    def __getattr__(self, name: str) -> Any: ...
-
-def extract_repo_from_url(url: str) -> str | None: ...
 
 class DashboardServer:
     def __init__(self, host: str, port: int) -> None: ...

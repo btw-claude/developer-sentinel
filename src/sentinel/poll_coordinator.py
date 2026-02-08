@@ -79,7 +79,11 @@ class GitHubIssueWithRepo:
 
     The GitHubIssue.key property returns "#123" but tag operations need "org/repo#123".
     This wrapper provides the full key while delegating all other GitHubIssueProtocol
-    properties to the wrapped issue via __getattr__.
+    properties to the wrapped issue.
+
+    Explicit forwarding properties are provided for all GitHubIssueProtocol attributes
+    to enable mypy static analysis and IDE autocompletion (DS-748). The __getattr__
+    fallback is retained for any additional attributes not covered by the protocol.
     """
 
     __slots__ = ("_issue", "_repo")
@@ -99,8 +103,80 @@ class GitHubIssueWithRepo:
         """Return the full issue key including repo context."""
         return f"{self._repo}#{self._issue.number}"
 
+    # Explicit forwarding properties for GitHubIssueProtocol attributes.
+    # These enable mypy verification and IDE autocompletion (DS-748).
+
+    @property
+    def number(self) -> int:
+        """Return the issue/PR number."""
+        return self._issue.number
+
+    @property
+    def title(self) -> str:
+        """Return the issue/PR title."""
+        return self._issue.title
+
+    @property
+    def body(self) -> str:
+        """Return the issue/PR body/description."""
+        return self._issue.body
+
+    @property
+    def state(self) -> str:
+        """Return the issue/PR state."""
+        return self._issue.state
+
+    @property
+    def author(self) -> str:
+        """Return the author username."""
+        return self._issue.author
+
+    @property
+    def assignees(self) -> list[str]:
+        """Return the list of assigned usernames."""
+        return self._issue.assignees
+
+    @property
+    def labels(self) -> list[str]:
+        """Return the list of label names."""
+        return self._issue.labels
+
+    @property
+    def is_pull_request(self) -> bool:
+        """Return whether this is a pull request."""
+        return self._issue.is_pull_request
+
+    @property
+    def head_ref(self) -> str:
+        """Return the head branch reference."""
+        return self._issue.head_ref
+
+    @property
+    def base_ref(self) -> str:
+        """Return the base branch reference."""
+        return self._issue.base_ref
+
+    @property
+    def draft(self) -> bool:
+        """Return whether this is a draft PR."""
+        return self._issue.draft
+
+    @property
+    def repo_url(self) -> str:
+        """Return the full URL to the issue/PR."""
+        return self._issue.repo_url
+
+    @property
+    def parent_issue_number(self) -> int | None:
+        """Return the parent issue number, if any."""
+        return self._issue.parent_issue_number
+
     def __getattr__(self, name: str) -> Any:
-        """Delegate attribute access to the wrapped GitHubIssue."""
+        """Delegate attribute access to the wrapped GitHubIssue.
+
+        This fallback handles any attributes not explicitly defined as forwarding
+        properties above. It is retained for backwards compatibility.
+        """
         return getattr(self._issue, name)
 
 
