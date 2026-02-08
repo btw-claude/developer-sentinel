@@ -8,9 +8,13 @@
         </div>
     </div>
     <div class="metric">
-        <div class="metric-label">Available Slots</div>
-        <div class="metric-value {% if state.available_slots == 0 %}status-warn{% endif %}">
-            {{ state.available_slots }}
+        <div class="metric-label">Capacity</div>
+        <div class="metric-value">
+            {% if state.available_slots > 0 %}
+            <span class="status-ok">{{ state.available_slots }}/{{ state.max_concurrent_executions }} available</span>
+            {% else %}
+            <span class="status-warn">At capacity</span>
+            {% endif %}
         </div>
     </div>
     <div class="metric">
