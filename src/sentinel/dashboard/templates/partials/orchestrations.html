@@ -84,7 +84,7 @@
                             <input type="checkbox"
                                    class="toggle-switch__input"
                                    {% if orch.enabled %}checked{% endif %}
-                                   hx-post="/api/orchestrations/{{ orch.name }}/toggle"
+                                   hx-post="/api/orchestrations/{{ orch.name|urlencode }}/toggle"
                                    hx-vals='{"enabled": {{ "false" if orch.enabled else "true" }}}'
                                    hx-swap="none"
                                    hx-on::after-request="handleToggleResponse(event)">
@@ -94,7 +94,7 @@
                 </tr>
                 <tr class="orchestration-detail-row" id="detail-row-{{ orch.name }}">
                     <td colspan="{{ orch_table_columns|length }}"
-                        hx-get="/partials/orchestration_detail/{{ orch.name }}"
+                        hx-get="/partials/orchestration_detail/{{ orch.name|urlencode }}"
                         hx-trigger="revealed once"
                         hx-swap="innerHTML">
                     </td>

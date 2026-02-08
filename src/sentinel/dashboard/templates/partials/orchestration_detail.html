@@ -213,11 +213,11 @@
     {# Action Buttons #}
     <div class="detail-actions">
         <button class="btn-sm btn-accent"
-                hx-get="/partials/orchestration_edit/{{ detail.name }}"
+                hx-get="/partials/orchestration_edit/{{ detail.name|urlencode }}"
                 hx-target="closest .orchestration-detail"
                 hx-swap="outerHTML">Edit</button>
         <button class="btn-sm btn-danger"
-                hx-delete="/api/orchestrations/{{ detail.name }}"
+                hx-delete="/api/orchestrations/{{ detail.name|urlencode }}"
                 hx-confirm="Are you sure you want to delete the orchestration '{{ detail.name }}'? This action cannot be undone."
                 hx-swap="none"
                 hx-on::after-request="handleDeleteResponse(event, '{{ detail.name }}')">Delete</button>
