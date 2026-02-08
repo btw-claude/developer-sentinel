@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict
 
 from sentinel.types import AgentTypeLiteral, CursorModeLiteral, TriggerSourceLiteral
 
+# NOTE: Update this list when adding new models to this module.
 __all__: list[str] = [
     # Toggle models
     "ToggleRequest",
