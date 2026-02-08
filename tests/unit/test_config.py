@@ -26,6 +26,7 @@ from sentinel.config import (
     LoggingConfig,
     PollingConfig,
     RateLimitConfig,
+    ServiceHealthGateConfig,
     _format_bound_message,
     _format_number,
     _parse_bool,
@@ -130,6 +131,21 @@ class TestSubConfigs:
         health_check = HealthCheckConfig()
         assert health_check.enabled is True
         assert health_check.timeout == 5.0
+
+    def test_service_health_gate_config_defaults(self) -> None:
+        shg = ServiceHealthGateConfig()
+        assert shg.enabled is True
+        assert shg.failure_threshold == 3
+        assert shg.initial_probe_interval == 30.0
+        assert shg.max_probe_interval == 300.0
+        assert shg.probe_backoff_factor == 2.0
+        assert shg.probe_timeout == 5.0
+
+    def test_service_health_gate_config_frozen(self) -> None:
+        """ServiceHealthGateConfig should be immutable after creation."""
+        shg = ServiceHealthGateConfig()
+        with pytest.raises(FrozenInstanceError):
+            shg.enabled = False  # type: ignore[misc]
 
     def test_execution_config_defaults(self) -> None:
         execution = ExecutionConfig()
@@ -1682,3 +1698,195 @@ class TestSuccessRateYellowThreshold:
 
         assert config.dashboard.success_rate_yellow_threshold == DEFAULT_YELLOW_THRESHOLD
         assert "not a valid number" in caplog.text
+
+
+class TestServiceHealthGateConfig:
+    """Tests for ServiceHealthGateConfig load_config integration."""
+
+    def test_default_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that all service health gate fields default correctly."""
+        monkeypatch.delenv("SENTINEL_HEALTH_GATE_ENABLED", raising=False)
+        monkeypatch.delenv("SENTINEL_HEALTH_GATE_FAILURE_THRESHOLD", raising=False)
+        monkeypatch.delenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", raising=False)
+        monkeypatch.delenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", raising=False)
+        monkeypatch.delenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", raising=False)
+        monkeypatch.delenv("SENTINEL_HEALTH_GATE_PROBE_TIMEOUT", raising=False)
+
+        config = load_config()
+
+        assert config.service_health_gate.enabled is True
+        assert config.service_health_gate.failure_threshold == 3
+        assert config.service_health_gate.initial_probe_interval == 30.0
+        assert config.service_health_gate.max_probe_interval == 300.0
+        assert config.service_health_gate.probe_backoff_factor == 2.0
+        assert config.service_health_gate.probe_timeout == 5.0
+
+    def test_enabled_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that enabled loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_ENABLED", "false")
+
+        config = load_config()
+
+        assert config.service_health_gate.enabled is False
+
+    def test_enabled_true_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that enabled=true loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_ENABLED", "true")
+
+        config = load_config()
+
+        assert config.service_health_gate.enabled is True
+
+    def test_failure_threshold_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that failure_threshold loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_FAILURE_THRESHOLD", "5")
+
+        config = load_config()
+
+        assert config.service_health_gate.failure_threshold == 5
+
+    def test_failure_threshold_invalid_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid failure_threshold uses the default."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_FAILURE_THRESHOLD", "not-a-number")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.failure_threshold == 3
+        assert "Invalid SENTINEL_HEALTH_GATE_FAILURE_THRESHOLD" in caplog.text
+
+    def test_failure_threshold_zero_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that zero failure_threshold uses the default (must be positive)."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_FAILURE_THRESHOLD", "0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.failure_threshold == 3
+        assert "not positive" in caplog.text
+
+    def test_initial_probe_interval_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that initial_probe_interval loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "60.0")
+
+        config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == 60.0
+
+    def test_initial_probe_interval_invalid_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid initial_probe_interval uses the default."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "abc")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == 30.0
+        assert "Invalid SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL" in caplog.text
+
+    def test_initial_probe_interval_negative_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that negative initial_probe_interval uses the default."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "-10.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == 30.0
+        assert "must be >= 0" in caplog.text
+
+    def test_max_probe_interval_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that max_probe_interval loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "600.0")
+
+        config = load_config()
+
+        assert config.service_health_gate.max_probe_interval == 600.0
+
+    def test_max_probe_interval_invalid_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid max_probe_interval uses the default."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "xyz")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.max_probe_interval == 300.0
+        assert "Invalid SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL" in caplog.text
+
+    def test_probe_backoff_factor_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that probe_backoff_factor loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "3.0")
+
+        config = load_config()
+
+        assert config.service_health_gate.probe_backoff_factor == 3.0
+
+    def test_probe_backoff_factor_invalid_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid probe_backoff_factor uses the default."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "bad")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.probe_backoff_factor == 2.0
+        assert "Invalid SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR" in caplog.text
+
+    def test_probe_timeout_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that probe_timeout loads from environment variable."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_TIMEOUT", "10.0")
+
+        config = load_config()
+
+        assert config.service_health_gate.probe_timeout == 10.0
+
+    def test_probe_timeout_invalid_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that invalid probe_timeout uses the default."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_TIMEOUT", "nope")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.probe_timeout == 5.0
+        assert "Invalid SENTINEL_HEALTH_GATE_PROBE_TIMEOUT" in caplog.text
+
+    def test_probe_timeout_negative_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that negative probe_timeout uses the default."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_TIMEOUT", "-1.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.probe_timeout == 5.0
+        assert "must be >= 0" in caplog.text
+
+    def test_all_fields_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test loading all service health gate fields from environment variables."""
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_ENABLED", "false")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_FAILURE_THRESHOLD", "10")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "15.0")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "120.0")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "1.5")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_PROBE_TIMEOUT", "3.0")
+
+        config = load_config()
+
+        assert config.service_health_gate.enabled is False
+        assert config.service_health_gate.failure_threshold == 10
+        assert config.service_health_gate.initial_probe_interval == 15.0
+        assert config.service_health_gate.max_probe_interval == 120.0
+        assert config.service_health_gate.probe_backoff_factor == 1.5
+        assert config.service_health_gate.probe_timeout == 3.0
