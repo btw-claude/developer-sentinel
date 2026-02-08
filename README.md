@@ -127,6 +127,13 @@ sentinel --interval 30 --log-level DEBUG --config-dir ./my-orchestrations
 
 ## Orchestration Configuration
 
+> **Snippet Convention:** YAML examples in this section use ellipsis comments
+> (e.g., `# ... (inside agent.github block)`) to show where a snippet fits
+> within a larger configuration file. These comments indicate omitted
+> surrounding context and tell you which section of the full orchestration
+> config the snippet belongs to. They are not part of the actual YAML
+> configuration.
+
 Define orchestrations in YAML files under the `orchestrations/` directory:
 
 ```yaml
