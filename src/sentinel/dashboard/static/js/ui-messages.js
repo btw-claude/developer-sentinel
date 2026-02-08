@@ -31,12 +31,12 @@ var UI_MESSAGES = Object.freeze({
         ORCHESTRATION_DISABLED: 'Orchestration disabled successfully',
 
         // Delete operations (base.html - handleDeleteResponse)
-        DELETE_SUCCESS: function(name) { return "Orchestration '" + name + "' deleted successfully"; },
-        DELETE_FAILED: function(name) { return "Failed to delete orchestration '" + name + "'"; },
+        DELETE_SUCCESS: function(name) { return 'Orchestration \'' + name + '\' deleted successfully'; },
+        DELETE_FAILED: function(name) { return 'Failed to delete orchestration \'' + name + '\''; },
         RATE_LIMIT_EXCEEDED: 'Rate limit exceeded. Please wait before trying again.',
 
         // Create operations (orchestration-forms.js)
-        CREATE_SUCCESS: function(name) { return "Orchestration '" + name + "' created successfully"; },
+        CREATE_SUCCESS: function(name) { return 'Orchestration \'' + name + '\' created successfully'; },
         CREATE_CSRF_REFRESH_FAILED: 'CSRF token refresh failed. Please reload the page.',
         CREATE_CSRF_VALIDATION_FAILED: 'CSRF token validation failed. Please reload the page.',
         VALIDATION_ERROR: 'Validation error',
@@ -44,13 +44,13 @@ var UI_MESSAGES = Object.freeze({
         CREATE_NETWORK_ERROR: 'Network error while creating orchestration',
 
         // Edit operations (orchestration-forms.js)
-        EDIT_SUCCESS: function(name) { return "Orchestration '" + name + "' updated successfully"; },
+        EDIT_SUCCESS: function(name) { return 'Orchestration \'' + name + '\' updated successfully'; },
         EDIT_FAILED: 'Failed to update orchestration',
         EDIT_NETWORK_ERROR: 'Network error while updating orchestration',
 
         // Log viewer invalid URL parameters (log_viewer.html)
-        LOG_FILE_NOT_FOUND: function(file) { return 'Log file "' + file + '" not found in selected orchestration'; },
-        ORCHESTRATION_NOT_FOUND: function(name) { return 'Orchestration "' + name + '" not found'; }
+        LOG_FILE_NOT_FOUND: function(file) { return 'Log file \'' + file + '\' not found in selected orchestration'; },
+        ORCHESTRATION_NOT_FOUND: function(name) { return 'Orchestration \'' + name + '\' not found'; }
     }),
 
     /** CSRF token messages (orchestration_create_form.html). */
@@ -68,8 +68,8 @@ var UI_MESSAGES = Object.freeze({
     /** Log viewer UI text (log_viewer.html). */
     LOG_VIEWER: Object.freeze({
         NO_FILE_SELECTED: 'No log file selected',
-        SELECT_PROMPT_HTML: '<div class="empty-state"><p>Select an orchestration and log file to view</p></div>',
-        LOADING_HTML: '<div class="empty-state"><p>Loading...</p></div>',
+        SELECT_PROMPT: '\uD83D\uDCCB Select an orchestration and log file to view',
+        LOADING: 'Loading...',
         CONNECTED: 'Connected',
         DISCONNECTED: 'Disconnected',
         PAUSE: 'Pause',
@@ -104,7 +104,7 @@ var UI_MESSAGES = Object.freeze({
         CREATE_FETCH_ERROR: 'submitOrchestrationCreate: fetch error:',
 
         // log_viewer.html - URL parameter validation
-        INVALID_FILE_PARAM: function(file, orch) { return 'Invalid URL parameter: file "' + file + '" not found in orchestration "' + orch + '"'; },
-        INVALID_ORCH_PARAM: function(orch) { return 'Invalid URL parameter: orchestration "' + orch + '" not found'; }
+        INVALID_FILE_PARAM: function(file, orch) { return 'Invalid URL parameter: file \'' + file + '\' not found in orchestration \'' + orch + '\''; },
+        INVALID_ORCH_PARAM: function(orch) { return 'Invalid URL parameter: orchestration \'' + orch + '\' not found'; }
     })
 });
