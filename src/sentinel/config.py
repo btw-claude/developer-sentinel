@@ -404,6 +404,29 @@ def _parse_bool(value: str) -> bool:
     return value.lower() in ("true", "1", "yes")
 
 
+def _format_bound_message(
+    min_val: float | None = None,
+    max_val: float | None = None,
+) -> str:
+    """Format a human-readable bound description for warning messages.
+
+    Args:
+        min_val: Optional minimum allowed value (inclusive). None means no lower bound.
+        max_val: Optional maximum allowed value (inclusive). None means no upper bound.
+
+    Returns:
+        A descriptive string such as "is not in range 0.0-1.0", "must be >= 0.0",
+        or "must be <= 1.0".
+    """
+    if min_val is not None and max_val is not None:
+        return f"is not in range {min_val}-{max_val}"
+    if min_val is not None:
+        return f"must be >= {min_val}"
+    if max_val is not None:
+        return f"must be <= {max_val}"
+    return "is out of range"
+
+
 def _parse_bounded_float(
     value: str,
     name: str,
@@ -433,21 +456,19 @@ def _parse_bounded_float(
         parsed = float(value)
         if min_val is not None and parsed < min_val:
             logging.warning(
-                "Invalid %s: %f is not in range %s-%s, using default %f",
+                "Invalid %s: %f %s, using default %f",
                 name,
                 parsed,
-                min_val,
-                max_val,
+                _format_bound_message(min_val, max_val),
                 default,
             )
             return default
         if max_val is not None and parsed > max_val:
             logging.warning(
-                "Invalid %s: %f is not in range %s-%s, using default %f",
+                "Invalid %s: %f %s, using default %f",
                 name,
                 parsed,
-                min_val,
-                max_val,
+                _format_bound_message(min_val, max_val),
                 default,
             )
             return default
