@@ -134,7 +134,7 @@ sentinel --interval 30 --log-level DEBUG --config-dir ./my-orchestrations
 > | Convention | Example | Meaning |
 > |------------|---------|---------|
 > | Ellipsis comment | `# ... (inside agent.github block)` | Omitted surrounding context; the parenthetical tells you which section of the full config the snippet belongs to. |
-> | Placeholder value | `your-org`, `your-email@example.com` | A value you must replace with your own (organization name, email, token, etc.). |
+> | Placeholder value | `your-org`, `your-email@example.com` | A value you must replace with your own. |
 
 Define orchestrations in YAML files under the `orchestrations/` directory:
 
