@@ -49,6 +49,7 @@ from sentinel.dashboard.models import (
     ToggleResponse,
 )
 from sentinel.orchestration import OrchestrationError, _parse_orchestration
+from sentinel.orchestration_edit import _build_yaml_updates, _validate_orchestration_updates
 from sentinel.types import TriggerSource
 from sentinel.yaml_writer import OrchestrationYamlWriter, OrchestrationYamlWriterError
 
@@ -145,120 +146,6 @@ ORCH_TABLE_COLUMNS = [
     "Avg Duration",
     "Status",
 ]
-
-
-
-def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
-    """Convert an OrchestrationEditRequest to a YAML-compatible update dict.
-
-    Uses Pydantic v2 model_dump(exclude_none=True) for top-level and nested
-    models to avoid manual is-not-None checks. The lifecycle section requires
-    special post-processing to map flat Pydantic fields to the nested YAML
-    structure (on_start, on_complete, on_failure).
-
-    Args:
-        request: The edit request containing fields to update.
-
-    Returns:
-        A dictionary mirroring the YAML structure with only the
-        fields that should be updated.
-    """
-    # Use model_dump to get all non-None fields automatically
-    raw = request.model_dump(exclude_none=True)
-
-    updates: dict[str, Any] = {}
-
-    # Copy top-level scalar fields directly
-    for key in ("enabled", "max_concurrent"):
-        if key in raw:
-            updates[key] = raw[key]
-
-    # Nested models: model_dump already excludes None recursively
-    if "trigger" in raw and raw["trigger"]:
-        updates["trigger"] = raw["trigger"]
-
-    if "agent" in raw and raw["agent"]:
-        updates["agent"] = raw["agent"]
-
-    if "retry" in raw and raw["retry"]:
-        updates["retry"] = raw["retry"]
-
-    if "outcomes" in raw:
-        updates["outcomes"] = raw["outcomes"]
-
-    # Lifecycle requires special handling: flat Pydantic fields map to nested YAML
-    if "lifecycle" in raw and raw["lifecycle"]:
-        lc = raw["lifecycle"]
-        if "on_start_add_tag" in lc:
-            updates.setdefault("on_start", {})["add_tag"] = lc["on_start_add_tag"]
-        if "on_complete_remove_tag" in lc:
-            updates.setdefault("on_complete", {})["remove_tag"] = lc["on_complete_remove_tag"]
-        if "on_complete_add_tag" in lc:
-            updates.setdefault("on_complete", {})["add_tag"] = lc["on_complete_add_tag"]
-        if "on_failure_add_tag" in lc:
-            updates.setdefault("on_failure", {})["add_tag"] = lc["on_failure_add_tag"]
-
-    return updates
-
-
-def _validate_orchestration_updates(
-    orch_name: str,
-    current_data: dict[str, Any],
-    updates: dict[str, Any],
-) -> list[str]:
-    """Validate orchestration updates by passing through _parse_orchestration.
-
-    Merges the updates into a copy of the current orchestration data and
-    validates the result through the existing _parse_orchestration() function.
-    This reuses ALL existing validation (branch patterns, agent_type/cursor_mode
-    combos, project keys, etc.) without duplication.
-
-    Note: _parse_orchestration() raises on the first validation error, so this
-    function returns at most one error string. Users making multiple mistakes
-    will need to fix them one at a time.
-
-    Args:
-        orch_name: The name of the orchestration being updated.
-        current_data: The current orchestration data as a plain dict.
-        updates: The updates to merge.
-
-    Returns:
-        A list of validation error messages. Empty list means validation passed.
-    """
-    # Deep merge updates into a copy of current data
-    merged = _deep_merge_dicts(current_data, updates)
-
-    # Ensure name is preserved in merged data
-    merged["name"] = orch_name
-
-    try:
-        _parse_orchestration(merged)
-        return []
-    except OrchestrationError as e:
-        return [str(e)]
-
-
-def _deep_merge_dicts(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
-    """Deep merge updates into a copy of base dict.
-
-    Creates a new dict with base values overridden by updates.
-    Nested dicts are recursively merged. Lists are replaced entirely,
-    not appended or element-wise merged.
-
-    Args:
-        base: The base dictionary to merge into.
-        updates: The updates to apply.
-
-    Returns:
-        A new dictionary with merged values.
-    """
-    result = dict(base)
-    for key, value in updates.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge_dicts(result[key], value)
-        else:
-            result[key] = value
-    return result
 
 
 def create_routes(
@@ -1241,8 +1128,16 @@ def create_routes(
         """Edit the configuration of an orchestration.
 
         This endpoint updates orchestration fields in the YAML file.
-        Changes are validated through _parse_orchestration() before writing.
+        Changes are validated through section-specific parsers before writing,
+        allowing multiple validation errors to be returned in a single request.
         The change takes effect on the next hot-reload cycle.
+
+        Note on disabled orchestrations:
+        Disabled orchestrations (enabled: false) are not included in the active
+        dashboard state and will return 404 when attempting to edit. This is by
+        design, as the dashboard only exposes enabled orchestrations. To edit a
+        disabled orchestration, first re-enable it via the YAML file directly,
+        then use this endpoint for subsequent edits.
 
         Args:
             name: The name of the orchestration to edit.
@@ -1304,10 +1199,10 @@ def create_routes(
                 detail=f"Orchestration '{name}' not found in file {source_file}",
             )
 
-        # Validate the merged result through _parse_orchestration()
+        # Validate the merged result through section-specific parsers
         errors = _validate_orchestration_updates(name, current_data, updates)
         if errors:
-            raise HTTPException(status_code=422, detail=errors[0])
+            raise HTTPException(status_code=422, detail=errors)
 
         # Check rate limit before writing
         rate_limiter.check_rate_limit(str(source_file))
