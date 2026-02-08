@@ -25,7 +25,12 @@ from sentinel.router import Router, RoutingResult
 GITHUB_ISSUE_PR_URL_PATTERN: re.Pattern[str]
 
 class GroupedOrchestrations(NamedTuple):
-    """Result of grouping orchestrations by their trigger source (DS-750)."""
+    """Result of grouping orchestrations by their trigger source (DS-750).
+
+    Note:
+        Adding new fields will break callers using positional unpacking.
+        Prefer named field access (``result.jira``, ``result.github``) (DS-751).
+    """
 
     jira: list[Orchestration]
     github: list[Orchestration]
