@@ -1559,7 +1559,7 @@ class TestParseEnvIntErrorMessageTemplates:
     def test_log_message_contains_negative_variable_value_and_default(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Info log should embed both the negative override value and default (DS-778, DS-789)."""
+        """Info log should contain both the variable name with negative override value (TEST_TMPL_VAR=-5) and the negative default value (default: -1) in the message."""
         with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "-5"}):
             with caplog.at_level(logging.INFO, logger="sentinel.orchestration"):
                 _parse_env_int("TEST_TMPL_VAR", -1, min_value=-10)
