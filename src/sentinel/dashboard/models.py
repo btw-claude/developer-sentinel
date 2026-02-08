@@ -22,6 +22,36 @@ from pydantic import BaseModel, ConfigDict
 
 from sentinel.types import AgentTypeLiteral, CursorModeLiteral, TriggerSourceLiteral
 
+__all__: list[str] = [
+    # Toggle models
+    "ToggleRequest",
+    "ToggleResponse",
+    "BulkToggleRequest",
+    "BulkToggleResponse",
+    # Edit models
+    "TriggerEditRequest",
+    "GitHubContextEditRequest",
+    "AgentEditRequest",
+    "RetryEditRequest",
+    "OutcomeEditRequest",
+    "LifecycleEditRequest",
+    "OrchestrationEditRequest",
+    "OrchestrationEditResponse",
+    # Delete models
+    "DeleteResponse",
+    # Create models
+    "OrchestrationCreateRequest",
+    "OrchestrationCreateResponse",
+    # Detail models (DS-754)
+    "GitHubContextDetailResponse",
+    "TriggerDetailResponse",
+    "AgentDetailResponse",
+    "RetryDetailResponse",
+    "OutcomeDetailResponse",
+    "LifecycleDetailResponse",
+    "OrchestrationDetailResponse",
+]
+
 
 # Request/Response models for orchestration toggle endpoints
 class ToggleRequest(BaseModel):
