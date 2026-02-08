@@ -46,6 +46,7 @@ from sentinel.poll_coordinator import PollCoordinator
 from sentinel.poller import JiraIssue, JiraPoller
 from sentinel.router import Router, RoutingResult
 from sentinel.sdk_clients import ClaudeProcessInterruptedError
+from sentinel.service_health_gate import ServiceHealthGate
 from sentinel.state_tracker import (
     CompletedExecutionInfo,
     QueuedIssueInfo,
@@ -124,6 +125,9 @@ class Sentinel:
 
         # Initialize tag manager
         self.tag_manager = TagManager(tag_client, github_client=github_tag_client)
+
+        # Initialize service health gate
+        self._health_gate = ServiceHealthGate(config=config.service_health_gate)
 
         # Initialize components
         self._state_tracker = StateTracker(
@@ -441,10 +445,30 @@ class Sentinel:
             )
             executor = AgentExecutor(client, self._agent_logger)
 
+            # Build pre-retry health check callback based on trigger source
+            service_name = (
+                "github" if orchestration.trigger.source == "github" else "jira"
+            )
+
+            def _pre_retry_check() -> bool:
+                """Check external service health before retrying."""
+                if service_name == "github":
+                    return self._health_gate.probe_service(
+                        service_name,
+                        base_url=self.config.github.api_url or "https://api.github.com",
+                        token=self.config.github.token,
+                    )
+                else:
+                    return self._health_gate.probe_service(
+                        service_name,
+                        base_url=self.config.jira.base_url,
+                        auth=(self.config.jira.email, self.config.jira.api_token),
+                    )
+
             # Use asyncio.run() at the thread entry point to drive async execution
             # This is the top-level entry point for async code in each thread,
             # avoiding nested event loops (DS-509)
-            result = asyncio.run(executor.execute(issue, orchestration))
+            result = asyncio.run(executor.execute(issue, orchestration, _pre_retry_check))
             self.tag_manager.update_tags(result, orchestration)
 
             status = "succeeded" if result.succeeded else "failed"

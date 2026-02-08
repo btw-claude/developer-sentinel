@@ -6,7 +6,7 @@ import re
 import shutil
 import time
 import unicodedata
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import Enum
@@ -27,7 +27,7 @@ from sentinel.orchestration import (
 from sentinel.poller import JiraIssue
 
 # Type alias for issues from any supported source
-AnyIssue = JiraIssue | GitHubIssue
+AnyIssue: TypeAlias = JiraIssue | GitHubIssue
 
 if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
@@ -837,6 +837,7 @@ class AgentExecutor:
         self,
         issue: AnyIssue,
         orchestration: Orchestration,
+        pre_retry_check: Callable[[], bool] | None = None,
     ) -> ExecutionResult:
         """Execute an agent on an issue with retry logic.
 
@@ -852,6 +853,10 @@ class AgentExecutor:
         Args:
             issue: The issue to process (Jira or GitHub).
             orchestration: The orchestration configuration.
+            pre_retry_check: Optional synchronous callback to verify external service
+                health before retrying. If provided and returns False, retries are
+                stopped. Safe to call from async context as each execution runs in
+                its own thread via asyncio.run().
 
         Returns:
             ExecutionResult with status, response, and attempt count.
@@ -883,11 +888,13 @@ class AgentExecutor:
         last_output_tokens = 0
         last_total_cost_usd = 0.0
         start_time = datetime.now()
+        last_attempt = 0
 
         # Get outcomes if configured
         outcomes = orchestration.outcomes if orchestration.outcomes else None
 
         for attempt in range(1, max_attempts + 1):
+            last_attempt = attempt
             logger.info(
                 "Executing agent for %s with orchestration "
                 "'%s' (attempt %s/%s)",
@@ -981,6 +988,17 @@ class AgentExecutor:
                     return result
 
                 if status == ExecutionStatus.FAILURE and attempt < max_attempts:
+                    if pre_retry_check is not None and not pre_retry_check():
+                        logger.warning(
+                            "Pre-retry health check failed for %s, stopping retries",
+                            issue.key,
+                            extra={
+                                "issue_key": issue.key,
+                                "orchestration": orchestration.name,
+                                "attempt": attempt,
+                            },
+                        )
+                        break
                     logger.warning(
                         "Agent execution failed for %s on attempt %s, retrying...",
                         issue.key,
@@ -1005,6 +1023,17 @@ class AgentExecutor:
                     max_attempts=max_attempts,
                 )
                 if attempt < max_attempts:
+                    if pre_retry_check is not None and not pre_retry_check():
+                        logger.warning(
+                            "Pre-retry health check failed for %s, stopping retries",
+                            issue.key,
+                            extra={
+                                "issue_key": issue.key,
+                                "orchestration": orchestration.name,
+                                "attempt": attempt,
+                            },
+                        )
+                        break
                     logger.warning(
                         "Agent timed out for %s on attempt %s, retrying...",
                         issue.key,
@@ -1029,6 +1058,17 @@ class AgentExecutor:
                     max_attempts=max_attempts,
                 )
                 if attempt < max_attempts:
+                    if pre_retry_check is not None and not pre_retry_check():
+                        logger.warning(
+                            "Pre-retry health check failed for %s, stopping retries",
+                            issue.key,
+                            extra={
+                                "issue_key": issue.key,
+                                "orchestration": orchestration.name,
+                                "attempt": attempt,
+                            },
+                        )
+                        break
                     logger.warning(
                         "Agent client error for %s on attempt %s: %s, "
                         "retrying...",
@@ -1042,11 +1082,11 @@ class AgentExecutor:
                         },
                     )
 
-        # All attempts exhausted
+        # All attempts exhausted or early exit
         result = ExecutionResult(
             status=last_status,
             response=last_response,
-            attempts=max_attempts,
+            attempts=last_attempt,
             issue_key=issue.key,
             orchestration_name=orchestration.name,
             matched_outcome=last_matched_outcome,
@@ -1060,7 +1100,7 @@ class AgentExecutor:
             prompt,
             last_response,
             last_status,
-            max_attempts,
+            last_attempt,
             start_time,
         )
         return result
