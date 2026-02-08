@@ -137,6 +137,14 @@ class MockSentinel:
         """Return whether shutdown has been requested."""
         return self._shutdown_requested
 
+    def get_service_health_status(self) -> dict[str, dict[str, Any]]:
+        """Return service health status.
+
+        Returns an empty dict by default. Override in subclasses or tests
+        to provide test data.
+        """
+        return {}
+
 
 class TestHealthEndpoints:
     """Tests for health check endpoints."""

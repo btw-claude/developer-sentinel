@@ -487,6 +487,31 @@ def create_routes(
             ),
         )
 
+    @dashboard_router.get("/partials/service_health", response_class=HTMLResponse)
+    async def partial_service_health(request: Request) -> HTMLResponse:
+        """Render the service health partial for HTMX updates.
+
+        This endpoint returns the service health section HTML for efficient
+        live updates without full page reloads. Shows external service
+        availability status from the health gate.
+
+        Args:
+            request: The incoming HTTP request.
+
+        Returns:
+            HTML response with the service health partial.
+        """
+        state = state_accessor.get_state()
+        templates = request.app.state.templates
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/service_health.html",
+                context={"state": state},
+            ),
+        )
+
     @dashboard_router.get("/partials/recent_executions", response_class=HTMLResponse)
     async def partial_recent_executions(request: Request) -> HTMLResponse:
         """Render the recent executions partial for HTMX updates.

@@ -69,6 +69,28 @@
 
 <div class="card collapsible-section">
     <div class="collapsible-header"
+         data-collapsible-target="service-health-content"
+         hx-get="/partials/service_health"
+         hx-target="#service-health-content"
+         hx-swap="innerHTML"
+         hx-trigger="click[!isExpanded('service-health-content')]"
+         hx-on::after-request="toggleCollapsibleSection(this)">
+        <h2>
+            <span class="collapse-icon">&#9654;</span>
+            Service Health
+            <span class="badge">{{ state.service_health | length }}</span>
+        </h2>
+    </div>
+    <div id="service-health-content" class="collapsible-content"
+         hx-get="/partials/service_health"
+         hx-trigger="every 5s[isExpanded('service-health-content')]"
+         hx-swap="innerHTML">
+        <!-- Content loaded via HTMX when expanded, auto-refreshes every 5s -->
+    </div>
+</div>
+
+<div class="card collapsible-section">
+    <div class="collapsible-header"
          data-collapsible-target="running-steps-content"
          hx-get="/partials/running_steps"
          hx-target="#running-steps-content"

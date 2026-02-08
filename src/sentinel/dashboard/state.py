@@ -345,6 +345,24 @@ class SystemStatusInfo:
 
 
 @dataclass(frozen=True)
+class ServiceHealthInfo:
+    """Read-only service health information for the dashboard.
+
+    This provides a frozen snapshot of a service's health status
+    from the ServiceHealthGate for dashboard display.
+    """
+
+    service_name: str
+    available: bool
+    consecutive_failures: int
+    paused: bool
+    paused_since_seconds: float | None
+    last_error: str | None
+    probe_count: int
+    last_check_seconds_ago: float | None
+
+
+@dataclass(frozen=True)
 class DashboardState:
     """Immutable snapshot of Sentinel state for dashboard rendering.
 
@@ -400,6 +418,9 @@ class DashboardState:
 
     # System status - thread pool, poll times, uptime
     system_status: SystemStatusInfo | None = None
+
+    # Service health status - external service availability
+    service_health: list[ServiceHealthInfo] = field(default_factory=list)
 
     # Configurable success rate thresholds for display coloring
     success_rate_green_threshold: float = DEFAULT_GREEN_THRESHOLD
@@ -513,6 +534,14 @@ class SentinelStateProvider(Protocol):
 
     def is_shutdown_requested(self) -> bool:
         """Return whether shutdown has been requested."""
+        ...
+
+    def get_service_health_status(self) -> dict[str, dict[str, Any]]:
+        """Return service health status from the health gate.
+
+        Returns a dictionary mapping service names to their availability state,
+        suitable for dashboard display.
+        """
         ...
 
 
@@ -651,6 +680,30 @@ class SentinelStateAccessor:
             uptime_seconds=(now - start_time).total_seconds(),
         )
 
+        # Get service health status
+        service_health_raw = sentinel.get_service_health_status()
+        service_health_views = [
+            ServiceHealthInfo(
+                service_name=svc_data.get("service_name", name),
+                available=svc_data.get("available", True),
+                consecutive_failures=svc_data.get("consecutive_failures", 0),
+                paused=svc_data.get("paused_at") is not None,
+                paused_since_seconds=(
+                    now.timestamp() - svc_data["paused_at"]
+                    if svc_data.get("paused_at") is not None
+                    else None
+                ),
+                last_error=svc_data.get("last_error"),
+                probe_count=svc_data.get("probe_count", 0),
+                last_check_seconds_ago=(
+                    now.timestamp() - svc_data["last_check_at"]
+                    if svc_data.get("last_check_at") is not None
+                    else None
+                ),
+            )
+            for name, svc_data in service_health_raw.items()
+        ]
+
         # Count projects/repos with active orchestrations
         # Build a mapping from orchestration name to its project/repo
         active_orchestration_names = {step.orchestration_name for step in running_step_views}
@@ -693,6 +746,7 @@ class SentinelStateAccessor:
             execution_summary=execution_summary,
             orchestration_stats=orchestration_stats,
             system_status=system_status,
+            service_health=service_health_views,
             success_rate_green_threshold=config.dashboard.success_rate_green_threshold,
             success_rate_yellow_threshold=config.dashboard.success_rate_yellow_threshold,
         )
