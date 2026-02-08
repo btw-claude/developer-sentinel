@@ -108,6 +108,8 @@
             <td>{{ state.hot_reload_metrics.orchestrations_reloaded_total }}</td>
         </tr>
         {% endif %}
+        {# Capacity row consolidates available_slots into a rich display (DS-765, DS-717).
+           Matches the homepage status partial format — see partials/status.html. #}
         <tr>
             <td>Capacity</td>
             <td>
