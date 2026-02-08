@@ -108,8 +108,9 @@
             <td>{{ state.hot_reload_metrics.orchestrations_reloaded_total }}</td>
         </tr>
         {% endif %}
-        {# Capacity row consolidates available_slots into a rich display (DS-717, DS-741, DS-765, DS-777).
-           Matches the homepage status partial format — see partials/status.html. #}
+        {# Capacity row consolidates available_slots into a rich display.
+           Matches the homepage status partial format — see partials/status.html.
+           For change history, run: git log --oneline --all -- src/sentinel/dashboard/templates/metrics.html #}
         <tr>
             <td>Capacity</td>
             <td>
