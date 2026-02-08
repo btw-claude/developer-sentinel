@@ -415,15 +415,17 @@ def _format_bound_message(
         max_val: Optional maximum allowed value (inclusive). None means no upper bound.
 
     Returns:
-        A descriptive string such as "is not in range 0.0-1.0", "must be >= 0.0",
+        A descriptive string such as "is not in range 0.0 to 1.0", "must be >= 0.0",
         or "must be <= 1.0".
     """
     if min_val is not None and max_val is not None:
-        return f"is not in range {min_val}-{max_val}"
+        return f"is not in range {min_val} to {max_val}"
     if min_val is not None:
         return f"must be >= {min_val}"
     if max_val is not None:
         return f"must be <= {max_val}"
+    # Defensive fallback: unreachable in production since _parse_bounded_float
+    # only calls this function when a non-None bound is violated.
     return "is out of range"
 
 
