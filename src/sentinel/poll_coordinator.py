@@ -403,7 +403,7 @@ class PollCoordinator:
         Returns:
             The URL to the issue, or empty string if URL cannot be constructed.
         """
-        trigger_source = getattr(orchestration.trigger, "source", TriggerSource.JIRA.value)
+        trigger_source = orchestration.trigger.source
 
         if trigger_source == TriggerSource.JIRA.value:
             # Construct Jira URL from config base URL and issue key
