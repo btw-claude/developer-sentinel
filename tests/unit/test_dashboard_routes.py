@@ -1177,6 +1177,155 @@ orchestrations:
             assert "Rate limit exceeded" in response2.json()["detail"]
 
 
+class TestDeleteOrchestrationDebugLogging:
+    """Tests for enriched debug logging in delete_orchestration endpoint (DS-771).
+
+    Verifies that the delete_orchestration endpoint emits a debug-level log
+    containing request metadata (client info, user-agent, query params, method,
+    URL) for detailed troubleshooting when debug logging is enabled.
+    """
+
+    def test_delete_orchestration_debug_log_contains_request_metadata(
+        self, temp_logs_dir: Path
+    ) -> None:
+        """Test that delete_orchestration logs enriched debug with request context."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with patch("sentinel.dashboard.routes.logger") as mock_logger:
+            with TestClient(app) as client:
+                client.delete("/api/orchestrations/test-orch")
+
+            # Find the debug call for delete_orchestration
+            debug_calls = mock_logger.debug.call_args_list
+            delete_debug_call = None
+            for call in debug_calls:
+                if call[0] and "delete_orchestration called" in str(call[0][0]):
+                    delete_debug_call = call
+                    break
+
+            assert delete_debug_call is not None, (
+                "Expected a debug log for delete_orchestration with request metadata"
+            )
+            fmt_str = delete_debug_call[0][0]
+            assert "client=" in fmt_str
+            assert "user_agent=" in fmt_str
+            assert "query_params=" in fmt_str
+            assert "method=" in fmt_str
+            assert "url=" in fmt_str
+            # Verify the orchestration name is passed
+            assert delete_debug_call[0][1] == "test-orch"
+
+    def test_delete_orchestration_debug_log_method_is_delete(
+        self, temp_logs_dir: Path
+    ) -> None:
+        """Test that the debug log captures DELETE as the HTTP method."""
+        orch_file = temp_logs_dir / "test-orch.yaml"
+        orch_file.write_text("""
+orchestrations:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test prompt"
+""")
+
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        orch_info = OrchestrationInfo(
+            name="test-orch",
+            enabled=True,
+            trigger_source="jira",
+            trigger_project="TEST",
+            trigger_project_owner=None,
+            trigger_tags=[],
+            agent_prompt_preview="Test prompt",
+            source_file=str(orch_file),
+        )
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
+        app = create_test_app(accessor)
+
+        with patch("sentinel.dashboard.routes.logger") as mock_logger:
+            with TestClient(app) as client:
+                client.delete("/api/orchestrations/test-orch")
+
+            debug_calls = mock_logger.debug.call_args_list
+            delete_debug_call = None
+            for call in debug_calls:
+                if call[0] and "delete_orchestration called" in str(call[0][0]):
+                    delete_debug_call = call
+                    break
+
+            assert delete_debug_call is not None
+            # Render the full log message and assert on the output
+            # instead of using fragile positional indexing into call args
+            rendered = delete_debug_call[0][0] % delete_debug_call[0][1:]
+            assert "method=DELETE" in rendered
+
+    def test_delete_orchestration_debug_log_not_found_still_logs(
+        self, temp_logs_dir: Path
+    ) -> None:
+        """Test that debug log is NOT emitted when orchestration is not found.
+
+        The debug log occurs after the info log but before the orchestration
+        lookup, so it should still be emitted even for missing orchestrations.
+        """
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
+
+        with patch("sentinel.dashboard.routes.logger") as mock_logger:
+            with TestClient(app) as client:
+                response = client.delete("/api/orchestrations/nonexistent")
+
+            assert response.status_code == 404
+
+            # Debug log should still be emitted before the 404
+            debug_calls = mock_logger.debug.call_args_list
+            delete_debug_call = None
+            for call in debug_calls:
+                if call[0] and "delete_orchestration called" in str(call[0][0]):
+                    delete_debug_call = call
+                    break
+
+            assert delete_debug_call is not None, (
+                "Debug log should be emitted even when orchestration is not found"
+            )
+            assert delete_debug_call[0][1] == "nonexistent"
+
+
 class TestEditOrchestrationEndpoint:
     """Tests for PUT /api/orchestrations/{name} endpoint (DS-727)."""
 
@@ -2317,8 +2466,8 @@ class TestCsrfTokenRateLimiting:
             assert response.status_code == 429
             assert "rate limit" in response.json()["detail"].lower()
 
-    def test_csrf_token_rate_limit_per_client_ip(self, temp_logs_dir: Path) -> None:
-        """Test that CSRF rate limiting is per-client IP."""
+    def test_csrf_token_rate_limit_per_client_host(self, temp_logs_dir: Path) -> None:
+        """Test that CSRF rate limiting is per-client host."""
         config = Config(
             execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
         )

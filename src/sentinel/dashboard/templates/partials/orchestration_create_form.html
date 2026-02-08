@@ -316,7 +316,7 @@
                 }
             })
             .catch(function(error) {
-                console.error('Failed to load orchestration files:', error);
+                console.error(UI_MESSAGES.DEBUG.FILES_LOAD_FAILED, error);
             });
     })();
 
@@ -378,7 +378,7 @@
     if (typeof refreshCsrfToken === 'function') {
         refreshCsrfToken().then(function(token) {
             if (!token) {
-                console.warn('CSRF token refresh failed on form load; form submissions may fail with 403. Try reloading the page or check browser console for network errors.');
+                console.warn(UI_MESSAGES.CSRF.REFRESH_FAILED_CONSOLE);
             }
         });
     }

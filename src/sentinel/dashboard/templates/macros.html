@@ -50,7 +50,7 @@
   {%% call stat_or_dash(value) %%}...{%% endcall %%} syntax so that the
   content between the tags is available via caller().
 
-  Usage:
+  Usage (%% is escaped for this comment block; use single % in actual templates):
     {%% call(v) stat_or_dash(orch_stats) %%}
         {{ v.total_runs }}
     {%% endcall %%}

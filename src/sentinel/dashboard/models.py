@@ -1,7 +1,7 @@
 """Pydantic request/response models for dashboard API endpoints.
 
-Extracted from routes.py (DS-755) for better maintainability as the module
-grew past ~1750 lines. Models are grouped by feature:
+Extracted from routes.py (DS-755, DS-756) for better maintainability as the
+module grew past ~1750 lines. Models are grouped by feature:
 
 - Toggle models: ToggleRequest, ToggleResponse, BulkToggleRequest, BulkToggleResponse
 - Edit models: TriggerEditRequest, GitHubContextEditRequest, AgentEditRequest,

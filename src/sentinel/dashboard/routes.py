@@ -5,7 +5,7 @@ All handlers receive state through the SentinelStateAccessor to ensure
 read-only access to the orchestrator's state.
 
 Pydantic request/response models are defined in ``sentinel.dashboard.models``
-(extracted in DS-755 for better maintainability).
+(extracted in DS-755/DS-756 for better maintainability).
 
 Health check endpoints provide:
 - /health: Legacy health endpoint (deprecated, use /health/live)
@@ -237,11 +237,11 @@ def create_routes(
         Raises:
             HTTPException: 429 if rate limit is exceeded.
         """
-        client_ip = request.client.host if request.client else "unknown"
-        current_count = csrf_rate_limit.get(client_ip, 0)
-        if client_ip == "unknown" and current_count == 0:
+        client_host = request.client.host if request.client else "unknown"
+        current_count = csrf_rate_limit.get(client_host, 0)
+        if client_host == "unknown" and current_count == 0:
             logger.warning(
-                "CSRF token request from unknown client IP (request.client is None); "
+                "CSRF token request from unknown client host (request.client is None); "
                 "this may indicate the app is behind a proxy that does not set "
                 "X-Forwarded-For or similar headers"
             )
@@ -250,7 +250,7 @@ def create_routes(
                 status_code=429,
                 detail="CSRF token request rate limit exceeded. Please try again later.",
             )
-        csrf_rate_limit[client_ip] = current_count + 1
+        csrf_rate_limit[client_host] = current_count + 1
         return {"csrf_token": _generate_csrf_token()}
 
     @dashboard_router.get("/", response_class=HTMLResponse)
@@ -1236,7 +1236,7 @@ def create_routes(
         "its YAML file and hot-reload picks up the change. Rate limited to "
         "prevent rapid file writes.",
     )
-    async def delete_orchestration(name: str) -> DeleteResponse:
+    async def delete_orchestration(name: str, request: Request) -> DeleteResponse:
         """Delete an orchestration by name.
 
         This endpoint removes the orchestration from its YAML source file.
@@ -1244,6 +1244,7 @@ def create_routes(
 
         Args:
             name: The name of the orchestration to delete.
+            request: The incoming HTTP request (used for enriched debug logging).
 
         Returns:
             DeleteResponse with success status and orchestration name.
@@ -1252,7 +1253,19 @@ def create_routes(
             HTTPException: 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
         logger.info("Received request to delete orchestration '%s'", name)
-        logger.debug("delete_orchestration called for '%s'", name)
+        client_host = request.client.host if request.client else "unknown"
+        client_port = request.client.port if request.client else "unknown"
+        logger.debug(
+            "delete_orchestration called for '%s' | client=%s:%s user_agent=%s "
+            "query_params=%s method=%s url=%s",
+            name,
+            client_host,
+            client_port,
+            request.headers.get("user-agent", "unknown"),
+            dict(request.query_params),
+            request.method,
+            str(request.url),
+        )
         state = state_accessor.get_state()
 
         # Find the orchestration to get its source file

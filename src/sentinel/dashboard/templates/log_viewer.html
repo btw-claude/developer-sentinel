@@ -311,8 +311,8 @@ function loadLogFile() {
     closeSSE();
 
     if (!currentOrchestration || !logFile) {
-        logContent.innerHTML = '<div class="empty-state"><p>📋 Select an orchestration and log file to view</p></div>';
-        logTitle.textContent = 'No log file selected';
+        logContent.innerHTML = UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT_HTML;
+        logTitle.textContent = UI_MESSAGES.LOG_VIEWER.NO_FILE_SELECTED;
         pauseBtn.disabled = true;
         return;
     }
@@ -322,7 +322,7 @@ function loadLogFile() {
     pauseBtn.disabled = false;
 
     // Clear content and show loading
-    logContent.innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
+    logContent.innerHTML = UI_MESSAGES.LOG_VIEWER.LOADING_HTML;
 
     // Connect to SSE endpoint
     connectSSE();
@@ -439,12 +439,12 @@ function togglePause() {
 
     if (isPaused) {
         pauseBtn.classList.add('paused');
-        pauseIcon.textContent = '▶';
-        pauseText.textContent = 'Resume';
+        pauseIcon.textContent = UI_MESSAGES.LOG_VIEWER.RESUME_ICON;
+        pauseText.textContent = UI_MESSAGES.LOG_VIEWER.RESUME;
     } else {
         pauseBtn.classList.remove('paused');
-        pauseIcon.textContent = '⏸';
-        pauseText.textContent = 'Pause';
+        pauseIcon.textContent = UI_MESSAGES.LOG_VIEWER.PAUSE_ICON;
+        pauseText.textContent = UI_MESSAGES.LOG_VIEWER.PAUSE;
         scrollIndicator.style.display = 'none';
         scrollToBottom();
     }
@@ -455,11 +455,11 @@ function updateStatus(connected) {
     if (connected) {
         statusIndicator.classList.add('connected');
         statusIndicator.classList.remove('disconnected');
-        statusText.textContent = 'Connected';
+        statusText.textContent = UI_MESSAGES.LOG_VIEWER.CONNECTED;
     } else {
         statusIndicator.classList.remove('connected');
         statusIndicator.classList.add('disconnected');
-        statusText.textContent = 'Disconnected';
+        statusText.textContent = UI_MESSAGES.LOG_VIEWER.DISCONNECTED;
     }
 }
 
@@ -519,14 +519,14 @@ scrollIndicator.addEventListener('click', scrollToBottom);
                     loadLogFile();
                 } else {
                     // User feedback for invalid file parameter
-                    console.warn('Invalid URL parameter: file "' + file + '" not found in orchestration "' + orchestration + '"');
-                    showToast('warning', 'Log file "' + file + '" not found in selected orchestration');
+                    console.warn(UI_MESSAGES.DEBUG.INVALID_FILE_PARAM(file, orchestration));
+                    showToast('warning', UI_MESSAGES.TOAST.LOG_FILE_NOT_FOUND(file));
                 }
             }
         } else {
             // User feedback for invalid orchestration parameter
-            console.warn('Invalid URL parameter: orchestration "' + orchestration + '" not found');
-            showToast('warning', 'Orchestration "' + orchestration + '" not found');
+            console.warn(UI_MESSAGES.DEBUG.INVALID_ORCH_PARAM(orchestration));
+            showToast('warning', UI_MESSAGES.TOAST.ORCHESTRATION_NOT_FOUND(orchestration));
         }
     }
 })();

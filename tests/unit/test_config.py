@@ -498,7 +498,7 @@ class TestParseBoundedFloat:
         with caplog.at_level(logging.WARNING):
             result = _parse_bounded_float("1.5", "TEST_VAR", 0.5, min_val=0.0, max_val=1.0)
         assert result == 0.5
-        assert "is not in range 0.0-1.0" in caplog.text
+        assert "is not in range 0.0 to 1.0" in caplog.text
 
 
 class TestFormatBoundMessage:
@@ -506,7 +506,7 @@ class TestFormatBoundMessage:
 
     def test_both_bounds(self) -> None:
         """Test message when both min and max bounds are set."""
-        assert _format_bound_message(min_val=0.0, max_val=1.0) == "is not in range 0.0-1.0"
+        assert _format_bound_message(min_val=0.0, max_val=1.0) == "is not in range 0.0 to 1.0"
 
     def test_only_min_bound(self) -> None:
         """Test message when only min bound is set."""
@@ -522,7 +522,7 @@ class TestFormatBoundMessage:
 
     def test_both_bounds_negative(self) -> None:
         """Test message with negative bound values."""
-        assert _format_bound_message(min_val=-10.0, max_val=-1.0) == "is not in range -10.0--1.0"
+        assert _format_bound_message(min_val=-10.0, max_val=-1.0) == "is not in range -10.0 to -1.0"
 
     def test_only_min_bound_positive(self) -> None:
         """Test message when only min bound is set to a positive value."""

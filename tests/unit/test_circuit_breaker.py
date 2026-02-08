@@ -185,7 +185,13 @@ class TestCircuitBreakerStates:
         assert cb.state == CircuitState.CLOSED
 
     def test_transitions_to_open_after_failure_threshold(self) -> None:
-        """Test circuit opens after reaching failure threshold."""
+        """Test circuit opens after reaching failure threshold.
+
+        Verifies the transition condition: consecutive failures equal to the
+        threshold move the circuit from CLOSED to OPEN. See also
+        test_rejects_requests_when_open, which tests the resulting behavior
+        once the circuit is in the OPEN state.
+        """
         config = CircuitBreakerConfig(failure_threshold=3)
         cb = CircuitBreaker("test", config)
 
@@ -198,7 +204,13 @@ class TestCircuitBreakerStates:
         assert cb.state == CircuitState.OPEN
 
     def test_rejects_requests_when_open(self) -> None:
-        """Test that requests are rejected when circuit is open."""
+        """Test that requests are rejected when circuit is open.
+
+        Unlike test_transitions_to_open_after_failure_threshold (which verifies
+        the transition condition from CLOSED to OPEN), this test focuses on the
+        observable behavior once the circuit is already open: requests are
+        rejected and the rejected_calls metric is incremented.
+        """
         config = CircuitBreakerConfig(failure_threshold=1)
         cb = CircuitBreaker("test", config)
 
@@ -243,7 +255,13 @@ class TestCircuitBreakerStates:
         assert cb.allow_request() is False
 
     def test_half_open_closes_on_success(self) -> None:
-        """Test circuit closes after successful calls in half-open state."""
+        """Test circuit closes after successful calls in half-open state.
+
+        Verifies the recovery path: when sufficient successful calls are
+        recorded in the HALF_OPEN state, the circuit transitions back to
+        CLOSED. See also test_half_open_opens_on_failure, which tests the
+        opposite outcome where a failure during HALF_OPEN reopens the circuit.
+        """
         config = CircuitBreakerConfig(
             failure_threshold=1,
             recovery_timeout=0.1,
@@ -265,7 +283,13 @@ class TestCircuitBreakerStates:
         assert cb.state == CircuitState.CLOSED
 
     def test_half_open_opens_on_failure(self) -> None:
-        """Test circuit opens immediately on failure in half-open state."""
+        """Test circuit opens immediately on failure in half-open state.
+
+        Unlike test_half_open_closes_on_success (which tests recovery via
+        successful calls), this test verifies that any single failure during
+        the HALF_OPEN state immediately transitions the circuit back to OPEN,
+        restarting the recovery timeout.
+        """
         config = CircuitBreakerConfig(
             failure_threshold=1,
             recovery_timeout=0.1,
@@ -439,7 +463,13 @@ class TestCircuitBreakerDisabled:
     """Tests for disabled circuit breaker."""
 
     def test_disabled_always_allows_requests(self) -> None:
-        """Test disabled circuit breaker always allows requests."""
+        """Test disabled circuit breaker always allows requests.
+
+        Verifies the request-acceptance aspect of a disabled circuit breaker:
+        allow_request() returns True even after recording failures that would
+        normally open the circuit. See also test_disabled_does_not_record_metrics,
+        which verifies that disabled breakers also skip metrics tracking.
+        """
         config = CircuitBreakerConfig(enabled=False, failure_threshold=1)
         cb = CircuitBreaker("test", config)
 
@@ -449,7 +479,13 @@ class TestCircuitBreakerDisabled:
         assert cb.allow_request() is True
 
     def test_disabled_does_not_record_metrics(self) -> None:
-        """Test disabled circuit breaker doesn't track metrics."""
+        """Test disabled circuit breaker doesn't track metrics.
+
+        Unlike test_disabled_always_allows_requests (which verifies request
+        acceptance), this test focuses on the metrics side-effect: a disabled
+        breaker should not increment failed_calls or successful_calls counters,
+        ensuring metrics accurately reflect only enabled circuit breakers.
+        """
         config = CircuitBreakerConfig(enabled=False)
         cb = CircuitBreaker("test", config)
 

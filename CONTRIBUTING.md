@@ -236,6 +236,152 @@ Our pydocstyle configuration in `pyproject.toml` ignores certain rules to reduce
 These relaxed rules help reduce warnings for inherited and obvious methods while still enforcing
 documentation for public APIs.
 
+### Test Docstring Cross-References
+
+**Use cross-referencing docstrings to link related tests that cover overlapping behavior.**
+
+When two or more tests exercise similar or complementary aspects of the same feature, their
+docstrings should explicitly reference each other and explain each test's distinct focus. This
+helps developers understand why seemingly similar tests both exist without reading the full test
+body.
+
+#### Quick-Reference Summary
+
+| Pattern | When to Use | Key Signal |
+|---------|-------------|------------|
+| [**See also**](#reference-patterns) | Pointing to a complementary test | Neutral forward pointer |
+| [**Unlike**](#reference-patterns) | Highlighting how the current test differs | Explicit contrast |
+| [**Two-way**](#two-way-vs-three-way-or-more-cross-references) | Exactly two tests form a natural pair | Success/failure, enabled/disabled |
+| [**Three-way+**](#two-way-vs-three-way-or-more-cross-references) | Three or more tests cover distinct variants | Parenthetical annotations |
+| [**Shared-grouping**](#shared-grouping) | More than ~4 related tests with a naming pattern | Reference the `test_*` glob, not each sibling |
+| [**Preserving context**](#preserving-context) | Adding a cross-reference to a test that already has contextual info | Append reference after existing explanation |
+
+#### Reference Patterns
+
+Use one of two reference patterns depending on the relationship between tests:
+
+- **"See also"** (forward reference): Use when pointing to a test that covers a complementary
+  aspect of the same behavior. This is a neutral pointer that says "there's more to explore."
+- **"Unlike"** (contrast reference): Use when highlighting how the current test differs from
+  a related one. This draws attention to a specific distinction.
+
+Both patterns can be combined in the same docstring when appropriate.
+
+#### Two-Way vs. Three-Way (or More) Cross-References
+
+- **Two-way references** are the default. Use them when exactly two tests form a natural pair
+  covering complementary aspects of the same behavior (e.g., success vs. failure, enabled vs.
+  disabled, sanitization vs. truncation).
+- **Three-way (or more) references** are appropriate when three or more tests cover distinct
+  variants of the same behavior and the set is small enough to enumerate without clutter
+  (e.g., omitted vs. empty-string vs. whitespace-only input, or basic vs. with-reset vs.
+  restore-on-exit). Use parenthetical annotations to keep each variant distinguishable at a
+  glance.
+- **Avoid exhaustive cross-references** when the set of related tests exceeds roughly four.
+  In such cases, reference only the most closely related tests or reference a shared grouping
+  (e.g., "See the other `test_parse_*_field` tests in this class for analogous validation").
+
+#### Shared-Grouping
+
+When more than roughly four tests cover analogous behavior (e.g., field-parsing validation
+across many fields), avoid enumerating every sibling. Instead, reference the shared naming
+pattern and the containing class. This keeps docstrings concise while still directing
+developers to the full family of related tests. Use it whenever the set of siblings is large
+enough that listing each one individually would add more noise than signal. See
+[Examples](#examples) below for a concrete illustration.
+
+#### Preserving Context
+
+When adding a cross-reference to a test that already has contextual information in its
+docstring (such as a ticket reference or behavioral explanation), append the cross-reference
+after the existing explanation rather than replacing it. This preserves the original context
+while still linking to related tests. See [Examples](#examples) below for a concrete
+illustration.
+
+#### Format and Placement
+
+Cross-references belong in the extended description of the docstring, after the summary line
+and any behavioral explanation. Place them at the end of the description paragraph, before
+any Args/Returns/Raises sections. See [Examples](#examples) below for a concrete illustration.
+
+#### Examples
+
+**Two-way "See also" reference:**
+
+```python
+def test_transitions_to_open_after_failure_threshold(self) -> None:
+    """Test circuit opens after reaching failure threshold.
+
+    Verifies the transition condition: consecutive failures equal to the
+    threshold move the circuit from CLOSED to OPEN. See also
+    test_rejects_requests_when_open, which tests the resulting behavior
+    once the circuit is in the OPEN state.
+    """
+    ...
+
+def test_rejects_requests_when_open(self) -> None:
+    """Test that requests are rejected when circuit is open.
+
+    Unlike test_transitions_to_open_after_failure_threshold (which verifies
+    the transition condition from CLOSED to OPEN), this test focuses on the
+    observable behavior once the circuit is already open: requests are
+    rejected with CircuitOpenError.
+    """
+    ...
+```
+
+**Three-way reference with parenthetical annotations:**
+
+```python
+def test_create_branch_true_without_branch_pattern_raises_error(self) -> None:
+    """Test that create_branch=True without a branch pattern raises error.
+
+    Validates the case where the branch field is omitted entirely. See also
+    test_create_branch_true_with_empty_branch_raises_error (explicit empty
+    string) and test_create_branch_true_with_whitespace_only_branch_raises_error
+    (whitespace-only string) for the same validation under different empty
+    branch conditions.
+    """
+    ...
+```
+
+**Shared-grouping reference (many related tests):**
+
+When more than roughly four tests cover analogous behavior (e.g., field-parsing
+validation across many fields), avoid enumerating every sibling. Instead,
+reference the shared naming pattern and the containing class:
+
+```python
+def test_parse_priority_field_missing(self) -> None:
+    """Test that a missing priority field falls back to the default.
+
+    Validates that omitting the priority key from the YAML mapping
+    produces the documented default value without raising an error.
+    See the other test_parse_*_field tests in this class for
+    analogous validation of remaining orchestration fields.
+    """
+    ...
+```
+
+This keeps docstrings concise while still directing developers to the full
+family of related tests. Use it whenever the set of siblings is large enough
+that listing each one individually would add more noise than signal.
+
+**Preserving existing context alongside cross-references:**
+
+```python
+def test_run_agent_context_sanitizes_newlines(self) -> None:
+    """Test that newline characters in context are replaced with spaces.
+
+    Verifies that newline and carriage return characters in context
+    keys and values are replaced with spaces to prevent prompt
+    injection from untrusted sources (DS-666). See also
+    test_run_agent_context_truncates_long_values, which tests the
+    complementary length-based truncation of context keys and values.
+    """
+    ...
+```
+
 ### Other Conventions
 
 - Follow PEP 8 style guidelines

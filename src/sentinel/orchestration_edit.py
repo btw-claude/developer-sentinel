@@ -7,14 +7,40 @@ Validation uses section-specific error collectors (DS-734) that gather all
 validation errors within a section before returning, so the API can report
 every issue in a single response instead of one error at a time.
 
+Cross-section validation (DS-762): Full _parse_orchestration() validation
+always runs regardless of section-level errors, with deduplication to avoid
+reporting the same error twice. The max_concurrent check includes an explicit
+boolean guard since isinstance(True, int) returns True in Python.
+
+Semantic error deduplication (DS-772): Error deduplication uses semantic
+matching via normalized token overlap rather than simple substring matching.
+This identifies conceptually equivalent errors even when the error message
+wording differs between the section-specific validator and the full
+_parse_orchestration() validator (e.g., different prefixes, varied phrasing,
+or orchestration-name-qualified messages).
+
+Configurable deduplication threshold (DS-773): The similarity threshold is
+configurable via the SENTINEL_DEDUP_THRESHOLD environment variable, allowing
+operators to tune sensitivity without code changes.  The _NOISE_WORDS
+frozenset is documented with rationale and maintenance guidelines.
+
 Functions:
     _build_yaml_updates: Convert OrchestrationEditRequest to YAML-compatible dict
     _validate_orchestration_updates: Validate merged orchestration data
     _deep_merge_dicts: Deep merge two dictionaries
+    _is_semantically_duplicate: Check if an error is semantically equivalent to
+        any existing error using normalized token overlap
+    _extract_error_tokens: Extract meaningful tokens from an error message for
+        semantic comparison
+    _get_dedup_threshold: Return the semantic similarity threshold, with env
+        var override support (SENTINEL_DEDUP_THRESHOLD)
 """
 
 from __future__ import annotations
 
+import logging
+import os
+import re
 from typing import Any
 
 from sentinel.dashboard.models import OrchestrationEditRequest
@@ -29,6 +55,175 @@ from sentinel.orchestration import (
     _parse_outcomes,
     _parse_retry,
 )
+
+logger = logging.getLogger(__name__)
+
+# Threshold for token overlap ratio to consider two errors semantically
+# equivalent.  A value of 0.6 means that if 60% or more of the meaningful
+# tokens in the shorter message also appear in the longer message, the two
+# errors are considered duplicates.  This is intentionally conservative
+# enough to avoid false positives while still catching common reformulations
+# (e.g., prefixed vs unprefixed, orchestration-name-qualified variants).
+#
+# Configurable via SENTINEL_DEDUP_THRESHOLD environment variable (DS-773).
+# Operators can tune this value to adjust deduplication sensitivity without
+# code changes.  Valid range is 0.0–1.0.  Lower values are more aggressive
+# (more duplicates detected); higher values are more conservative.
+_DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD = 0.6
+
+
+def _get_dedup_threshold() -> float:
+    """Return the semantic similarity threshold, optionally overridden by env var.
+
+    Reads ``SENTINEL_DEDUP_THRESHOLD`` from the environment.  If set, the
+    value is parsed as a float and clamped to the [0.0, 1.0] range.  If unset
+    or empty, the compiled-in default (0.6) is used.
+
+    Returns:
+        The effective similarity threshold as a float in [0.0, 1.0].
+    """
+    raw = os.getenv("SENTINEL_DEDUP_THRESHOLD", "").strip()
+    if not raw:
+        return _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.debug(
+            "SENTINEL_DEDUP_THRESHOLD env var contains invalid non-numeric "
+            "value %r; falling back to compiled-in default %s",
+            raw,
+            _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD,
+        )
+        return _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+    return max(0.0, min(1.0, value))
+
+
+# Section-prefix pattern: strips prefixes like "Agent error: ", "Trigger error: "
+# that are added by section-level validation in _validate_orchestration_updates.
+_SECTION_PREFIX_RE = re.compile(
+    r"^(?:Agent|Trigger|Retry|Outcomes|on_start|on_complete|on_failure)\s+error:\s*",
+    re.IGNORECASE,
+)
+
+# Orchestration-name qualifier pattern: strips prefixes like
+# "Orchestration 'my-orch' has " that _parse_orchestration adds.
+_ORCH_NAME_RE = re.compile(
+    r"^Orchestration\s+'[^']+'\s+(?:has\s+)?",
+    re.IGNORECASE,
+)
+
+# Noise words that carry no semantic meaning for error comparison (DS-773).
+#
+# Rationale: These are common English stop words and generic terms that
+# frequently appear in validation error messages but do not distinguish one
+# error from another.  Removing them before token comparison prevents false
+# positive matches caused by shared boilerplate language (e.g., "must be a"
+# appearing in many unrelated errors) while still retaining domain-specific
+# tokens (field names, allowed values, types) that convey actual meaning.
+#
+# Guidelines for future maintainers:
+#   - ADD a word here when it appears in multiple *unrelated* error messages
+#     and causes false-positive deduplication matches.
+#   - DO NOT add domain-specific terms (field names like "agent_type",
+#     type names like "integer", or allowed values like "claude") — these
+#     carry important semantic signal for distinguishing errors.
+#   - When new validators are added, review their error messages to see if
+#     any new generic filler words (e.g., "cannot", "expected") should be
+#     included.  Run the existing test suite to verify that additions do not
+#     break the expected token extraction or deduplication behaviour.
+_NOISE_WORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "be", "been",
+    "has", "have", "had", "got", "must", "should", "value",
+})
+
+
+def _extract_error_tokens(message: str) -> set[str]:
+    """Extract meaningful, normalised tokens from an error message (DS-772).
+
+    Processing steps:
+    1. Strip common section prefixes ("Agent error: ", etc.)
+    2. Strip orchestration-name qualifiers ("Orchestration 'name' has ")
+    3. Lowercase and split on non-alphanumeric boundaries
+    4. Remove noise words and very short tokens (length <= 1)
+
+    The resulting token set captures the semantic content of the error so that
+    two messages describing the same validation failure will share a high
+    proportion of tokens regardless of superficial wording differences.
+
+    Args:
+        message: The raw error message string.
+
+    Returns:
+        A set of normalised, meaningful tokens.
+    """
+    # Strip section prefix (e.g., "Agent error: ")
+    stripped = _SECTION_PREFIX_RE.sub("", message)
+
+    # Strip orchestration-name qualifier (e.g., "Orchestration 'test-orch' has ")
+    stripped = _ORCH_NAME_RE.sub("", stripped)
+
+    # Lowercase and tokenize on non-alphanumeric boundaries
+    tokens = set(re.findall(r"[a-z0-9_]+", stripped.lower()))
+
+    # Remove noise words and very short tokens
+    tokens -= _NOISE_WORDS
+    tokens = {t for t in tokens if len(t) > 1}
+
+    return tokens
+
+
+def _is_semantically_duplicate(
+    new_error: str,
+    existing_errors: list[str],
+    threshold: float | None = None,
+) -> bool:
+    """Check whether *new_error* is semantically equivalent to any existing error (DS-772).
+
+    Two errors are considered semantically equivalent when the token overlap
+    ratio (intersection / min-set-size) meets or exceeds *threshold*.  Using
+    the **minimum** set size as the denominator means that the shorter message
+    only needs to be well-represented inside the longer one, which is the
+    correct behaviour when one message is a prefix-stripped variant of the other.
+
+    The function also retains the original substring check from DS-762 as a
+    fast path so that exact substring matches are still caught without the
+    overhead of tokenisation.
+
+    Args:
+        new_error: The candidate error message to check.
+        existing_errors: Already-collected error messages.
+        threshold: Minimum overlap ratio (0.0–1.0) to treat as duplicate.
+            When ``None`` (the default), the value is read from the
+            ``SENTINEL_DEDUP_THRESHOLD`` environment variable, falling back
+            to the compiled-in default of 0.6 (DS-773).
+
+    Returns:
+        ``True`` if *new_error* is a semantic duplicate of any entry in
+        *existing_errors*.
+    """
+    if threshold is None:
+        threshold = _get_dedup_threshold()
+
+    # Fast path: exact substring match (original DS-762 behaviour)
+    if any(new_error in existing for existing in existing_errors):
+        return True
+
+    new_tokens = _extract_error_tokens(new_error)
+    if not new_tokens:
+        return False
+
+    for existing in existing_errors:
+        existing_tokens = _extract_error_tokens(existing)
+        if not existing_tokens:
+            continue
+
+        overlap = len(new_tokens & existing_tokens)
+        min_size = min(len(new_tokens), len(existing_tokens))
+
+        if overlap / min_size >= threshold:
+            return True
+
+    return False
 
 
 def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
@@ -124,7 +319,9 @@ def _validate_orchestration_updates(
 
     if "max_concurrent" in merged:
         max_conc = merged["max_concurrent"]
-        if max_conc is not None and (not isinstance(max_conc, int) or max_conc < 1):
+        if max_conc is not None and (
+            isinstance(max_conc, bool) or not isinstance(max_conc, int) or max_conc < 1
+        ):
             errors.append(f"Invalid max_concurrent: must be positive integer, got {max_conc}")
 
     # Validate trigger section — use collector to report all errors (DS-734)
@@ -172,12 +369,18 @@ def _validate_orchestration_updates(
         except OrchestrationError as e:
             errors.append(f"on_failure error: {e}")
 
-    # If no errors so far, run full validation as safety net
-    if not errors:
-        try:
-            _parse_orchestration(merged)
-        except OrchestrationError as e:
-            errors.append(str(e))
+    # Always run full validation as safety net to catch cross-section issues
+    # (e.g., interactions between trigger and agent config) that section-specific
+    # validators may miss. Deduplicate against already-collected errors using
+    # semantic matching (DS-772) so that conceptually equivalent errors are
+    # suppressed even when the wording differs between section-specific and
+    # full-validation error messages.
+    try:
+        _parse_orchestration(merged)
+    except OrchestrationError as e:
+        full_error = str(e)
+        if not _is_semantically_duplicate(full_error, errors):
+            errors.append(full_error)
 
     return errors
 
