@@ -1254,7 +1254,7 @@ def create_routes(
         """
         logger.info("Received request to delete orchestration '%s'", name)
         client_host = request.client.host if request.client else "unknown"
-        client_port = request.client.port if request.client else "N/A"
+        client_port = request.client.port if request.client else "unknown"
         logger.debug(
             "delete_orchestration called for '%s' | client=%s:%s user_agent=%s "
             "query_params=%s method=%s url=%s",
