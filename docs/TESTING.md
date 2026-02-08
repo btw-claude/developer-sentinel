@@ -126,6 +126,8 @@ pytest --cov=sentinel --cov-report=html
    - **Shared-grouping**: When related tests exceed ~4, reference the shared naming pattern
      instead of enumerating each sibling (e.g., "See the other `test_parse_*_field` tests in
      this class")
+   - **Preserving context**: When a test already has contextual explanation, append the
+     cross-reference after the existing description rather than replacing it
 
 ### Integration Test Guidelines
 
