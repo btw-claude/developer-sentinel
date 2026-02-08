@@ -313,9 +313,10 @@ class TestUrlQuoteFilter:
         assert url_quote("") == ""
 
     def test_already_safe_characters(self) -> None:
-        """Test that hyphens and dots are encoded since safe=''."""
-        # With safe="", even - and . are left as-is by urllib.parse.quote
-        # because they are unreserved characters per RFC 3986
+        """Test that RFC 3986 unreserved characters are not encoded."""
+        # Hyphens, dots, underscores, and tildes are RFC 3986 unreserved
+        # characters that urllib.parse.quote never encodes, regardless of
+        # the safe parameter value.
         assert url_quote("a-b.c") == "a-b.c"
 
     def test_unicode_characters(self) -> None:
