@@ -412,6 +412,10 @@ def _format_number(value: float) -> str:
     ``"0"``), while non-whole floats retain their decimal representation (e.g.
     ``0.5`` → ``"0.5"``).
 
+    Non-finite values (``inf``, ``-inf``, ``nan``) are passed through to
+    :func:`str` without the integer formatting shortcut, returning ``"inf"``,
+    ``"-inf"``, or ``"nan"`` respectively.
+
     Args:
         value: The numeric value to format.
 
