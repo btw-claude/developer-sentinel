@@ -699,7 +699,7 @@ class Sentinel:
         if grouped.jira:
             if self._health_gate.should_poll("jira"):
                 self._state_tracker.last_jira_poll = datetime.now()
-                routing_results, _jira_found, _jira_errors = (
+                routing_results, jira_issues_found, jira_error_count = (
                     self._poll_coordinator.poll_jira_triggers(
                         grouped.jira,
                         self.router,
@@ -712,18 +712,37 @@ class Sentinel:
                 )
                 submitted_count += jira_submitted
 
+                # Log polling summary for observability (DS-820).
+                if jira_issues_found > 0 or jira_error_count > 0:
+                    logger.info(
+                        "Jira polling summary: %s issue(s) found, %s error(s), "
+                        "%s task(s) submitted",
+                        jira_issues_found,
+                        jira_error_count,
+                        jira_submitted,
+                    )
+
+                # Warn when error count exceeds a threshold, indicating
+                # persistent service degradation that may need attention.
+                if jira_error_count >= len(grouped.jira):
+                    logger.warning(
+                        "All %s Jira trigger(s) failed during this polling cycle; "
+                        "consider investigating Jira connectivity",
+                        jira_error_count,
+                    )
+
                 # Record health gate outcome based on polling errors.
                 # Only record failure when ALL triggers failed (partial success is OK).
-                if _jira_errors == 0:
+                if jira_error_count == 0:
                     self._health_gate.record_poll_success("jira")
-                elif _jira_errors > 0 and _jira_found == 0:
+                elif jira_error_count > 0 and jira_issues_found == 0:
                     self._health_gate.record_poll_failure("jira")
-                elif _jira_errors > 0 and _jira_found > 0:
+                elif jira_error_count > 0 and jira_issues_found > 0:
                     logger.warning(
                         "Partial Jira polling failure: %s trigger(s) succeeded, "
                         "%s trigger(s) failed",
-                        _jira_found,
-                        _jira_errors,
+                        jira_issues_found,
+                        jira_error_count,
                     )
             else:
                 # Service is gated — probe for recovery
@@ -739,7 +758,7 @@ class Sentinel:
             if self.github_poller:
                 if self._health_gate.should_poll("github"):
                     self._state_tracker.last_github_poll = datetime.now()
-                    routing_results, _gh_found, _gh_errors = (
+                    routing_results, gh_issues_found, gh_error_count = (
                         self._poll_coordinator.poll_github_triggers(
                             grouped.github,
                             self.router,
@@ -752,18 +771,37 @@ class Sentinel:
                     )
                     submitted_count += github_submitted
 
+                    # Log polling summary for observability (DS-820).
+                    if gh_issues_found > 0 or gh_error_count > 0:
+                        logger.info(
+                            "GitHub polling summary: %s issue(s) found, %s error(s), "
+                            "%s task(s) submitted",
+                            gh_issues_found,
+                            gh_error_count,
+                            github_submitted,
+                        )
+
+                    # Warn when error count exceeds a threshold, indicating
+                    # persistent service degradation that may need attention.
+                    if gh_error_count >= len(grouped.github):
+                        logger.warning(
+                            "All %s GitHub trigger(s) failed during this polling cycle; "
+                            "consider investigating GitHub connectivity",
+                            gh_error_count,
+                        )
+
                     # Record health gate outcome based on polling errors.
                     # Only record failure when ALL triggers failed (partial success is OK).
-                    if _gh_errors == 0:
+                    if gh_error_count == 0:
                         self._health_gate.record_poll_success("github")
-                    elif _gh_errors > 0 and _gh_found == 0:
+                    elif gh_error_count > 0 and gh_issues_found == 0:
                         self._health_gate.record_poll_failure("github")
-                    elif _gh_errors > 0 and _gh_found > 0:
+                    elif gh_error_count > 0 and gh_issues_found > 0:
                         logger.warning(
                             "Partial GitHub polling failure: %s trigger(s) succeeded, "
                             "%s trigger(s) failed",
-                            _gh_found,
-                            _gh_errors,
+                            gh_issues_found,
+                            gh_error_count,
                         )
                 else:
                     # Service is gated — probe for recovery
