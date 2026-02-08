@@ -58,8 +58,7 @@ from sentinel.types import ErrorType
 logger = get_logger(__name__)
 
 
-# Public API exports
-# NOTE: Update this list when adding new exports to this module.
+# Public API exports — update this list when adding new exports to this module.
 __all__ = [
     "Sentinel",
     "parse_args",
