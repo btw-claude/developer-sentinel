@@ -16,7 +16,7 @@ import pytest
 from sentinel.app import start_dashboard
 from sentinel.bootstrap import BootstrapContext
 from sentinel.config import Config, DashboardConfig
-from sentinel.dashboard.app import format_duration
+from sentinel.dashboard.app import format_duration, url_quote
 
 
 class MockSentinel:
@@ -281,3 +281,53 @@ class TestFormatDurationFilter:
         """Test that negative input returns '0s'."""
         assert format_duration(-5) == "0s"
         assert format_duration(-100) == "0s"
+
+
+class TestUrlQuoteFilter:
+    """Tests for the url_quote Jinja2 filter (DS-776).
+
+    Verifies that url_quote uses percent-encoding (%20 for spaces)
+    instead of quote_plus encoding (+ for spaces), ensuring correct
+    round-tripping with JavaScript's decodeURIComponent().
+    """
+
+    def test_spaces_encoded_as_percent_20(self) -> None:
+        """Test that spaces are encoded as %20, not +."""
+        assert url_quote("my orchestration") == "my%20orchestration"
+
+    def test_plus_sign_encoded(self) -> None:
+        """Test that literal + signs are percent-encoded."""
+        assert url_quote("hello+world") == "hello%2Bworld"
+
+    def test_simple_string_unchanged(self) -> None:
+        """Test that simple alphanumeric strings are not modified."""
+        assert url_quote("simple") == "simple"
+        assert url_quote("test-orch") == "test-orch"
+
+    def test_special_characters_encoded(self) -> None:
+        """Test that special characters are properly percent-encoded."""
+        assert url_quote("name with spaces & symbols!") == "name%20with%20spaces%20%26%20symbols%21"
+
+    def test_empty_string(self) -> None:
+        """Test that empty string returns empty string."""
+        assert url_quote("") == ""
+
+    def test_already_safe_characters(self) -> None:
+        """Test that hyphens and dots are encoded since safe=''."""
+        # With safe="", even - and . are left as-is by urllib.parse.quote
+        # because they are unreserved characters per RFC 3986
+        assert url_quote("a-b.c") == "a-b.c"
+
+    def test_unicode_characters(self) -> None:
+        """Test that unicode characters are percent-encoded."""
+        result = url_quote("caf\u00e9")
+        assert "caf" in result
+        assert "%" in result  # e with accent should be encoded
+
+    def test_non_string_input_converted(self) -> None:
+        """Test that non-string input is converted to string first."""
+        assert url_quote(123) == "123"  # type: ignore[arg-type]
+
+    def test_slash_encoded(self) -> None:
+        """Test that slashes are encoded since safe=''."""
+        assert url_quote("path/to/thing") == "path%2Fto%2Fthing"
