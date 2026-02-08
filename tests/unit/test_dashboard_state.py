@@ -19,6 +19,7 @@ from sentinel.dashboard.state import (
     CompletedExecutionInfoView,
     ExecutionSummaryStats,
     SentinelStateAccessor,
+    ServiceHealthInfo,
 )
 from tests.unit.test_dashboard_routes import MockSentinel
 
@@ -702,3 +703,124 @@ class TestMockSentinelProtocol:
         assert callable(sentinel.get_execution_state)
         assert callable(sentinel.get_completed_executions)
         assert callable(sentinel.is_shutdown_requested)
+        assert callable(sentinel.get_service_health_status)
+
+
+class TestServiceHealthInDashboardState:
+    """Tests for service health information in DashboardState."""
+
+    def test_empty_service_health_by_default(self) -> None:
+        """Test that service_health is empty when no services are tracked."""
+        accessor = _create_accessor()
+        state = accessor.get_state()
+
+        assert state.service_health == []
+
+    def test_service_health_populated_from_provider(self) -> None:
+        """Test that service health data is converted to ServiceHealthInfo."""
+        import time
+
+        config = Config(execution=ExecutionConfig())
+        sentinel = MockSentinel(config)
+        now = time.time()
+
+        # Override get_service_health_status to return test data
+        sentinel.get_service_health_status = lambda: {  # type: ignore[assignment]
+            "jira": {
+                "service_name": "jira",
+                "available": True,
+                "consecutive_failures": 0,
+                "paused_at": None,
+                "last_error": None,
+                "probe_count": 0,
+                "last_check_at": now - 5.0,
+            },
+        }
+
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        state = accessor.get_state()
+
+        assert len(state.service_health) == 1
+        svc = state.service_health[0]
+        assert isinstance(svc, ServiceHealthInfo)
+        assert svc.service_name == "jira"
+        assert svc.available is True
+        assert svc.consecutive_failures == 0
+        assert svc.paused is False
+        assert svc.paused_since_seconds is None
+        assert svc.last_error is None
+        assert svc.probe_count == 0
+        assert svc.last_check_seconds_ago is not None
+        assert svc.last_check_seconds_ago >= 0
+
+    def test_service_health_paused_service(self) -> None:
+        """Test that paused service information is correctly converted."""
+        import time
+
+        config = Config(execution=ExecutionConfig())
+        sentinel = MockSentinel(config)
+        now = time.time()
+
+        sentinel.get_service_health_status = lambda: {  # type: ignore[assignment]
+            "github": {
+                "service_name": "github",
+                "available": False,
+                "consecutive_failures": 5,
+                "paused_at": now - 120.0,
+                "last_error": "Connection timeout",
+                "probe_count": 3,
+                "last_check_at": now - 30.0,
+            },
+        }
+
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        state = accessor.get_state()
+
+        assert len(state.service_health) == 1
+        svc = state.service_health[0]
+        assert svc.service_name == "github"
+        assert svc.available is False
+        assert svc.consecutive_failures == 5
+        assert svc.paused is True
+        assert svc.paused_since_seconds is not None
+        assert svc.paused_since_seconds >= 119.0  # Allow small timing variance
+        assert svc.last_error == "Connection timeout"
+        assert svc.probe_count == 3
+        assert svc.last_check_seconds_ago is not None
+        assert svc.last_check_seconds_ago >= 29.0
+
+    def test_service_health_multiple_services(self) -> None:
+        """Test that multiple services are all converted to ServiceHealthInfo."""
+        import time
+
+        config = Config(execution=ExecutionConfig())
+        sentinel = MockSentinel(config)
+        now = time.time()
+
+        sentinel.get_service_health_status = lambda: {  # type: ignore[assignment]
+            "jira": {
+                "service_name": "jira",
+                "available": True,
+                "consecutive_failures": 0,
+                "paused_at": None,
+                "last_error": None,
+                "probe_count": 0,
+                "last_check_at": now - 2.0,
+            },
+            "github": {
+                "service_name": "github",
+                "available": False,
+                "consecutive_failures": 3,
+                "paused_at": now - 60.0,
+                "last_error": "API rate limited",
+                "probe_count": 1,
+                "last_check_at": now - 10.0,
+            },
+        }
+
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        state = accessor.get_state()
+
+        assert len(state.service_health) == 2
+        names = {svc.service_name for svc in state.service_health}
+        assert names == {"jira", "github"}

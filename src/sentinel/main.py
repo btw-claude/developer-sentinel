@@ -245,6 +245,17 @@ class Sentinel:
         """Check if shutdown has been requested."""
         return self._shutdown_requested
 
+    def get_service_health_status(self) -> dict[str, dict[str, Any]]:
+        """Return service health status from the health gate.
+
+        Returns a dictionary mapping service names to their availability state,
+        suitable for dashboard display.
+
+        Returns:
+            Dictionary mapping service names to their availability state.
+        """
+        return self._health_gate.get_all_status()
+
     def get_per_orch_count(self, orchestration_name: str) -> int:
         """Get the active execution count for a specific orchestration."""
         return self._state_tracker.get_per_orch_count(orchestration_name)

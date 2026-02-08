@@ -1,0 +1,68 @@
+{# Security audit complete - no external links (target="_blank") in this template #}
+{% if state.service_health %}
+<table>
+    <tr>
+        <th>Service</th>
+        <th>Status</th>
+        <th>Failures</th>
+        <th>Paused</th>
+        <th>Last Error</th>
+        <th>Probes</th>
+        <th>Last Check</th>
+    </tr>
+    {% for svc in state.service_health %}
+    <tr>
+        <td>{{ svc.service_name }}</td>
+        <td>
+            {% if svc.available %}
+            <span class="status-ok">&#9679; Available</span>
+            {% else %}
+            <span class="status-error">&#9679; Unavailable</span>
+            {% endif %}
+        </td>
+        <td>{{ svc.consecutive_failures }}</td>
+        <td>
+            {% if svc.paused and svc.paused_since_seconds is not none %}
+                {% set total_seconds = svc.paused_since_seconds | int %}
+                {% set hours = total_seconds // 3600 %}
+                {% set minutes = (total_seconds % 3600) // 60 %}
+                {% set seconds = total_seconds % 60 %}
+                {% if hours > 0 %}
+                {{ hours }}h {{ minutes }}m {{ seconds }}s
+                {% elif minutes > 0 %}
+                {{ minutes }}m {{ seconds }}s
+                {% else %}
+                {{ seconds }}s
+                {% endif %}
+            {% else %}
+            <span class="text-secondary">—</span>
+            {% endif %}
+        </td>
+        <td>
+            {% if svc.last_error %}
+            <span class="status-error" title="{{ svc.last_error }}">{{ svc.last_error[:80] }}{% if svc.last_error|length > 80 %}...{% endif %}</span>
+            {% else %}
+            <span class="text-secondary">—</span>
+            {% endif %}
+        </td>
+        <td>{{ svc.probe_count }}</td>
+        <td>
+            {% if svc.last_check_seconds_ago is not none %}
+                {% set check_seconds = svc.last_check_seconds_ago | int %}
+                {% if check_seconds < 60 %}
+                {{ check_seconds }}s ago
+                {% elif check_seconds < 3600 %}
+                {{ check_seconds // 60 }}m ago
+                {% else %}
+                {{ check_seconds // 3600 }}h ago
+                {% endif %}
+            {% else %}
+            <span class="text-secondary">Never</span>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p class="text-secondary">No service health data available</p>
+{% endif %}
