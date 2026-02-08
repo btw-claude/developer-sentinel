@@ -1485,7 +1485,7 @@ class TestParseEnvIntErrorMessageTemplates:
     # -- Info-log message template -------------------------------------------
 
     _LOG_MESSAGE_TEMPLATE = (
-        r"Using \S+=\d+ from environment \(default: \d+\)"
+        r"Using \S+=-?\d+ from environment \(default: -?\d+\)"
     )
 
     def test_log_message_matches_template(
@@ -1536,4 +1536,23 @@ class TestParseEnvIntErrorMessageTemplates:
         assert any(
             "default: 42" in msg for msg in info_messages
         ), f"Expected 'default: 42' in log messages: {info_messages}"
+
+    def test_log_message_matches_template_negative_values(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Info log with negative override and default should match template (DS-766)."""
+        with mock.patch.dict("os.environ", {"TEST_TMPL_VAR": "-5"}):
+            with caplog.at_level(logging.INFO, logger="sentinel.orchestration"):
+                _parse_env_int("TEST_TMPL_VAR", -1, min_value=-10)
+
+        info_messages = [
+            r.message for r in caplog.records if r.levelno == logging.INFO
+        ]
+        matched = [
+            msg for msg in info_messages if re.fullmatch(self._LOG_MESSAGE_TEMPLATE, msg)
+        ]
+        assert matched, (
+            f"No info log matched template {self._LOG_MESSAGE_TEMPLATE!r}; "
+            f"got: {info_messages}"
+        )
 
