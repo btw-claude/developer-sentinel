@@ -733,7 +733,14 @@ orchestrations:
     def test_create_branch_true_without_branch_pattern_raises_error(
         self, tmp_path: Path
     ) -> None:
-        """Test that create_branch=True without a branch pattern raises error."""
+        """Test that create_branch=True without a branch pattern raises error.
+
+        Validates the case where the branch field is omitted entirely. See also
+        test_create_branch_true_with_empty_branch_raises_error (explicit empty
+        string) and test_create_branch_true_with_whitespace_only_branch_raises_error
+        (whitespace-only string) for the same validation under different empty
+        branch conditions.
+        """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
 orchestrations:
@@ -757,7 +764,14 @@ orchestrations:
         assert "create_branch is True but no branch pattern is specified" in str(exc_info.value)
 
     def test_create_branch_true_with_empty_branch_raises_error(self, tmp_path: Path) -> None:
-        """Test that create_branch=True with explicit empty branch raises error."""
+        """Test that create_branch=True with explicit empty branch raises error.
+
+        Unlike test_create_branch_true_without_branch_pattern_raises_error
+        (where the branch field is omitted), this test verifies that an
+        explicit empty string triggers the same validation error. See also
+        test_create_branch_true_with_whitespace_only_branch_raises_error
+        for the whitespace-only variant.
+        """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
 orchestrations:
@@ -784,7 +798,13 @@ orchestrations:
     def test_create_branch_true_with_whitespace_only_branch_raises_error(
         self, tmp_path: Path
     ) -> None:
-        """Test that create_branch=True with whitespace-only branch raises error."""
+        """Test that create_branch=True with whitespace-only branch raises error.
+
+        Unlike test_create_branch_true_without_branch_pattern_raises_error
+        (omitted branch) and test_create_branch_true_with_empty_branch_raises_error
+        (empty string), this test verifies that a branch containing only whitespace
+        is treated as effectively empty and triggers the same validation error.
+        """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
 orchestrations:
@@ -919,7 +939,9 @@ orchestrations:
 
         When YAML sets branch to null, data.get() returns None. The None-coalescing
         logic (using 'or') should replace None with the default empty string so that
-        subsequent .strip() calls don't raise AttributeError.
+        subsequent .strip() calls don't raise AttributeError. See also
+        test_null_base_branch_defaults_to_main for the analogous NULL-handling
+        pattern on the base_branch field, which defaults to 'main' instead.
         """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
@@ -947,9 +969,10 @@ orchestrations:
     def test_null_base_branch_defaults_to_main(self, tmp_path: Path) -> None:
         """Test that explicit null base_branch is coalesced to 'main' without error.
 
-        When YAML sets base_branch to null, data.get() returns None. The None-coalescing
-        logic (using 'or') should replace None with the default 'main' so that
-        subsequent .strip() calls don't raise AttributeError.
+        Unlike test_null_branch_defaults_to_empty_string (which tests the branch
+        field defaulting to an empty string), this test verifies that base_branch
+        defaults to 'main' when YAML sets it to null. Both tests exercise the
+        same None-coalescing pattern but with different default values.
         """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
@@ -1119,7 +1142,10 @@ orchestrations:
 
         An empty string host would be invalid for downstream GitHub API calls.
         The validation added in DS-631 ensures this is caught at parse time
-        rather than causing cryptic failures later.
+        rather than causing cryptic failures later. Unlike
+        test_empty_string_org_preserved and test_empty_string_repo_preserved
+        (where empty strings are valid because the default is already empty),
+        host rejects empty strings because a valid hostname is required.
         """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
@@ -1146,9 +1172,11 @@ orchestrations:
     def test_empty_string_org_preserved(self, tmp_path: Path) -> None:
         """Test that explicit empty-string org is preserved, not replaced with default.
 
-        With explicit None checks, an empty string is a distinct value from None
-        and should be kept as-is. This is a no-op since the default is already
-        empty string, but it validates the None-check pattern.
+        Unlike test_empty_string_host_raises_error (which rejects empty strings
+        because a valid hostname is required), org accepts empty strings because
+        the default is already empty. With explicit None checks, an empty string
+        is a distinct value from None and should be kept as-is. See also
+        test_empty_string_repo_preserved for the same pattern on the repo field.
         """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
@@ -1175,9 +1203,11 @@ orchestrations:
     def test_empty_string_repo_preserved(self, tmp_path: Path) -> None:
         """Test that explicit empty-string repo is preserved, not replaced with default.
 
-        With explicit None checks, an empty string is a distinct value from None
-        and should be kept as-is. This is a no-op since the default is already
-        empty string, but it validates the None-check pattern.
+        Unlike test_empty_string_host_raises_error (which rejects empty strings
+        because a valid hostname is required), repo accepts empty strings because
+        the default is already empty. With explicit None checks, an empty string
+        is a distinct value from None and should be kept as-is. See also
+        test_empty_string_org_preserved for the same pattern on the org field.
         """
         orch_file = tmp_path / "test.yaml"
         orch_file.write_text("""
