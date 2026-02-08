@@ -7,12 +7,19 @@ and routes for displaying Sentinel state.
 Custom Jinja2 filters:
     format_duration: Formats a duration in seconds as a human-readable string.
         Example: 125 -> "2m 5s", 45 -> "45s"
+    url_quote: URL-encodes a string using percent-encoding (%20 for spaces).
+        Unlike Jinja2's built-in |urlencode (which uses quote_plus and encodes
+        spaces as +), this filter uses urllib.parse.quote which produces %20.
+        Preferred for values embedded in JavaScript string contexts where the
+        value may be used for display via decodeURIComponent().
+        Example: "my orchestration" -> "my%20orchestration"
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -56,6 +63,36 @@ def format_duration(seconds: float | int | None) -> str:
     if minutes > 0:
         return f"{minutes}m {remaining_seconds}s"
     return f"{remaining_seconds}s"
+
+
+def url_quote(value: str) -> str:
+    """URL-encode a string using percent-encoding (RFC 3986).
+
+    Unlike Jinja2's built-in ``|urlencode`` filter which uses
+    ``urllib.parse.quote_plus`` (encoding spaces as ``+``), this filter uses
+    ``urllib.parse.quote`` which encodes spaces as ``%20``.
+
+    This is preferred for values embedded in JavaScript string contexts
+    because ``decodeURIComponent()`` correctly decodes ``%20`` to spaces
+    but does **not** decode ``+`` to spaces. Using ``%20`` ensures that
+    values round-trip correctly between server-side encoding and
+    client-side decoding.
+
+    Args:
+        value: The string to URL-encode.
+
+    Returns:
+        The percent-encoded string with spaces as %20.
+
+    Examples:
+        >>> url_quote("my orchestration")
+        'my%20orchestration'
+        >>> url_quote("hello+world")
+        'hello%2Bworld'
+        >>> url_quote("simple")
+        'simple'
+    """
+    return quote(str(value), safe="")
 
 
 class TemplateEnvironmentWrapper:
@@ -185,6 +222,7 @@ def create_app(
 
     # Register custom filters
     template_env.filters["format_duration"] = format_duration
+    template_env.filters["url_quote"] = url_quote
 
     # Store wrapped templates in app state for access in routes
     app.state.templates = TemplateEnvironmentWrapper(template_env)

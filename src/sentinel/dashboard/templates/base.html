@@ -413,10 +413,14 @@
         /**
          * Handle delete API response with toast notification and list refresh.
          * Shows success or error toast and refreshes the orchestrations list on success.
+         * The name parameter is percent-encoded (using %20 for spaces) via the
+         * server-side |url_quote filter, so we decode it with decodeURIComponent()
+         * for display in toast messages (DS-776).
          * @param {Event} event - The HTMX event containing the XHR response
-         * @param {string} name - The name of the orchestration that was deleted
+         * @param {string} encodedName - The percent-encoded name of the orchestration that was deleted
          */
-        function handleDeleteResponse(event, name) {
+        function handleDeleteResponse(event, encodedName) {
+            const name = decodeURIComponent(encodedName);
             const xhr = event.detail.xhr;
             const status = xhr.status;
 
