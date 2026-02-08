@@ -4,8 +4,7 @@
 {% for stat in state.orchestration_stats %}
     {% set _ = stats_lookup.update({stat.orchestration_name: stat}) %}
 {% endfor %}
-{# Number of columns in the orchestrations table - update if columns are added/removed #}
-{% set orch_table_columns = 7 %}
+{# orch_table_columns is passed from route context as a list of column names #}
 {% if projects %}
 <div class="nested-accordion">
     {% for project in projects %}
@@ -40,13 +39,9 @@
         <div class="nested-accordion-content">
             <table class="nested-table">
                 <tr>
-                    <th>Name</th>
-                    <th>Trigger Tags</th>
-                    <th>Last Run</th>
-                    <th>Runs</th>
-                    <th>Success Rate</th>
-                    <th>Avg Duration</th>
-                    <th>Status</th>
+                    {% for col in orch_table_columns %}
+                    <th>{{ col }}</th>
+                    {% endfor %}
                 </tr>
                 {% for orch in project.orchestrations %}
                 {% set orch_stats = stats_lookup.get(orch.name) %}
@@ -98,7 +93,7 @@
                     </td>
                 </tr>
                 <tr class="orchestration-detail-row" id="detail-row-{{ orch.name }}">
-                    <td colspan="{{ orch_table_columns }}"
+                    <td colspan="{{ orch_table_columns|length }}"
                         hx-get="/partials/orchestration_detail/{{ orch.name }}"
                         hx-trigger="revealed once"
                         hx-swap="innerHTML">
