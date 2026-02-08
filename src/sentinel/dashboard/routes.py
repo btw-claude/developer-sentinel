@@ -1252,7 +1252,6 @@ def create_routes(
             HTTPException: 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
         logger.info("Received request to delete orchestration '%s'", name)
-        logger.debug("delete_orchestration called for '%s'", name)
         state = state_accessor.get_state()
 
         # Find the orchestration to get its source file
