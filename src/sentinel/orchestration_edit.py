@@ -7,6 +7,11 @@ Validation uses section-specific error collectors (DS-734) that gather all
 validation errors within a section before returning, so the API can report
 every issue in a single response instead of one error at a time.
 
+Cross-section validation (DS-762): Full _parse_orchestration() validation
+always runs regardless of section-level errors, with deduplication to avoid
+reporting the same error twice. The max_concurrent check includes an explicit
+boolean guard since isinstance(True, int) returns True in Python.
+
 Functions:
     _build_yaml_updates: Convert OrchestrationEditRequest to YAML-compatible dict
     _validate_orchestration_updates: Validate merged orchestration data
@@ -124,7 +129,9 @@ def _validate_orchestration_updates(
 
     if "max_concurrent" in merged:
         max_conc = merged["max_concurrent"]
-        if max_conc is not None and (not isinstance(max_conc, int) or max_conc < 1):
+        if max_conc is not None and (
+            isinstance(max_conc, bool) or not isinstance(max_conc, int) or max_conc < 1
+        ):
             errors.append(f"Invalid max_concurrent: must be positive integer, got {max_conc}")
 
     # Validate trigger section — use collector to report all errors (DS-734)
@@ -172,12 +179,19 @@ def _validate_orchestration_updates(
         except OrchestrationError as e:
             errors.append(f"on_failure error: {e}")
 
-    # If no errors so far, run full validation as safety net
-    if not errors:
-        try:
-            _parse_orchestration(merged)
-        except OrchestrationError as e:
-            errors.append(str(e))
+    # Always run full validation as safety net to catch cross-section issues
+    # (e.g., interactions between trigger and agent config) that section-specific
+    # validators may miss. Deduplicate against already-collected errors (DS-762).
+    # Section-level errors are prefixed (e.g., "Agent error: ..."), so we check
+    # whether the full-validation error message appears as a substring of any
+    # existing error to avoid near-duplicate reporting.
+    try:
+        _parse_orchestration(merged)
+    except OrchestrationError as e:
+        full_error = str(e)
+        already_reported = any(full_error in existing for existing in errors)
+        if not already_reported:
+            errors.append(full_error)
 
     return errors
 
