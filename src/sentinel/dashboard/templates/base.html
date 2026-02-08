@@ -285,7 +285,7 @@
         /**
          * Toggle an orchestration detail row's expanded state.
          * Used for inline expansion of orchestration configuration details.
-         * On first expansion, the HTMX hx-trigger="revealed" will load the detail content.
+         * On first expansion, the HTMX hx-trigger="revealed once" will load and cache the detail content.
          * On second click, the detail row collapses.
          * @param {HTMLElement} rowElement - The clickable orchestration table row
          * @param {string} orchName - The orchestration name used to find the detail row

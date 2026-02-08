@@ -268,6 +268,85 @@ class OrchestrationCreateResponse(BaseModel):
     errors: list[str] = []
 
 
+# Pydantic response models for orchestration detail endpoint (DS-731)
+class TriggerDetailResponse(BaseModel):
+    """Response model for trigger configuration in orchestration detail."""
+
+    source: str
+    project: str | None = None
+    jql_filter: str | None = None
+    tags: list[str] = []
+    project_number: int | None = None
+    project_scope: str | None = None
+    project_owner: str | None = None
+    project_filter: str | None = None
+    labels: list[str] = []
+
+
+class GitHubContextDetailResponse(BaseModel):
+    """Response model for GitHub context in orchestration detail."""
+
+    host: str | None = None
+    org: str | None = None
+    repo: str | None = None
+    branch: str | None = None
+    create_branch: bool | None = None
+    base_branch: str | None = None
+
+
+class AgentDetailResponse(BaseModel):
+    """Response model for agent configuration in orchestration detail."""
+
+    prompt: str
+    github: GitHubContextDetailResponse | None = None
+    timeout_seconds: int | None = None
+    model: str | None = None
+    agent_type: str | None = None
+    cursor_mode: str | None = None
+    strict_template_variables: bool | None = None
+
+
+class RetryDetailResponse(BaseModel):
+    """Response model for retry configuration in orchestration detail."""
+
+    max_attempts: int
+    success_patterns: list[str] = []
+    failure_patterns: list[str] = []
+    default_status: str
+    default_outcome: str
+
+
+class OutcomeDetailResponse(BaseModel):
+    """Response model for an outcome in orchestration detail."""
+
+    name: str
+    patterns: list[str] = []
+    add_tag: str | None = None
+
+
+class LifecycleDetailResponse(BaseModel):
+    """Response model for lifecycle configuration in orchestration detail."""
+
+    on_start_add_tag: str | None = None
+    on_complete_remove_tag: str | None = None
+    on_complete_add_tag: str | None = None
+    on_failure_add_tag: str | None = None
+
+
+class OrchestrationDetailResponse(BaseModel):
+    """Response model for full orchestration detail."""
+
+    name: str
+    enabled: bool
+    max_concurrent: int | None = None
+    source_file: str | None = None
+    trigger: TriggerDetailResponse
+    agent: AgentDetailResponse
+    retry: RetryDetailResponse
+    outcomes: list[OutcomeDetailResponse] = []
+    lifecycle: LifecycleDetailResponse
+
+
 def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
     """Convert an OrchestrationEditRequest to a YAML-compatible update dict.
 
@@ -1033,18 +1112,23 @@ def create_routes(
         yaml_files.sort()
         return yaml_files
 
-    @dashboard_router.get("/api/orchestrations/{name}/detail")
-    async def api_orchestration_detail(name: str) -> dict[str, Any]:
+    @dashboard_router.get(
+        "/api/orchestrations/{name}/detail",
+        response_model=OrchestrationDetailResponse,
+    )
+    async def api_orchestration_detail(name: str) -> OrchestrationDetailResponse:
         """Return full orchestration configuration as JSON.
 
         Retrieves detailed orchestration configuration including trigger,
-        agent, retry, outcome, and lifecycle settings.
+        agent, retry, outcome, and lifecycle settings. Returns a validated
+        Pydantic response model for automatic OpenAPI docs and response
+        validation.
 
         Args:
             name: The orchestration name.
 
         Returns:
-            JSON representation of the full orchestration configuration.
+            Validated OrchestrationDetailResponse with full configuration.
 
         Raises:
             HTTPException: 404 if orchestration not found.
@@ -1055,64 +1139,64 @@ def create_routes(
                 status_code=404,
                 detail=f"Orchestration '{name}' not found",
             )
-        return {
-            "name": detail.name,
-            "enabled": detail.enabled,
-            "max_concurrent": detail.max_concurrent,
-            "source_file": detail.source_file,
-            "trigger": {
-                "source": detail.trigger.source,
-                "project": detail.trigger.project,
-                "jql_filter": detail.trigger.jql_filter,
-                "tags": detail.trigger.tags,
-                "project_number": detail.trigger.project_number,
-                "project_scope": detail.trigger.project_scope,
-                "project_owner": detail.trigger.project_owner,
-                "project_filter": detail.trigger.project_filter,
-                "labels": detail.trigger.labels,
-            },
-            "agent": {
-                "prompt": detail.agent.prompt,
-                "github": (
-                    {
-                        "host": detail.agent.github.host,
-                        "org": detail.agent.github.org,
-                        "repo": detail.agent.github.repo,
-                        "branch": detail.agent.github.branch,
-                        "create_branch": detail.agent.github.create_branch,
-                        "base_branch": detail.agent.github.base_branch,
-                    }
+        return OrchestrationDetailResponse(
+            name=detail.name,
+            enabled=detail.enabled,
+            max_concurrent=detail.max_concurrent,
+            source_file=detail.source_file,
+            trigger=TriggerDetailResponse(
+                source=detail.trigger.source,
+                project=detail.trigger.project,
+                jql_filter=detail.trigger.jql_filter,
+                tags=detail.trigger.tags,
+                project_number=detail.trigger.project_number,
+                project_scope=detail.trigger.project_scope,
+                project_owner=detail.trigger.project_owner,
+                project_filter=detail.trigger.project_filter,
+                labels=detail.trigger.labels,
+            ),
+            agent=AgentDetailResponse(
+                prompt=detail.agent.prompt,
+                github=(
+                    GitHubContextDetailResponse(
+                        host=detail.agent.github.host,
+                        org=detail.agent.github.org,
+                        repo=detail.agent.github.repo,
+                        branch=detail.agent.github.branch,
+                        create_branch=detail.agent.github.create_branch,
+                        base_branch=detail.agent.github.base_branch,
+                    )
                     if detail.agent.github
                     else None
                 ),
-                "timeout_seconds": detail.agent.timeout_seconds,
-                "model": detail.agent.model,
-                "agent_type": detail.agent.agent_type,
-                "cursor_mode": detail.agent.cursor_mode,
-                "strict_template_variables": detail.agent.strict_template_variables,
-            },
-            "retry": {
-                "max_attempts": detail.retry.max_attempts,
-                "success_patterns": detail.retry.success_patterns,
-                "failure_patterns": detail.retry.failure_patterns,
-                "default_status": detail.retry.default_status,
-                "default_outcome": detail.retry.default_outcome,
-            },
-            "outcomes": [
-                {
-                    "name": outcome.name,
-                    "patterns": outcome.patterns,
-                    "add_tag": outcome.add_tag,
-                }
+                timeout_seconds=detail.agent.timeout_seconds,
+                model=detail.agent.model,
+                agent_type=detail.agent.agent_type,
+                cursor_mode=detail.agent.cursor_mode,
+                strict_template_variables=detail.agent.strict_template_variables,
+            ),
+            retry=RetryDetailResponse(
+                max_attempts=detail.retry.max_attempts,
+                success_patterns=detail.retry.success_patterns,
+                failure_patterns=detail.retry.failure_patterns,
+                default_status=detail.retry.default_status,
+                default_outcome=detail.retry.default_outcome,
+            ),
+            outcomes=[
+                OutcomeDetailResponse(
+                    name=outcome.name,
+                    patterns=outcome.patterns,
+                    add_tag=outcome.add_tag,
+                )
                 for outcome in detail.outcomes
             ],
-            "lifecycle": {
-                "on_start_add_tag": detail.lifecycle.on_start_add_tag,
-                "on_complete_remove_tag": detail.lifecycle.on_complete_remove_tag,
-                "on_complete_add_tag": detail.lifecycle.on_complete_add_tag,
-                "on_failure_add_tag": detail.lifecycle.on_failure_add_tag,
-            },
-        }
+            lifecycle=LifecycleDetailResponse(
+                on_start_add_tag=detail.lifecycle.on_start_add_tag,
+                on_complete_remove_tag=detail.lifecycle.on_complete_remove_tag,
+                on_complete_add_tag=detail.lifecycle.on_complete_add_tag,
+                on_failure_add_tag=detail.lifecycle.on_failure_add_tag,
+            ),
+        )
 
     @dashboard_router.get(
         "/partials/orchestration_detail/{name}", response_class=HTMLResponse

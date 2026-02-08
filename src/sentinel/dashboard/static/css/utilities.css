@@ -1051,7 +1051,7 @@
     font-size: 0.85em;
     line-height: 1.5;
     margin: 0.5rem 0 0 0;
-    max-height: 400px;
+    max-height: var(--prompt-max-height, 400px);
     overflow: auto;
     padding: 0.75rem;
     white-space: pre-wrap;
