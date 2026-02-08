@@ -941,6 +941,20 @@ def load_config(env_file: Path | None = None) -> Config:
         5.0,
     )
 
+    # Cross-field validation: initial_probe_interval must not exceed max_probe_interval
+    if health_gate_initial_probe_interval > health_gate_max_probe_interval:
+        logging.warning(
+            "Invalid service health gate config: "
+            "SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL (%s) exceeds "
+            "SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL (%s), swapping values",
+            _format_number(health_gate_initial_probe_interval),
+            _format_number(health_gate_max_probe_interval),
+        )
+        health_gate_initial_probe_interval, health_gate_max_probe_interval = (
+            health_gate_max_probe_interval,
+            health_gate_initial_probe_interval,
+        )
+
     # Parse default base branch
     default_base_branch = _validate_branch_name(
         os.getenv("SENTINEL_DEFAULT_BASE_BRANCH", "main"),
