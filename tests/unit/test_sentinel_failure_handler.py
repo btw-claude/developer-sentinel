@@ -81,7 +81,7 @@ class TestLogPartialFailure:
     def test_logs_warning_with_correct_format(
         self, service_name: str, found: int, errors: int
     ) -> None:
-        """Test that the helper emits a warning with the correct service name and counts."""
+        """Test that the helper emits a warning with the correct format and trigger counts."""
         sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
@@ -92,21 +92,11 @@ class TestLogPartialFailure:
             format_string = call_args[0][0]
             assert "Partial" in format_string
             assert "polling failure" in format_string
+            assert "trigger(s) succeeded" in format_string
+            assert "trigger(s) failed" in format_string
             assert call_args[0][1] == service_name
             assert call_args[0][2] == found
             assert call_args[0][3] == errors
-
-    def test_message_contains_trigger_counts(self) -> None:
-        """Test that the formatted message includes trigger count labels."""
-        sentinel, _ = _create_sentinel()
-
-        with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_partial_failure("GitHub", 4, 3)
-
-            call_args = mock_logger.warning.call_args
-            format_string = call_args[0][0]
-            assert "trigger(s) succeeded" in format_string
-            assert "trigger(s) failed" in format_string
 
 
 class TestLogTotalFailure:
