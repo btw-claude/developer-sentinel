@@ -296,7 +296,7 @@ class PollingConfig:
             fail. Default is 1.0 (warn only when all triggers fail, preserving
             the existing behaviour). Setting a lower value provides earlier
             warning of service degradation in environments with many triggers
-            (DS-828).
+            (introduced in DS-828).
     """
 
     interval: int = 60
@@ -784,7 +784,7 @@ def load_config(env_file: Path | None = None) -> Config:
         50,
     )
 
-    # Parse polling error threshold percentage (DS-828)
+    # Parse polling error threshold percentage (introduced in DS-828)
     polling_error_threshold_pct = _parse_bounded_float(
         os.getenv("SENTINEL_POLLING_ERROR_THRESHOLD_PCT", "1.0"),
         "SENTINEL_POLLING_ERROR_THRESHOLD_PCT",
