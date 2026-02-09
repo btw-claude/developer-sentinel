@@ -314,6 +314,47 @@ class Sentinel:
             errors,
         )
 
+    def _log_total_failure(
+        self, service_name: str, error_count: int, trigger_count: int, error_threshold: float
+    ) -> None:
+        """Log a warning when trigger failures meet or exceed the error threshold.
+
+        This helper replaces the duplicated threshold-based warning logging
+        for Jira and GitHub polling in ``run_once()``.  It checks whether
+        failures have reached the configured threshold and emits an
+        appropriate warning — either for total failure (all triggers failed)
+        or for partial threshold breach.
+
+        Args:
+            service_name: Human-readable service label (e.g. ``"Jira"``).
+            error_count: Number of triggers that raised errors.
+            trigger_count: Total number of triggers polled.
+            error_threshold: Fraction (0.0–1.0) at which to warn.
+        """
+        if trigger_count <= 0:
+            return
+        if error_count / trigger_count < error_threshold:
+            return
+
+        if error_count >= trigger_count:
+            logger.warning(
+                "All %s %s trigger(s) failed during this polling cycle; "
+                "consider investigating %s connectivity",
+                error_count,
+                service_name,
+                service_name,
+            )
+        else:
+            logger.warning(
+                "%s of %s %s trigger(s) failed (threshold: %s%%); "
+                "consider investigating %s connectivity",
+                error_count,
+                trigger_count,
+                service_name,
+                int(error_threshold * 100),
+                service_name,
+            )
+
     def _get_available_slots(self) -> int:
         """Get the number of available execution slots."""
         return self._execution_manager.get_available_slots()
@@ -759,26 +800,12 @@ class Sentinel:
                 # threshold, indicating service degradation that may need
                 # attention.  The threshold defaults to 1.0 (all triggers)
                 # but can be lowered for earlier warnings (DS-828).
-                jira_trigger_count = len(grouped.jira)
-                error_threshold = self.config.polling.error_threshold_pct
-                if (
-                    jira_trigger_count > 0
-                    and jira_error_count / jira_trigger_count >= error_threshold
-                ):
-                    if jira_error_count >= jira_trigger_count:
-                        logger.warning(
-                            "All %s Jira trigger(s) failed during this polling cycle; "
-                            "consider investigating Jira connectivity",
-                            jira_error_count,
-                        )
-                    else:
-                        logger.warning(
-                            "%s of %s Jira trigger(s) failed (threshold: %s%%); "
-                            "consider investigating Jira connectivity",
-                            jira_error_count,
-                            jira_trigger_count,
-                            int(error_threshold * 100),
-                        )
+                self._log_total_failure(
+                    "Jira",
+                    jira_error_count,
+                    len(grouped.jira),
+                    self.config.polling.error_threshold_pct,
+                )
 
                 # Record health gate outcome based on polling errors.
                 # Only record failure when ALL triggers failed (partial success is OK).
@@ -829,26 +856,12 @@ class Sentinel:
                     # threshold, indicating service degradation that may need
                     # attention.  The threshold defaults to 1.0 (all triggers)
                     # but can be lowered for earlier warnings (DS-828).
-                    gh_trigger_count = len(grouped.github)
-                    error_threshold = self.config.polling.error_threshold_pct
-                    if (
-                        gh_trigger_count > 0
-                        and gh_error_count / gh_trigger_count >= error_threshold
-                    ):
-                        if gh_error_count >= gh_trigger_count:
-                            logger.warning(
-                                "All %s GitHub trigger(s) failed during this polling cycle; "
-                                "consider investigating GitHub connectivity",
-                                gh_error_count,
-                            )
-                        else:
-                            logger.warning(
-                                "%s of %s GitHub trigger(s) failed (threshold: %s%%); "
-                                "consider investigating GitHub connectivity",
-                                gh_error_count,
-                                gh_trigger_count,
-                                int(error_threshold * 100),
-                            )
+                    self._log_total_failure(
+                        "GitHub",
+                        gh_error_count,
+                        len(grouped.github),
+                        self.config.polling.error_threshold_pct,
+                    )
 
                     # Record health gate outcome based on polling errors.
                     # Only record failure when ALL triggers failed (partial success is OK).
