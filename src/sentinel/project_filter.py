@@ -7,10 +7,13 @@ as well as AND/OR boolean combinations with parentheses for grouping.
 Example queries:
     Status = "Ready"
     Status != "Done"
+    Status != Done
     Status IN ("Ready", "In Progress")
     Status NOT IN ("Done", "Archived")
     Status = "Ready" AND Priority = "High"
     (Status = "Ready" OR Status = "In Progress") AND Priority = "High"
+
+Values can be quoted or unquoted. Use quotes for values containing spaces.
 """
 
 from __future__ import annotations
@@ -438,18 +441,24 @@ class ProjectFilterParser:
         return FilterExpression(condition=condition)
 
     def _parse_value(self) -> str:
-        """Parse a single quoted value.
+        """Parse a single value (quoted or unquoted).
+
+        Quoted values have their quotes stripped. Unquoted values are returned
+        as-is, allowing expressions like ``Status != Done`` in addition to
+        ``Status != "Done"``.
 
         Returns:
-            The unquoted string value.
+            The string value.
         """
         token = self._advance()
         if token is None:
             raise ValueError("Expected value")
-        if not token.startswith('"'):
-            raise ValueError(f"Expected quoted string, got: {token}")
-        # Extract content between quotes
-        return token[1:-1]
+        if token in ("AND", "OR", "IN", "NOT IN", "(", ")", ",", "=", "!="):
+            raise ValueError(f"Expected value, got operator: {token}")
+        if token.startswith('"'):
+            # Extract content between quotes
+            return token[1:-1]
+        return token
 
     def _parse_value_list(self) -> tuple[str, ...]:
         """Parse a parenthesized list of values.
