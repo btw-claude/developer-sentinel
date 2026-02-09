@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from sentinel.service_health_gate import (
+    _PROBE_STRATEGY_REQUIRED_PARAMS,
     GITHUB_API_VERSION,
     GITHUB_PROBE_PATH,
     JIRA_PROBE_PATH,
@@ -1073,6 +1074,39 @@ class TestTimeFuncInjection:
         # last_check_at and last_available_at should be identical since
         # time is captured once and reused
         assert status["jira"]["last_check_at"] == status["jira"]["last_available_at"]
+
+
+class TestProbeStrategyRequiredParamsConstant:
+    """Tests for _PROBE_STRATEGY_REQUIRED_PARAMS module-level constant."""
+
+    def test_required_params_contains_expected_names(self) -> None:
+        """Test that _PROBE_STRATEGY_REQUIRED_PARAMS has the expected parameter names."""
+        expected = frozenset({"timeout", "base_url", "auth", "token"})
+        assert expected == _PROBE_STRATEGY_REQUIRED_PARAMS
+
+    def test_required_params_is_frozenset(self) -> None:
+        """Test that _PROBE_STRATEGY_REQUIRED_PARAMS is immutable (frozenset)."""
+        assert isinstance(_PROBE_STRATEGY_REQUIRED_PARAMS, frozenset)
+
+    def test_required_params_matches_probe_strategy_execute_signature(self) -> None:
+        """Test that _PROBE_STRATEGY_REQUIRED_PARAMS matches the ProbeStrategy.execute() params.
+
+        Ensures the constant stays in sync with the protocol definition.
+        """
+        import inspect
+
+        sig = inspect.signature(ProbeStrategy.execute)
+        keyword_params = {
+            name
+            for name, param in sig.parameters.items()
+            if param.kind
+            in (
+                inspect.Parameter.KEYWORD_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+            and name != "self"
+        }
+        assert keyword_params == _PROBE_STRATEGY_REQUIRED_PARAMS
 
 
 class TestProbeStrategyProtocol:
