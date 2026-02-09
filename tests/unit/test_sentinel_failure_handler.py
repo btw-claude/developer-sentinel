@@ -215,6 +215,107 @@ class TestLogTotalFailure:
             assert 50 in call_args[0]
 
 
+class TestRecordPollHealth:
+    """Tests for the _record_poll_health helper method (DS-835).
+
+    This method extracts the duplicated health-gate recording blocks for
+    Jira and GitHub polling in ``run_once()`` into a single reusable helper.
+    """
+
+    @pytest.mark.parametrize(
+        "service_name,display_name",
+        [
+            pytest.param("jira", "Jira", id="jira"),
+            pytest.param("github", "GitHub", id="github"),
+        ],
+    )
+    def test_records_success_when_no_errors(
+        self, service_name: str, display_name: str
+    ) -> None:
+        """Test that record_poll_success is called when error_count is zero."""
+        sentinel, _ = _create_sentinel()
+
+        with patch.object(sentinel._health_gate, "record_poll_success") as mock_success:
+            sentinel._record_poll_health(service_name, display_name, error_count=0, issues_found=5)
+
+            mock_success.assert_called_once_with(service_name)
+
+    @pytest.mark.parametrize(
+        "service_name,display_name",
+        [
+            pytest.param("jira", "Jira", id="jira"),
+            pytest.param("github", "GitHub", id="github"),
+        ],
+    )
+    def test_records_failure_when_all_triggers_failed(
+        self, service_name: str, display_name: str
+    ) -> None:
+        """Test that record_poll_failure is called when errors > 0 and no issues found."""
+        sentinel, _ = _create_sentinel()
+
+        with patch.object(sentinel._health_gate, "record_poll_failure") as mock_failure:
+            sentinel._record_poll_health(service_name, display_name, error_count=3, issues_found=0)
+
+            mock_failure.assert_called_once_with(service_name)
+
+    @pytest.mark.parametrize(
+        "service_name,display_name",
+        [
+            pytest.param("jira", "Jira", id="jira"),
+            pytest.param("github", "GitHub", id="github"),
+        ],
+    )
+    def test_logs_partial_failure_when_mixed_results(
+        self, service_name: str, display_name: str
+    ) -> None:
+        """Test that _log_partial_failure is called when errors > 0 and issues > 0."""
+        sentinel, _ = _create_sentinel()
+
+        with patch.object(sentinel, "_log_partial_failure") as mock_partial:
+            sentinel._record_poll_health(service_name, display_name, error_count=2, issues_found=3)
+
+            mock_partial.assert_called_once_with(display_name, 3, 2)
+
+    def test_no_failure_recorded_for_partial_success(self) -> None:
+        """Test that record_poll_failure is NOT called when some issues were found."""
+        sentinel, _ = _create_sentinel()
+
+        with patch.object(sentinel._health_gate, "record_poll_failure") as mock_failure:
+            with patch.object(sentinel, "_log_partial_failure"):
+                sentinel._record_poll_health("jira", "Jira", error_count=1, issues_found=2)
+
+                mock_failure.assert_not_called()
+
+    def test_no_success_recorded_when_errors_present(self) -> None:
+        """Test that record_poll_success is NOT called when errors > 0."""
+        sentinel, _ = _create_sentinel()
+
+        with patch.object(sentinel._health_gate, "record_poll_success") as mock_success:
+            with patch.object(sentinel._health_gate, "record_poll_failure"):
+                sentinel._record_poll_health("github", "GitHub", error_count=3, issues_found=0)
+
+                mock_success.assert_not_called()
+
+    def test_uses_display_name_for_partial_failure_logging(self) -> None:
+        """Test that the display_name (not service_name) is passed to _log_partial_failure."""
+        sentinel, _ = _create_sentinel()
+
+        with patch.object(sentinel, "_log_partial_failure") as mock_partial:
+            sentinel._record_poll_health("github", "GitHub", error_count=1, issues_found=4)
+
+            call_args = mock_partial.call_args[0]
+            assert call_args[0] == "GitHub"
+
+    def test_uses_service_name_for_health_gate_calls(self) -> None:
+        """Test that the service_name (not display_name) is used for health gate calls."""
+        sentinel, _ = _create_sentinel()
+
+        with patch.object(sentinel._health_gate, "record_poll_success") as mock_success:
+            sentinel._record_poll_health("jira", "Jira", error_count=0, issues_found=1)
+
+            mock_success.assert_called_once_with("jira")
+
+
 class TestHandleExecutionFailure:
     """Tests for the _handle_execution_failure helper method."""
 
