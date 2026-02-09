@@ -1166,6 +1166,73 @@ class TestProbeStrategyProtocol:
         with pytest.raises(TypeError, match="strategy must satisfy ProbeStrategy protocol"):
             gate.register_probe_strategy("bad", "not a strategy")  # type: ignore[arg-type]
 
+    def test_register_strategy_signature_validation_missing_params(self) -> None:
+        """Test that registering a strategy with wrong execute() signature raises TypeError.
+
+        A class with execute(self) (no keyword args) passes the
+        @runtime_checkable isinstance() check but would fail at call time.
+        The signature validation in register_probe_strategy() catches this
+        eagerly at registration time.
+        """
+
+        class BadSignatureStrategy:
+            def execute(self) -> bool:  # type: ignore[override]
+                return True
+
+        gate = ServiceHealthGate()
+        with pytest.raises(TypeError, match="missing required keyword parameters"):
+            gate.register_probe_strategy("bad_sig", BadSignatureStrategy())  # type: ignore[arg-type]
+
+    def test_register_strategy_signature_validation_partial_params(self) -> None:
+        """Test that a strategy with only some required params is rejected."""
+
+        class PartialParamsStrategy:
+            def execute(self, *, timeout: float) -> bool:
+                return True
+
+        gate = ServiceHealthGate()
+        with pytest.raises(TypeError, match="missing required keyword parameters"):
+            gate.register_probe_strategy("partial", PartialParamsStrategy())  # type: ignore[arg-type]
+
+    def test_register_strategy_signature_validation_accepts_correct_signature(self) -> None:
+        """Test that a strategy with the correct execute() signature passes validation."""
+
+        class CorrectStrategy:
+            def execute(
+                self,
+                *,
+                timeout: float,
+                base_url: str = "",
+                auth: tuple[str, str] | None = None,
+                token: str = "",
+            ) -> bool:
+                return True
+
+        gate = ServiceHealthGate()
+        # Should not raise
+        gate.register_probe_strategy("correct", CorrectStrategy())
+        assert gate.get_probe_strategy("correct") is not None
+
+    def test_register_strategy_signature_validation_accepts_extra_params(self) -> None:
+        """Test that a strategy with extra params beyond the required ones is accepted."""
+
+        class ExtraParamsStrategy:
+            def execute(
+                self,
+                *,
+                timeout: float,
+                base_url: str = "",
+                auth: tuple[str, str] | None = None,
+                token: str = "",
+                extra_param: str = "default",
+            ) -> bool:
+                return True
+
+        gate = ServiceHealthGate()
+        # Should not raise — extra params are fine
+        gate.register_probe_strategy("extra", ExtraParamsStrategy())
+        assert gate.get_probe_strategy("extra") is not None
+
     def test_unregister_strategy(self) -> None:
         """Test unregistering a probe strategy."""
         gate = ServiceHealthGate()

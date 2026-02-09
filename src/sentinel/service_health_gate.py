@@ -52,6 +52,7 @@ Usage:
 
 from __future__ import annotations
 
+import inspect
 import os
 import threading
 import time
@@ -111,6 +112,39 @@ class ProbeStrategy(Protocol):
     ``ServiceHealthGate.register_probe_strategy()`` so that
     ``probe_service()`` can dispatch to it by service name.
 
+    .. note:: **``@runtime_checkable`` limitation**
+
+       The ``@runtime_checkable`` decorator enables ``isinstance()`` checks
+       against this protocol, but Python's runtime protocol checking **only
+       verifies that the required method names exist** on the object — it does
+       **not** validate method signatures.  A class that defines
+       ``execute(self)`` (with no keyword arguments) would pass an
+       ``isinstance(obj, ProbeStrategy)`` check yet raise ``TypeError`` when
+       called with the expected keyword arguments.
+
+       To mitigate this, ``register_probe_strategy()`` performs an explicit
+       signature inspection to verify that the ``execute`` method accepts the
+       required keyword-only parameters (``timeout``, ``base_url``, ``auth``,
+       ``token``).  If the signature does not match, ``register_probe_strategy()``
+       raises ``TypeError`` with a descriptive message.
+
+    .. note:: **Uniform interface — not all parameters are used by every strategy**
+
+       The ``execute()`` method provides a uniform interface across all probe
+       strategies.  Individual strategy implementations are not expected to
+       use every parameter:
+
+       - ``JiraProbeStrategy`` uses ``timeout``, ``base_url``, and ``auth``
+         but ignores ``token``.
+       - ``GitHubProbeStrategy`` uses ``timeout``, ``base_url``, and ``token``
+         but ignores ``auth``.
+
+       This is the intended design tradeoff: a consistent calling convention
+       simplifies the dispatch logic in ``_execute_probe()`` at the cost of
+       each strategy receiving parameters it may not need.  Custom strategy
+       implementations should accept all four keyword parameters even if they
+       only use a subset.
+
     Example::
 
         class MyServiceProbeStrategy:
@@ -143,7 +177,11 @@ class ProbeStrategy(Protocol):
             timeout: HTTP request timeout in seconds.
             base_url: Base URL for the service API.
             auth: Optional (username/email, api_token) tuple for Basic auth.
+                Not all strategies use this parameter — see the protocol-level
+                docstring for details on the uniform interface tradeoff.
             token: Optional bearer token for token-based authentication.
+                Not all strategies use this parameter — see the protocol-level
+                docstring for details on the uniform interface tradeoff.
 
         Returns:
             True if the service is available, False otherwise.
@@ -505,22 +543,87 @@ class ServiceHealthGate:
         self._probe_strategies["jira"] = JiraProbeStrategy()
         self._probe_strategies["github"] = GitHubProbeStrategy()
 
+    @staticmethod
+    def _validate_probe_strategy_signature(strategy: object) -> None:
+        """Validate that a strategy's execute() method has the required signature.
+
+        The ``@runtime_checkable`` decorator on ``ProbeStrategy`` only checks
+        for the *existence* of an ``execute`` attribute — it does not verify
+        that the method accepts the expected keyword-only parameters.  This
+        helper performs an explicit ``inspect.signature`` check so that
+        signature mismatches are caught eagerly at registration time rather
+        than at probe-call time.
+
+        Args:
+            strategy: The candidate strategy object to validate.
+
+        Raises:
+            TypeError: If the ``execute`` method is missing any of the
+                required keyword-only parameters (``timeout``, ``base_url``,
+                ``auth``, ``token``).
+        """
+        required_params = {"timeout", "base_url", "auth", "token"}
+        try:
+            sig = inspect.signature(strategy.execute)  # type: ignore[attr-defined]
+        except (ValueError, TypeError) as e:
+            msg = (
+                f"Cannot inspect execute() signature on "
+                f"{type(strategy).__name__}: {e}"
+            )
+            raise TypeError(msg) from e
+
+        param_names = {
+            name
+            for name, param in sig.parameters.items()
+            if param.kind
+            in (
+                inspect.Parameter.KEYWORD_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+            and name != "self"
+        }
+
+        missing = required_params - param_names
+        if missing:
+            sorted_missing = sorted(missing)
+            msg = (
+                f"strategy execute() method on {type(strategy).__name__} is "
+                f"missing required keyword parameters: {sorted_missing}. "
+                f"See ProbeStrategy protocol docstring for the expected signature."
+            )
+            raise TypeError(msg)
+
     def register_probe_strategy(self, service_name: str, strategy: ProbeStrategy) -> None:
         """Register a probe strategy for a service.
 
         Use this method to add probing support for a new external service
         without modifying the ``_execute_probe`` dispatch logic.
 
+        Performs two levels of validation:
+
+        1. ``isinstance(strategy, ProbeStrategy)`` — verifies that the object
+           has an ``execute`` attribute (runtime protocol check).
+        2. ``_validate_probe_strategy_signature()`` — inspects the ``execute``
+           method's signature to ensure it accepts the required keyword-only
+           parameters (``timeout``, ``base_url``, ``auth``, ``token``).
+
+        This two-step validation catches both missing methods and incorrect
+        signatures at registration time, preventing confusing ``TypeError``
+        exceptions at probe-call time.
+
         Args:
             service_name: Lowercase service name (e.g. ``"jira"``, ``"my_service"``).
             strategy: An object satisfying the ``ProbeStrategy`` protocol.
 
         Raises:
-            TypeError: If *strategy* does not satisfy the ``ProbeStrategy`` protocol.
+            TypeError: If *strategy* does not satisfy the ``ProbeStrategy``
+                protocol or its ``execute()`` method is missing required
+                keyword parameters.
         """
         if not isinstance(strategy, ProbeStrategy):
             msg = f"strategy must satisfy ProbeStrategy protocol, got {type(strategy).__name__}"
             raise TypeError(msg)
+        self._validate_probe_strategy_signature(strategy)
         self._probe_strategies[service_name.lower()] = strategy
 
     def unregister_probe_strategy(self, service_name: str) -> None:
