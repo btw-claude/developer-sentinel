@@ -1,4 +1,5 @@
 {# Security audit complete - no external links (target="_blank") in this template #}
+{% from "macros.html" import humanize_duration %}
 {# Macro to format relative time from a datetime object #}
 {% macro format_relative_time(dt, now) %}
     {%- if dt %}
@@ -90,17 +91,7 @@
         <td>
             {# Edge case handling for None uptime_seconds #}
             {% if state.system_status.uptime_seconds is not none %}
-            {% set total_seconds = state.system_status.uptime_seconds | int %}
-            {% set hours = total_seconds // 3600 %}
-            {% set minutes = (total_seconds % 3600) // 60 %}
-            {% set seconds = total_seconds % 60 %}
-            {% if hours > 0 %}
-            {{ hours }}h {{ minutes }}m {{ seconds }}s
-            {% elif minutes > 0 %}
-            {{ minutes }}m {{ seconds }}s
-            {% else %}
-            {{ seconds }}s
-            {% endif %}
+            {{ humanize_duration(state.system_status.uptime_seconds) }}
             {% else %}
             <span class="text-secondary">N/A</span>
             {% endif %}

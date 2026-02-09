@@ -1,4 +1,14 @@
 {# Security audit complete - no external links (target="_blank") in this template #}
+{#
+  XSS audit (DS-825): All dynamic values (svc.service_name, svc.last_error,
+  svc.consecutive_failures, svc.probe_count) are rendered via {{ ... }} which
+  is auto-escaped by the Jinja2 Environment configured with
+  select_autoescape(["html", "xml"]) in app.py. This covers both element
+  content and attribute contexts (e.g. the title="{{ svc.last_error }}"
+  attribute). No |safe or {% autoescape false %} overrides are used here,
+  so all output is escaped by default.
+#}
+{% from "macros.html" import humanize_duration, humanize_seconds_ago %}
 {% if state.service_health %}
 <table>
     <tr>
@@ -23,39 +33,22 @@
         <td>{{ svc.consecutive_failures }}</td>
         <td>
             {% if svc.paused and svc.paused_since_seconds is not none %}
-                {% set total_seconds = svc.paused_since_seconds | int %}
-                {% set hours = total_seconds // 3600 %}
-                {% set minutes = (total_seconds % 3600) // 60 %}
-                {% set seconds = total_seconds % 60 %}
-                {% if hours > 0 %}
-                {{ hours }}h {{ minutes }}m {{ seconds }}s
-                {% elif minutes > 0 %}
-                {{ minutes }}m {{ seconds }}s
-                {% else %}
-                {{ seconds }}s
-                {% endif %}
+                {{ humanize_duration(svc.paused_since_seconds) }}
             {% else %}
-            <span class="text-secondary">—</span>
+            <span class="text-secondary">&mdash;</span>
             {% endif %}
         </td>
         <td>
             {% if svc.last_error %}
             <span class="status-error" title="{{ svc.last_error }}">{{ svc.last_error[:80] }}{% if svc.last_error|length > 80 %}...{% endif %}</span>
             {% else %}
-            <span class="text-secondary">—</span>
+            <span class="text-secondary">&mdash;</span>
             {% endif %}
         </td>
         <td>{{ svc.probe_count }}</td>
         <td>
             {% if svc.last_check_seconds_ago is not none %}
-                {% set check_seconds = svc.last_check_seconds_ago | int %}
-                {% if check_seconds < 60 %}
-                {{ check_seconds }}s ago
-                {% elif check_seconds < 3600 %}
-                {{ check_seconds // 60 }}m ago
-                {% else %}
-                {{ check_seconds // 3600 }}h ago
-                {% endif %}
+                {{ humanize_seconds_ago(svc.last_check_seconds_ago) }}
             {% else %}
             <span class="text-secondary">Never</span>
             {% endif %}
