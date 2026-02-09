@@ -124,7 +124,12 @@ class TestLogTotalFailure:
         sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_total_failure(service_name, error_count, trigger_count, 1.0)
+            sentinel._log_total_failure(
+                service_name=service_name,
+                error_count=error_count,
+                trigger_count=trigger_count,
+                error_threshold=1.0,
+            )
 
             mock_logger.warning.assert_called_once()
             call_args = mock_logger.warning.call_args
@@ -159,7 +164,12 @@ class TestLogTotalFailure:
         sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_total_failure(service_name, error_count, trigger_count, threshold)
+            sentinel._log_total_failure(
+                service_name=service_name,
+                error_count=error_count,
+                trigger_count=trigger_count,
+                error_threshold=threshold,
+            )
 
             mock_logger.warning.assert_called_once()
             call_args = mock_logger.warning.call_args
@@ -189,7 +199,12 @@ class TestLogTotalFailure:
         sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_total_failure(service_name, error_count, trigger_count, threshold)
+            sentinel._log_total_failure(
+                service_name=service_name,
+                error_count=error_count,
+                trigger_count=trigger_count,
+                error_threshold=threshold,
+            )
 
             mock_logger.warning.assert_not_called()
 
