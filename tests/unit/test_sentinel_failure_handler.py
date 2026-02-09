@@ -600,7 +600,9 @@ class TestExecuteOrchestrationTaskUsesHelper:
             mock_issue.key = issue_key
 
             with patch.object(sentinel, "_handle_execution_failure") as mock_handler:
-                result = sentinel._execute_orchestration_task(mock_issue, orchestration)
+                result = sentinel._execute_orchestration_task(
+                    issue=mock_issue, orchestration=orchestration
+                )
 
                 assert result is None
                 mock_handler.assert_called_once()
@@ -620,7 +622,9 @@ class TestApplyFailureTagsSafely:
         orchestration = make_orchestration(name="test-orch")
 
         with patch.object(sentinel.tag_manager, "apply_failure_tags") as mock_apply:
-            sentinel._apply_failure_tags_safely("TEST-123", orchestration)
+            sentinel._apply_failure_tags_safely(
+                issue_key="TEST-123", orchestration=orchestration
+            )
 
             mock_apply.assert_called_once_with(
                 issue_key="TEST-123", orchestration=orchestration
@@ -670,7 +674,9 @@ class TestApplyFailureTagsSafely:
         ):
             with patch("sentinel.main.logger") as mock_logger:
                 # Should not raise
-                sentinel._apply_failure_tags_safely("TEST-123", orchestration)
+                sentinel._apply_failure_tags_safely(
+                    issue_key="TEST-123", orchestration=orchestration
+                )
 
                 # Verify the tag error was logged with correct ErrorType
                 mock_logger.error.assert_called_once()
@@ -691,7 +697,9 @@ class TestApplyFailureTagsSafely:
             side_effect=OSError("Tag error"),
         ):
             with patch("sentinel.main.logger") as mock_logger:
-                sentinel._apply_failure_tags_safely("PROJ-999", orchestration)
+                sentinel._apply_failure_tags_safely(
+                    issue_key="PROJ-999", orchestration=orchestration
+                )
 
                 # Verify extra context was passed
                 call_args = mock_logger.error.call_args
@@ -865,7 +873,9 @@ class TestClaudeProcessInterruptedUsesHelper:
             mock_issue.key = "TEST-999"
 
             with patch.object(sentinel, "_apply_failure_tags_safely") as mock_apply:
-                result = sentinel._execute_orchestration_task(mock_issue, orchestration)
+                result = sentinel._execute_orchestration_task(
+                    issue=mock_issue, orchestration=orchestration
+                )
 
                 assert result is None
                 mock_apply.assert_called_once_with(
@@ -930,7 +940,9 @@ class TestSubmitExecutionTasksUsesHelper:
                 with patch.object(
                     sentinel, "_get_available_slots_for_orchestration", return_value=1
                 ):
-                    sentinel._submit_execution_tasks([routing_result], [])
+                    sentinel._submit_execution_tasks(
+                        routing_results=[routing_result], all_results=[]
+                    )
 
                     mock_handler.assert_called_once()
                     kwargs = mock_handler.call_args.kwargs
