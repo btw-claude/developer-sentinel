@@ -233,8 +233,13 @@ class TagManager:
         removed_tags: list[str] = []
         errors: list[str] = []
 
-        # Remove trigger tags
-        for tag in orchestration.trigger.tags:
+        # Remove trigger tags/labels based on trigger source
+        trigger_labels = (
+            orchestration.trigger.labels
+            if orchestration.trigger.source == "github"
+            else orchestration.trigger.tags
+        )
+        for tag in trigger_labels:
             try:
                 self._remove_label(issue_key, tag)
                 removed_tags.append(tag)

@@ -67,11 +67,17 @@ def make_orchestration(
     failure_tag: str = "",
     trigger_tags: list[str] | None = None,
     on_start_tag: str = "",
+    source: str = "jira",
+    trigger_labels: list[str] | None = None,
 ) -> Orchestration:
     """Helper to create an Orchestration for testing."""
     return Orchestration(
         name=name,
-        trigger=TriggerConfig(tags=trigger_tags or []),
+        trigger=TriggerConfig(
+            source=source,
+            tags=trigger_tags or [],
+            labels=trigger_labels or [],
+        ),
         agent=AgentConfig(prompt="Test prompt"),
         on_start=OnStartConfig(add_tag=on_start_tag),
         on_complete=OnCompleteConfig(remove_tag=remove_tag, add_tag=add_tag),
@@ -842,13 +848,16 @@ class TestTagManagerGitHubLabels:
         assert "needs-review" in update_result.removed_tags
         assert ("myorg", "myrepo", 42, "needs-review") in github_client.remove_calls
 
-    def test_github_start_processing_removes_trigger_tags(self) -> None:
+    def test_github_start_processing_removes_trigger_labels(self) -> None:
         jira_client = MockJiraTagClient()
         github_client = MockGitHubTagClient()
         github_client.labels[("myorg", "myrepo", 42)] = ["needs-review", "urgent"]
         manager = TagManager(jira_client, github_client)
 
-        orch = make_orchestration(trigger_tags=["needs-review", "urgent"])
+        orch = make_orchestration(
+            source="github",
+            trigger_labels=["needs-review", "urgent"],
+        )
 
         result = manager.start_processing("myorg/myrepo#42", orch)
 
@@ -857,6 +866,26 @@ class TestTagManagerGitHubLabels:
         assert "urgent" in result.removed_tags
         assert ("myorg", "myrepo", 42, "needs-review") in github_client.remove_calls
         assert ("myorg", "myrepo", 42, "urgent") in github_client.remove_calls
+
+    def test_github_start_processing_ignores_jira_tags(self) -> None:
+        """When source is 'github', trigger.tags (Jira field) should be ignored."""
+        jira_client = MockJiraTagClient()
+        github_client = MockGitHubTagClient()
+        manager = TagManager(jira_client, github_client)
+
+        orch = make_orchestration(
+            source="github",
+            trigger_tags=["jira-only-tag"],  # Should be ignored
+            trigger_labels=["github-label"],
+        )
+
+        result = manager.start_processing("myorg/myrepo#42", orch)
+
+        assert result.success is True
+        assert "github-label" in result.removed_tags
+        assert "jira-only-tag" not in result.removed_tags
+        assert len(github_client.remove_calls) == 1
+        assert ("myorg", "myrepo", 42, "github-label") in github_client.remove_calls
 
     def test_github_start_processing_adds_in_progress_tag(self) -> None:
         jira_client = MockJiraTagClient()
@@ -895,7 +924,10 @@ class TestTagManagerGitHubLabels:
         github_client.should_fail_remove = True
         manager = TagManager(jira_client, github_client)
 
-        orch = make_orchestration(trigger_tags=["needs-review"])
+        orch = make_orchestration(
+            source="github",
+            trigger_labels=["needs-review"],
+        )
 
         result = manager.start_processing("myorg/myrepo#42", orch)
 
