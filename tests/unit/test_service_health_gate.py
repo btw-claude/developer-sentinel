@@ -1492,3 +1492,233 @@ class TestGitHubProbeStrategy:
             )
 
         assert result is False
+
+
+class TestThreadSafeProbeCounters:
+    """Tests for thread-safe probe metric counters."""
+
+    def test_counter_lock_exists(self) -> None:
+        """Test that ServiceHealthGate has a dedicated counter lock."""
+        gate = ServiceHealthGate()
+        assert hasattr(gate, "_counter_lock")
+        assert isinstance(gate._counter_lock, type(threading.Lock()))
+
+    def test_counters_are_properties(self) -> None:
+        """Test that probe counters are implemented as properties."""
+        assert isinstance(
+            ServiceHealthGate.probe_success_count, property
+        )
+        assert isinstance(
+            ServiceHealthGate.probe_expected_failure_count, property
+        )
+        assert isinstance(
+            ServiceHealthGate.probe_unexpected_error_count, property
+        )
+
+    def test_counter_property_getters(self) -> None:
+        """Test that counter property getters return correct values."""
+        gate = ServiceHealthGate()
+        assert gate.probe_success_count == 0
+        assert gate.probe_expected_failure_count == 0
+        assert gate.probe_unexpected_error_count == 0
+
+    def test_counter_property_setters(self) -> None:
+        """Test that counter property setters work correctly."""
+        gate = ServiceHealthGate()
+        gate.probe_success_count = 5
+        gate.probe_expected_failure_count = 10
+        gate.probe_unexpected_error_count = 3
+
+        assert gate.probe_success_count == 5
+        assert gate.probe_expected_failure_count == 10
+        assert gate.probe_unexpected_error_count == 3
+
+    def test_get_probe_metrics_returns_snapshot(self) -> None:
+        """Test that get_probe_metrics returns an atomic snapshot."""
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config)
+
+        # Perform a successful probe
+        gate.record_poll_failure("jira", Exception("fail"))
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+            gate.probe_service("jira", base_url="https://jira.example.com", auth=("u", "t"))
+
+        # Perform an expected failure
+        gate.record_poll_failure("jira", Exception("fail"))
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.side_effect = httpx.TimeoutException("timed out")
+            mock_client_cls.return_value = mock_client
+            gate.probe_service("jira", base_url="https://jira.example.com", auth=("u", "t"))
+
+        # Perform an unexpected error
+        with patch.object(gate, "_execute_probe", side_effect=RuntimeError("unexpected")):
+            gate.probe_service("jira", base_url="https://jira.example.com")
+
+        metrics = gate.get_probe_metrics()
+        assert metrics == {
+            "probe_success_count": 1,
+            "probe_expected_failure_count": 1,
+            "probe_unexpected_error_count": 1,
+        }
+
+    def test_get_probe_metrics_initial_state(self) -> None:
+        """Test that get_probe_metrics returns zeros initially."""
+        gate = ServiceHealthGate()
+        metrics = gate.get_probe_metrics()
+        assert metrics == {
+            "probe_success_count": 0,
+            "probe_expected_failure_count": 0,
+            "probe_unexpected_error_count": 0,
+        }
+
+    def test_get_probe_metrics_is_independent_snapshot(self) -> None:
+        """Test that get_probe_metrics returns independent dict snapshots."""
+        gate = ServiceHealthGate()
+        metrics1 = gate.get_probe_metrics()
+
+        # Mutate the returned dict
+        metrics1["probe_success_count"] = 999
+
+        # Original should be unaffected
+        metrics2 = gate.get_probe_metrics()
+        assert metrics2["probe_success_count"] == 0
+
+    def test_concurrent_counter_increments(self) -> None:
+        """Test that concurrent probe operations produce correct counter totals."""
+        config = ServiceHealthGateConfig(failure_threshold=1000)
+        gate = ServiceHealthGate(config=config)
+        errors: list[Exception] = []
+        iterations = 100
+
+        def do_successful_probes() -> None:
+            try:
+                for _ in range(iterations):
+                    with gate._counter_lock:
+                        gate._probe_success_count += 1
+            except Exception as e:
+                errors.append(e)
+
+        def do_expected_failures() -> None:
+            try:
+                for _ in range(iterations):
+                    with gate._counter_lock:
+                        gate._probe_expected_failure_count += 1
+            except Exception as e:
+                errors.append(e)
+
+        def do_unexpected_errors() -> None:
+            try:
+                for _ in range(iterations):
+                    with gate._counter_lock:
+                        gate._probe_unexpected_error_count += 1
+            except Exception as e:
+                errors.append(e)
+
+        threads = [
+            threading.Thread(target=do_successful_probes),
+            threading.Thread(target=do_expected_failures),
+            threading.Thread(target=do_unexpected_errors),
+        ]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"Thread safety errors: {errors}"
+        assert gate.probe_success_count == iterations
+        assert gate.probe_expected_failure_count == iterations
+        assert gate.probe_unexpected_error_count == iterations
+
+    def test_concurrent_counter_reads_during_writes(self) -> None:
+        """Test that reading counters is safe during concurrent writes."""
+        config = ServiceHealthGateConfig(failure_threshold=1000)
+        gate = ServiceHealthGate(config=config)
+        errors: list[Exception] = []
+        iterations = 100
+
+        def writer() -> None:
+            try:
+                for _ in range(iterations):
+                    with gate._counter_lock:
+                        gate._probe_success_count += 1
+                        gate._probe_expected_failure_count += 1
+                        gate._probe_unexpected_error_count += 1
+            except Exception as e:
+                errors.append(e)
+
+        def reader() -> None:
+            try:
+                for _ in range(iterations):
+                    metrics = gate.get_probe_metrics()
+                    # All three counters must be non-negative
+                    assert metrics["probe_success_count"] >= 0
+                    assert metrics["probe_expected_failure_count"] >= 0
+                    assert metrics["probe_unexpected_error_count"] >= 0
+                    # In an atomic snapshot, all three should be equal
+                    # (since writer increments all three together)
+                    assert (
+                        metrics["probe_success_count"]
+                        == metrics["probe_expected_failure_count"]
+                        == metrics["probe_unexpected_error_count"]
+                    )
+            except Exception as e:
+                errors.append(e)
+
+        threads = [
+            threading.Thread(target=writer),
+            threading.Thread(target=reader),
+            threading.Thread(target=reader),
+        ]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"Thread safety errors: {errors}"
+        assert gate.probe_success_count == iterations
+
+    def test_concurrent_probe_service_counter_accuracy(self) -> None:
+        """Test counter accuracy under concurrent probe_service calls."""
+        config = ServiceHealthGateConfig(failure_threshold=1000)
+        gate = ServiceHealthGate(config=config)
+        errors: list[Exception] = []
+        iterations = 50
+
+        # Pre-gate a service so probe_service will update counters
+        for _ in range(1000):
+            gate.record_poll_failure("jira", Exception("fail"))
+
+        def do_probes() -> None:
+            try:
+                for _ in range(iterations):
+                    with patch.object(gate, "_execute_probe", return_value=True):
+                        gate.probe_service("jira", base_url="https://jira.example.com")
+                    # Re-gate for next probe
+                    gate.record_poll_failure("jira", Exception("fail"))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=do_probes) for _ in range(3)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"Thread safety errors: {errors}"
+        # Each thread does `iterations` successful probes
+        assert gate.probe_success_count == iterations * 3
