@@ -487,12 +487,7 @@ class ServiceHealthGate:
 
     @probe_success_count.setter
     def probe_success_count(self, value: int) -> None:
-        if not isinstance(value, int):
-            msg = f"probe_success_count must be an int, got {type(value).__name__}"
-            raise TypeError(msg)
-        if value < 0:
-            msg = f"probe_success_count must be non-negative, got {value}"
-            raise ValueError(msg)
+        self._validate_counter_value("probe_success_count", value)
         with self._counter_lock:
             self._probe_success_count = value
 
@@ -507,12 +502,7 @@ class ServiceHealthGate:
 
     @probe_expected_failure_count.setter
     def probe_expected_failure_count(self, value: int) -> None:
-        if not isinstance(value, int):
-            msg = f"probe_expected_failure_count must be an int, got {type(value).__name__}"
-            raise TypeError(msg)
-        if value < 0:
-            msg = f"probe_expected_failure_count must be non-negative, got {value}"
-            raise ValueError(msg)
+        self._validate_counter_value("probe_expected_failure_count", value)
         with self._counter_lock:
             self._probe_expected_failure_count = value
 
@@ -527,14 +517,31 @@ class ServiceHealthGate:
 
     @probe_unexpected_error_count.setter
     def probe_unexpected_error_count(self, value: int) -> None:
-        if not isinstance(value, int):
-            msg = f"probe_unexpected_error_count must be an int, got {type(value).__name__}"
-            raise TypeError(msg)
-        if value < 0:
-            msg = f"probe_unexpected_error_count must be non-negative, got {value}"
-            raise ValueError(msg)
+        self._validate_counter_value("probe_unexpected_error_count", value)
         with self._counter_lock:
             self._probe_unexpected_error_count = value
+
+    @staticmethod
+    def _validate_counter_value(name: str, value: int) -> None:
+        """Validate a probe counter value before assignment.
+
+        Ensures the value is a non-negative ``int`` and rejects ``bool``
+        values (which are a subclass of ``int`` in Python).
+
+        Args:
+            name: The counter property name, used in error messages.
+            value: The candidate value to validate.
+
+        Raises:
+            TypeError: If *value* is not an ``int`` or is a ``bool``.
+            ValueError: If *value* is negative.
+        """
+        if not isinstance(value, int) or isinstance(value, bool):
+            msg = f"{name} must be an int, got {type(value).__name__}"
+            raise TypeError(msg)
+        if value < 0:
+            msg = f"{name} must be non-negative, got {value}"
+            raise ValueError(msg)
 
     def get_probe_metrics(self) -> dict[str, int]:
         """Return an atomic snapshot of all probe metric counters.
