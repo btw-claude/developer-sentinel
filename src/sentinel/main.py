@@ -291,6 +291,29 @@ class Sentinel:
             orch_logger = self._orch_log_manager.get_logger(orchestration_name)
             orch_logger.log(level, message, extra=kwargs)
 
+    def _log_partial_failure(
+        self, service_name: str, found: int, errors: int
+    ) -> None:
+        """Log a warning for partial polling failures.
+
+        When a polling cycle produces both successful and failed triggers,
+        this helper emits a standardised warning message.  Extracting the
+        call avoids duplicating the same ``logger.warning`` pattern for
+        every polling service.
+
+        Args:
+            service_name: Human-readable service label (e.g. ``"Jira"``).
+            found: Number of triggers that returned results successfully.
+            errors: Number of triggers that raised errors.
+        """
+        logger.warning(
+            "Partial %s polling failure: %s trigger(s) succeeded, "
+            "%s trigger(s) failed",
+            service_name,
+            found,
+            errors,
+        )
+
     def _get_available_slots(self) -> int:
         """Get the number of available execution slots."""
         return self._execution_manager.get_available_slots()
@@ -748,12 +771,7 @@ class Sentinel:
                 elif jira_error_count > 0 and jira_issues_found == 0:
                     self._health_gate.record_poll_failure("jira")
                 elif jira_error_count > 0 and jira_issues_found > 0:
-                    logger.warning(
-                        "Partial Jira polling failure: %s trigger(s) succeeded, "
-                        "%s trigger(s) failed",
-                        jira_issues_found,
-                        jira_error_count,
-                    )
+                    self._log_partial_failure("Jira", jira_issues_found, jira_error_count)
             else:
                 # Service is gated — probe for recovery
                 if self._health_gate.should_probe("jira"):
@@ -807,12 +825,7 @@ class Sentinel:
                     elif gh_error_count > 0 and gh_issues_found == 0:
                         self._health_gate.record_poll_failure("github")
                     elif gh_error_count > 0 and gh_issues_found > 0:
-                        logger.warning(
-                            "Partial GitHub polling failure: %s trigger(s) succeeded, "
-                            "%s trigger(s) failed",
-                            gh_issues_found,
-                            gh_error_count,
-                        )
+                        self._log_partial_failure("GitHub", gh_issues_found, gh_error_count)
                 else:
                     # Service is gated — probe for recovery
                     if self._health_gate.should_probe("github"):
