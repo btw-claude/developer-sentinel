@@ -213,7 +213,12 @@ def create_app(
     templates_dir.mkdir(parents=True, exist_ok=True)
     (templates_dir / "partials").mkdir(exist_ok=True)
 
-    # Create Jinja2 environment with autoescape for security
+    # Create Jinja2 environment with autoescape for security.
+    # DS-825 audit: select_autoescape(["html", "xml"]) ensures all .html and
+    # .xml templates have auto-escaping enabled by default.  This covers both
+    # element content and attribute contexts (e.g. title="{{ svc.last_error }}"
+    # in service_health.html).  No templates in this project use |safe or
+    # {% autoescape false %}, so all dynamic output is escaped.
     template_env = Environment(
         loader=FileSystemLoader(str(templates_dir)),
         autoescape=select_autoescape(["html", "xml"]),

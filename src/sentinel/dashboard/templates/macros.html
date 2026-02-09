@@ -1,5 +1,5 @@
 {# Security audit complete - no external links (target="_blank") in this template #}
-{# Reusable Jinja2 macros for badge components #}
+{# Reusable Jinja2 macros for badge and formatting components #}
 {#
   Escaping convention: Within Jinja2 comment blocks, use doubled percent
   signs (%%) instead of single % when showing Jinja2 tag examples. This
@@ -69,5 +69,57 @@
 {{ caller(value) }}
 {%- else -%}
 <span style="color: var(--text-secondary);">-</span>
+{%- endif -%}
+{%- endmacro %}
+
+{#
+  Macro to format a duration in seconds as a compact human-readable string.
+
+  Converts a numeric total_seconds value to "Xh Ym Zs" format, omitting
+  leading zero-valued components (e.g. "5m 30s" instead of "0h 5m 30s").
+  Useful for paused-duration, uptime, and similar elapsed-time displays.
+
+  Extracted from service_health.html (DS-825) so that the same
+  hours/minutes/seconds formatting pattern can be reused across
+  dashboard partials (e.g., uptime, last-check timestamps).
+
+  @param total_seconds - Duration in seconds (float or int)
+  @returns Formatted duration string, e.g. "2h 5m 30s", "5m 30s", or "30s"
+#}
+{% macro humanize_duration(total_seconds) %}
+{%- set ts = total_seconds | int -%}
+{%- set h = ts // 3600 -%}
+{%- set m = (ts % 3600) // 60 -%}
+{%- set s = ts % 60 -%}
+{%- if h > 0 -%}
+{{ h }}h {{ m }}m {{ s }}s
+{%- elif m > 0 -%}
+{{ m }}m {{ s }}s
+{%- else -%}
+{{ s }}s
+{%- endif -%}
+{%- endmacro %}
+
+{#
+  Macro to format a seconds-ago value as a compact relative time string.
+
+  Converts a numeric seconds_ago value to a friendly "Xs ago", "Xm ago",
+  or "Xh ago" format depending on magnitude. Useful for last-check-time
+  and other "time since" displays.
+
+  Extracted from service_health.html (DS-825) so that the same
+  relative-time formatting pattern can be reused across dashboard partials.
+
+  @param seconds_ago - Number of seconds elapsed (float or int)
+  @returns Formatted relative time string, e.g. "45s ago", "12m ago", or "3h ago"
+#}
+{% macro humanize_seconds_ago(seconds_ago) %}
+{%- set sa = seconds_ago | int -%}
+{%- if sa < 60 -%}
+{{ sa }}s ago
+{%- elif sa < 3600 -%}
+{{ sa // 60 }}m ago
+{%- else -%}
+{{ sa // 3600 }}h ago
 {%- endif -%}
 {%- endmacro %}
