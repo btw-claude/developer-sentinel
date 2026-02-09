@@ -344,12 +344,14 @@ class TestProjectFilterParserInvalidSyntaxErrors:
             parser.parse("Status !=")
         assert "Expected" in str(exc_info.value)
 
-    def test_unquoted_value_raises(self) -> None:
-        """Test that unquoted string values raise helpful error."""
+    def test_unquoted_value_accepted(self) -> None:
+        """Test that unquoted string values are accepted."""
         parser = ProjectFilterParser()
-        with pytest.raises(ValueError) as exc_info:
-            parser.parse("Status = Ready")
-        assert "Expected" in str(exc_info.value) or "quoted" in str(exc_info.value).lower()
+        expr = parser.parse("Status = Ready")
+        assert expr.condition is not None
+        assert expr.condition.field == "Status"
+        assert expr.condition.operator == Operator.EQUALS
+        assert expr.condition.values == ("Ready",)
 
     def test_unclosed_parenthesis_raises(self) -> None:
         """Test unclosed parenthesis raises clear error."""
