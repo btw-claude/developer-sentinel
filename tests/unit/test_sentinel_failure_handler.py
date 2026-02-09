@@ -604,11 +604,11 @@ class TestExecuteOrchestrationTaskUsesHelper:
 
                 assert result is None
                 mock_handler.assert_called_once()
-                args = mock_handler.call_args.args
-                assert args[0] == issue_key
-                assert args[1] == orchestration
-                assert isinstance(args[2], type(exception))
-                assert args[3] == expected_error_type
+                kwargs = mock_handler.call_args.kwargs
+                assert kwargs["issue_key"] == issue_key
+                assert kwargs["orchestration"] == orchestration
+                assert isinstance(kwargs["exception"], type(exception))
+                assert kwargs["error_type"] == expected_error_type
 
 
 class TestApplyFailureTagsSafely:
@@ -933,8 +933,8 @@ class TestSubmitExecutionTasksUsesHelper:
                     sentinel._submit_execution_tasks([routing_result], [])
 
                     mock_handler.assert_called_once()
-                    args = mock_handler.call_args.args
-                    assert args[0] == "TEST-123"
-                    assert args[1] == orchestration
-                    assert isinstance(args[2], type(exception))
-                    assert args[3] == expected_error_type
+                    kwargs = mock_handler.call_args.kwargs
+                    assert kwargs["issue_key"] == "TEST-123"
+                    assert kwargs["orchestration"] == orchestration
+                    assert isinstance(kwargs["exception"], type(exception))
+                    assert kwargs["error_type"] == expected_error_type
