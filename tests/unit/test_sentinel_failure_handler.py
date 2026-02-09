@@ -30,6 +30,78 @@ from tests.conftest import (
 )
 
 
+class TestLogPartialFailure:
+    """Tests for the _log_partial_failure helper method (DS-827).
+
+    This method extracts the duplicated ``logger.warning`` calls for partial
+    polling failures in ``run_once()`` into a single reusable helper.
+    """
+
+    def _create_sentinel(self) -> tuple[Sentinel, MockTagClient]:
+        """Create a Sentinel instance for testing."""
+        jira_poller = MockJiraPoller(issues=[])
+        agent_factory, _ = make_agent_factory()
+        tag_client = MockTagClient()
+        config = make_config(poll_interval=1)
+        orchestrations = [make_orchestration()]
+
+        sentinel = Sentinel(
+            config=config,
+            orchestrations=orchestrations,
+            jira_poller=jira_poller,
+            agent_factory=agent_factory,
+            tag_client=tag_client,
+        )
+        return sentinel, tag_client
+
+    @pytest.mark.parametrize(
+        "service_name,found,errors",
+        [
+            pytest.param("Jira", 3, 1, id="jira"),
+            pytest.param("GitHub", 5, 2, id="github"),
+            pytest.param("CustomService", 1, 4, id="custom"),
+        ],
+    )
+    def test_logs_warning_with_correct_format(
+        self, service_name: str, found: int, errors: int
+    ) -> None:
+        """Test that the helper emits a warning with the correct service name and counts."""
+        sentinel, _ = self._create_sentinel()
+
+        with patch("sentinel.main.logger") as mock_logger:
+            sentinel._log_partial_failure(service_name, found, errors)
+
+            mock_logger.warning.assert_called_once()
+            call_args = mock_logger.warning.call_args
+            assert service_name in call_args[0]
+            assert found in call_args[0]
+            assert errors in call_args[0]
+
+    def test_message_contains_partial_failure_text(self) -> None:
+        """Test that the log message contains 'Partial' and 'polling failure'."""
+        sentinel, _ = self._create_sentinel()
+
+        with patch("sentinel.main.logger") as mock_logger:
+            sentinel._log_partial_failure("Jira", 2, 1)
+
+            call_args = mock_logger.warning.call_args
+            format_string = call_args[0][0]
+            assert "Partial" in format_string
+            assert "polling failure" in format_string
+
+    def test_message_contains_trigger_counts(self) -> None:
+        """Test that the formatted message includes trigger count labels."""
+        sentinel, _ = self._create_sentinel()
+
+        with patch("sentinel.main.logger") as mock_logger:
+            sentinel._log_partial_failure("GitHub", 4, 3)
+
+            call_args = mock_logger.warning.call_args
+            format_string = call_args[0][0]
+            assert "trigger(s) succeeded" in format_string
+            assert "trigger(s) failed" in format_string
+
+
 class TestHandleExecutionFailure:
     """Tests for the _handle_execution_failure helper method."""
 
