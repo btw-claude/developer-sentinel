@@ -487,6 +487,12 @@ class ServiceHealthGate:
 
     @probe_success_count.setter
     def probe_success_count(self, value: int) -> None:
+        if not isinstance(value, int):
+            msg = f"probe_success_count must be an int, got {type(value).__name__}"
+            raise TypeError(msg)
+        if value < 0:
+            msg = f"probe_success_count must be non-negative, got {value}"
+            raise ValueError(msg)
         with self._counter_lock:
             self._probe_success_count = value
 
@@ -501,6 +507,12 @@ class ServiceHealthGate:
 
     @probe_expected_failure_count.setter
     def probe_expected_failure_count(self, value: int) -> None:
+        if not isinstance(value, int):
+            msg = f"probe_expected_failure_count must be an int, got {type(value).__name__}"
+            raise TypeError(msg)
+        if value < 0:
+            msg = f"probe_expected_failure_count must be non-negative, got {value}"
+            raise ValueError(msg)
         with self._counter_lock:
             self._probe_expected_failure_count = value
 
@@ -515,6 +527,12 @@ class ServiceHealthGate:
 
     @probe_unexpected_error_count.setter
     def probe_unexpected_error_count(self, value: int) -> None:
+        if not isinstance(value, int):
+            msg = f"probe_unexpected_error_count must be an int, got {type(value).__name__}"
+            raise TypeError(msg)
+        if value < 0:
+            msg = f"probe_unexpected_error_count must be non-negative, got {value}"
+            raise ValueError(msg)
         with self._counter_lock:
             self._probe_unexpected_error_count = value
 
