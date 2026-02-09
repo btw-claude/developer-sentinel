@@ -536,7 +536,10 @@ class ServiceHealthGate:
             TypeError: If *value* is not an ``int`` or is a ``bool``.
             ValueError: If *value* is negative.
         """
-        if not isinstance(value, int) or isinstance(value, bool):
+        if isinstance(value, bool):
+            msg = f"{name} must be an int (not bool), got {type(value).__name__}"
+            raise TypeError(msg)
+        if not isinstance(value, int):
             msg = f"{name} must be an int, got {type(value).__name__}"
             raise TypeError(msg)
         if value < 0:

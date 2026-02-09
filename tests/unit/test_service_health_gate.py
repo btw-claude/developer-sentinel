@@ -1680,13 +1680,22 @@ class TestThreadSafeProbeCounters:
         """
         gate = ServiceHealthGate()
 
-        with pytest.raises(TypeError, match="probe_success_count must be an int"):
+        with pytest.raises(
+            TypeError,
+            match=r"probe_success_count must be an int \(not bool\), got bool",
+        ):
             gate.probe_success_count = True  # type: ignore[assignment]
 
-        with pytest.raises(TypeError, match="probe_expected_failure_count must be an int"):
+        with pytest.raises(
+            TypeError,
+            match=r"probe_expected_failure_count must be an int \(not bool\), got bool",
+        ):
             gate.probe_expected_failure_count = False  # type: ignore[assignment]
 
-        with pytest.raises(TypeError, match="probe_unexpected_error_count must be an int"):
+        with pytest.raises(
+            TypeError,
+            match=r"probe_unexpected_error_count must be an int \(not bool\), got bool",
+        ):
             gate.probe_unexpected_error_count = True  # type: ignore[assignment]
 
     def test_counter_property_setters_do_not_mutate_on_invalid_input(self) -> None:
