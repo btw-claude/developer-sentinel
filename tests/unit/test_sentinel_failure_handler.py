@@ -89,9 +89,9 @@ class TestLogPartialFailure:
 
             mock_logger.warning.assert_called_once()
             call_args = mock_logger.warning.call_args
-            assert service_name in call_args[0]
-            assert found in call_args[0]
-            assert errors in call_args[0]
+            assert call_args[0][1] == service_name
+            assert call_args[0][2] == found
+            assert call_args[0][3] == errors
 
     def test_message_contains_partial_failure_text(self) -> None:
         """Test that the log message contains 'Partial' and 'polling failure'."""
