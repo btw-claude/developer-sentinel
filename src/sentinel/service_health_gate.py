@@ -533,7 +533,10 @@ class ServiceHealthGate:
             value: The candidate value to validate.
 
         Raises:
-            TypeError: If *value* is not an ``int`` or is a ``bool``.
+            TypeError: If *value* is a ``bool``
+                (``"{name} must be an int (not bool), got bool"``), or if
+                *value* is not an ``int``
+                (``"{name} must be an int, got {type}"``).
             ValueError: If *value* is negative.
         """
         if isinstance(value, bool):
