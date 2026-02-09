@@ -499,6 +499,8 @@ def _parse_bounded_float(
     default: float,
     min_val: float | None = None,
     max_val: float | None = None,
+    *,
+    allow_infinity: bool = False,
 ) -> float:
     """Parse a string as a float with optional bounds validation.
 
@@ -512,6 +514,10 @@ def _parse_bounded_float(
         default: The default value to use if parsing fails.
         min_val: Optional minimum allowed value (inclusive). None means no lower bound.
         max_val: Optional maximum allowed value (inclusive). None means no upper bound.
+        allow_infinity: If ``True``, permit positive and negative infinity values.
+            When ``False`` (the default), infinity is rejected with a warning and
+            the *default* is returned.  Some fields (e.g. ``max_probe_interval``)
+            intentionally accept infinity (DS-855).
 
     Returns:
         The parsed float within the specified bounds, or the default if invalid.
@@ -523,6 +529,13 @@ def _parse_bounded_float(
         if math.isnan(parsed):
             logging.warning(
                 "Invalid %s: NaN is not a valid number, using default %s",
+                name,
+                _format_number(default),
+            )
+            return default
+        if not allow_infinity and math.isinf(parsed):
+            logging.warning(
+                "Invalid %s: infinity is not a valid number, using default %s",
                 name,
                 _format_number(default),
             )
@@ -556,20 +569,28 @@ def _parse_bounded_float(
         return default
 
 
-def _parse_non_negative_float(value: str, name: str, default: float) -> float:
+def _parse_non_negative_float(
+    value: str,
+    name: str,
+    default: float,
+    *,
+    allow_infinity: bool = False,
+) -> float:
     """Parse a string as a non-negative float with validation.
 
     Args:
         value: The string value to parse.
         name: The name of the setting (for error messages).
         default: The default value to use if parsing fails.
+        allow_infinity: If ``True``, permit positive infinity values.
+            When ``False`` (the default), infinity is rejected (DS-855).
 
     Returns:
         The parsed non-negative float, or the default if invalid.
 
     Logs a warning if the value is invalid.
     """
-    return _parse_bounded_float(value, name, default, min_val=0.0)
+    return _parse_bounded_float(value, name, default, min_val=0.0, allow_infinity=allow_infinity)
 
 
 def _validate_cursor_mode(value: str, default: str = CursorMode.AGENT.value) -> str:
@@ -951,6 +972,7 @@ def load_config(env_file: Path | None = None) -> Config:
         os.getenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "300.0"),
         "SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL",
         300.0,
+        allow_infinity=True,
     )
     health_gate_probe_backoff_factor = _parse_bounded_float(
         os.getenv("SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR", "2.0"),
