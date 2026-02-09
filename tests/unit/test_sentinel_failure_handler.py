@@ -146,7 +146,9 @@ class TestLogTotalFailure:
             format_string = call_args[0][0]
             assert "All" in format_string
             assert "failed during this polling cycle" in format_string
-            assert service_name in call_args[0]
+            assert call_args[0][1] == error_count
+            assert call_args[0][2] == service_name
+            assert call_args[0][3] == service_name
 
     @pytest.mark.parametrize(
         "service_name,error_count,trigger_count,threshold",
@@ -172,7 +174,11 @@ class TestLogTotalFailure:
             call_args = mock_logger.warning.call_args
             format_string = call_args[0][0]
             assert "threshold" in format_string
-            assert service_name in call_args[0]
+            assert call_args[0][1] == error_count
+            assert call_args[0][2] == trigger_count
+            assert call_args[0][3] == service_name
+            assert call_args[0][4] == int(threshold * 100)
+            assert call_args[0][5] == service_name
 
     def test_no_warning_when_below_threshold(self) -> None:
         """Test that no warning is logged when errors are below the threshold."""
