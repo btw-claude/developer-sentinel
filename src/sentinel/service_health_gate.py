@@ -369,6 +369,16 @@ class ServiceHealthGate:
     protects individual HTTP calls, while the health gate protects the polling
     loop and execution retries at the orchestration level.
 
+    Thread-safety contract:
+        All public methods and properties on this class are safe to call
+        concurrently from multiple threads.  Internal service state is
+        protected by ``_lock`` (an ``RLock``).  Probe metric counters are
+        protected by a dedicated ``_counter_lock`` (a ``Lock``) so that
+        counter reads never need to acquire the heavier service-state lock.
+        Use the ``probe_success_count``, ``probe_expected_failure_count``,
+        and ``probe_unexpected_error_count`` properties for individual reads,
+        or ``get_probe_metrics()`` for an atomic snapshot of all three.
+
     Attributes:
         config: Health gate configuration.
         probe_success_count: Total successful probe attempts across all services.
@@ -408,11 +418,72 @@ class ServiceHealthGate:
         self._time_func: Callable[[], float] = time_func or time.time
         self._services: dict[str, ServiceAvailability] = {}
         self._lock = threading.RLock()
-        self.probe_success_count: int = 0
-        self.probe_expected_failure_count: int = 0
-        self.probe_unexpected_error_count: int = 0
+        self._counter_lock = threading.Lock()
+        self._probe_success_count: int = 0
+        self._probe_expected_failure_count: int = 0
+        self._probe_unexpected_error_count: int = 0
         self._probe_strategies: dict[str, ProbeStrategy] = {}
         self._register_default_strategies()
+
+    @property
+    def probe_success_count(self) -> int:
+        """Total successful probe attempts across all services.
+
+        Thread-safe: reads are protected by ``_counter_lock``.
+        """
+        with self._counter_lock:
+            return self._probe_success_count
+
+    @probe_success_count.setter
+    def probe_success_count(self, value: int) -> None:
+        with self._counter_lock:
+            self._probe_success_count = value
+
+    @property
+    def probe_expected_failure_count(self) -> int:
+        """Probe failures from expected HTTP errors.
+
+        Thread-safe: reads are protected by ``_counter_lock``.
+        """
+        with self._counter_lock:
+            return self._probe_expected_failure_count
+
+    @probe_expected_failure_count.setter
+    def probe_expected_failure_count(self, value: int) -> None:
+        with self._counter_lock:
+            self._probe_expected_failure_count = value
+
+    @property
+    def probe_unexpected_error_count(self) -> int:
+        """Probe failures from unexpected exceptions.
+
+        Thread-safe: reads are protected by ``_counter_lock``.
+        """
+        with self._counter_lock:
+            return self._probe_unexpected_error_count
+
+    @probe_unexpected_error_count.setter
+    def probe_unexpected_error_count(self, value: int) -> None:
+        with self._counter_lock:
+            self._probe_unexpected_error_count = value
+
+    def get_probe_metrics(self) -> dict[str, int]:
+        """Return an atomic snapshot of all probe metric counters.
+
+        Acquires ``_counter_lock`` once to read all three counters, so the
+        returned values are mutually consistent.
+
+        Returns:
+            Dictionary with keys ``probe_success_count``,
+            ``probe_expected_failure_count``, and
+            ``probe_unexpected_error_count``.
+        """
+        with self._counter_lock:
+            return {
+                "probe_success_count": self._probe_success_count,
+                "probe_expected_failure_count": self._probe_expected_failure_count,
+                "probe_unexpected_error_count": self._probe_unexpected_error_count,
+            }
 
     def _get_or_create_service(self, service_name: str) -> ServiceAvailability:
         """Get or create a ServiceAvailability tracker for a service.
@@ -659,7 +730,8 @@ class ServiceHealthGate:
             service.last_check_at = now
 
             if success:
-                self.probe_success_count += 1
+                with self._counter_lock:
+                    self._probe_success_count += 1
                 service.available = True
                 service.consecutive_failures = 0
                 service.paused_at = None
@@ -671,10 +743,11 @@ class ServiceHealthGate:
                     service_name,
                 )
             else:
-                if unexpected_error:
-                    self.probe_unexpected_error_count += 1
-                else:
-                    self.probe_expected_failure_count += 1
+                with self._counter_lock:
+                    if unexpected_error:
+                        self._probe_unexpected_error_count += 1
+                    else:
+                        self._probe_expected_failure_count += 1
                 service.probe_count += 1
                 logger.info(
                     "[HEALTH_GATE] %s: Probe failed (probe count: %d)",
