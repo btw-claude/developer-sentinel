@@ -1,7 +1,6 @@
 """Tests for configuration module."""
 
 import logging
-import math
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -426,6 +425,22 @@ class TestParseNonNegativeFloat:
             result = _parse_non_negative_float("", "TEST_VAR", 1.0)
         assert result == 1.0
 
+    def test_nan_rejected(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that NaN is explicitly rejected with a clear error message (DS-854)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_non_negative_float("nan", "TEST_VAR", 1.0)
+        assert result == 1.0
+        assert "Invalid TEST_VAR: NaN is not a valid number" in caplog.text
+
+    def test_nan_case_insensitive_rejected(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that NaN is rejected regardless of case (DS-854)."""
+        for nan_str in ("NaN", "NAN", "nan", "Nan"):
+            caplog.clear()
+            with caplog.at_level(logging.WARNING):
+                result = _parse_non_negative_float(nan_str, "TEST_VAR", 2.0)
+            assert result == 2.0
+            assert "NaN is not a valid number" in caplog.text
+
 
 class TestDefaultThresholdConstants:
     """Tests for DEFAULT_GREEN_THRESHOLD and DEFAULT_YELLOW_THRESHOLD constants."""
@@ -517,6 +532,27 @@ class TestParseBoundedFloat:
             result = _parse_bounded_float("1.5", "TEST_VAR", 0.5, min_val=0.0, max_val=1.0)
         assert result == 0.5
         assert "is not in range 0 to 1" in caplog.text
+
+    def test_nan_rejected_no_bounds(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that NaN is rejected even with no bounds specified (DS-854)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_bounded_float("nan", "TEST_VAR", 1.0)
+        assert result == 1.0
+        assert "Invalid TEST_VAR: NaN is not a valid number" in caplog.text
+
+    def test_nan_rejected_with_min_bound(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that NaN is rejected when min bound is specified (DS-854)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_bounded_float("nan", "TEST_VAR", 5.0, min_val=0.0)
+        assert result == 5.0
+        assert "NaN is not a valid number" in caplog.text
+
+    def test_nan_rejected_with_both_bounds(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that NaN is rejected when both bounds are specified (DS-854)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_bounded_float("nan", "TEST_VAR", 0.5, min_val=0.0, max_val=1.0)
+        assert result == 0.5
+        assert "NaN is not a valid number" in caplog.text
 
 
 class TestFormatBoundMessage:
@@ -2148,18 +2184,13 @@ class TestServiceHealthGateConfig:
         assert config.service_health_gate.max_probe_interval == float("inf")
         assert "swapping values" not in caplog.text
 
-    def test_nan_initial_probe_interval_no_swap(
+    def test_nan_initial_probe_interval_rejected(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that NaN initial_probe_interval does not trigger swap.
+        """Test that NaN initial_probe_interval is rejected and replaced with default (DS-854).
 
-        IEEE 754 defines NaN > finite as False, so when initial_probe_interval
-        is NaN and max_probe_interval is finite, the cross-field comparison
-        ``NaN > finite`` evaluates to False and no swap occurs.
-
-        This documents the current behavior where NaN passes through
-        ``_parse_non_negative_float`` (since ``NaN < 0.0`` is also False
-        in IEEE 754) and reaches the cross-field validation unchanged.
+        NaN is now explicitly rejected by ``_parse_non_negative_float`` before
+        reaching cross-field validation. The default value (30.0) is used instead.
         """
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "nan")
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "100.0")
@@ -2167,19 +2198,19 @@ class TestServiceHealthGateConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        # NaN > 100.0 is False in IEEE 754, so no swap is triggered
-        assert math.isnan(config.service_health_gate.initial_probe_interval)
+        # NaN is rejected; default (30.0) is used for initial_probe_interval
+        assert config.service_health_gate.initial_probe_interval == 30.0
         assert config.service_health_gate.max_probe_interval == 100.0
+        assert "NaN is not a valid number" in caplog.text
         assert "swapping values" not in caplog.text
 
-    def test_nan_max_probe_interval_no_swap(
+    def test_nan_max_probe_interval_rejected(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that NaN max_probe_interval does not trigger swap.
+        """Test that NaN max_probe_interval is rejected and replaced with default (DS-854).
 
-        IEEE 754 defines finite > NaN as False, so when max_probe_interval
-        is NaN and initial_probe_interval is finite, the cross-field
-        comparison ``finite > NaN`` evaluates to False and no swap occurs.
+        NaN is now explicitly rejected by ``_parse_non_negative_float`` before
+        reaching cross-field validation. The default value (300.0) is used instead.
         """
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "100.0")
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "nan")
@@ -2187,18 +2218,19 @@ class TestServiceHealthGateConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        # 100.0 > NaN is False in IEEE 754, so no swap is triggered
+        # NaN is rejected; default (300.0) is used for max_probe_interval
         assert config.service_health_gate.initial_probe_interval == 100.0
-        assert math.isnan(config.service_health_gate.max_probe_interval)
+        assert config.service_health_gate.max_probe_interval == 300.0
+        assert "NaN is not a valid number" in caplog.text
         assert "swapping values" not in caplog.text
 
-    def test_nan_both_probe_intervals_no_swap(
+    def test_nan_both_probe_intervals_rejected(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that NaN for both probe intervals does not trigger swap.
+        """Test that NaN for both probe intervals is rejected and defaults used (DS-854).
 
-        IEEE 754 defines NaN > NaN as False, so when both values are NaN,
-        the cross-field comparison evaluates to False and no swap occurs.
+        NaN is now explicitly rejected by ``_parse_non_negative_float`` before
+        reaching cross-field validation. Default values are used instead.
         """
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "nan")
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "nan")
@@ -2206,18 +2238,20 @@ class TestServiceHealthGateConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        # NaN > NaN is False in IEEE 754, so no swap is triggered
-        assert math.isnan(config.service_health_gate.initial_probe_interval)
-        assert math.isnan(config.service_health_gate.max_probe_interval)
+        # NaN is rejected; defaults (30.0 and 300.0) are used
+        assert config.service_health_gate.initial_probe_interval == 30.0
+        assert config.service_health_gate.max_probe_interval == 300.0
+        assert "NaN is not a valid number" in caplog.text
         assert "swapping values" not in caplog.text
 
-    def test_nan_initial_probe_interval_with_inf_max_no_swap(
+    def test_nan_initial_probe_interval_with_inf_max_rejected(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that NaN initial with inf max does not trigger swap.
+        """Test that NaN initial with inf max is rejected and default used (DS-854).
 
-        IEEE 754 defines NaN > inf as False, so when initial_probe_interval
-        is NaN and max_probe_interval is infinity, no swap occurs.
+        NaN is now explicitly rejected by ``_parse_non_negative_float`` before
+        reaching cross-field validation. The default value (30.0) is used for
+        initial_probe_interval.
         """
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "nan")
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "inf")
@@ -2225,7 +2259,8 @@ class TestServiceHealthGateConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        # NaN > inf is False in IEEE 754, so no swap is triggered
-        assert math.isnan(config.service_health_gate.initial_probe_interval)
+        # NaN is rejected; default (30.0) is used for initial_probe_interval
+        assert config.service_health_gate.initial_probe_interval == 30.0
         assert config.service_health_gate.max_probe_interval == float("inf")
+        assert "NaN is not a valid number" in caplog.text
         assert "swapping values" not in caplog.text
