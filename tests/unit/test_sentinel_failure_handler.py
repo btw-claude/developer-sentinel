@@ -8,6 +8,7 @@ Helper methods tested:
 - _apply_failure_tags_safely: Applies failure tags with standardized exception handling
 - _handle_execution_failure: Logs errors and applies failure tags for execution failures
 - _handle_submission_failure: Handles submission failures with state cleanup
+- _log_total_failure: Logs threshold-based warnings when trigger failures exceed limits
 
 Tests use pytest.mark.parametrize for cleaner test organization and reduced
 code duplication where appropriate.
@@ -30,29 +31,44 @@ from tests.conftest import (
 )
 
 
+def _create_sentinel(
+    tag_client: MockTagClient | None = None,
+) -> tuple[Sentinel, MockTagClient]:
+    """Create a Sentinel instance for testing.
+
+    This module-level helper replaces the duplicate ``_create_sentinel``
+    methods that were previously defined in each test class.
+
+    Args:
+        tag_client: Optional pre-configured tag client.  When ``None``
+            (the default) a fresh :class:`MockTagClient` is created.
+
+    Returns:
+        A ``(sentinel, tag_client)`` tuple ready for assertions.
+    """
+    jira_poller = MockJiraPoller(issues=[])
+    agent_factory, _ = make_agent_factory()
+    if tag_client is None:
+        tag_client = MockTagClient()
+    config = make_config(poll_interval=1)
+    orchestrations = [make_orchestration()]
+
+    sentinel = Sentinel(
+        config=config,
+        orchestrations=orchestrations,
+        jira_poller=jira_poller,
+        agent_factory=agent_factory,
+        tag_client=tag_client,
+    )
+    return sentinel, tag_client
+
+
 class TestLogPartialFailure:
     """Tests for the _log_partial_failure helper method (DS-827).
 
     This method extracts the duplicated ``logger.warning`` calls for partial
     polling failures in ``run_once()`` into a single reusable helper.
     """
-
-    def _create_sentinel(self) -> tuple[Sentinel, MockTagClient]:
-        """Create a Sentinel instance for testing."""
-        jira_poller = MockJiraPoller(issues=[])
-        agent_factory, _ = make_agent_factory()
-        tag_client = MockTagClient()
-        config = make_config(poll_interval=1)
-        orchestrations = [make_orchestration()]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_poller=jira_poller,
-            agent_factory=agent_factory,
-            tag_client=tag_client,
-        )
-        return sentinel, tag_client
 
     @pytest.mark.parametrize(
         "service_name,found,errors",
@@ -66,7 +82,7 @@ class TestLogPartialFailure:
         self, service_name: str, found: int, errors: int
     ) -> None:
         """Test that the helper emits a warning with the correct service name and counts."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
             sentinel._log_partial_failure(service_name, found, errors)
@@ -79,7 +95,7 @@ class TestLogPartialFailure:
 
     def test_message_contains_partial_failure_text(self) -> None:
         """Test that the log message contains 'Partial' and 'polling failure'."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
             sentinel._log_partial_failure("Jira", 2, 1)
@@ -91,7 +107,7 @@ class TestLogPartialFailure:
 
     def test_message_contains_trigger_counts(self) -> None:
         """Test that the formatted message includes trigger count labels."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
             sentinel._log_partial_failure("GitHub", 4, 3)
@@ -102,32 +118,109 @@ class TestLogPartialFailure:
             assert "trigger(s) failed" in format_string
 
 
+class TestLogTotalFailure:
+    """Tests for the _log_total_failure helper method (DS-834).
+
+    This method extracts the duplicated threshold-based warning logging for
+    Jira and GitHub polling in ``run_once()`` into a single reusable helper.
+    """
+
+    @pytest.mark.parametrize(
+        "service_name,error_count,trigger_count",
+        [
+            pytest.param("Jira", 3, 3, id="jira_all_failed"),
+            pytest.param("GitHub", 5, 5, id="github_all_failed"),
+        ],
+    )
+    def test_logs_all_triggers_failed_warning(
+        self, service_name: str, error_count: int, trigger_count: int
+    ) -> None:
+        """Test that a warning is logged when all triggers fail."""
+        sentinel, _ = _create_sentinel()
+
+        with patch("sentinel.main.logger") as mock_logger:
+            sentinel._log_total_failure(service_name, error_count, trigger_count, 1.0)
+
+            mock_logger.warning.assert_called_once()
+            call_args = mock_logger.warning.call_args
+            format_string = call_args[0][0]
+            assert "All" in format_string
+            assert "failed during this polling cycle" in format_string
+            assert service_name in call_args[0]
+
+    @pytest.mark.parametrize(
+        "service_name,error_count,trigger_count,threshold",
+        [
+            pytest.param("Jira", 4, 5, 0.5, id="jira_partial_threshold"),
+            pytest.param("GitHub", 3, 4, 0.5, id="github_partial_threshold"),
+        ],
+    )
+    def test_logs_partial_threshold_warning(
+        self,
+        service_name: str,
+        error_count: int,
+        trigger_count: int,
+        threshold: float,
+    ) -> None:
+        """Test that a warning is logged when errors exceed threshold but not all fail."""
+        sentinel, _ = _create_sentinel()
+
+        with patch("sentinel.main.logger") as mock_logger:
+            sentinel._log_total_failure(service_name, error_count, trigger_count, threshold)
+
+            mock_logger.warning.assert_called_once()
+            call_args = mock_logger.warning.call_args
+            format_string = call_args[0][0]
+            assert "threshold" in format_string
+            assert service_name in call_args[0]
+
+    def test_no_warning_when_below_threshold(self) -> None:
+        """Test that no warning is logged when errors are below the threshold."""
+        sentinel, _ = _create_sentinel()
+
+        with patch("sentinel.main.logger") as mock_logger:
+            sentinel._log_total_failure("Jira", 1, 10, 0.5)
+
+            mock_logger.warning.assert_not_called()
+
+    def test_no_warning_when_zero_triggers(self) -> None:
+        """Test that no warning is logged when trigger count is zero."""
+        sentinel, _ = _create_sentinel()
+
+        with patch("sentinel.main.logger") as mock_logger:
+            sentinel._log_total_failure("Jira", 0, 0, 1.0)
+
+            mock_logger.warning.assert_not_called()
+
+    def test_message_includes_connectivity_hint(self) -> None:
+        """Test that the warning message includes a connectivity investigation hint."""
+        sentinel, _ = _create_sentinel()
+
+        with patch("sentinel.main.logger") as mock_logger:
+            sentinel._log_total_failure("GitHub", 3, 3, 1.0)
+
+            call_args = mock_logger.warning.call_args
+            format_string = call_args[0][0]
+            assert "connectivity" in format_string
+
+    def test_threshold_percentage_formatted_correctly(self) -> None:
+        """Test that the threshold is formatted as an integer percentage."""
+        sentinel, _ = _create_sentinel()
+
+        with patch("sentinel.main.logger") as mock_logger:
+            sentinel._log_total_failure("Jira", 3, 5, 0.5)
+
+            call_args = mock_logger.warning.call_args
+            # 0.5 should be formatted as 50
+            assert 50 in call_args[0]
+
+
 class TestHandleExecutionFailure:
     """Tests for the _handle_execution_failure helper method."""
 
-    def _create_sentinel(
-        self, tag_client: MockTagClient | None = None
-    ) -> tuple[Sentinel, MockTagClient]:
-        """Create a Sentinel instance for testing."""
-        jira_poller = MockJiraPoller(issues=[])
-        agent_factory, _ = make_agent_factory()
-        if tag_client is None:
-            tag_client = MockTagClient()
-        config = make_config(poll_interval=1)
-        orchestrations = [make_orchestration()]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_poller=jira_poller,
-            agent_factory=agent_factory,
-            tag_client=tag_client,
-        )
-        return sentinel, tag_client
-
     def test_logs_error_with_correct_format(self) -> None:
         """Test that the helper logs errors with the correct format."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
         exception = OSError("Connection refused")
 
@@ -144,7 +237,7 @@ class TestHandleExecutionFailure:
 
     def test_applies_failure_tags(self) -> None:
         """Test that the helper calls apply_failure_tags on the tag manager."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
         exception = RuntimeError("Unexpected error")
 
@@ -190,7 +283,7 @@ class TestHandleExecutionFailure:
         ValueError exceptions raised during apply_failure_tags are properly caught,
         don't propagate, and are logged with the appropriate ErrorType enum value.
         """
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
         exception = RuntimeError("Original error")
 
@@ -256,7 +349,7 @@ class TestHandleExecutionFailure:
         with the appropriate ErrorType enum values, ensuring the log message
         contains the correct error type descriptor.
         """
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
 
         with patch.object(sentinel, "_log_for_orchestration") as mock_log:
@@ -272,7 +365,7 @@ class TestHandleExecutionFailure:
 
     def test_extra_context_included_in_tag_error_logs(self) -> None:
         """Test that extra context (issue_key, orchestration) is included in tag error logs."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="my-orchestration")
         exception = OSError("Test error")
 
@@ -295,23 +388,6 @@ class TestHandleExecutionFailure:
 
 class TestExecuteOrchestrationTaskUsesHelper:
     """Tests to verify _execute_orchestration_task uses the helper method correctly."""
-
-    def _create_sentinel(self) -> tuple[Sentinel, MockTagClient]:
-        """Create a Sentinel instance for testing."""
-        jira_poller = MockJiraPoller(issues=[])
-        agent_factory, _ = make_agent_factory()
-        tag_client = MockTagClient()
-        config = make_config(poll_interval=1)
-        orchestrations = [make_orchestration()]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_poller=jira_poller,
-            agent_factory=agent_factory,
-            tag_client=tag_client,
-        )
-        return sentinel, tag_client
 
     @pytest.mark.parametrize(
         "exception,expected_error_type,issue_key",
@@ -360,7 +436,7 @@ class TestExecuteOrchestrationTaskUsesHelper:
         # Patch MockAgentClient.run_agent before creating Sentinel
         # so the exception is raised during execution
         with patch.object(MockAgentClient, "run_agent", side_effect=exception):
-            sentinel, _ = self._create_sentinel()
+            sentinel, _ = _create_sentinel()
             orchestration = make_orchestration(name="test-orch")
 
             mock_issue = MagicMock()
@@ -381,29 +457,9 @@ class TestExecuteOrchestrationTaskUsesHelper:
 class TestApplyFailureTagsSafely:
     """Tests for the _apply_failure_tags_safely helper method."""
 
-    def _create_sentinel(
-        self, tag_client: MockTagClient | None = None
-    ) -> tuple[Sentinel, MockTagClient]:
-        """Create a Sentinel instance for testing."""
-        jira_poller = MockJiraPoller(issues=[])
-        agent_factory, _ = make_agent_factory()
-        if tag_client is None:
-            tag_client = MockTagClient()
-        config = make_config(poll_interval=1)
-        orchestrations = [make_orchestration()]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_poller=jira_poller,
-            agent_factory=agent_factory,
-            tag_client=tag_client,
-        )
-        return sentinel, tag_client
-
     def test_applies_failure_tags_successfully(self) -> None:
         """Test that the helper applies failure tags when no errors occur."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
 
         with patch.object(sentinel.tag_manager, "apply_failure_tags") as mock_apply:
@@ -445,7 +501,7 @@ class TestApplyFailureTagsSafely:
         ValueError exceptions raised during apply_failure_tags are properly caught,
         don't propagate, and are logged with the appropriate ErrorType enum value.
         """
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
 
         with patch.object(
@@ -466,7 +522,7 @@ class TestApplyFailureTagsSafely:
 
     def test_extra_context_included_in_error_logs(self) -> None:
         """Test that extra context (issue_key, orchestration) is included in error logs."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="my-orchestration")
 
         with patch.object(
@@ -487,29 +543,9 @@ class TestApplyFailureTagsSafely:
 class TestHandleSubmissionFailure:
     """Tests for the _handle_submission_failure helper method."""
 
-    def _create_sentinel(
-        self, tag_client: MockTagClient | None = None
-    ) -> tuple[Sentinel, MockTagClient]:
-        """Create a Sentinel instance for testing."""
-        jira_poller = MockJiraPoller(issues=[])
-        agent_factory, _ = make_agent_factory()
-        if tag_client is None:
-            tag_client = MockTagClient()
-        config = make_config(poll_interval=1)
-        orchestrations = [make_orchestration()]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_poller=jira_poller,
-            agent_factory=agent_factory,
-            tag_client=tag_client,
-        )
-        return sentinel, tag_client
-
     def test_decrements_version_executions_when_version_provided(self) -> None:
         """Test that version.decrement_executions is called when version is not None."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
         mock_version = MagicMock()
         exception = OSError("Connection error")
@@ -523,7 +559,7 @@ class TestHandleSubmissionFailure:
 
     def test_skips_version_decrement_when_version_is_none(self) -> None:
         """Test that no error occurs when version is None."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
         exception = OSError("Connection error")
 
@@ -535,7 +571,7 @@ class TestHandleSubmissionFailure:
 
     def test_decrements_per_orch_count(self) -> None:
         """Test that per-orchestration count is decremented."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
         exception = RuntimeError("Test error")
 
@@ -574,7 +610,7 @@ class TestHandleSubmissionFailure:
         self, exception: Exception, error_type: ErrorType, expected_error_desc: str
     ) -> None:
         """Test that errors are logged with correct format including error type."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
 
         with patch("sentinel.main.logger") as mock_logger:
@@ -595,7 +631,7 @@ class TestHandleSubmissionFailure:
 
     def test_applies_failure_tags_safely(self) -> None:
         """Test that _apply_failure_tags_safely is called."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
         exception = ValueError("Invalid data")
 
@@ -608,7 +644,7 @@ class TestHandleSubmissionFailure:
 
     def test_extra_context_in_log(self) -> None:
         """Test that extra context is included in log call."""
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="my-orchestration")
         exception = OSError("Test error")
 
@@ -627,23 +663,6 @@ class TestHandleSubmissionFailure:
 class TestClaudeProcessInterruptedUsesHelper:
     """Tests to verify ClaudeProcessInterruptedError handler uses _apply_failure_tags_safely."""
 
-    def _create_sentinel(self) -> tuple[Sentinel, MockTagClient]:
-        """Create a Sentinel instance for testing."""
-        jira_poller = MockJiraPoller(issues=[])
-        agent_factory, _ = make_agent_factory()
-        tag_client = MockTagClient()
-        config = make_config(poll_interval=1)
-        orchestrations = [make_orchestration()]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_poller=jira_poller,
-            agent_factory=agent_factory,
-            tag_client=tag_client,
-        )
-        return sentinel, tag_client
-
     def test_claude_interrupted_calls_apply_failure_tags_safely(self) -> None:
         """Test that ClaudeProcessInterruptedError uses _apply_failure_tags_safely."""
         from sentinel.sdk_clients import ClaudeProcessInterruptedError
@@ -652,7 +671,7 @@ class TestClaudeProcessInterruptedUsesHelper:
         with patch.object(
             MockAgentClient, "run_agent", side_effect=ClaudeProcessInterruptedError()
         ):
-            sentinel, _ = self._create_sentinel()
+            sentinel, _ = _create_sentinel()
             orchestration = make_orchestration(name="test-orch")
 
             mock_issue = MagicMock()
@@ -667,23 +686,6 @@ class TestClaudeProcessInterruptedUsesHelper:
 
 class TestSubmitExecutionTasksUsesHelper:
     """Tests to verify _submit_execution_tasks uses _handle_submission_failure."""
-
-    def _create_sentinel(self) -> tuple[Sentinel, MockTagClient]:
-        """Create a Sentinel instance for testing."""
-        jira_poller = MockJiraPoller(issues=[])
-        agent_factory, _ = make_agent_factory()
-        tag_client = MockTagClient()
-        config = make_config(poll_interval=1)
-        orchestrations = [make_orchestration()]
-
-        sentinel = Sentinel(
-            config=config,
-            orchestrations=orchestrations,
-            jira_poller=jira_poller,
-            agent_factory=agent_factory,
-            tag_client=tag_client,
-        )
-        return sentinel, tag_client
 
     @pytest.mark.parametrize(
         "exception,expected_error_type",
@@ -725,7 +727,7 @@ class TestSubmitExecutionTasksUsesHelper:
         """
         from sentinel.router import RoutingResult
 
-        sentinel, _ = self._create_sentinel()
+        sentinel, _ = _create_sentinel()
         orchestration = make_orchestration(name="test-orch")
 
         mock_issue = MagicMock()

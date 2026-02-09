@@ -482,11 +482,14 @@ class TestThresholdWarningBehaviourJira:
         with patch("sentinel.main.logger") as mock_logger:
             sentinel.run_once()
 
-        # The "All ... Jira trigger(s) failed" warning should fire
+        # The "All ... trigger(s) failed" warning should fire with "Jira" in args
         warning_messages = [
             str(call) for call in mock_logger.warning.call_args_list
         ]
-        assert any("Jira trigger(s) failed" in msg for msg in warning_messages)
+        assert any(
+            "trigger(s) failed" in msg and "Jira" in msg
+            for msg in warning_messages
+        )
 
     def test_partial_failure_no_warn_with_default_threshold(self) -> None:
         """When some triggers fail but not all, no threshold warning at default 1.0."""
@@ -552,7 +555,8 @@ class TestThresholdWarningBehaviourJira:
             str(call) for call in mock_logger.warning.call_args_list
         ]
         assert any(
-            "Jira trigger(s) failed" in msg for msg in warning_messages
+            "trigger(s) failed" in msg and "Jira" in msg
+            for msg in warning_messages
         )
 
     def test_below_threshold_no_warning(self) -> None:
@@ -622,7 +626,8 @@ class TestThresholdWarningBehaviourGitHub:
             str(call) for call in mock_logger.warning.call_args_list
         ]
         assert any(
-            "GitHub trigger(s) failed" in msg for msg in warning_messages
+            "trigger(s) failed" in msg and "GitHub" in msg
+            for msg in warning_messages
         )
 
     def test_partial_github_failure_warns_at_lower_threshold(self) -> None:
@@ -681,5 +686,6 @@ class TestThresholdWarningBehaviourGitHub:
             str(call) for call in mock_logger.warning.call_args_list
         ]
         assert any(
-            "GitHub trigger(s) failed" in msg for msg in warning_messages
+            "trigger(s) failed" in msg and "GitHub" in msg
+            for msg in warning_messages
         )
