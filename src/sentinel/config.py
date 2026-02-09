@@ -291,10 +291,17 @@ class PollingConfig:
     Attributes:
         interval: Seconds between polling cycles.
         max_issues_per_poll: Maximum issues to fetch per poll.
+        error_threshold_pct: Percentage of trigger failures (0.0-1.0) that triggers
+            a warning. For example, 0.5 means warn when 50% or more of triggers
+            fail. Default is 1.0 (warn only when all triggers fail, preserving
+            the existing behaviour). Setting a lower value provides earlier
+            warning of service degradation in environments with many triggers
+            (DS-828).
     """
 
     interval: int = 60
     max_issues_per_poll: int = 50
+    error_threshold_pct: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -747,6 +754,15 @@ def load_config(env_file: Path | None = None) -> Config:
         50,
     )
 
+    # Parse polling error threshold percentage (DS-828)
+    polling_error_threshold_pct = _parse_bounded_float(
+        os.getenv("SENTINEL_POLLING_ERROR_THRESHOLD_PCT", "1.0"),
+        "SENTINEL_POLLING_ERROR_THRESHOLD_PCT",
+        1.0,
+        min_val=0.0,
+        max_val=1.0,
+    )
+
     max_concurrent = _parse_positive_int(
         os.getenv("SENTINEL_MAX_CONCURRENT_EXECUTIONS", "1"),
         "SENTINEL_MAX_CONCURRENT_EXECUTIONS",
@@ -1066,6 +1082,7 @@ def load_config(env_file: Path | None = None) -> Config:
     polling_config = PollingConfig(
         interval=poll_interval,
         max_issues_per_poll=max_issues,
+        error_threshold_pct=polling_error_threshold_pct,
     )
 
     return Config(
