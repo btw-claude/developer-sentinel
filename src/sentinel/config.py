@@ -582,8 +582,10 @@ def _parse_non_negative_float(
         value: The string value to parse.
         name: The name of the setting (for error messages).
         default: The default value to use if parsing fails.
-        allow_infinity: If ``True``, permit positive infinity values.
-            When ``False`` (the default), infinity is rejected (DS-855).
+        allow_infinity: If ``True``, permit infinity values through the infinity
+            check. Note that negative infinity is still rejected by the
+            ``min_val=0.0`` bound. When ``False`` (the default), infinity is
+            rejected (DS-855).
 
     Returns:
         The parsed non-negative float, or the default if invalid.
