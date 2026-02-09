@@ -171,21 +171,25 @@ class TestLogTotalFailure:
             assert call_args[0][4] == int(threshold * 100)
             assert call_args[0][5] == service_name
 
-    def test_no_warning_when_below_threshold(self) -> None:
-        """Test that no warning is logged when errors are below the threshold."""
+    @pytest.mark.parametrize(
+        "service_name,error_count,trigger_count,threshold",
+        [
+            pytest.param("Jira", 1, 10, 0.5, id="below_threshold"),
+            pytest.param("Jira", 0, 0, 1.0, id="zero_triggers"),
+        ],
+    )
+    def test_no_warning_when_conditions_not_met(
+        self,
+        service_name: str,
+        error_count: int,
+        trigger_count: int,
+        threshold: float,
+    ) -> None:
+        """Test that no warning is logged when errors are below threshold or triggers is zero."""
         sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_total_failure("Jira", 1, 10, 0.5)
-
-            mock_logger.warning.assert_not_called()
-
-    def test_no_warning_when_zero_triggers(self) -> None:
-        """Test that no warning is logged when trigger count is zero."""
-        sentinel, _ = _create_sentinel()
-
-        with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_total_failure("Jira", 0, 0, 1.0)
+            sentinel._log_total_failure(service_name, error_count, trigger_count, threshold)
 
             mock_logger.warning.assert_not_called()
 
