@@ -314,6 +314,40 @@ class Sentinel:
             errors,
         )
 
+    def _record_poll_health(
+        self,
+        service_name: str,
+        display_name: str,
+        error_count: int,
+        issues_found: int,
+    ) -> None:
+        """Record health gate outcome based on polling errors.
+
+        This helper replaces the duplicated if/elif/elif health-gate
+        recording blocks in the Jira and GitHub polling sections of
+        ``run_once()``.  It decides whether to record a success, a
+        failure, or a partial-failure warning based on the error and
+        issue counts from the polling cycle.
+
+        Only records a failure when **all** triggers failed (i.e.
+        ``issues_found == 0``); partial success is treated as healthy
+        with a logged warning (DS-835).
+
+        Args:
+            service_name: Health-gate service key (e.g. ``"jira"``,
+                ``"github"``).
+            display_name: Human-readable label for log messages
+                (e.g. ``"Jira"``, ``"GitHub"``).
+            error_count: Number of triggers that raised errors.
+            issues_found: Number of issues/items found during polling.
+        """
+        if error_count == 0:
+            self._health_gate.record_poll_success(service_name)
+        elif error_count > 0 and issues_found == 0:
+            self._health_gate.record_poll_failure(service_name)
+        elif error_count > 0 and issues_found > 0:
+            self._log_partial_failure(display_name, issues_found, error_count)
+
     def _log_total_failure(
         self, service_name: str, error_count: int, trigger_count: int, error_threshold: float
     ) -> None:
@@ -807,14 +841,10 @@ class Sentinel:
                     self.config.polling.error_threshold_pct,
                 )
 
-                # Record health gate outcome based on polling errors.
-                # Only record failure when ALL triggers failed (partial success is OK).
-                if jira_error_count == 0:
-                    self._health_gate.record_poll_success("jira")
-                elif jira_error_count > 0 and jira_issues_found == 0:
-                    self._health_gate.record_poll_failure("jira")
-                elif jira_error_count > 0 and jira_issues_found > 0:
-                    self._log_partial_failure("Jira", jira_issues_found, jira_error_count)
+                # Record health gate outcome based on polling errors (DS-835).
+                self._record_poll_health(
+                    "jira", "Jira", jira_error_count, jira_issues_found,
+                )
             else:
                 # Service is gated — probe for recovery
                 if self._health_gate.should_probe("jira"):
@@ -863,14 +893,10 @@ class Sentinel:
                         self.config.polling.error_threshold_pct,
                     )
 
-                    # Record health gate outcome based on polling errors.
-                    # Only record failure when ALL triggers failed (partial success is OK).
-                    if gh_error_count == 0:
-                        self._health_gate.record_poll_success("github")
-                    elif gh_error_count > 0 and gh_issues_found == 0:
-                        self._health_gate.record_poll_failure("github")
-                    elif gh_error_count > 0 and gh_issues_found > 0:
-                        self._log_partial_failure("GitHub", gh_issues_found, gh_error_count)
+                    # Record health gate outcome based on polling errors (DS-835).
+                    self._record_poll_health(
+                        "github", "GitHub", gh_error_count, gh_issues_found,
+                    )
                 else:
                     # Service is gated — probe for recovery
                     if self._health_gate.should_probe("github"):
