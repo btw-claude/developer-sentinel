@@ -517,7 +517,7 @@ def _parse_bounded_float(
         allow_infinity: If ``True``, permit positive and negative infinity values.
             When ``False`` (the default), infinity is rejected with a warning and
             the *default* is returned.  Some fields (e.g. ``max_probe_interval``)
-            intentionally accept infinity (DS-855).
+            intentionally accept infinity (introduced in DS-855).
 
     Returns:
         The parsed float within the specified bounds, or the default if invalid.
@@ -585,7 +585,7 @@ def _parse_non_negative_float(
         allow_infinity: If ``True``, permit infinity values through the infinity
             check. Note that negative infinity is still rejected by the
             ``min_val=0.0`` bound. When ``False`` (the default), infinity is
-            rejected (DS-855).
+            rejected (introduced in DS-855).
 
     Returns:
         The parsed non-negative float, or the default if invalid.
