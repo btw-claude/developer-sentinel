@@ -1675,15 +1675,19 @@ class TestThreadSafeProbeCounters:
         """Test that counter property setters reject bool (subclass of int).
 
         In Python, bool is a subclass of int (True == 1, False == 0).
-        The isinstance check for int would pass for bools, so this test
-        documents the current behavior: bools are accepted because
-        isinstance(True, int) is True.
+        The validation helper explicitly rejects bool values for stricter
+        typing, even though isinstance(True, int) is True.
         """
         gate = ServiceHealthGate()
-        # bool is a subclass of int in Python, so isinstance(True, int) is True.
-        # This documents that bools pass the type check (acceptable edge case).
-        gate.probe_success_count = True  # type: ignore[assignment]
-        assert gate.probe_success_count == 1
+
+        with pytest.raises(TypeError, match="probe_success_count must be an int"):
+            gate.probe_success_count = True  # type: ignore[assignment]
+
+        with pytest.raises(TypeError, match="probe_expected_failure_count must be an int"):
+            gate.probe_expected_failure_count = False  # type: ignore[assignment]
+
+        with pytest.raises(TypeError, match="probe_unexpected_error_count must be an int"):
+            gate.probe_unexpected_error_count = True  # type: ignore[assignment]
 
     def test_counter_property_setters_do_not_mutate_on_invalid_input(self) -> None:
         """Test that counters retain their previous value after a rejected setter call."""
