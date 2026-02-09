@@ -242,7 +242,7 @@ class TestRecordPollHealth:
                 issues_found=5,
             )
 
-            mock_success.assert_called_once_with(service_name)
+            mock_success.assert_called_once_with(service_name=service_name)
 
     @pytest.mark.parametrize(
         "service_name,display_name",
@@ -265,7 +265,7 @@ class TestRecordPollHealth:
                 issues_found=0,
             )
 
-            mock_failure.assert_called_once_with(service_name)
+            mock_failure.assert_called_once_with(service_name=service_name)
 
     @pytest.mark.parametrize(
         "service_name,display_name",
@@ -350,7 +350,7 @@ class TestRecordPollHealth:
                 issues_found=1,
             )
 
-            mock_success.assert_called_once_with("jira")
+            mock_success.assert_called_once_with(service_name="jira")
 
 
 class TestHandleExecutionFailure:
@@ -391,7 +391,9 @@ class TestHandleExecutionFailure:
             )
 
             # Verify apply_failure_tags was called with correct arguments
-            mock_apply.assert_called_once_with("TEST-123", orchestration)
+            mock_apply.assert_called_once_with(
+                issue_key="TEST-123", orchestration=orchestration
+            )
 
     @pytest.mark.parametrize(
         "tag_exception,expected_error_type",
@@ -620,7 +622,9 @@ class TestApplyFailureTagsSafely:
         with patch.object(sentinel.tag_manager, "apply_failure_tags") as mock_apply:
             sentinel._apply_failure_tags_safely("TEST-123", orchestration)
 
-            mock_apply.assert_called_once_with("TEST-123", orchestration)
+            mock_apply.assert_called_once_with(
+                issue_key="TEST-123", orchestration=orchestration
+            )
 
     @pytest.mark.parametrize(
         "tag_exception,expected_error_type",
@@ -749,7 +753,7 @@ class TestHandleSubmissionFailure:
                     version=None,
                 )
 
-        mock_decrement.assert_called_once_with("test-orch")
+        mock_decrement.assert_called_once_with(orchestration_name="test-orch")
 
     @pytest.mark.parametrize(
         "exception,error_type,expected_error_desc",
@@ -817,7 +821,9 @@ class TestHandleSubmissionFailure:
                 version=None,
             )
 
-        mock_apply.assert_called_once_with("TEST-456", orchestration)
+        mock_apply.assert_called_once_with(
+            issue_key="TEST-456", orchestration=orchestration
+        )
 
     def test_extra_context_in_log(self) -> None:
         """Test that extra context is included in log call."""
@@ -862,7 +868,9 @@ class TestClaudeProcessInterruptedUsesHelper:
                 result = sentinel._execute_orchestration_task(mock_issue, orchestration)
 
                 assert result is None
-                mock_apply.assert_called_once_with("TEST-999", orchestration)
+                mock_apply.assert_called_once_with(
+                    issue_key="TEST-999", orchestration=orchestration
+                )
 
 
 class TestSubmitExecutionTasksUsesHelper:
