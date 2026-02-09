@@ -69,6 +69,7 @@ def make_config(
     poll_interval: int = 60,
     max_issues: int = 50,
     max_issues_per_poll: int | None = None,  # Alias for max_issues
+    polling_error_threshold_pct: float = 1.0,
     # Execution settings
     max_concurrent_executions: int = 1,
     orchestrations_dir: Path | None = None,
@@ -142,6 +143,8 @@ def make_config(
         poll_interval: Seconds between polling cycles.
         max_issues: Maximum issues to fetch per poll.
         max_issues_per_poll: Alias for max_issues (takes precedence if set).
+        polling_error_threshold_pct: Fraction of trigger failures (0.0-1.0)
+            that triggers a warning. Default 1.0 (warn only when all fail).
 
         max_concurrent_executions: Parallel orchestration limit.
         orchestrations_dir: Directory for orchestration files.
@@ -238,6 +241,7 @@ def make_config(
         polling=PollingConfig(
             interval=poll_interval,
             max_issues_per_poll=effective_max_issues,
+            error_threshold_pct=polling_error_threshold_pct,
         ),
         execution=ExecutionConfig(
             max_concurrent_executions=max_concurrent_executions,

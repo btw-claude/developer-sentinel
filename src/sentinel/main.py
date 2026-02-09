@@ -755,14 +755,30 @@ class Sentinel:
                         jira_submitted,
                     )
 
-                # Warn when error count exceeds a threshold, indicating
-                # persistent service degradation that may need attention.
-                if jira_error_count >= len(grouped.jira):
-                    logger.warning(
-                        "All %s Jira trigger(s) failed during this polling cycle; "
-                        "consider investigating Jira connectivity",
-                        jira_error_count,
-                    )
+                # Warn when error count meets or exceeds the configurable
+                # threshold, indicating service degradation that may need
+                # attention.  The threshold defaults to 1.0 (all triggers)
+                # but can be lowered for earlier warnings (DS-828).
+                jira_trigger_count = len(grouped.jira)
+                error_threshold = self.config.polling.error_threshold_pct
+                if (
+                    jira_trigger_count > 0
+                    and jira_error_count / jira_trigger_count >= error_threshold
+                ):
+                    if jira_error_count >= jira_trigger_count:
+                        logger.warning(
+                            "All %s Jira trigger(s) failed during this polling cycle; "
+                            "consider investigating Jira connectivity",
+                            jira_error_count,
+                        )
+                    else:
+                        logger.warning(
+                            "%s of %s Jira trigger(s) failed (threshold: %s%%); "
+                            "consider investigating Jira connectivity",
+                            jira_error_count,
+                            jira_trigger_count,
+                            int(error_threshold * 100),
+                        )
 
                 # Record health gate outcome based on polling errors.
                 # Only record failure when ALL triggers failed (partial success is OK).
@@ -809,14 +825,30 @@ class Sentinel:
                             github_submitted,
                         )
 
-                    # Warn when error count exceeds a threshold, indicating
-                    # persistent service degradation that may need attention.
-                    if gh_error_count >= len(grouped.github):
-                        logger.warning(
-                            "All %s GitHub trigger(s) failed during this polling cycle; "
-                            "consider investigating GitHub connectivity",
-                            gh_error_count,
-                        )
+                    # Warn when error count meets or exceeds the configurable
+                    # threshold, indicating service degradation that may need
+                    # attention.  The threshold defaults to 1.0 (all triggers)
+                    # but can be lowered for earlier warnings (DS-828).
+                    gh_trigger_count = len(grouped.github)
+                    error_threshold = self.config.polling.error_threshold_pct
+                    if (
+                        gh_trigger_count > 0
+                        and gh_error_count / gh_trigger_count >= error_threshold
+                    ):
+                        if gh_error_count >= gh_trigger_count:
+                            logger.warning(
+                                "All %s GitHub trigger(s) failed during this polling cycle; "
+                                "consider investigating GitHub connectivity",
+                                gh_error_count,
+                            )
+                        else:
+                            logger.warning(
+                                "%s of %s GitHub trigger(s) failed (threshold: %s%%); "
+                                "consider investigating GitHub connectivity",
+                                gh_error_count,
+                                gh_trigger_count,
+                                int(error_threshold * 100),
+                            )
 
                     # Record health gate outcome based on polling errors.
                     # Only record failure when ALL triggers failed (partial success is OK).
