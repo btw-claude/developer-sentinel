@@ -91,14 +91,15 @@ class TestLogPartialFailure:
 
             mock_logger.warning.assert_called_once()
             call_args = mock_logger.warning.call_args
-            format_string = call_args[0][0]
+            args = call_args.args
+            format_string = args[0]
             assert "Partial" in format_string
             assert "polling failure" in format_string
             assert "trigger(s) succeeded" in format_string
             assert "trigger(s) failed" in format_string
-            assert call_args[0][1] == service_name
-            assert call_args[0][2] == found
-            assert call_args[0][3] == errors
+            assert args[1] == service_name
+            assert args[2] == found
+            assert args[3] == errors
 
 
 class TestLogTotalFailure:
@@ -135,13 +136,14 @@ class TestLogTotalFailure:
 
             mock_logger.warning.assert_called_once()
             call_args = mock_logger.warning.call_args
-            format_string = call_args[0][0]
+            args = call_args.args
+            format_string = args[0]
             assert "All" in format_string
             assert "failed during this polling cycle" in format_string
             assert "connectivity" in format_string
-            assert call_args[0][1] == error_count
-            assert call_args[0][2] == service_name
-            assert call_args[0][3] == service_name
+            assert args[1] == error_count
+            assert args[2] == service_name
+            assert args[3] == service_name
 
     @pytest.mark.parametrize(
         "service_name,error_count,trigger_count,threshold",
@@ -175,13 +177,14 @@ class TestLogTotalFailure:
 
             mock_logger.warning.assert_called_once()
             call_args = mock_logger.warning.call_args
-            format_string = call_args[0][0]
+            args = call_args.args
+            format_string = args[0]
             assert "threshold" in format_string
-            assert call_args[0][1] == error_count
-            assert call_args[0][2] == trigger_count
-            assert call_args[0][3] == service_name
-            assert call_args[0][4] == int(threshold * 100)
-            assert call_args[0][5] == service_name
+            assert args[1] == error_count
+            assert args[2] == trigger_count
+            assert args[3] == service_name
+            assert args[4] == int(threshold * 100)
+            assert args[5] == service_name
 
     @pytest.mark.parametrize(
         "service_name,error_count,trigger_count,threshold",
@@ -445,9 +448,10 @@ class TestHandleExecutionFailure:
                 # Verify the tag error was logged with correct ErrorType
                 mock_logger.error.assert_called_once()
                 call_args = mock_logger.error.call_args
+                args = call_args.args
                 # Check format string and ErrorType.value argument
-                assert "Failed to apply failure tags due to %s" in call_args[0][0]
-                assert expected_error_type.value in call_args[0]
+                assert "Failed to apply failure tags due to %s" in args[0]
+                assert expected_error_type.value in args
 
     @pytest.mark.parametrize(
         "exception,error_type,expected_substring",
@@ -506,7 +510,8 @@ class TestHandleExecutionFailure:
 
             # Check that the logged message contains the expected substring
             call_args = mock_log.call_args
-            assert expected_substring in call_args[0][2], (
+            args = call_args.args
+            assert expected_substring in args[2], (
                 f"Expected '{expected_substring}' in log message for {type(exception).__name__}"
             )
 
@@ -531,7 +536,7 @@ class TestHandleExecutionFailure:
 
                 # Verify extra context was passed
                 call_args = mock_logger.error.call_args
-                extra = call_args[1].get("extra", {})
+                extra = call_args.kwargs.get("extra", {})
                 assert extra.get("issue_key") == "PROJ-999"
                 assert extra.get("orchestration") == "my-orchestration"
 
@@ -597,11 +602,11 @@ class TestExecuteOrchestrationTaskUsesHelper:
 
                 assert result is None
                 mock_handler.assert_called_once()
-                call_args = mock_handler.call_args
-                assert call_args[0][0] == issue_key
-                assert call_args[0][1] == orchestration
-                assert isinstance(call_args[0][2], type(exception))
-                assert call_args[0][3] == expected_error_type
+                args = mock_handler.call_args.args
+                assert args[0] == issue_key
+                assert args[1] == orchestration
+                assert isinstance(args[2], type(exception))
+                assert args[3] == expected_error_type
 
 
 class TestApplyFailureTagsSafely:
@@ -666,9 +671,10 @@ class TestApplyFailureTagsSafely:
                 # Verify the tag error was logged with correct ErrorType
                 mock_logger.error.assert_called_once()
                 call_args = mock_logger.error.call_args
+                args = call_args.args
                 # Check format string and ErrorType.value argument
-                assert "Failed to apply failure tags due to %s" in call_args[0][0]
-                assert expected_error_type.value in call_args[0]
+                assert "Failed to apply failure tags due to %s" in args[0]
+                assert expected_error_type.value in args
 
     def test_extra_context_included_in_error_logs(self) -> None:
         """Test that extra context (issue_key, orchestration) is included in error logs."""
@@ -685,7 +691,7 @@ class TestApplyFailureTagsSafely:
 
                 # Verify extra context was passed
                 call_args = mock_logger.error.call_args
-                extra = call_args[1].get("extra", {})
+                extra = call_args.kwargs.get("extra", {})
                 assert extra.get("issue_key") == "PROJ-999"
                 assert extra.get("orchestration") == "my-orchestration"
 
@@ -787,13 +793,14 @@ class TestHandleSubmissionFailure:
 
         mock_logger.error.assert_called_once()
         call_args = mock_logger.error.call_args
+        args = call_args.args
         # Check the format string includes the error type placeholder
-        assert "Failed to submit" in call_args[0][0]
-        assert "%s" in call_args[0][0]  # Has placeholders for lazy formatting
+        assert "Failed to submit" in args[0]
+        assert "%s" in args[0]  # Has placeholders for lazy formatting
         # Check the arguments passed for lazy formatting
-        assert "test-orch" in call_args[0]
-        assert "TEST-123" in call_args[0]
-        assert expected_error_desc in call_args[0]
+        assert "test-orch" in args
+        assert "TEST-123" in args
+        assert expected_error_desc in args
 
     def test_applies_failure_tags_safely(self) -> None:
         """Test that _apply_failure_tags_safely is called."""
@@ -829,7 +836,7 @@ class TestHandleSubmissionFailure:
                 )
 
         call_args = mock_logger.error.call_args
-        extra = call_args[1].get("extra", {})
+        extra = call_args.kwargs.get("extra", {})
         assert extra.get("issue_key") == "PROJ-999"
         assert extra.get("orchestration") == "my-orchestration"
 
@@ -918,8 +925,8 @@ class TestSubmitExecutionTasksUsesHelper:
                     sentinel._submit_execution_tasks([routing_result], [])
 
                     mock_handler.assert_called_once()
-                    call_args = mock_handler.call_args
-                    assert call_args[0][0] == "TEST-123"
-                    assert call_args[0][1] == orchestration
-                    assert isinstance(call_args[0][2], type(exception))
-                    assert call_args[0][3] == expected_error_type
+                    args = mock_handler.call_args.args
+                    assert args[0] == "TEST-123"
+                    assert args[1] == orchestration
+                    assert isinstance(args[2], type(exception))
+                    assert args[3] == expected_error_type
