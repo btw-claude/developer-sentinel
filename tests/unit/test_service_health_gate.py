@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from typing import Any
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,9 @@ from sentinel.service_health_gate import (
     GITHUB_API_VERSION,
     GITHUB_PROBE_PATH,
     JIRA_PROBE_PATH,
+    GitHubProbeStrategy,
+    JiraProbeStrategy,
+    ProbeStrategy,
     ServiceAvailability,
     ServiceHealthGate,
     ServiceHealthGateConfig,
@@ -1069,3 +1073,422 @@ class TestTimeFuncInjection:
         # last_check_at and last_available_at should be identical since
         # time is captured once and reused
         assert status["jira"]["last_check_at"] == status["jira"]["last_available_at"]
+
+
+class TestProbeStrategyProtocol:
+    """Tests for ProbeStrategy protocol and strategy registration."""
+
+    def test_jira_strategy_satisfies_protocol(self) -> None:
+        """Test that JiraProbeStrategy satisfies ProbeStrategy protocol."""
+        strategy = JiraProbeStrategy()
+        assert isinstance(strategy, ProbeStrategy)
+
+    def test_github_strategy_satisfies_protocol(self) -> None:
+        """Test that GitHubProbeStrategy satisfies ProbeStrategy protocol."""
+        strategy = GitHubProbeStrategy()
+        assert isinstance(strategy, ProbeStrategy)
+
+    def test_custom_strategy_satisfies_protocol(self) -> None:
+        """Test that a custom class with execute() satisfies ProbeStrategy."""
+
+        class MyStrategy:
+            def execute(
+                self,
+                *,
+                timeout: float,
+                base_url: str = "",
+                auth: tuple[str, str] | None = None,
+                token: str = "",
+            ) -> bool:
+                return True
+
+        strategy = MyStrategy()
+        assert isinstance(strategy, ProbeStrategy)
+
+    def test_non_conforming_class_rejected(self) -> None:
+        """Test that a class without execute() is not a ProbeStrategy."""
+
+        class NotAStrategy:
+            pass
+
+        assert not isinstance(NotAStrategy(), ProbeStrategy)
+
+    def test_default_strategies_registered(self) -> None:
+        """Test that Jira and GitHub strategies are registered by default."""
+        gate = ServiceHealthGate()
+        assert gate.get_probe_strategy("jira") is not None
+        assert gate.get_probe_strategy("github") is not None
+        assert isinstance(gate.get_probe_strategy("jira"), JiraProbeStrategy)
+        assert isinstance(gate.get_probe_strategy("github"), GitHubProbeStrategy)
+
+    def test_register_custom_strategy(self) -> None:
+        """Test registering a custom probe strategy."""
+
+        class CustomStrategy:
+            def execute(
+                self,
+                *,
+                timeout: float,
+                base_url: str = "",
+                auth: tuple[str, str] | None = None,
+                token: str = "",
+            ) -> bool:
+                return True
+
+        gate = ServiceHealthGate()
+        strategy = CustomStrategy()
+        gate.register_probe_strategy("custom_service", strategy)
+        assert gate.get_probe_strategy("custom_service") is strategy
+
+    def test_register_strategy_case_insensitive(self) -> None:
+        """Test that strategy registration is case-insensitive."""
+
+        class CustomStrategy:
+            def execute(
+                self,
+                *,
+                timeout: float,
+                base_url: str = "",
+                auth: tuple[str, str] | None = None,
+                token: str = "",
+            ) -> bool:
+                return True
+
+        gate = ServiceHealthGate()
+        strategy = CustomStrategy()
+        gate.register_probe_strategy("MyService", strategy)
+        assert gate.get_probe_strategy("myservice") is strategy
+        assert gate.get_probe_strategy("MYSERVICE") is strategy
+
+    def test_register_strategy_type_validation(self) -> None:
+        """Test that registering a non-strategy raises TypeError."""
+        gate = ServiceHealthGate()
+        with pytest.raises(TypeError, match="strategy must satisfy ProbeStrategy protocol"):
+            gate.register_probe_strategy("bad", "not a strategy")  # type: ignore[arg-type]
+
+    def test_unregister_strategy(self) -> None:
+        """Test unregistering a probe strategy."""
+        gate = ServiceHealthGate()
+        assert gate.get_probe_strategy("jira") is not None
+        gate.unregister_probe_strategy("jira")
+        assert gate.get_probe_strategy("jira") is None
+
+    def test_unregister_nonexistent_strategy_is_noop(self) -> None:
+        """Test that unregistering a non-existent strategy does not raise."""
+        gate = ServiceHealthGate()
+        gate.unregister_probe_strategy("nonexistent")  # Should not raise
+
+    def test_get_probe_strategy_unknown(self) -> None:
+        """Test that get_probe_strategy returns None for unknown service."""
+        gate = ServiceHealthGate()
+        assert gate.get_probe_strategy("unknown_service") is None
+
+    def test_custom_strategy_used_in_probe_service(self) -> None:
+        """Test that a registered custom strategy is invoked by probe_service."""
+        probe_called = False
+
+        class TrackingStrategy:
+            def execute(
+                self,
+                *,
+                timeout: float,
+                base_url: str = "",
+                auth: tuple[str, str] | None = None,
+                token: str = "",
+            ) -> bool:
+                nonlocal probe_called
+                probe_called = True
+                return True
+
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config)
+        gate.register_probe_strategy("custom", TrackingStrategy())
+
+        gate.record_poll_failure("custom", Exception("fail"))
+        result = gate.probe_service("custom", base_url="https://example.com")
+
+        assert result is True
+        assert probe_called is True
+        assert gate.should_poll("custom") is True
+
+    def test_custom_strategy_receives_correct_params(self) -> None:
+        """Test that strategy.execute() receives the correct parameters."""
+        received_params: dict[str, Any] = {}
+
+        class ParamCapture:
+            def execute(
+                self,
+                *,
+                timeout: float,
+                base_url: str = "",
+                auth: tuple[str, str] | None = None,
+                token: str = "",
+            ) -> bool:
+                received_params["timeout"] = timeout
+                received_params["base_url"] = base_url
+                received_params["auth"] = auth
+                received_params["token"] = token
+                return True
+
+        config = ServiceHealthGateConfig(failure_threshold=1, probe_timeout=7.5)
+        gate = ServiceHealthGate(config=config)
+        gate.register_probe_strategy("test_svc", ParamCapture())
+
+        gate.record_poll_failure("test_svc", Exception("fail"))
+        gate.probe_service(
+            "test_svc",
+            base_url="https://test.example.com",
+            auth=("user", "pass"),
+            token="tok123",
+        )
+
+        assert received_params["timeout"] == 7.5
+        assert received_params["base_url"] == "https://test.example.com"
+        assert received_params["auth"] == ("user", "pass")
+        assert received_params["token"] == "tok123"
+
+    def test_override_default_strategy(self) -> None:
+        """Test that a default strategy can be overridden by registering a new one."""
+
+        class AlwaysAvailable:
+            def execute(
+                self,
+                *,
+                timeout: float,
+                base_url: str = "",
+                auth: tuple[str, str] | None = None,
+                token: str = "",
+            ) -> bool:
+                return True
+
+        config = ServiceHealthGateConfig(failure_threshold=1)
+        gate = ServiceHealthGate(config=config)
+        gate.register_probe_strategy("jira", AlwaysAvailable())
+
+        gate.record_poll_failure("jira", Exception("fail"))
+        # The overridden strategy always returns True (no HTTP call needed)
+        result = gate.probe_service("jira", base_url="https://jira.example.com")
+        assert result is True
+
+
+class TestJiraProbeStrategy:
+    """Tests for JiraProbeStrategy."""
+
+    def test_no_base_url(self) -> None:
+        """Test that JiraProbeStrategy returns False with no base_url."""
+        strategy = JiraProbeStrategy()
+        assert strategy.execute(timeout=5.0, base_url="") is False
+
+    def test_successful_probe(self) -> None:
+        """Test successful Jira probe via strategy."""
+        strategy = JiraProbeStrategy()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            result = strategy.execute(
+                timeout=5.0,
+                base_url="https://jira.example.com",
+                auth=("user", "token"),
+            )
+
+        assert result is True
+        mock_client.get.assert_called_once()
+        call_args = mock_client.get.call_args
+        assert JIRA_PROBE_PATH in call_args[0][0]
+
+    def test_timeout(self) -> None:
+        """Test Jira probe timeout via strategy."""
+        strategy = JiraProbeStrategy()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.side_effect = httpx.TimeoutException("timed out")
+            mock_client_cls.return_value = mock_client
+
+            result = strategy.execute(
+                timeout=5.0,
+                base_url="https://jira.example.com",
+                auth=("user", "token"),
+            )
+
+        assert result is False
+
+    def test_http_error(self) -> None:
+        """Test Jira probe HTTP error via strategy."""
+        strategy = JiraProbeStrategy()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_response = MagicMock()
+            mock_response.status_code = 503
+            mock_client.get.return_value = mock_response
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "Service Unavailable",
+                request=MagicMock(),
+                response=mock_response,
+            )
+            mock_client_cls.return_value = mock_client
+
+            result = strategy.execute(
+                timeout=5.0,
+                base_url="https://jira.example.com",
+                auth=("user", "token"),
+            )
+
+        assert result is False
+
+    def test_request_error(self) -> None:
+        """Test Jira probe request error via strategy."""
+        strategy = JiraProbeStrategy()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.side_effect = httpx.ConnectError("Connection refused")
+            mock_client_cls.return_value = mock_client
+
+            result = strategy.execute(
+                timeout=5.0,
+                base_url="https://jira.example.com",
+            )
+
+        assert result is False
+
+
+class TestGitHubProbeStrategy:
+    """Tests for GitHubProbeStrategy."""
+
+    def test_no_base_url(self) -> None:
+        """Test that GitHubProbeStrategy returns False with no base_url."""
+        strategy = GitHubProbeStrategy()
+        assert strategy.execute(timeout=5.0, base_url="") is False
+
+    def test_successful_probe(self) -> None:
+        """Test successful GitHub probe via strategy."""
+        strategy = GitHubProbeStrategy()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            result = strategy.execute(
+                timeout=5.0,
+                base_url="https://api.github.com",
+                token="ghp_test",
+            )
+
+        assert result is True
+        call_args = mock_client.get.call_args
+        assert GITHUB_PROBE_PATH in call_args[0][0]
+        headers = call_args[1]["headers"]
+        assert headers["X-GitHub-Api-Version"] == GITHUB_API_VERSION
+        assert headers["Authorization"] == "Bearer ghp_test"
+
+    def test_successful_probe_no_token(self) -> None:
+        """Test GitHub probe without token."""
+        strategy = GitHubProbeStrategy()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            result = strategy.execute(
+                timeout=5.0,
+                base_url="https://api.github.com",
+            )
+
+        assert result is True
+        call_args = mock_client.get.call_args
+        headers = call_args[1]["headers"]
+        assert "Authorization" not in headers
+
+    def test_timeout(self) -> None:
+        """Test GitHub probe timeout via strategy."""
+        strategy = GitHubProbeStrategy()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.side_effect = httpx.TimeoutException("timed out")
+            mock_client_cls.return_value = mock_client
+
+            result = strategy.execute(
+                timeout=5.0,
+                base_url="https://api.github.com",
+                token="ghp_test",
+            )
+
+        assert result is False
+
+    def test_http_error(self) -> None:
+        """Test GitHub probe HTTP error via strategy."""
+        strategy = GitHubProbeStrategy()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_response = MagicMock()
+            mock_response.status_code = 500
+            mock_client.get.return_value = mock_response
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "Internal Server Error",
+                request=MagicMock(),
+                response=mock_response,
+            )
+            mock_client_cls.return_value = mock_client
+
+            result = strategy.execute(
+                timeout=5.0,
+                base_url="https://api.github.com",
+                token="ghp_test",
+            )
+
+        assert result is False
+
+    def test_request_error(self) -> None:
+        """Test GitHub probe request error via strategy."""
+        strategy = GitHubProbeStrategy()
+
+        with patch("sentinel.service_health_gate.httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.side_effect = httpx.ConnectError("Connection refused")
+            mock_client_cls.return_value = mock_client
+
+            result = strategy.execute(
+                timeout=5.0,
+                base_url="https://api.github.com",
+            )
+
+        assert result is False

@@ -20,6 +20,11 @@ Configuration via environment variables:
 - SENTINEL_HEALTH_GATE_PROBE_BACKOFF_FACTOR: Backoff multiplier for probes (default: 2.0)
 - SENTINEL_HEALTH_GATE_PROBE_TIMEOUT: Timeout for probe requests in seconds (default: 5.0)
 
+Extensibility:
+    New services can be added by implementing the ``ProbeStrategy`` protocol and
+    registering the strategy via ``ServiceHealthGate.register_probe_strategy()``.
+    See ``JiraProbeStrategy`` and ``GitHubProbeStrategy`` for examples.
+
 Usage:
     from sentinel.service_health_gate import ServiceHealthGate, ServiceHealthGateConfig
 
@@ -40,6 +45,9 @@ Usage:
 
     # Get status snapshot for dashboard
     status = gate.get_all_status()
+
+    # Register a custom probe strategy for a new service
+    gate.register_probe_strategy("my_service", MyServiceProbeStrategy())
 """
 
 from __future__ import annotations
@@ -49,7 +57,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
@@ -57,13 +65,192 @@ from sentinel.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Probe endpoints for external services.
-# NOTE: Adding a new service requires updating these constants AND adding
-# a corresponding _probe_<service>() method and branch in _execute_probe().
-# See probe_service() for the dispatch logic.
+# ---------------------------------------------------------------------------
+# Probe endpoint constants
+# ---------------------------------------------------------------------------
+# These constants define the HTTP paths used by the built-in probe strategies
+# (``JiraProbeStrategy`` and ``GitHubProbeStrategy``) to verify that an
+# external service is reachable.  They are consumed by ``probe_service()``
+# via the corresponding strategy's ``execute()`` method.
+#
+# To add a new service:
+#   1. Create a class that satisfies the ``ProbeStrategy`` protocol.
+#   2. Register it with ``ServiceHealthGate.register_probe_strategy()``.
+#
+# The built-in strategies are registered automatically in
+# ``ServiceHealthGate.__init__``.
+# ---------------------------------------------------------------------------
+
 JIRA_PROBE_PATH = "/rest/api/3/serverInfo"
+"""Jira health-check endpoint path.
+
+Used by ``JiraProbeStrategy`` to issue ``GET {base_url}/rest/api/3/serverInfo``.
+"""
+
 GITHUB_PROBE_PATH = "/rate_limit"
+"""GitHub health-check endpoint path.
+
+Used by ``GitHubProbeStrategy`` to issue ``GET {base_url}/rate_limit``.
+"""
+
 GITHUB_API_VERSION = "2022-11-28"
+"""GitHub API version header value.
+
+Sent as ``X-GitHub-Api-Version`` in probe requests to GitHub."""
+
+
+@runtime_checkable
+class ProbeStrategy(Protocol):
+    """Protocol for service probe strategies.
+
+    Implement this protocol to add health-check probing for a new external
+    service.  Each strategy encapsulates the HTTP request logic needed to
+    determine whether a particular service is reachable.
+
+    Register a strategy instance with
+    ``ServiceHealthGate.register_probe_strategy()`` so that
+    ``probe_service()`` can dispatch to it by service name.
+
+    Example::
+
+        class MyServiceProbeStrategy:
+            def execute(
+                self,
+                *,
+                timeout: float,
+                base_url: str = "",
+                auth: tuple[str, str] | None = None,
+                token: str = "",
+            ) -> bool:
+                url = f"{base_url}/health"
+                resp = httpx.get(url, timeout=timeout)
+                return resp.status_code == 200
+
+        gate.register_probe_strategy("my_service", MyServiceProbeStrategy())
+    """
+
+    def execute(
+        self,
+        *,
+        timeout: float,
+        base_url: str = "",
+        auth: tuple[str, str] | None = None,
+        token: str = "",
+    ) -> bool:
+        """Execute the probe for this service.
+
+        Args:
+            timeout: HTTP request timeout in seconds.
+            base_url: Base URL for the service API.
+            auth: Optional (username/email, api_token) tuple for Basic auth.
+            token: Optional bearer token for token-based authentication.
+
+        Returns:
+            True if the service is available, False otherwise.
+        """
+        ...  # pragma: no cover
+
+
+class JiraProbeStrategy:
+    """Probe strategy for Jira service availability.
+
+    Issues ``GET {base_url}/rest/api/3/serverInfo`` with optional Basic
+    authentication.  See ``JIRA_PROBE_PATH`` for the endpoint constant.
+    """
+
+    def execute(
+        self,
+        *,
+        timeout: float,
+        base_url: str = "",
+        auth: tuple[str, str] | None = None,
+        token: str = "",
+    ) -> bool:
+        """Probe Jira service for availability.
+
+        Args:
+            timeout: HTTP request timeout in seconds.
+            base_url: Jira base URL.
+            auth: (email, api_token) tuple for authentication.
+            token: Not used for Jira probes (ignored).
+
+        Returns:
+            True if Jira is available, False otherwise.
+        """
+        if not base_url:
+            logger.warning("[HEALTH_GATE] jira: No base_url provided for probe")
+            return False
+
+        url = f"{base_url.rstrip('/')}{JIRA_PROBE_PATH}"
+        try:
+            with httpx.Client(timeout=httpx.Timeout(timeout)) as client:
+                response = client.get(url, auth=auth)
+                response.raise_for_status()
+                return True
+        except httpx.TimeoutException:
+            logger.debug("[HEALTH_GATE] jira: Probe timed out")
+            return False
+        except httpx.HTTPStatusError as e:
+            logger.debug("[HEALTH_GATE] jira: Probe got HTTP %d", e.response.status_code)
+            return False
+        except httpx.RequestError as e:
+            logger.debug("[HEALTH_GATE] jira: Probe request error: %s", e)
+            return False
+
+
+class GitHubProbeStrategy:
+    """Probe strategy for GitHub service availability.
+
+    Issues ``GET {base_url}/rate_limit`` with the required GitHub API headers
+    and optional Bearer token.  See ``GITHUB_PROBE_PATH`` and
+    ``GITHUB_API_VERSION`` for the endpoint and version constants.
+    """
+
+    def execute(
+        self,
+        *,
+        timeout: float,
+        base_url: str = "",
+        auth: tuple[str, str] | None = None,
+        token: str = "",
+    ) -> bool:
+        """Probe GitHub service for availability.
+
+        Args:
+            timeout: HTTP request timeout in seconds.
+            base_url: GitHub API base URL.
+            auth: Not used for GitHub probes (ignored).
+            token: Bearer token for authentication.
+
+        Returns:
+            True if GitHub is available, False otherwise.
+        """
+        if not base_url:
+            logger.warning("[HEALTH_GATE] github: No base_url provided for probe")
+            return False
+
+        url = f"{base_url.rstrip('/')}{GITHUB_PROBE_PATH}"
+        headers: dict[str, str] = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        try:
+            with httpx.Client(timeout=httpx.Timeout(timeout)) as client:
+                response = client.get(url, headers=headers)
+                response.raise_for_status()
+                return True
+        except httpx.TimeoutException:
+            logger.debug("[HEALTH_GATE] github: Probe timed out")
+            return False
+        except httpx.HTTPStatusError as e:
+            logger.debug("[HEALTH_GATE] github: Probe got HTTP %d", e.response.status_code)
+            return False
+        except httpx.RequestError as e:
+            logger.debug("[HEALTH_GATE] github: Probe request error: %s", e)
+            return False
 
 
 @dataclass(frozen=True)
@@ -224,6 +411,8 @@ class ServiceHealthGate:
         self.probe_success_count: int = 0
         self.probe_expected_failure_count: int = 0
         self.probe_unexpected_error_count: int = 0
+        self._probe_strategies: dict[str, ProbeStrategy] = {}
+        self._register_default_strategies()
 
     def _get_or_create_service(self, service_name: str) -> ServiceAvailability:
         """Get or create a ServiceAvailability tracker for a service.
@@ -239,6 +428,48 @@ class ServiceHealthGate:
         if service_name not in self._services:
             self._services[service_name] = ServiceAvailability(service_name=service_name)
         return self._services[service_name]
+
+    def _register_default_strategies(self) -> None:
+        """Register built-in probe strategies for Jira and GitHub."""
+        self._probe_strategies["jira"] = JiraProbeStrategy()
+        self._probe_strategies["github"] = GitHubProbeStrategy()
+
+    def register_probe_strategy(self, service_name: str, strategy: ProbeStrategy) -> None:
+        """Register a probe strategy for a service.
+
+        Use this method to add probing support for a new external service
+        without modifying the ``_execute_probe`` dispatch logic.
+
+        Args:
+            service_name: Lowercase service name (e.g. ``"jira"``, ``"my_service"``).
+            strategy: An object satisfying the ``ProbeStrategy`` protocol.
+
+        Raises:
+            TypeError: If *strategy* does not satisfy the ``ProbeStrategy`` protocol.
+        """
+        if not isinstance(strategy, ProbeStrategy):
+            msg = f"strategy must satisfy ProbeStrategy protocol, got {type(strategy).__name__}"
+            raise TypeError(msg)
+        self._probe_strategies[service_name.lower()] = strategy
+
+    def unregister_probe_strategy(self, service_name: str) -> None:
+        """Remove a registered probe strategy for a service.
+
+        Args:
+            service_name: Lowercase service name to remove.
+        """
+        self._probe_strategies.pop(service_name.lower(), None)
+
+    def get_probe_strategy(self, service_name: str) -> ProbeStrategy | None:
+        """Return the registered probe strategy for a service, or None.
+
+        Args:
+            service_name: Service name to look up.
+
+        Returns:
+            The registered ``ProbeStrategy``, or ``None`` if not found.
+        """
+        return self._probe_strategies.get(service_name.lower())
 
     def should_poll(self, service_name: str) -> bool:
         """Check if polling should proceed for a service.
@@ -463,9 +694,12 @@ class ServiceHealthGate:
     ) -> bool:
         """Execute the actual HTTP probe for a service.
 
-        Currently dispatches to service-specific probe methods based on name.
-        Future improvement: consider a ProbeStrategy protocol to allow new
-        services to be added without modifying this dispatch logic.
+        Dispatches to the registered ``ProbeStrategy`` for *service_name*.
+        Strategies are looked up in ``_probe_strategies`` by lowercase name.
+        If no strategy is registered, logs a warning and returns ``False``.
+
+        To add probing for a new service, implement the ``ProbeStrategy``
+        protocol and register it via ``register_probe_strategy()``.
 
         Args:
             service_name: Name of the service to probe.
@@ -477,84 +711,21 @@ class ServiceHealthGate:
             True if the probe succeeded, False otherwise.
         """
         service_lower = service_name.lower()
+        strategy = self._probe_strategies.get(service_lower)
 
-        if service_lower == "jira":
-            return self._probe_jira(base_url, auth)
-        if service_lower == "github":
-            return self._probe_github(base_url, token)
+        if strategy is None:
+            logger.warning(
+                "[HEALTH_GATE] %s: Unknown service, cannot probe",
+                service_name,
+            )
+            return False
 
-        logger.warning(
-            "[HEALTH_GATE] %s: Unknown service, cannot probe",
-            service_name,
+        return strategy.execute(
+            timeout=self.config.probe_timeout,
+            base_url=base_url,
+            auth=auth,
+            token=token,
         )
-        return False
-
-    def _probe_jira(self, base_url: str, auth: tuple[str, str] | None) -> bool:
-        """Probe Jira service for availability.
-
-        Args:
-            base_url: Jira base URL.
-            auth: (email, api_token) tuple for authentication.
-
-        Returns:
-            True if Jira is available, False otherwise.
-        """
-        if not base_url:
-            logger.warning("[HEALTH_GATE] jira: No base_url provided for probe")
-            return False
-
-        url = f"{base_url.rstrip('/')}{JIRA_PROBE_PATH}"
-        try:
-            with httpx.Client(timeout=httpx.Timeout(self.config.probe_timeout)) as client:
-                response = client.get(url, auth=auth)
-                response.raise_for_status()
-                return True
-        except httpx.TimeoutException:
-            logger.debug("[HEALTH_GATE] jira: Probe timed out")
-            return False
-        except httpx.HTTPStatusError as e:
-            logger.debug("[HEALTH_GATE] jira: Probe got HTTP %d", e.response.status_code)
-            return False
-        except httpx.RequestError as e:
-            logger.debug("[HEALTH_GATE] jira: Probe request error: %s", e)
-            return False
-
-    def _probe_github(self, base_url: str, token: str) -> bool:
-        """Probe GitHub service for availability.
-
-        Args:
-            base_url: GitHub API base URL.
-            token: Bearer token for authentication.
-
-        Returns:
-            True if GitHub is available, False otherwise.
-        """
-        if not base_url:
-            logger.warning("[HEALTH_GATE] github: No base_url provided for probe")
-            return False
-
-        url = f"{base_url.rstrip('/')}{GITHUB_PROBE_PATH}"
-        headers: dict[str, str] = {
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": GITHUB_API_VERSION,
-        }
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-
-        try:
-            with httpx.Client(timeout=httpx.Timeout(self.config.probe_timeout)) as client:
-                response = client.get(url, headers=headers)
-                response.raise_for_status()
-                return True
-        except httpx.TimeoutException:
-            logger.debug("[HEALTH_GATE] github: Probe timed out")
-            return False
-        except httpx.HTTPStatusError as e:
-            logger.debug("[HEALTH_GATE] github: Probe got HTTP %d", e.response.status_code)
-            return False
-        except httpx.RequestError as e:
-            logger.debug("[HEALTH_GATE] github: Probe request error: %s", e)
-            return False
 
     def get_all_status(self) -> dict[str, dict[str, Any]]:
         """Get a snapshot of all tracked service availability states.
