@@ -520,6 +520,13 @@ def _parse_bounded_float(
     """
     try:
         parsed = float(value)
+        if math.isnan(parsed):
+            logging.warning(
+                "Invalid %s: NaN is not a valid number, using default %s",
+                name,
+                _format_number(default),
+            )
+            return default
         if min_val is not None and parsed < min_val:
             logging.warning(
                 "Invalid %s: %s %s, using default %s",
