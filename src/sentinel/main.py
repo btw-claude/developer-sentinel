@@ -467,9 +467,19 @@ class Sentinel:
             executor = AgentExecutor(client, self._agent_logger)
 
             # Build pre-retry health check callback based on trigger source
-            service_name = (
-                "github" if orchestration.trigger.source == "github" else "jira"
-            )
+            source = orchestration.trigger.source
+            if source == "github":
+                service_name = "github"
+            elif source == "jira":
+                service_name = "jira"
+            else:
+                logger.warning(
+                    "Unknown trigger source '%s' for orchestration '%s', "
+                    "defaulting to Jira for pre-retry health probing",
+                    source,
+                    orchestration.name,
+                )
+                service_name = "jira"
 
             def _pre_retry_check() -> bool:
                 """Check external service health before retrying."""
