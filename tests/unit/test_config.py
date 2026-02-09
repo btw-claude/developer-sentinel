@@ -441,6 +441,34 @@ class TestParseNonNegativeFloat:
             assert result == 2.0
             assert "NaN is not a valid number" in caplog.text
 
+    def test_infinity_rejected_by_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that infinity is rejected by default (DS-855)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_non_negative_float("inf", "TEST_VAR", 1.0)
+        assert result == 1.0
+        assert "infinity is not a valid number" in caplog.text
+
+    def test_negative_infinity_rejected_by_default(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that negative infinity is rejected by default (DS-855)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_non_negative_float("-inf", "TEST_VAR", 1.0)
+        assert result == 1.0
+        assert "infinity is not a valid number" in caplog.text
+
+    def test_infinity_accepted_when_allowed(self) -> None:
+        """Test that infinity is accepted when allow_infinity=True (DS-855)."""
+        result = _parse_non_negative_float("inf", "TEST_VAR", 1.0, allow_infinity=True)
+        assert result == float("inf")
+
+    def test_negative_infinity_rejected_by_min_bound_even_when_allowed(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that -inf is still rejected by min_val=0.0 even with allow_infinity=True (DS-855)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_non_negative_float("-inf", "TEST_VAR", 1.0, allow_infinity=True)
+        assert result == 1.0
+        assert "Invalid TEST_VAR" in caplog.text
+
 
 class TestDefaultThresholdConstants:
     """Tests for DEFAULT_GREEN_THRESHOLD and DEFAULT_YELLOW_THRESHOLD constants."""
@@ -553,6 +581,62 @@ class TestParseBoundedFloat:
             result = _parse_bounded_float("nan", "TEST_VAR", 0.5, min_val=0.0, max_val=1.0)
         assert result == 0.5
         assert "NaN is not a valid number" in caplog.text
+
+    def test_positive_infinity_rejected_no_bounds(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that positive infinity is rejected by default with no bounds (DS-855)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_bounded_float("inf", "TEST_VAR", 1.0)
+        assert result == 1.0
+        assert "Invalid TEST_VAR: infinity is not a valid number" in caplog.text
+
+    def test_negative_infinity_rejected_no_bounds(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that negative infinity is rejected by default with no bounds (DS-855)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_bounded_float("-inf", "TEST_VAR", 1.0)
+        assert result == 1.0
+        assert "infinity is not a valid number" in caplog.text
+
+    def test_positive_infinity_rejected_with_min_bound(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that positive infinity is rejected when min bound is specified (DS-855)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_bounded_float("inf", "TEST_VAR", 5.0, min_val=0.0)
+        assert result == 5.0
+        assert "infinity is not a valid number" in caplog.text
+
+    def test_positive_infinity_rejected_with_both_bounds(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that positive infinity is rejected when both bounds are specified (DS-855)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_bounded_float("inf", "TEST_VAR", 0.5, min_val=0.0, max_val=1.0)
+        assert result == 0.5
+        assert "infinity is not a valid number" in caplog.text
+
+    def test_infinity_case_insensitive_rejected(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that 'Infinity' (mixed case) is rejected by default (DS-855)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_bounded_float("Infinity", "TEST_VAR", 1.0)
+        assert result == 1.0
+        assert "infinity is not a valid number" in caplog.text
+
+    def test_positive_infinity_allowed_when_flag_set(self) -> None:
+        """Test that positive infinity is accepted when allow_infinity=True (DS-855)."""
+        result = _parse_bounded_float("inf", "TEST_VAR", 1.0, min_val=0.0, allow_infinity=True)
+        assert result == float("inf")
+
+    def test_negative_infinity_rejected_by_min_bound_even_when_allowed(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that negative infinity is rejected by min_val even with allow_infinity=True (DS-855)."""
+        with caplog.at_level(logging.WARNING):
+            result = _parse_bounded_float(
+                "-inf", "TEST_VAR", 5.0, min_val=0.0, allow_infinity=True
+            )
+        assert result == 5.0
+        assert "Invalid TEST_VAR" in caplog.text
+
+    def test_negative_infinity_allowed_when_flag_set_no_bounds(self) -> None:
+        """Test that negative infinity is accepted when allow_infinity=True and no bounds (DS-855)."""
+        result = _parse_bounded_float("-inf", "TEST_VAR", 1.0, allow_infinity=True)
+        assert result == float("-inf")
 
 
 class TestFormatBoundMessage:
@@ -2127,14 +2211,15 @@ class TestServiceHealthGateConfig:
         assert config.service_health_gate.max_probe_interval == 30.0
         assert "swapping values" not in caplog.text
 
-    def test_infinity_both_equal_no_swap(
+    def test_infinity_initial_rejected_max_accepted(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that both values set to infinity does not trigger swap.
+        """Test that infinity initial_probe_interval is rejected but max allows it (DS-855).
 
-        IEEE 754 defines inf == inf as True and inf > inf as False, so
-        equal infinity values should not trigger the cross-field swap logic.
-        The parser accepts inf since it is a valid non-negative float.
+        After DS-855, infinity is rejected by default in _parse_non_negative_float.
+        The initial_probe_interval does not set allow_infinity, so inf is rejected
+        and the default (30.0) is used.  max_probe_interval sets allow_infinity=True,
+        so inf is accepted there.
         """
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "inf")
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "inf")
@@ -2142,18 +2227,21 @@ class TestServiceHealthGateConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        assert config.service_health_gate.initial_probe_interval == float("inf")
+        # initial_probe_interval: inf rejected, default (30.0) used
+        assert config.service_health_gate.initial_probe_interval == 30.0
+        # max_probe_interval: inf accepted (allow_infinity=True)
         assert config.service_health_gate.max_probe_interval == float("inf")
+        assert "infinity is not a valid number" in caplog.text
         assert "swapping values" not in caplog.text
 
-    def test_infinity_initial_exceeds_finite_max_triggers_swap(
+    def test_infinity_initial_rejected_with_finite_max(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that initial=inf with finite max triggers swap.
+        """Test that initial=inf is rejected, falling back to default (DS-855).
 
-        When initial_probe_interval is infinity and max_probe_interval is
-        a finite value, the cross-field validation should detect that
-        inf > finite and swap the values.
+        When initial_probe_interval is set to infinity, it is now rejected
+        (DS-855) and the default (30.0) is used. Since 30.0 < 100.0,
+        no cross-field swap occurs.
         """
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "inf")
         monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "100.0")
@@ -2161,10 +2249,11 @@ class TestServiceHealthGateConfig:
         with caplog.at_level(logging.WARNING):
             config = load_config()
 
-        # Values should be swapped since inf > 100.0
-        assert config.service_health_gate.initial_probe_interval == 100.0
-        assert config.service_health_gate.max_probe_interval == float("inf")
-        assert "swapping values" in caplog.text
+        # inf is rejected for initial; default (30.0) is used
+        assert config.service_health_gate.initial_probe_interval == 30.0
+        assert config.service_health_gate.max_probe_interval == 100.0
+        assert "infinity is not a valid number" in caplog.text
+        assert "swapping values" not in caplog.text
 
     def test_infinity_max_with_finite_initial_no_swap(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -2264,3 +2353,50 @@ class TestServiceHealthGateConfig:
         assert config.service_health_gate.max_probe_interval == float("inf")
         assert "NaN is not a valid number" in caplog.text
         assert "swapping values" not in caplog.text
+
+    def test_infinity_toggle_cooldown_rejected(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that infinity is rejected for toggle_cooldown_seconds (DS-855).
+
+        toggle_cooldown_seconds uses _parse_non_negative_float without
+        allow_infinity, so infinity should be rejected and the default used.
+        """
+        monkeypatch.setenv("SENTINEL_TOGGLE_COOLDOWN", "inf")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.dashboard.toggle_cooldown_seconds == 2.0
+        assert "infinity is not a valid number" in caplog.text
+
+    def test_infinity_subprocess_timeout_rejected(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that infinity is rejected for subprocess_timeout (DS-855).
+
+        subprocess_timeout uses _parse_non_negative_float without
+        allow_infinity, so infinity should be rejected and the default used.
+        """
+        monkeypatch.setenv("SENTINEL_SUBPROCESS_TIMEOUT", "inf")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.execution.subprocess_timeout == 60.0
+        assert "infinity is not a valid number" in caplog.text
+
+    def test_infinity_max_probe_interval_accepted(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that infinity is accepted for max_probe_interval (DS-855).
+
+        max_probe_interval uses _parse_non_negative_float with
+        allow_infinity=True, so infinity should be accepted.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "inf")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.max_probe_interval == float("inf")
