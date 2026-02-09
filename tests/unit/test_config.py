@@ -1975,3 +1975,97 @@ class TestServiceHealthGateConfig:
         assert config.service_health_gate.max_probe_interval == 45.5
         assert "SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL (45.5) exceeds" in caplog.text
         assert "SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL (20.5)" in caplog.text
+
+    def test_small_delta_initial_exceeds_max_triggers_swap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test floating-point comparison with very small delta near boundary.
+
+        When initial_probe_interval exceeds max_probe_interval by a tiny amount
+        (e.g., 30.01 vs 30.0), the cross-field validation should still detect
+        the violation and swap the values.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "30.01")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "30.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # Values should be swapped since 30.01 > 30.0
+        assert config.service_health_gate.initial_probe_interval == 30.0
+        assert config.service_health_gate.max_probe_interval == 30.01
+        assert "swapping values" in caplog.text
+
+    def test_very_large_values_no_overflow(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that very large probe interval values do not cause overflow.
+
+        Ensures cross-field validation handles large floating-point values
+        correctly without arithmetic overflow or precision loss.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "1e10")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "1e15")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # Both values are valid and initial < max, so no swap should occur
+        assert config.service_health_gate.initial_probe_interval == 1e10
+        assert config.service_health_gate.max_probe_interval == 1e15
+        assert "swapping values" not in caplog.text
+
+    def test_very_large_values_swapped_when_initial_exceeds_max(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that very large values are correctly swapped when initial > max.
+
+        Validates that the cross-field comparison works correctly with large
+        floating-point numbers.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "1e15")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "1e10")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # Values should be swapped
+        assert config.service_health_gate.initial_probe_interval == 1e10
+        assert config.service_health_gate.max_probe_interval == 1e15
+        assert "swapping values" in caplog.text
+
+    def test_minimum_valid_values_both_zero(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test cross-field validation with both values at minimum (0.0).
+
+        When both initial_probe_interval and max_probe_interval are 0.0,
+        they are equal, so no swap should occur.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "0.0")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "0.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == 0.0
+        assert config.service_health_gate.max_probe_interval == 0.0
+        assert "swapping values" not in caplog.text
+
+    def test_minimum_valid_values_near_zero(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test cross-field validation with values very close to zero.
+
+        Ensures that very small positive values near the minimum boundary
+        are handled correctly in cross-field comparison.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "0.001")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "0.002")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == 0.001
+        assert config.service_health_gate.max_probe_interval == 0.002
+        assert "swapping values" not in caplog.text
