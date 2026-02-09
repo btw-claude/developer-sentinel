@@ -99,6 +99,18 @@ GITHUB_API_VERSION = "2022-11-28"
 
 Sent as ``X-GitHub-Api-Version`` in probe requests to GitHub."""
 
+_PROBE_STRATEGY_REQUIRED_PARAMS: frozenset[str] = frozenset(
+    {"timeout", "base_url", "auth", "token"}
+)
+"""Required keyword parameters for ``ProbeStrategy.execute()`` implementations.
+
+This constant is the single source of truth for the parameter names that every
+``ProbeStrategy`` must accept.  It is used by
+``ServiceHealthGate._validate_probe_strategy_signature()`` to verify strategy
+signatures at registration time.  If the ``ProbeStrategy`` protocol ever gains
+new parameters, update this set accordingly.
+"""
+
 
 @runtime_checkable
 class ProbeStrategy(Protocol):
@@ -554,15 +566,17 @@ class ServiceHealthGate:
         signature mismatches are caught eagerly at registration time rather
         than at probe-call time.
 
+        The set of required parameters is defined by the module-level constant
+        ``_PROBE_STRATEGY_REQUIRED_PARAMS``.
+
         Args:
             strategy: The candidate strategy object to validate.
 
         Raises:
             TypeError: If the ``execute`` method is missing any of the
-                required keyword-only parameters (``timeout``, ``base_url``,
-                ``auth``, ``token``).
+                required keyword-only parameters defined in
+                ``_PROBE_STRATEGY_REQUIRED_PARAMS``.
         """
-        required_params = {"timeout", "base_url", "auth", "token"}
         try:
             sig = inspect.signature(strategy.execute)  # type: ignore[attr-defined]
         except (ValueError, TypeError) as e:
@@ -572,6 +586,10 @@ class ServiceHealthGate:
             )
             raise TypeError(msg) from e
 
+        # The ``name != "self"`` guard is defensive: ``inspect.signature()``
+        # on a bound method normally excludes ``self``, but keeping the
+        # filter protects against edge cases (e.g. unbound methods or
+        # unusual descriptors).
         param_names = {
             name
             for name, param in sig.parameters.items()
@@ -583,7 +601,7 @@ class ServiceHealthGate:
             and name != "self"
         }
 
-        missing = required_params - param_names
+        missing = _PROBE_STRATEGY_REQUIRED_PARAMS - param_names
         if missing:
             sorted_missing = sorted(missing)
             msg = (
