@@ -454,7 +454,26 @@ __all__ = [
     "ExecutionCoroutine",
     "ExecutionResult",
     "ExecutionStatus",
+    "RetryLoggingContext",
 ]
+
+
+@dataclass(frozen=True)
+class RetryLoggingContext:
+    """Bundled logging-context parameters for retry operations.
+
+    Groups issue_key and orchestration_name into a single object to keep
+    the _should_stop_retrying() parameter list manageable. This also makes
+    it easy to add future logging-context fields without changing the
+    method signature (DS-838).
+
+    Attributes:
+        issue_key: The issue key (Jira or GitHub) for logging context.
+        orchestration_name: The orchestration name for logging context.
+    """
+
+    issue_key: str
+    orchestration_name: str
 
 
 class AgentExecutor:
@@ -836,8 +855,7 @@ class AgentExecutor:
     @staticmethod
     def _should_stop_retrying(
         pre_retry_check: Callable[[], bool] | None,
-        issue_key: str,
-        orchestration_name: str,
+        logging_context: RetryLoggingContext,
         attempt: int,
     ) -> bool:
         """Check pre-retry health and return True if retries should stop.
@@ -850,8 +868,7 @@ class AgentExecutor:
 
         Args:
             pre_retry_check: Optional callback to verify external service health.
-            issue_key: The issue key for logging context.
-            orchestration_name: The orchestration name for logging context.
+            logging_context: Bundled logging-context parameters (DS-838).
             attempt: The current attempt number.
 
         Returns:
@@ -860,10 +877,10 @@ class AgentExecutor:
         if pre_retry_check is not None and not pre_retry_check():
             logger.warning(
                 "Pre-retry health check failed for %s, stopping retries",
-                issue_key,
+                logging_context.issue_key,
                 extra={
-                    "issue_key": issue_key,
-                    "orchestration": orchestration_name,
+                    "issue_key": logging_context.issue_key,
+                    "orchestration": logging_context.orchestration_name,
                     "attempt": attempt,
                 },
             )
@@ -929,6 +946,12 @@ class AgentExecutor:
 
         # Get outcomes if configured
         outcomes = orchestration.outcomes if orchestration.outcomes else None
+
+        # Build logging context for retry operations (DS-838)
+        retry_logging_ctx = RetryLoggingContext(
+            issue_key=issue.key,
+            orchestration_name=orchestration.name,
+        )
 
         for attempt in range(1, max_attempts + 1):
             last_attempt = attempt
@@ -1026,7 +1049,7 @@ class AgentExecutor:
 
                 if status == ExecutionStatus.FAILURE and attempt < max_attempts:
                     if self._should_stop_retrying(
-                        pre_retry_check, issue.key, orchestration.name, attempt
+                        pre_retry_check, retry_logging_ctx, attempt
                     ):
                         break
                     logger.warning(
@@ -1054,7 +1077,7 @@ class AgentExecutor:
                 )
                 if attempt < max_attempts:
                     if self._should_stop_retrying(
-                        pre_retry_check, issue.key, orchestration.name, attempt
+                        pre_retry_check, retry_logging_ctx, attempt
                     ):
                         break
                     logger.warning(
@@ -1082,7 +1105,7 @@ class AgentExecutor:
                 )
                 if attempt < max_attempts:
                     if self._should_stop_retrying(
-                        pre_retry_check, issue.key, orchestration.name, attempt
+                        pre_retry_check, retry_logging_ctx, attempt
                     ):
                         break
                     logger.warning(
