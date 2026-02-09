@@ -85,7 +85,9 @@ class TestLogPartialFailure:
         sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_partial_failure(service_name, found, errors)
+            sentinel._log_partial_failure(
+                service_name=service_name, found=found, errors=errors
+            )
 
             mock_logger.warning.assert_called_once()
             call_args = mock_logger.warning.call_args
@@ -230,7 +232,12 @@ class TestRecordPollHealth:
         sentinel, _ = _create_sentinel()
 
         with patch.object(sentinel._health_gate, "record_poll_success") as mock_success:
-            sentinel._record_poll_health(service_name, display_name, error_count=0, issues_found=5)
+            sentinel._record_poll_health(
+                service_name=service_name,
+                display_name=display_name,
+                error_count=0,
+                issues_found=5,
+            )
 
             mock_success.assert_called_once_with(service_name)
 
@@ -248,7 +255,12 @@ class TestRecordPollHealth:
         sentinel, _ = _create_sentinel()
 
         with patch.object(sentinel._health_gate, "record_poll_failure") as mock_failure:
-            sentinel._record_poll_health(service_name, display_name, error_count=3, issues_found=0)
+            sentinel._record_poll_health(
+                service_name=service_name,
+                display_name=display_name,
+                error_count=3,
+                issues_found=0,
+            )
 
             mock_failure.assert_called_once_with(service_name)
 
@@ -266,7 +278,12 @@ class TestRecordPollHealth:
         sentinel, _ = _create_sentinel()
 
         with patch.object(sentinel, "_log_partial_failure") as mock_partial:
-            sentinel._record_poll_health(service_name, display_name, error_count=2, issues_found=3)
+            sentinel._record_poll_health(
+                service_name=service_name,
+                display_name=display_name,
+                error_count=2,
+                issues_found=3,
+            )
 
             mock_partial.assert_called_once_with(display_name, 3, 2)
 
@@ -276,7 +293,12 @@ class TestRecordPollHealth:
 
         with patch.object(sentinel._health_gate, "record_poll_failure") as mock_failure:
             with patch.object(sentinel, "_log_partial_failure"):
-                sentinel._record_poll_health("jira", "Jira", error_count=1, issues_found=2)
+                sentinel._record_poll_health(
+                    service_name="jira",
+                    display_name="Jira",
+                    error_count=1,
+                    issues_found=2,
+                )
 
                 mock_failure.assert_not_called()
 
@@ -286,7 +308,12 @@ class TestRecordPollHealth:
 
         with patch.object(sentinel._health_gate, "record_poll_success") as mock_success:
             with patch.object(sentinel._health_gate, "record_poll_failure"):
-                sentinel._record_poll_health("github", "GitHub", error_count=3, issues_found=0)
+                sentinel._record_poll_health(
+                    service_name="github",
+                    display_name="GitHub",
+                    error_count=3,
+                    issues_found=0,
+                )
 
                 mock_success.assert_not_called()
 
@@ -295,7 +322,12 @@ class TestRecordPollHealth:
         sentinel, _ = _create_sentinel()
 
         with patch.object(sentinel, "_log_partial_failure") as mock_partial:
-            sentinel._record_poll_health("github", "GitHub", error_count=1, issues_found=4)
+            sentinel._record_poll_health(
+                service_name="github",
+                display_name="GitHub",
+                error_count=1,
+                issues_found=4,
+            )
 
             call_args = mock_partial.call_args[0]
             assert call_args[0] == "GitHub"
@@ -305,7 +337,12 @@ class TestRecordPollHealth:
         sentinel, _ = _create_sentinel()
 
         with patch.object(sentinel._health_gate, "record_poll_success") as mock_success:
-            sentinel._record_poll_health("jira", "Jira", error_count=0, issues_found=1)
+            sentinel._record_poll_health(
+                service_name="jira",
+                display_name="Jira",
+                error_count=0,
+                issues_found=1,
+            )
 
             mock_success.assert_called_once_with("jira")
 
@@ -321,7 +358,10 @@ class TestHandleExecutionFailure:
 
         with patch.object(sentinel, "_log_for_orchestration") as mock_log:
             sentinel._handle_execution_failure(
-                "TEST-123", orchestration, exception, ErrorType.IO_ERROR
+                issue_key="TEST-123",
+                orchestration=orchestration,
+                exception=exception,
+                error_type=ErrorType.IO_ERROR,
             )
 
         mock_log.assert_called_once_with(
@@ -338,7 +378,10 @@ class TestHandleExecutionFailure:
 
         with patch.object(sentinel.tag_manager, "apply_failure_tags") as mock_apply:
             sentinel._handle_execution_failure(
-                "TEST-123", orchestration, exception, ErrorType.RUNTIME_ERROR
+                issue_key="TEST-123",
+                orchestration=orchestration,
+                exception=exception,
+                error_type=ErrorType.RUNTIME_ERROR,
             )
 
             # Verify apply_failure_tags was called with correct arguments
@@ -390,7 +433,10 @@ class TestHandleExecutionFailure:
             with patch("sentinel.main.logger") as mock_logger:
                 # Should not raise
                 sentinel._handle_execution_failure(
-                    "TEST-123", orchestration, exception, ErrorType.RUNTIME_ERROR
+                    issue_key="TEST-123",
+                    orchestration=orchestration,
+                    exception=exception,
+                    error_type=ErrorType.RUNTIME_ERROR,
                 )
 
                 # Verify the tag error was logged with correct ErrorType
@@ -449,7 +495,10 @@ class TestHandleExecutionFailure:
 
         with patch.object(sentinel, "_log_for_orchestration") as mock_log:
             sentinel._handle_execution_failure(
-                "TEST-333", orchestration, exception, error_type
+                issue_key="TEST-333",
+                orchestration=orchestration,
+                exception=exception,
+                error_type=error_type,
             )
 
             # Check that the logged message contains the expected substring
@@ -471,7 +520,10 @@ class TestHandleExecutionFailure:
         ):
             with patch("sentinel.main.logger") as mock_logger:
                 sentinel._handle_execution_failure(
-                    "PROJ-999", orchestration, exception, ErrorType.IO_ERROR
+                    issue_key="PROJ-999",
+                    orchestration=orchestration,
+                    exception=exception,
+                    error_type=ErrorType.IO_ERROR,
                 )
 
                 # Verify extra context was passed
@@ -647,7 +699,11 @@ class TestHandleSubmissionFailure:
 
         with patch.object(sentinel, "_apply_failure_tags_safely"):
             sentinel._handle_submission_failure(
-                "TEST-123", orchestration, exception, ErrorType.IO_ERROR, mock_version
+                issue_key="TEST-123",
+                orchestration=orchestration,
+                exception=exception,
+                error_type=ErrorType.IO_ERROR,
+                version=mock_version,
             )
 
         mock_version.decrement_executions.assert_called_once()
@@ -661,7 +717,11 @@ class TestHandleSubmissionFailure:
         with patch.object(sentinel, "_apply_failure_tags_safely"):
             # Should not raise
             sentinel._handle_submission_failure(
-                "TEST-123", orchestration, exception, ErrorType.IO_ERROR, None
+                issue_key="TEST-123",
+                orchestration=orchestration,
+                exception=exception,
+                error_type=ErrorType.IO_ERROR,
+                version=None,
             )
 
     def test_decrements_per_orch_count(self) -> None:
@@ -673,7 +733,11 @@ class TestHandleSubmissionFailure:
         with patch.object(sentinel._state_tracker, "decrement_per_orch_count") as mock_decrement:
             with patch.object(sentinel, "_apply_failure_tags_safely"):
                 sentinel._handle_submission_failure(
-                    "TEST-123", orchestration, exception, ErrorType.RUNTIME_ERROR, None
+                    issue_key="TEST-123",
+                    orchestration=orchestration,
+                    exception=exception,
+                    error_type=ErrorType.RUNTIME_ERROR,
+                    version=None,
                 )
 
         mock_decrement.assert_called_once_with("test-orch")
@@ -711,7 +775,11 @@ class TestHandleSubmissionFailure:
         with patch("sentinel.main.logger") as mock_logger:
             with patch.object(sentinel, "_apply_failure_tags_safely"):
                 sentinel._handle_submission_failure(
-                    "TEST-123", orchestration, exception, error_type, None
+                    issue_key="TEST-123",
+                    orchestration=orchestration,
+                    exception=exception,
+                    error_type=error_type,
+                    version=None,
                 )
 
         mock_logger.error.assert_called_once()
@@ -732,7 +800,11 @@ class TestHandleSubmissionFailure:
 
         with patch.object(sentinel, "_apply_failure_tags_safely") as mock_apply:
             sentinel._handle_submission_failure(
-                "TEST-456", orchestration, exception, ErrorType.DATA_ERROR, None
+                issue_key="TEST-456",
+                orchestration=orchestration,
+                exception=exception,
+                error_type=ErrorType.DATA_ERROR,
+                version=None,
             )
 
         mock_apply.assert_called_once_with("TEST-456", orchestration)
@@ -746,7 +818,11 @@ class TestHandleSubmissionFailure:
         with patch("sentinel.main.logger") as mock_logger:
             with patch.object(sentinel, "_apply_failure_tags_safely"):
                 sentinel._handle_submission_failure(
-                    "PROJ-999", orchestration, exception, ErrorType.IO_ERROR, None
+                    issue_key="PROJ-999",
+                    orchestration=orchestration,
+                    exception=exception,
+                    error_type=ErrorType.IO_ERROR,
+                    version=None,
                 )
 
         call_args = mock_logger.error.call_args
