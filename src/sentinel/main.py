@@ -323,7 +323,7 @@ class Sentinel:
     ) -> None:
         """Record health gate outcome based on polling errors.
 
-        This helper replaces the duplicated if/elif/elif health-gate
+        This helper replaces the duplicated if/elif/else health-gate
         recording blocks in the Jira and GitHub polling sections of
         ``run_once()``.  It decides whether to record a success, a
         failure, or a partial-failure warning based on the error and
@@ -345,7 +345,7 @@ class Sentinel:
             self._health_gate.record_poll_success(service_name)
         elif error_count > 0 and issues_found == 0:
             self._health_gate.record_poll_failure(service_name)
-        elif error_count > 0 and issues_found > 0:
+        else:
             self._log_partial_failure(display_name, issues_found, error_count)
 
     def _log_total_failure(
