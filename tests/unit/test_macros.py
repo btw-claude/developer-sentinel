@@ -448,15 +448,16 @@ class TestHumanizeSecondsAgoDetailedMacro:
         """Test that exact hour boundaries show no sub-unit."""
         assert render_detailed(7200) == "2h ago"
 
-    def test_hours_with_minutes_and_seconds_drops_seconds(self, render_detailed) -> None:
-        """Test that hours with minutes and seconds drops the seconds component.
+    def test_hours_with_only_seconds_remainder_drops_seconds(self, render_detailed) -> None:
+        """Test that hours with only a seconds remainder drops the seconds component.
 
-        When the value is in the hours range, only hours and minutes are shown.
-        Seconds are dropped to keep the output readable while still providing
-        more precision than the compact macro.
+        When the value is in the hours range and the remainder is only seconds
+        (no full minutes), the seconds are dropped entirely. This covers the
+        hours-with-only-seconds-remainder scenario distinct from
+        test_hours_with_minutes which tests hours-with-minutes precision.
         """
-        # 1h 1m 1s -> "1h 1m ago" (seconds dropped at hour scale)
-        assert render_detailed(3661) == "1h 1m ago"
+        # 1h 0m 2s -> "1h ago" (seconds dropped at hour scale, no minutes to show)
+        assert render_detailed(3602) == "1h ago"
 
     @pytest.mark.parametrize(
         "seconds_ago,expected",
