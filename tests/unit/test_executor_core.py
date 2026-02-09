@@ -773,7 +773,7 @@ class TestAgentExecutorPreRetryCheck:
         assert len(check_calls) == 1
 
     @pytest.mark.asyncio
-    async def test_pre_retry_check_returns_true_allows_retry_on_client_error(self) -> None:
+    async def test_pre_retry_true_retries_on_client_error(self) -> None:
         """When check returns True on client error, retry proceeds."""
         client = MockAgentClient(responses=["SUCCESS"])
         client.should_error = True

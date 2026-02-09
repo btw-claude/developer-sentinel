@@ -833,6 +833,43 @@ class AgentExecutor:
         status = ExecutionStatus.SUCCESS if default == "SUCCESS" else ExecutionStatus.FAILURE
         return status, None
 
+    @staticmethod
+    def _should_stop_retrying(
+        pre_retry_check: Callable[[], bool] | None,
+        issue_key: str,
+        orchestration_name: str,
+        attempt: int,
+    ) -> bool:
+        """Check pre-retry health and return True if retries should stop.
+
+        Encapsulates the repeated pre-retry check pattern used at all retry
+        points (FAILURE, AgentTimeoutError, AgentClientError). Returns True
+        if the pre_retry_check callback is provided and returns False,
+        indicating the external service is unhealthy. Logs a warning when
+        stopping retries.
+
+        Args:
+            pre_retry_check: Optional callback to verify external service health.
+            issue_key: The issue key for logging context.
+            orchestration_name: The orchestration name for logging context.
+            attempt: The current attempt number.
+
+        Returns:
+            True if retries should stop, False if retries may continue.
+        """
+        if pre_retry_check is not None and not pre_retry_check():
+            logger.warning(
+                "Pre-retry health check failed for %s, stopping retries",
+                issue_key,
+                extra={
+                    "issue_key": issue_key,
+                    "orchestration": orchestration_name,
+                    "attempt": attempt,
+                },
+            )
+            return True
+        return False
+
     async def execute(
         self,
         issue: AnyIssue,
@@ -892,34 +929,6 @@ class AgentExecutor:
 
         # Get outcomes if configured
         outcomes = orchestration.outcomes if orchestration.outcomes else None
-
-        def _should_stop_retrying(attempt: int) -> bool:
-            """Check pre-retry health and return True if retries should stop.
-
-            Encapsulates the repeated pre-retry check pattern used at all retry
-            points (FAILURE, AgentTimeoutError, AgentClientError). Returns True
-            if the pre_retry_check callback is provided and returns False,
-            indicating the external service is unhealthy. Logs a warning when
-            stopping retries.
-
-            Args:
-                attempt: The current attempt number.
-
-            Returns:
-                True if retries should stop, False if retries may continue.
-            """
-            if pre_retry_check is not None and not pre_retry_check():
-                logger.warning(
-                    "Pre-retry health check failed for %s, stopping retries",
-                    issue.key,
-                    extra={
-                        "issue_key": issue.key,
-                        "orchestration": orchestration.name,
-                        "attempt": attempt,
-                    },
-                )
-                return True
-            return False
 
         for attempt in range(1, max_attempts + 1):
             last_attempt = attempt
@@ -1016,7 +1025,9 @@ class AgentExecutor:
                     return result
 
                 if status == ExecutionStatus.FAILURE and attempt < max_attempts:
-                    if _should_stop_retrying(attempt):
+                    if self._should_stop_retrying(
+                        pre_retry_check, issue.key, orchestration.name, attempt
+                    ):
                         break
                     logger.warning(
                         "Agent execution failed for %s on attempt %s, retrying...",
@@ -1042,7 +1053,9 @@ class AgentExecutor:
                     max_attempts=max_attempts,
                 )
                 if attempt < max_attempts:
-                    if _should_stop_retrying(attempt):
+                    if self._should_stop_retrying(
+                        pre_retry_check, issue.key, orchestration.name, attempt
+                    ):
                         break
                     logger.warning(
                         "Agent timed out for %s on attempt %s, retrying...",
@@ -1068,7 +1081,9 @@ class AgentExecutor:
                     max_attempts=max_attempts,
                 )
                 if attempt < max_attempts:
-                    if _should_stop_retrying(attempt):
+                    if self._should_stop_retrying(
+                        pre_retry_check, issue.key, orchestration.name, attempt
+                    ):
                         break
                     logger.warning(
                         "Agent client error for %s on attempt %s: %s, "
