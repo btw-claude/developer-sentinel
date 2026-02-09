@@ -2069,3 +2069,80 @@ class TestServiceHealthGateConfig:
         assert config.service_health_gate.initial_probe_interval == 0.001
         assert config.service_health_gate.max_probe_interval == 0.002
         assert "swapping values" not in caplog.text
+
+    def test_non_zero_equal_values_no_swap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that non-zero equal values do not trigger the swap logic.
+
+        Complements test_minimum_valid_values_both_zero (which tests 0.0 == 0.0)
+        by verifying that a non-zero equal case (e.g., both 30.0) also does not
+        trigger the cross-field swap. This explicitly confirms the > comparison
+        correctly distinguishes equal values from the initial > max case.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "30.0")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "30.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == 30.0
+        assert config.service_health_gate.max_probe_interval == 30.0
+        assert "swapping values" not in caplog.text
+
+    def test_infinity_both_equal_no_swap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that both values set to infinity does not trigger swap.
+
+        IEEE 754 defines inf == inf as True and inf > inf as False, so
+        equal infinity values should not trigger the cross-field swap logic.
+        The parser accepts inf since it is a valid non-negative float.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "inf")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "inf")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == float("inf")
+        assert config.service_health_gate.max_probe_interval == float("inf")
+        assert "swapping values" not in caplog.text
+
+    def test_infinity_initial_exceeds_finite_max_triggers_swap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that initial=inf with finite max triggers swap.
+
+        When initial_probe_interval is infinity and max_probe_interval is
+        a finite value, the cross-field validation should detect that
+        inf > finite and swap the values.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "inf")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "100.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # Values should be swapped since inf > 100.0
+        assert config.service_health_gate.initial_probe_interval == 100.0
+        assert config.service_health_gate.max_probe_interval == float("inf")
+        assert "swapping values" in caplog.text
+
+    def test_infinity_max_with_finite_initial_no_swap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that finite initial with max=inf does not trigger swap.
+
+        When max_probe_interval is infinity and initial_probe_interval is
+        a finite value, no swap should occur since finite < inf.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "100.0")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "inf")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        assert config.service_health_gate.initial_probe_interval == 100.0
+        assert config.service_health_gate.max_probe_interval == float("inf")
+        assert "swapping values" not in caplog.text
