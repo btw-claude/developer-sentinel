@@ -116,7 +116,11 @@ class TestLogTotalFailure:
     def test_logs_all_triggers_failed_warning(
         self, service_name: str, error_count: int, trigger_count: int
     ) -> None:
-        """Test that a warning is logged when all triggers fail."""
+        """Test that a warning is logged when all triggers fail.
+
+        Also verifies the message includes a connectivity investigation hint
+        (consolidated from test_message_includes_connectivity_hint per DS-859).
+        """
         sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
@@ -127,6 +131,7 @@ class TestLogTotalFailure:
             format_string = call_args[0][0]
             assert "All" in format_string
             assert "failed during this polling cycle" in format_string
+            assert "connectivity" in format_string
             assert call_args[0][1] == error_count
             assert call_args[0][2] == service_name
             assert call_args[0][3] == service_name
@@ -145,7 +150,12 @@ class TestLogTotalFailure:
         trigger_count: int,
         threshold: float,
     ) -> None:
-        """Test that a warning is logged when errors exceed threshold but not all fail."""
+        """Test that a warning is logged when errors exceed threshold but not all fail.
+
+        Also verifies the threshold is formatted as an integer percentage in the
+        warning arguments (consolidated from test_threshold_percentage_formatted_correctly
+        per DS-859).
+        """
         sentinel, _ = _create_sentinel()
 
         with patch("sentinel.main.logger") as mock_logger:
@@ -178,28 +188,6 @@ class TestLogTotalFailure:
             sentinel._log_total_failure("Jira", 0, 0, 1.0)
 
             mock_logger.warning.assert_not_called()
-
-    def test_message_includes_connectivity_hint(self) -> None:
-        """Test that the warning message includes a connectivity investigation hint."""
-        sentinel, _ = _create_sentinel()
-
-        with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_total_failure("GitHub", 3, 3, 1.0)
-
-            call_args = mock_logger.warning.call_args
-            format_string = call_args[0][0]
-            assert "connectivity" in format_string
-
-    def test_threshold_percentage_formatted_correctly(self) -> None:
-        """Test that the threshold is formatted as an integer percentage."""
-        sentinel, _ = _create_sentinel()
-
-        with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_total_failure("Jira", 3, 5, 0.5)
-
-            call_args = mock_logger.warning.call_args
-            # 0.5 should be formatted as 50
-            assert 50 in call_args[0]
 
 
 class TestRecordPollHealth:
