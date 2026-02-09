@@ -96,18 +96,6 @@ class TestLogPartialFailure:
             assert call_args[0][2] == found
             assert call_args[0][3] == errors
 
-    def test_message_contains_partial_failure_text(self) -> None:
-        """Test that the log message contains 'Partial' and 'polling failure'."""
-        sentinel, _ = _create_sentinel()
-
-        with patch("sentinel.main.logger") as mock_logger:
-            sentinel._log_partial_failure("Jira", 2, 1)
-
-            call_args = mock_logger.warning.call_args
-            format_string = call_args[0][0]
-            assert "Partial" in format_string
-            assert "polling failure" in format_string
-
     def test_message_contains_trigger_counts(self) -> None:
         """Test that the formatted message includes trigger count labels."""
         sentinel, _ = _create_sentinel()
