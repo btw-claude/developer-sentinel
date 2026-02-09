@@ -454,12 +454,11 @@ __all__ = [
     "ExecutionCoroutine",
     "ExecutionResult",
     "ExecutionStatus",
-    "RetryLoggingContext",
 ]
 
 
 @dataclass(frozen=True)
-class RetryLoggingContext:
+class _RetryLoggingContext:
     """Bundled logging-context parameters for retry operations.
 
     Groups issue_key and orchestration_name into a single object to keep
@@ -855,7 +854,7 @@ class AgentExecutor:
     @staticmethod
     def _should_stop_retrying(
         pre_retry_check: Callable[[], bool] | None,
-        logging_context: RetryLoggingContext,
+        logging_context: _RetryLoggingContext,
         attempt: int,
     ) -> bool:
         """Check pre-retry health and return True if retries should stop.
@@ -948,7 +947,7 @@ class AgentExecutor:
         outcomes = orchestration.outcomes if orchestration.outcomes else None
 
         # Build logging context for retry operations (DS-838)
-        retry_logging_ctx = RetryLoggingContext(
+        retry_logging_ctx = _RetryLoggingContext(
             issue_key=issue.key,
             orchestration_name=orchestration.name,
         )
