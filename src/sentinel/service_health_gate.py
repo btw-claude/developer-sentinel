@@ -155,8 +155,8 @@ class ProbeStrategy(Protocol):
        This is the intended design tradeoff: a consistent calling convention
        simplifies the dispatch logic in ``_execute_probe()`` at the cost of
        each strategy receiving parameters it may not need.  Custom strategy
-       implementations should accept all four keyword parameters even if they
-       only use a subset.
+       implementations should accept all keyword parameters listed in
+       ``_PROBE_STRATEGY_REQUIRED_PARAMS`` even if they only use a subset.
 
     Example::
 
