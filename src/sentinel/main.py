@@ -342,9 +342,9 @@ class Sentinel:
             issues_found: Number of issues/items found during polling.
         """
         if error_count == 0:
-            self._health_gate.record_poll_success(service_name)
+            self._health_gate.record_poll_success(service_name=service_name)
         elif error_count > 0 and issues_found == 0:
-            self._health_gate.record_poll_failure(service_name)
+            self._health_gate.record_poll_failure(service_name=service_name)
         else:
             self._log_partial_failure(
                 service_name=display_name, found=issues_found, errors=error_count
@@ -452,7 +452,9 @@ class Sentinel:
             orchestration: The orchestration that failed.
         """
         try:
-            self.tag_manager.apply_failure_tags(issue_key, orchestration)
+            self.tag_manager.apply_failure_tags(
+                issue_key=issue_key, orchestration=orchestration
+            )
         except (OSError, TimeoutError) as tag_error:
             logger.error(
                 "Failed to apply failure tags due to %s: %s",
@@ -496,7 +498,9 @@ class Sentinel:
             f"Failed to execute '{orchestration.name}' for {issue_key} "
             f"due to {error_type.value}: {exception}",
         )
-        self._apply_failure_tags_safely(issue_key, orchestration)
+        self._apply_failure_tags_safely(
+            issue_key=issue_key, orchestration=orchestration
+        )
 
     def _handle_submission_failure(
         self,
@@ -524,7 +528,9 @@ class Sentinel:
         """
         if version is not None:
             version.decrement_executions()
-        self._state_tracker.decrement_per_orch_count(orchestration.name)
+        self._state_tracker.decrement_per_orch_count(
+            orchestration_name=orchestration.name
+        )
         logger.error(
             "Failed to submit '%s' for %s due to %s: %s",
             orchestration.name,
@@ -533,7 +539,9 @@ class Sentinel:
             exception,
             extra={"issue_key": issue_key, "orchestration": orchestration.name},
         )
-        self._apply_failure_tags_safely(issue_key, orchestration)
+        self._apply_failure_tags_safely(
+            issue_key=issue_key, orchestration=orchestration
+        )
 
     def _execute_orchestration_task(
         self,
@@ -550,7 +558,9 @@ class Sentinel:
                     logging.INFO,
                     f"Shutdown requested, skipping {issue_key}",
                 )
-                self.tag_manager.apply_failure_tags(issue_key, orchestration)
+                self.tag_manager.apply_failure_tags(
+                    issue_key=issue_key, orchestration=orchestration
+                )
                 return None
 
             self._log_for_orchestration(
@@ -617,7 +627,9 @@ class Sentinel:
                 logging.INFO,
                 f"Claude process interrupted for {issue_key}",
             )
-            self._apply_failure_tags_safely(issue_key, orchestration)
+            self._apply_failure_tags_safely(
+                issue_key=issue_key, orchestration=orchestration
+            )
             return None
         except (OSError, TimeoutError) as e:
             self._handle_execution_failure(issue_key, orchestration, e, ErrorType.IO_ERROR)
@@ -631,7 +643,9 @@ class Sentinel:
         finally:
             if version is not None:
                 version.decrement_executions()
-            self._state_tracker.decrement_per_orch_count(orchestration.name)
+            self._state_tracker.decrement_per_orch_count(
+                orchestration_name=orchestration.name
+            )
 
     def _submit_execution_tasks(
         self,
