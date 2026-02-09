@@ -158,7 +158,8 @@ class ProbeStrategy(Protocol):
        implementations should accept all keyword parameters listed in
        ``_PROBE_STRATEGY_REQUIRED_PARAMS`` even if they only use a subset.
 
-    Example::
+    Example (see ``_PROBE_STRATEGY_REQUIRED_PARAMS`` for the authoritative
+    parameter list)::
 
         class MyServiceProbeStrategy:
             def execute(
