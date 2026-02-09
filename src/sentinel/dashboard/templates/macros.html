@@ -123,3 +123,36 @@
 {{ sa // 3600 }}h ago
 {%- endif -%}
 {%- endmacro %}
+
+{#
+  Macro to format a seconds-ago value as a detailed relative time string
+  with sub-unit precision.
+
+  Similar to humanize_seconds_ago but preserves sub-unit components for
+  contexts where more detail is desired. For example, 119 seconds renders
+  as "1m 59s ago" rather than "1m ago".
+
+  Added as a complement to humanize_seconds_ago (DS-833) to provide
+  higher-precision time displays. The compact humanize_seconds_ago macro
+  remains the default for dashboard displays where brevity is preferred.
+
+  @param seconds_ago - Number of seconds elapsed (float or int)
+  @returns Formatted relative time string, e.g. "45s ago", "1m 59s ago", or "2h 5m ago"
+#}
+{% macro humanize_seconds_ago_detailed(seconds_ago) %}
+{%- set sa = seconds_ago | int -%}
+{%- set h = sa // 3600 -%}
+{%- set m = (sa % 3600) // 60 -%}
+{%- set s = sa % 60 -%}
+{%- if h > 0 and m > 0 -%}
+{{ h }}h {{ m }}m ago
+{%- elif h > 0 -%}
+{{ h }}h ago
+{%- elif m > 0 and s > 0 -%}
+{{ m }}m {{ s }}s ago
+{%- elif m > 0 -%}
+{{ m }}m ago
+{%- else -%}
+{{ sa }}s ago
+{%- endif -%}
+{%- endmacro %}

@@ -1,12 +1,12 @@
 """Tests for Jinja2 template macros.
 
-Unit tests for status_badge and stat_or_dash macros in macros.html.
-Refactored to use BeautifulSoup for robust HTML parsing.
+Unit tests for status_badge, stat_or_dash, and humanize_seconds_ago_detailed
+macros in macros.html. Refactored to use BeautifulSoup for robust HTML parsing.
 Added helper assertion functions for reduced test repetition.
 
 This module tests the Jinja2 macros used in dashboard templates to ensure
-proper badge rendering for different states and correct stat-or-dash
-placeholder behavior.
+proper badge rendering for different states, correct stat-or-dash
+placeholder behavior, and detailed time formatting with sub-unit precision.
 """
 
 from __future__ import annotations
@@ -361,3 +361,130 @@ class TestStatOrDashMacro:
         """Test that caller content is rendered for various truthy values."""
         soup = parse_stat(value=truthy_value)
         assert_no_dash_placeholder(soup)
+
+
+class TestHumanizeSecondsAgoDetailedMacro:
+    """Tests for the humanize_seconds_ago_detailed Jinja2 macro (DS-833).
+
+    The humanize_seconds_ago_detailed macro renders a relative time string
+    with sub-unit precision, complementing the compact humanize_seconds_ago
+    macro. For example:
+    - 119 seconds renders as "1m 59s ago" (vs "1m ago" in compact)
+    - 3661 seconds renders as "1h 1m ago" (vs "1h ago" in compact)
+    - Values under 60 seconds and exact boundaries remain the same
+
+    Tests verify correct output for all time ranges and boundary transitions.
+    """
+
+    @pytest.fixture
+    def jinja_env(self) -> Environment:
+        """Create a Jinja2 environment with the templates directory."""
+        templates_dir = (
+            Path(__file__).parent.parent.parent / "src" / "sentinel" / "dashboard" / "templates"
+        )
+        env = Environment(loader=FileSystemLoader(str(templates_dir)))
+        return env
+
+    @pytest.fixture
+    def render_detailed(self, jinja_env: Environment) -> Callable[[int], str]:
+        """Create a helper function to render the humanize_seconds_ago_detailed macro."""
+        jinja_env.get_template("macros.html")
+
+        def render(seconds_ago: int) -> str:
+            template_str = """
+{%- from "macros.html" import humanize_seconds_ago_detailed -%}
+{{ humanize_seconds_ago_detailed(seconds_ago) }}
+"""
+            template = jinja_env.from_string(template_str)
+            return template.render(seconds_ago=seconds_ago).strip()
+
+        return render
+
+    def test_zero_seconds(self, render_detailed) -> None:
+        """Test that 0 seconds renders as '0s ago'."""
+        assert render_detailed(0) == "0s ago"
+
+    def test_seconds_only(self, render_detailed) -> None:
+        """Test that values under 60 seconds render as 'Xs ago'."""
+        assert render_detailed(45) == "45s ago"
+
+    def test_one_second(self, render_detailed) -> None:
+        """Test that 1 second renders as '1s ago'."""
+        assert render_detailed(1) == "1s ago"
+
+    def test_59_seconds(self, render_detailed) -> None:
+        """Test boundary just below 1 minute."""
+        assert render_detailed(59) == "59s ago"
+
+    def test_exact_one_minute(self, render_detailed) -> None:
+        """Test exact 60 seconds renders as '1m ago' (no sub-unit)."""
+        assert render_detailed(60) == "1m ago"
+
+    def test_minutes_with_seconds(self, render_detailed) -> None:
+        """Test that minutes with remaining seconds show sub-unit precision."""
+        assert render_detailed(119) == "1m 59s ago"
+
+    def test_minutes_with_seconds_mid_range(self, render_detailed) -> None:
+        """Test mid-range minutes with seconds precision."""
+        assert render_detailed(90) == "1m 30s ago"
+
+    def test_exact_minutes_no_seconds(self, render_detailed) -> None:
+        """Test that exact minute boundaries show no sub-unit."""
+        assert render_detailed(120) == "2m ago"
+
+    def test_exact_one_hour(self, render_detailed) -> None:
+        """Test exact 3600 seconds renders as '1h ago'."""
+        assert render_detailed(3600) == "1h ago"
+
+    def test_hours_with_minutes(self, render_detailed) -> None:
+        """Test that hours with remaining minutes show sub-unit precision."""
+        assert render_detailed(3661) == "1h 1m ago"
+
+    def test_hours_with_minutes_larger(self, render_detailed) -> None:
+        """Test larger hour values with minute precision."""
+        assert render_detailed(7500) == "2h 5m ago"
+
+    def test_hours_exact_no_minutes(self, render_detailed) -> None:
+        """Test that exact hour boundaries show no sub-unit."""
+        assert render_detailed(7200) == "2h ago"
+
+    def test_hours_with_minutes_and_seconds_drops_seconds(self, render_detailed) -> None:
+        """Test that hours with minutes and seconds drops the seconds component.
+
+        When the value is in the hours range, only hours and minutes are shown.
+        Seconds are dropped to keep the output readable while still providing
+        more precision than the compact macro.
+        """
+        # 1h 1m 1s -> "1h 1m ago" (seconds dropped at hour scale)
+        assert render_detailed(3661) == "1h 1m ago"
+
+    @pytest.mark.parametrize(
+        "seconds_ago,expected",
+        [
+            (0, "0s ago"),
+            (1, "1s ago"),
+            (30, "30s ago"),
+            (59, "59s ago"),
+            (60, "1m ago"),
+            (61, "1m 1s ago"),
+            (90, "1m 30s ago"),
+            (119, "1m 59s ago"),
+            (120, "2m ago"),
+            (3599, "59m 59s ago"),
+            (3600, "1h ago"),
+            (3601, "1h ago"),
+            (3660, "1h 1m ago"),
+            (7200, "2h ago"),
+            (7260, "2h 1m ago"),
+            (86400, "24h ago"),
+        ],
+    )
+    def test_detailed_parametrized_boundaries(
+        self, render_detailed, seconds_ago: int, expected: str
+    ) -> None:
+        """Test boundary values and transitions for detailed time formatting."""
+        assert render_detailed(seconds_ago) == expected
+
+    def test_float_input_is_truncated(self, render_detailed) -> None:
+        """Test that float input is truncated to integer (like compact macro)."""
+        assert render_detailed(90.7) == "1m 30s ago"
