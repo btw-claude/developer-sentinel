@@ -285,7 +285,9 @@ class TestRecordPollHealth:
                 issues_found=3,
             )
 
-            mock_partial.assert_called_once_with(display_name, 3, 2)
+            mock_partial.assert_called_once_with(
+                service_name=display_name, found=3, errors=2
+            )
 
     def test_no_failure_recorded_for_partial_success(self) -> None:
         """Test that record_poll_failure is NOT called when some issues were found."""
@@ -329,8 +331,9 @@ class TestRecordPollHealth:
                 issues_found=4,
             )
 
-            call_args = mock_partial.call_args[0]
-            assert call_args[0] == "GitHub"
+            mock_partial.assert_called_once_with(
+                service_name="GitHub", found=4, errors=1
+            )
 
     def test_uses_service_name_for_health_gate_calls(self) -> None:
         """Test that the service_name (not display_name) is used for health gate calls."""

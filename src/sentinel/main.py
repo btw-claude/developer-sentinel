@@ -346,7 +346,9 @@ class Sentinel:
         elif error_count > 0 and issues_found == 0:
             self._health_gate.record_poll_failure(service_name)
         else:
-            self._log_partial_failure(display_name, issues_found, error_count)
+            self._log_partial_failure(
+                service_name=display_name, found=issues_found, errors=error_count
+            )
 
     def _log_total_failure(
         self, service_name: str, error_count: int, trigger_count: int, error_threshold: float
