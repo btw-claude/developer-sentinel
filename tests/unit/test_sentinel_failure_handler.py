@@ -89,6 +89,9 @@ class TestLogPartialFailure:
 
             mock_logger.warning.assert_called_once()
             call_args = mock_logger.warning.call_args
+            format_string = call_args[0][0]
+            assert "Partial" in format_string
+            assert "polling failure" in format_string
             assert call_args[0][1] == service_name
             assert call_args[0][2] == found
             assert call_args[0][3] == errors
