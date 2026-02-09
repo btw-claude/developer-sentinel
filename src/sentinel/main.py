@@ -632,13 +632,28 @@ class Sentinel:
             )
             return None
         except (OSError, TimeoutError) as e:
-            self._handle_execution_failure(issue_key, orchestration, e, ErrorType.IO_ERROR)
+            self._handle_execution_failure(
+                issue_key=issue_key,
+                orchestration=orchestration,
+                exception=e,
+                error_type=ErrorType.IO_ERROR,
+            )
             return None
         except RuntimeError as e:
-            self._handle_execution_failure(issue_key, orchestration, e, ErrorType.RUNTIME_ERROR)
+            self._handle_execution_failure(
+                issue_key=issue_key,
+                orchestration=orchestration,
+                exception=e,
+                error_type=ErrorType.RUNTIME_ERROR,
+            )
             return None
         except (KeyError, ValueError) as e:
-            self._handle_execution_failure(issue_key, orchestration, e, ErrorType.DATA_ERROR)
+            self._handle_execution_failure(
+                issue_key=issue_key,
+                orchestration=orchestration,
+                exception=e,
+                error_type=ErrorType.DATA_ERROR,
+            )
             return None
         finally:
             if version is not None:
@@ -703,9 +718,9 @@ class Sentinel:
                     if self._execution_manager.is_running():
                         future = self._execution_manager.submit(
                             self._execute_orchestration_task,
-                            routing_result.issue,
-                            matched_orch,
-                            version,
+                            issue=routing_result.issue,
+                            orchestration=matched_orch,
+                            version=version,
                         )
                         if future is not None:
                             # Track running step metadata
@@ -726,24 +741,36 @@ class Sentinel:
                     else:
                         # Fallback: synchronous execution
                         result = self._execute_orchestration_task(
-                            routing_result.issue,
-                            matched_orch,
-                            version,
+                            issue=routing_result.issue,
+                            orchestration=matched_orch,
+                            version=version,
                         )
                         if result is not None:
                             all_results.append(result)
 
                 except (OSError, TimeoutError) as e:
                     self._handle_submission_failure(
-                        issue_key, matched_orch, e, ErrorType.IO_ERROR, version
+                        issue_key=issue_key,
+                        orchestration=matched_orch,
+                        exception=e,
+                        error_type=ErrorType.IO_ERROR,
+                        version=version,
                     )
                 except RuntimeError as e:
                     self._handle_submission_failure(
-                        issue_key, matched_orch, e, ErrorType.RUNTIME_ERROR, version
+                        issue_key=issue_key,
+                        orchestration=matched_orch,
+                        exception=e,
+                        error_type=ErrorType.RUNTIME_ERROR,
+                        version=version,
                     )
                 except (KeyError, ValueError) as e:
                     self._handle_submission_failure(
-                        issue_key, matched_orch, e, ErrorType.DATA_ERROR, version
+                        issue_key=issue_key,
+                        orchestration=matched_orch,
+                        exception=e,
+                        error_type=ErrorType.DATA_ERROR,
+                        version=version,
                     )
 
         return submitted_count
@@ -859,7 +886,10 @@ class Sentinel:
 
                 # Record health gate outcome based on polling errors (DS-835).
                 self._record_poll_health(
-                    "jira", "Jira", jira_error_count, jira_issues_found,
+                    service_name="jira",
+                    display_name="Jira",
+                    error_count=jira_error_count,
+                    issues_found=jira_issues_found,
                 )
             else:
                 # Service is gated — probe for recovery
@@ -911,7 +941,10 @@ class Sentinel:
 
                     # Record health gate outcome based on polling errors (DS-835).
                     self._record_poll_health(
-                        "github", "GitHub", gh_error_count, gh_issues_found,
+                        service_name="github",
+                        display_name="GitHub",
+                        error_count=gh_error_count,
+                        issues_found=gh_issues_found,
                     )
                 else:
                     # Service is gated — probe for recovery
