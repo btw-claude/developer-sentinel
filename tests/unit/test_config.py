@@ -1,6 +1,7 @@
 """Tests for configuration module."""
 
 import logging
+import math
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -2144,5 +2145,87 @@ class TestServiceHealthGateConfig:
             config = load_config()
 
         assert config.service_health_gate.initial_probe_interval == 100.0
+        assert config.service_health_gate.max_probe_interval == float("inf")
+        assert "swapping values" not in caplog.text
+
+    def test_nan_initial_probe_interval_no_swap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that NaN initial_probe_interval does not trigger swap.
+
+        IEEE 754 defines NaN > finite as False, so when initial_probe_interval
+        is NaN and max_probe_interval is finite, the cross-field comparison
+        ``NaN > finite`` evaluates to False and no swap occurs.
+
+        This documents the current behavior where NaN passes through
+        ``_parse_non_negative_float`` (since ``NaN < 0.0`` is also False
+        in IEEE 754) and reaches the cross-field validation unchanged.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "nan")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "100.0")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # NaN > 100.0 is False in IEEE 754, so no swap is triggered
+        assert math.isnan(config.service_health_gate.initial_probe_interval)
+        assert config.service_health_gate.max_probe_interval == 100.0
+        assert "swapping values" not in caplog.text
+
+    def test_nan_max_probe_interval_no_swap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that NaN max_probe_interval does not trigger swap.
+
+        IEEE 754 defines finite > NaN as False, so when max_probe_interval
+        is NaN and initial_probe_interval is finite, the cross-field
+        comparison ``finite > NaN`` evaluates to False and no swap occurs.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "100.0")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "nan")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # 100.0 > NaN is False in IEEE 754, so no swap is triggered
+        assert config.service_health_gate.initial_probe_interval == 100.0
+        assert math.isnan(config.service_health_gate.max_probe_interval)
+        assert "swapping values" not in caplog.text
+
+    def test_nan_both_probe_intervals_no_swap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that NaN for both probe intervals does not trigger swap.
+
+        IEEE 754 defines NaN > NaN as False, so when both values are NaN,
+        the cross-field comparison evaluates to False and no swap occurs.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "nan")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "nan")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # NaN > NaN is False in IEEE 754, so no swap is triggered
+        assert math.isnan(config.service_health_gate.initial_probe_interval)
+        assert math.isnan(config.service_health_gate.max_probe_interval)
+        assert "swapping values" not in caplog.text
+
+    def test_nan_initial_probe_interval_with_inf_max_no_swap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that NaN initial with inf max does not trigger swap.
+
+        IEEE 754 defines NaN > inf as False, so when initial_probe_interval
+        is NaN and max_probe_interval is infinity, no swap occurs.
+        """
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_INITIAL_PROBE_INTERVAL", "nan")
+        monkeypatch.setenv("SENTINEL_HEALTH_GATE_MAX_PROBE_INTERVAL", "inf")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_config()
+
+        # NaN > inf is False in IEEE 754, so no swap is triggered
+        assert math.isnan(config.service_health_gate.initial_probe_interval)
         assert config.service_health_gate.max_probe_interval == float("inf")
         assert "swapping values" not in caplog.text
