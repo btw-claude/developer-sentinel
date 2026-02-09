@@ -136,9 +136,10 @@ class ProbeStrategy(Protocol):
 
        To mitigate this, ``register_probe_strategy()`` performs an explicit
        signature inspection to verify that the ``execute`` method accepts the
-       required keyword-only parameters (``timeout``, ``base_url``, ``auth``,
-       ``token``).  If the signature does not match, ``register_probe_strategy()``
-       raises ``TypeError`` with a descriptive message.
+       required keyword-only parameters defined in
+       ``_PROBE_STRATEGY_REQUIRED_PARAMS``.  If the signature does not match,
+       ``register_probe_strategy()`` raises ``TypeError`` with a descriptive
+       message.
 
     .. note:: **Uniform interface — not all parameters are used by every strategy**
 
@@ -623,7 +624,7 @@ class ServiceHealthGate:
            has an ``execute`` attribute (runtime protocol check).
         2. ``_validate_probe_strategy_signature()`` — inspects the ``execute``
            method's signature to ensure it accepts the required keyword-only
-           parameters (``timeout``, ``base_url``, ``auth``, ``token``).
+           parameters defined in ``_PROBE_STRATEGY_REQUIRED_PARAMS``.
 
         This two-step validation catches both missing methods and incorrect
         signatures at registration time, preventing confusing ``TypeError``
