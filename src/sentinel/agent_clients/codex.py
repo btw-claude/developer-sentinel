@@ -26,8 +26,11 @@ Reference: https://developers.openai.com/codex/cli/reference
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 import subprocess
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +43,7 @@ from sentinel.agent_clients.base import (
 )
 from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from sentinel.config import Config
-from sentinel.logging import get_logger
+from sentinel.logging import generate_log_filename, get_logger
 
 logger = get_logger(__name__)
 
@@ -252,12 +255,21 @@ class CodexAgentClient(AgentClient):
         can_stream = bool(self.log_base_dir and issue_key and orchestration_name)
         use_streaming = can_stream and not self._disable_streaming_logs
 
-        # Streaming path will be added in DS-872; for now, always use _run_simple().
-        _ = use_streaming  # Reserved for future routing to _run_with_log()
-
-        response = await self._run_simple(
-            full_prompt, effective_timeout, workdir, model,
-        )
+        if use_streaming:
+            assert issue_key is not None
+            assert orchestration_name is not None
+            response = await self._run_with_log(
+                full_prompt,
+                effective_timeout,
+                workdir,
+                model,
+                issue_key=issue_key,
+                orch_name=orchestration_name,
+            )
+        else:
+            response = await self._run_simple(
+                full_prompt, effective_timeout, workdir, model,
+            )
 
         return AgentRunResult(response=response, workdir=workdir)
 
@@ -360,3 +372,206 @@ class CodexAgentClient(AgentClient):
             logger.error("Failed to execute Codex CLI: %s", e)
             self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Failed to execute Codex CLI: {e}") from e
+
+    async def _run_with_log(
+        self,
+        prompt: str,
+        timeout: int | None,
+        workdir: Path | None,
+        model: str | None,
+        issue_key: str,
+        orch_name: str,
+    ) -> str:
+        """Run agent via async subprocess with streaming stderr to a log file.
+
+        Streams Codex CLI stderr output line-by-line to a log file in real-time,
+        enabling users to read execution progress through the dashboard UI. This
+        matches the streaming behaviour of :pymethod:`ClaudeSdkAgentClient._run_with_log`.
+
+        Note: Circuit breaker is checked in run_agent() before this method is called.
+
+        Args:
+            prompt: The prompt to send to the agent.
+            timeout: Optional timeout in seconds.
+            workdir: Optional working directory path.
+            model: Optional model identifier.
+            issue_key: The issue key for organizing logs.
+            orch_name: The orchestration name for organizing logs.
+
+        Returns:
+            The agent response text.
+
+        Raises:
+            AgentClientError: If the agent execution fails (non-zero exit code).
+            AgentTimeoutError: If the agent execution times out.
+        """
+        assert not self._circuit_breaker.is_open, (
+            "Circuit breaker is OPEN - "
+            "_run_with_log() must be called via run_agent(). "
+            f"State: {self._circuit_breaker.state.value}"
+        )
+        assert self.log_base_dir is not None
+
+        start_time = datetime.now()
+        log_dir = self.log_base_dir / orch_name
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / generate_log_filename(start_time)
+
+        sep = "=" * 80
+        log_header = (
+            f"{sep}\n"
+            f"AGENT EXECUTION LOG\n"
+            f"{sep}\n\n"
+            f"Issue Key:      {issue_key}\n"
+            f"Orchestration:  {orch_name}\n"
+            f"Start Time:     {start_time.isoformat()}\n\n"
+            f"{sep}\n"
+            f"PROMPT\n"
+            f"{sep}\n\n"
+            f"{prompt}\n\n"
+            f"{sep}\n"
+            f"AGENT OUTPUT\n"
+            f"{sep}\n\n"
+        )
+        log_path.write_text(log_header, encoding="utf-8")
+        logger.info("Streaming log started: %s", log_path)
+
+        effective_model = model if model is not None else self._default_model
+        logger.info(
+            "Running Codex CLI (streaming): model=%s, timeout=%ss",
+            effective_model or "default",
+            timeout,
+        )
+
+        status = "ERROR"
+        process: asyncio.subprocess.Process | None = None
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = str(Path(tmp_dir) / "codex_output.txt")
+                cmd = self._build_command(
+                    prompt, output_file=tmp_path, model=model, workdir=workdir
+                )
+                logger.debug("Codex command (streaming): %s...", " ".join(cmd[:3]))
+
+                async def _run_streaming() -> str:
+                    nonlocal process
+                    process = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stderr=asyncio.subprocess.PIPE,
+                        stdout=asyncio.subprocess.PIPE,
+                    )
+
+                    # Stream stderr line-by-line to log file for real-time UI visibility
+                    with open(log_path, "a", encoding="utf-8") as f:
+                        if process.stderr is not None:
+                            async for raw_line in process.stderr:
+                                line = raw_line.decode("utf-8", errors="replace")
+                                f.write(line)
+                                f.flush()
+
+                    await process.wait()
+
+                    if process.returncode != 0:
+                        # Capture any remaining stdout for error context
+                        stdout_data = b""
+                        if process.stdout is not None:
+                            stdout_data = await process.stdout.read()
+                        stderr_snippet = stdout_data.decode("utf-8", errors="replace").strip()
+                        error_msg = stderr_snippet or f"Exit code: {process.returncode}"
+                        logger.error("Codex CLI failed (streaming): %s", error_msg)
+                        error = AgentClientError(
+                            f"Codex CLI execution failed: {error_msg}"
+                        )
+                        self._circuit_breaker.record_failure(error)
+                        raise error
+
+                    # Read the response from the output file
+                    output_path = Path(tmp_path)
+                    if output_path.exists() and output_path.stat().st_size > 0:
+                        response = output_path.read_text().strip()
+                    else:
+                        # Fall back to stdout if output file is empty
+                        stdout_data = b""
+                        if process.stdout is not None:
+                            stdout_data = await process.stdout.read()
+                        response = stdout_data.decode("utf-8", errors="replace").strip()
+
+                    self._circuit_breaker.record_success()
+                    logger.info(
+                        "Codex execution completed (streaming), response length: %s",
+                        len(response),
+                    )
+                    return response
+
+                if timeout:
+                    response = await asyncio.wait_for(
+                        _run_streaming(), timeout=timeout
+                    )
+                else:
+                    response = await _run_streaming()
+
+                status = "COMPLETED"
+                return response
+
+        except TimeoutError:
+            status = "TIMEOUT"
+            # Kill the process on timeout
+            if process is not None:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
+            logger.debug(
+                "Codex subprocess timeout (streaming): timeout=%ss, workdir=%s",
+                timeout,
+                workdir,
+            )
+            logger.error("Codex CLI timed out after %ss (streaming)", timeout)
+            msg = f"Codex agent execution timed out after {timeout}s"
+            timeout_error = AgentTimeoutError(msg)
+            self._circuit_breaker.record_failure(timeout_error)
+            raise timeout_error from None
+        except FileNotFoundError:
+            logger.error("Codex CLI not found at path: %s", self._codex_path)
+            msg = f"Codex CLI executable not found: {self._codex_path}"
+            not_found_error = AgentClientError(msg)
+            self._circuit_breaker.record_failure(not_found_error)
+            raise not_found_error from None
+        except AgentClientError:
+            # Re-raise AgentClientError (already recorded on circuit breaker)
+            raise
+        except OSError as e:
+            logger.error("Failed to execute Codex CLI (streaming): %s", e)
+            self._circuit_breaker.record_failure(e)
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(f"\n[Error] {e}\n")
+            except OSError:
+                pass  # Ignore errors when writing error to log
+            raise AgentClientError(f"Failed to execute Codex CLI: {e}") from e
+        finally:
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    # Write JSON metrics export for programmatic access
+                    f.write(f"\n{sep}\nMETRICS JSON\n{sep}\n\n")
+                    all_metrics: dict[str, Any] = {
+                        "circuit_breaker": self._circuit_breaker.get_status(),
+                    }
+                    f.write(json.dumps(all_metrics, indent=2))
+                    f.write("\n")
+                    # Write execution summary
+                    exec_summary = (
+                        f"\n{sep}\n"
+                        f"EXECUTION SUMMARY\n"
+                        f"{sep}\n\n"
+                        f"Status:         {status}\n"
+                        f"End Time:       {end_time.isoformat()}\n"
+                        f"Duration:       {duration:.2f}s\n\n"
+                        f"{sep}\n"
+                        f"END OF LOG\n"
+                        f"{sep}\n"
+                    )
+                    f.write(exec_summary)
+            except OSError:
+                pass  # Ignore errors when writing final summary
+            logger.info("Streaming log completed: %s", log_path)
