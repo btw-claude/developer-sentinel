@@ -64,7 +64,7 @@ The following source modules use `datetime.now(tz=UTC)`:
 > new modules may adopt this pattern. To find the current set of modules, run:
 >
 > ```bash
-> grep -r "datetime.now(tz=UTC)" src/
+> grep -r --include="*.py" "datetime.now(tz=UTC)" src/
 > ```
 
 ## History
