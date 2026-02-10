@@ -8,7 +8,7 @@ import time
 import unicodedata
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field, fields
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
@@ -746,7 +746,7 @@ class AgentExecutor:
                 status=status,
                 attempts=attempts,
                 start_time=start_time,
-                end_time=datetime.now(),
+                end_time=datetime.now(tz=UTC),
             )
         except OSError as e:
             # Log but don't fail the execution due to file I/O errors
@@ -940,7 +940,7 @@ class AgentExecutor:
         last_input_tokens = 0
         last_output_tokens = 0
         last_total_cost_usd = 0.0
-        start_time = datetime.now()
+        start_time = datetime.now(tz=UTC)
         last_attempt = 0
 
         # Get outcomes if configured

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import tempfile
 from collections.abc import Generator
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -83,7 +83,7 @@ class MockSentinel:
     def __init__(self, config: Config) -> None:
         self.config = config
         self._shutdown_requested = False
-        self._start_time = datetime.now()
+        self._start_time = datetime.now(tz=UTC)
         self._last_jira_poll: datetime | None = None
         self._last_github_poll: datetime | None = None
 

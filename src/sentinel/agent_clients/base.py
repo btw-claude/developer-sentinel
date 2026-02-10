@@ -13,7 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Coroutine
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -238,7 +238,7 @@ class AgentClient(ABC):
             raise AgentClientError("base_workdir not configured")
 
         self.base_workdir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
         workdir = self.base_workdir / f"{issue_key}_{timestamp}"
         workdir.mkdir(parents=True, exist_ok=True)
         logger.info("Created agent working directory: %s", workdir)
