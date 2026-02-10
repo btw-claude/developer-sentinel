@@ -1268,7 +1268,8 @@ class TestClaudeSdkAgentClientBranchSetup:
 
         with patch("subprocess.run", side_effect=mock_run):
             client._setup_branch(
-                workdir, "feature/new-branch", create_branch=True, base_branch="main"
+                workdir, "feature/new-branch", create_branch=True, base_branch="main",
+                subprocess_timeout=config.execution.subprocess_timeout,
             )
 
         # All calls should have used the configured timeout
@@ -1301,7 +1302,8 @@ class TestClaudeSdkAgentClientBranchSetup:
 
         with patch("subprocess.run", side_effect=mock_run):
             client._setup_branch(
-                workdir, "feature/new-branch", create_branch=True, base_branch="main"
+                workdir, "feature/new-branch", create_branch=True, base_branch="main",
+                subprocess_timeout=config.execution.subprocess_timeout,
             )
 
         # All calls should have None as timeout (disabled)
