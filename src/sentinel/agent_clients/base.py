@@ -379,7 +379,7 @@ class AgentClient(ABC):
                     "Branch '%s' does not exist, creating from origin/%s", branch, base_branch
                 )
                 subprocess.run(
-                    ["git", "checkout", "-b", branch, f"origin/{base_branch}"],
+                    ["git", "checkout", "-B", branch, f"origin/{base_branch}"],
                     cwd=workdir,
                     check=True,
                     capture_output=True,
