@@ -1165,3 +1165,4 @@ groups:
 - [Dependency Injection](dependency-injection.md) - Container and DI patterns
 - [Testing](TESTING.md) - Testing patterns and mocking strategies
 - [Failure Patterns](FAILURE_PATTERNS.md) - Error handling conventions
+- [UTC Timestamps](UTC_TIMESTAMPS.md) - Timezone-aware UTC convention for all timestamps

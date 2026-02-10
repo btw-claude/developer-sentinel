@@ -225,6 +225,12 @@ class AgentClient(ABC):
         The directory name format is ``{issue_key}_{YYYYMMDD_HHMMSS}``, created
         under the ``base_workdir`` directory.
 
+        Note:
+            The timestamp in the directory name uses UTC (not local time).
+            This is consistent with the project-wide convention established
+            in DS-879 where all datetime operations use timezone-aware UTC.
+            See ``docs/UTC_TIMESTAMPS.md`` for details.
+
         Args:
             issue_key: The issue key to include in the directory name.
 
@@ -238,6 +244,7 @@ class AgentClient(ABC):
             raise AgentClientError("base_workdir not configured")
 
         self.base_workdir.mkdir(parents=True, exist_ok=True)
+        # UTC timestamp for directory naming (see docs/UTC_TIMESTAMPS.md)
         timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
         workdir = self.base_workdir / f"{issue_key}_{timestamp}"
         workdir.mkdir(parents=True, exist_ok=True)
