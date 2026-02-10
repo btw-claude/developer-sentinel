@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
