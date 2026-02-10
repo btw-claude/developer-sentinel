@@ -589,10 +589,6 @@ class TestCodexAgentClientRunAgent:
         test_run_agent_context_truncates_long_values, which tests the
         complementary length-based truncation of context keys and values.
         """
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config)
 
         asyncio.run(
@@ -627,10 +623,6 @@ class TestCodexAgentClientRunAgent:
         and values at 2000 characters to prevent excessive prompt size
         from untrusted sources (DS-666).
         """
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config)
 
         long_key = "k" * 500
@@ -1157,14 +1149,9 @@ class TestCodexStreamingLogs:
             log_base_dir=log_dir,
         )
 
-        output_content = "Streaming response"
         mock_proc = _make_mock_process(returncode=0)
 
-        with _streaming_context(
-            mock_proc,
-            output_size=len(output_content),
-            output_text=output_content,
-        ):
+        with _streaming_context(mock_proc):
             asyncio.run(
                 client.run_agent(
                     "test prompt",
