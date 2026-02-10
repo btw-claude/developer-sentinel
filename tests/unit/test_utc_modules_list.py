@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import re
+import warnings
 from pathlib import Path
 
 import pytest
@@ -92,7 +93,11 @@ def get_actual_modules(project_root: Path) -> set[str]:
     for py_file in src_dir.rglob("*.py"):
         try:
             content = py_file.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            warnings.warn(
+                f"Skipped file {py_file}: {exc.__class__.__name__}: {exc}",
+                stacklevel=1,
+            )
             continue
         if _UTC_PATTERN in content:
             # Return path relative to project_root using forward slashes
