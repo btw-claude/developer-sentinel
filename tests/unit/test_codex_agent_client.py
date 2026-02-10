@@ -309,10 +309,6 @@ class TestCodexAgentClientRunAgent:
         codex_config: Config,
     ) -> None:
         """Test agent execution with context dict."""
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config)
 
         asyncio.run(
@@ -337,10 +333,6 @@ class TestCodexAgentClientRunAgent:
         codex_config: Config,
     ) -> None:
         """Test agent execution with explicit timeout."""
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config)
 
         asyncio.run(client.run_agent("prompt", timeout_seconds=120))
@@ -362,10 +354,6 @@ class TestCodexAgentClientRunAgent:
         test_run_agent_no_timeout_when_subprocess_timeout_zero, which tests the
         special case where the config timeout is explicitly zero (disabled).
         """
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config_with_timeout)
 
         asyncio.run(client.run_agent("prompt"))
@@ -386,10 +374,6 @@ class TestCodexAgentClientRunAgent:
         case where subprocess_timeout is explicitly 0, meaning no timeout
         should be enforced (effective timeout remains None).
         """
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config_with_timeout)
 
         asyncio.run(client.run_agent("prompt"))
@@ -404,10 +388,6 @@ class TestCodexAgentClientRunAgent:
         codex_config_with_model: Config,
     ) -> None:
         """Test agent execution with model override."""
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config_with_model)
 
         asyncio.run(client.run_agent("prompt", model="override-model"))
@@ -424,10 +404,6 @@ class TestCodexAgentClientRunAgent:
         codex_config: Config,
     ) -> None:
         """Test that run_agent creates a working directory when configured."""
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config, base_workdir=tmp_path)
 
         result = asyncio.run(client.run_agent("prompt", issue_key="TEST-123"))
