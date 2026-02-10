@@ -96,7 +96,7 @@ def get_actual_modules(project_root: Path) -> set[str]:
             continue
         if _UTC_PATTERN in content:
             # Return path relative to project_root using forward slashes
-            modules.add(str(py_file.relative_to(project_root)))
+            modules.add(py_file.relative_to(project_root).as_posix())
     return modules
 
 
