@@ -44,7 +44,7 @@ def parse_log_filename(filename: str) -> datetime | None:
     try:
         # Remove .log extension using explicit suffix removal
         name = filename.removesuffix(LOG_FILENAME_EXTENSION)
-        return datetime.strptime(name, LOG_FILENAME_FORMAT)
+        return datetime.strptime(name, LOG_FILENAME_FORMAT).replace(tzinfo=UTC)
     except (ValueError, IndexError):
         return None
 
