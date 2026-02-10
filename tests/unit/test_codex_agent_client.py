@@ -973,6 +973,19 @@ class _AsyncIterLines:
 
 
 @runtime_checkable
+class ReadableStdout(Protocol):
+    """Protocol for an object with an async ``read()`` method returning bytes.
+
+    Models the stdout stream of an ``asyncio.subprocess.Process``, which
+    exposes ``asyncio.StreamReader.read()``.  Introduced in DS-882 to
+    replace the bare ``MagicMock`` annotation on ``MockProcess.stdout``,
+    keeping the protocol fully abstract.
+    """
+
+    async def read(self) -> bytes: ...
+
+
+@runtime_checkable
 class MockProcess(Protocol):
     """Protocol documenting the expected interface of mock subprocess objects.
 
@@ -984,19 +997,20 @@ class MockProcess(Protocol):
 
     Uses abstract types (``AsyncIterator``, ``Callable``, ``Awaitable``)
     instead of concrete mock types so the protocol describes the *interface*
-    rather than the *implementation* (DS-881).
+    rather than the *implementation* (DS-881, DS-882).
 
     Attributes:
         returncode: Process exit code.
         stderr: Async-iterable of ``bytes`` lines (one per line).
-        stdout: Object with an async ``read()`` method returning ``bytes``.
+        stdout: Readable stream with an async ``read()`` method returning
+            ``bytes``, matching ``asyncio.StreamReader``.
         wait: Awaitable that resolves when the process terminates.
         kill: Callable that sends SIGKILL to the process.
     """
 
     returncode: int
     stderr: AsyncIterator[bytes]
-    stdout: MagicMock
+    stdout: ReadableStdout
     wait: Callable[[], Awaitable[None]]
     kill: Callable[[], None]
 
