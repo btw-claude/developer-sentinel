@@ -73,6 +73,7 @@ class CodexAgentClient(AgentClient):
         config: Config,
         base_workdir: Path | None = None,
         log_base_dir: Path | None = None,
+        disable_streaming_logs: bool | None = None,
         circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         """Initialize the Codex agent client.
@@ -80,13 +81,21 @@ class CodexAgentClient(AgentClient):
         Args:
             config: Configuration object with Codex settings.
             base_workdir: Base directory for creating agent working directories.
-            log_base_dir: Base directory for agent execution logs (reserved for future use).
+            log_base_dir: Base directory for agent execution logs.
+            disable_streaming_logs: Whether to disable streaming logs.
+                If not provided, uses config.disable_streaming_logs.
             circuit_breaker: Circuit breaker instance for resilience. If not provided,
                 creates a default circuit breaker for the "codex" service.
         """
         self.config = config
         self.base_workdir = base_workdir
         self.log_base_dir = log_base_dir
+        # Use explicit parameter if provided, otherwise fall back to config
+        self._disable_streaming_logs = (
+            disable_streaming_logs
+            if disable_streaming_logs is not None
+            else config.execution.disable_streaming_logs
+        )
         # Use provided circuit breaker or create a default one for the codex service
         self._circuit_breaker = circuit_breaker or CircuitBreaker(
             service_name="codex",
@@ -201,7 +210,7 @@ class CodexAgentClient(AgentClient):
                 subprocess_timeout from config, or no timeout if that is also unset.
             issue_key: Optional issue key for creating a unique working directory.
             model: Optional model identifier. If None, uses the client's default model.
-            orchestration_name: Optional orchestration name (reserved for future logging).
+            orchestration_name: Optional orchestration name for streaming log files.
             branch: Optional branch name (reserved for future implementation).
             create_branch: If True and branch doesn't exist, create it (reserved for future).
             base_branch: Base branch to create new branches from (reserved for future).
@@ -237,10 +246,55 @@ class CodexAgentClient(AgentClient):
         if effective_timeout is None and self.config.execution.subprocess_timeout > 0:
             effective_timeout = int(self.config.execution.subprocess_timeout)
 
+        # Determine whether to use streaming logs (matching ClaudeSdkAgentClient pattern).
+        # Use streaming if: log_base_dir, issue_key, and orchestration_name are all provided
+        # AND streaming is not disabled via config.
+        can_stream = bool(self.log_base_dir and issue_key and orchestration_name)
+        use_streaming = can_stream and not self._disable_streaming_logs
+
+        # Streaming path will be added in DS-872; for now, always use _run_simple().
+        _ = use_streaming  # Reserved for future routing to _run_with_log()
+
+        response = await self._run_simple(
+            full_prompt, effective_timeout, workdir, model,
+        )
+
+        return AgentRunResult(response=response, workdir=workdir)
+
+    async def _run_simple(
+        self,
+        prompt: str,
+        timeout: int | None,
+        workdir: Path | None,
+        model: str | None,
+    ) -> str:
+        """Run agent via subprocess without streaming logs.
+
+        Note: Circuit breaker is checked in run_agent() before this method is called.
+
+        Args:
+            prompt: The prompt to send to the agent.
+            timeout: Optional timeout in seconds.
+            workdir: Optional working directory path.
+            model: Optional model identifier.
+
+        Returns:
+            The agent response text.
+
+        Raises:
+            AgentClientError: If the agent execution fails (non-zero exit code).
+            AgentTimeoutError: If the agent execution times out.
+        """
+        assert not self._circuit_breaker.is_open, (
+            "Circuit breaker is OPEN - "
+            "_run_simple() must be called via run_agent(). "
+            f"State: {self._circuit_breaker.state.value}"
+        )
+
         logger.info(
             "Running Codex CLI: model=%s, timeout=%ss",
             model or self._default_model or "default",
-            effective_timeout,
+            timeout,
         )
 
         try:
@@ -253,14 +307,14 @@ class CodexAgentClient(AgentClient):
                 def _run_subprocess() -> subprocess.CompletedProcess[str]:
                     """Run subprocess in a thread to avoid blocking the event loop."""
                     cmd = self._build_command(
-                        full_prompt, output_file=tmp_path, model=model, workdir=workdir
+                        prompt, output_file=tmp_path, model=model, workdir=workdir
                     )
                     logger.debug("Codex command: %s...", " ".join(cmd[:3]))
                     return subprocess.run(
                         cmd,
                         capture_output=True,
                         text=True,
-                        timeout=effective_timeout,
+                        timeout=timeout,
                     )
 
                 result = await asyncio.to_thread(_run_subprocess)
@@ -283,16 +337,16 @@ class CodexAgentClient(AgentClient):
                 self._circuit_breaker.record_success()
                 logger.info("Codex execution completed, response length: %s", len(response))
 
-                return AgentRunResult(response=response, workdir=workdir)
+                return response
 
         except subprocess.TimeoutExpired:
             logger.debug(
                 "Codex subprocess timeout: timeout=%ss, workdir=%s",
-                effective_timeout,
+                timeout,
                 workdir,
             )
-            logger.error("Codex CLI timed out after %ss", effective_timeout)
-            msg = f"Codex agent execution timed out after {effective_timeout}s"
+            logger.error("Codex CLI timed out after %ss", timeout)
+            msg = f"Codex agent execution timed out after {timeout}s"
             timeout_error = AgentTimeoutError(msg)
             self._circuit_breaker.record_failure(timeout_error)
             raise timeout_error from None
