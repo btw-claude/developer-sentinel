@@ -10,6 +10,7 @@ at their entry points when needed.
 
 from __future__ import annotations
 
+import subprocess
 from abc import ABC, abstractmethod
 from collections.abc import Coroutine
 from dataclasses import dataclass
@@ -250,6 +251,159 @@ class AgentClient(ABC):
         workdir.mkdir(parents=True, exist_ok=True)
         logger.info("Created agent working directory: %s", workdir)
         return workdir
+
+    def _setup_branch(
+        self,
+        workdir: Path,
+        branch: str,
+        create_branch: bool,
+        base_branch: str,
+        subprocess_timeout: float | None = None,
+    ) -> None:
+        """Setup the git branch in the working directory.
+
+        If the branch exists remotely, checks it out and pulls latest changes.
+        If it doesn't exist and create_branch is True, creates it from base_branch.
+        If it doesn't exist and create_branch is False, raises AgentClientError.
+
+        This method is shared across agent clients (Claude SDK, Codex, Cursor)
+        since branch setup is purely git operations with no agent-specific logic.
+
+        Args:
+            workdir: The working directory (must be a git repository).
+            branch: The branch name to checkout/create.
+            create_branch: If True, create the branch if it doesn't exist.
+            base_branch: The base branch to create new branches from.
+            subprocess_timeout: Timeout in seconds for each git subprocess call.
+                If None or <= 0, no timeout is applied.
+
+        Raises:
+            AgentClientError: If branch doesn't exist and create_branch is False,
+                or if git operations fail.
+            AgentTimeoutError: If a git operation times out.
+        """
+        logger.info("Setting up branch '%s' in %s", branch, workdir)
+
+        timeout = subprocess_timeout if subprocess_timeout and subprocess_timeout > 0 else None
+
+        try:
+            # Fetch latest from remote
+            subprocess.run(
+                ["git", "fetch", "origin"],
+                cwd=workdir,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+
+            # Check if branch exists on remote
+            result = subprocess.run(
+                ["git", "ls-remote", "--heads", "origin", branch],
+                cwd=workdir,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            branch_exists = bool(result.stdout.strip())
+
+            if branch_exists:
+                # Check if we're already on the branch and up to date with remote
+                # Combine three git rev-parse calls into a single subprocess
+                # to reduce process spawns. Uses newline-separated output format.
+                #
+                # Command structure explanation:
+                # The --abbrev-ref flag only affects the FIRST argument (HEAD), returning
+                # the branch name instead of the SHA. The second HEAD and origin/{branch}
+                # are unaffected by --abbrev-ref and return full SHA hashes. This allows
+                # us to get branch name, local SHA, and remote SHA in a single call:
+                #   Line 0: current branch name (from --abbrev-ref HEAD)
+                #   Line 1: local HEAD SHA (from plain HEAD)
+                #   Line 2: remote branch SHA (from origin/{branch})
+                branch_state_result = subprocess.run(
+                    [
+                        "git",
+                        "rev-parse",
+                        "--abbrev-ref",
+                        "HEAD",
+                        "HEAD",
+                        f"origin/{branch}",
+                    ],
+                    cwd=workdir,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                lines = branch_state_result.stdout.strip().split("\n")
+                # Defensive validation for expected 3-line output.
+                # While check=True should catch most failures, malformed output
+                # could still occur in edge cases (e.g., unusual git configurations).
+                if len(lines) != 3:
+                    raise AgentClientError(
+                        f"Unexpected git rev-parse output: expected 3 lines, got {len(lines)}. "
+                        f"Output: {branch_state_result.stdout!r}"
+                    )
+                current_branch = lines[0]
+                local_sha = lines[1]
+                remote_sha = lines[2]
+
+                if current_branch == branch and local_sha == remote_sha:
+                    # Already on the correct branch and up to date
+                    logger.info(
+                        "Branch '%s' already checked out and up to date with remote", branch
+                    )
+                else:
+                    # Branch exists - checkout and pull
+                    logger.info("Branch '%s' exists, checking out and pulling", branch)
+                    subprocess.run(
+                        ["git", "checkout", branch],
+                        cwd=workdir,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                    )
+                    subprocess.run(
+                        ["git", "pull", "origin", branch],
+                        cwd=workdir,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                    )
+            elif create_branch:
+                # Branch doesn't exist but we should create it
+                logger.info(
+                    "Branch '%s' does not exist, creating from origin/%s", branch, base_branch
+                )
+                subprocess.run(
+                    ["git", "checkout", "-b", branch, f"origin/{base_branch}"],
+                    cwd=workdir,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            else:
+                # Branch doesn't exist and we shouldn't create it
+                raise AgentClientError(
+                    f"Branch '{branch}' does not exist on remote and create_branch is False"
+                )
+
+        except subprocess.TimeoutExpired as e:
+            logger.debug(
+                "Subprocess timeout expired: command=%s, timeout=%ss", e.cmd, timeout
+            )
+            raise AgentTimeoutError(
+                f"Git operation timed out after {timeout}s: {' '.join(e.cmd)}"
+            ) from e
+        except subprocess.CalledProcessError as e:
+            raise AgentClientError(
+                f"Git operation failed: {e.cmd} returned {e.returncode}. "
+                f"stderr: {e.stderr}"
+            ) from e
 
     @abstractmethod
     async def run_agent(

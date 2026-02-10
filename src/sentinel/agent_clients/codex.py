@@ -214,9 +214,9 @@ class CodexAgentClient(AgentClient):
             issue_key: Optional issue key for creating a unique working directory.
             model: Optional model identifier. If None, uses the client's default model.
             orchestration_name: Optional orchestration name for streaming log files.
-            branch: Optional branch name (reserved for future implementation).
-            create_branch: If True and branch doesn't exist, create it (reserved for future).
-            base_branch: Base branch to create new branches from (reserved for future).
+            branch: Optional branch name to checkout/create before running the agent.
+            create_branch: If True and branch doesn't exist, create it from base_branch.
+            base_branch: Base branch to create new branches from. Defaults to "main".
             agent_teams: Whether to enable Claude Code's experimental Agent Teams feature
                 (ignored for Codex client).
 
@@ -240,6 +240,13 @@ class CodexAgentClient(AgentClient):
         workdir = None
         if self.base_workdir is not None and issue_key is not None:
             workdir = self._create_workdir(issue_key)
+
+        # Setup branch if specified and workdir exists
+        if branch and workdir:
+            self._setup_branch(
+                workdir, branch, create_branch, base_branch,
+                subprocess_timeout=self.config.execution.subprocess_timeout,
+            )
 
         # Build full prompt with sanitized context section (DS-675).
         full_prompt = self._build_prompt_with_context(prompt, context)
