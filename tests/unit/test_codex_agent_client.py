@@ -1511,3 +1511,500 @@ class TestCodexStreamingLogs:
 
         assert cb_failure.metrics.failed_calls == 1
         assert cb_failure.metrics.successful_calls == 0
+
+
+class TestDisableStreamingLogsConstructor:
+    """Tests for _disable_streaming_logs constructor parameter (DS-874).
+
+    Verifies the three-way logic: explicit True, explicit False, and None
+    (fall back to config.execution.disable_streaming_logs).
+    """
+
+    def test_disable_streaming_logs_explicit_true(self) -> None:
+        """Test that explicit disable_streaming_logs=True overrides config."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            disable_streaming_logs=False,  # config says False
+        )
+        client = CodexAgentClient(config, disable_streaming_logs=True)
+
+        assert client._disable_streaming_logs is True
+
+    def test_disable_streaming_logs_explicit_false(self) -> None:
+        """Test that explicit disable_streaming_logs=False overrides config."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            disable_streaming_logs=True,  # config says True
+        )
+        client = CodexAgentClient(config, disable_streaming_logs=False)
+
+        assert client._disable_streaming_logs is False
+
+    def test_disable_streaming_logs_none_falls_back_to_config_true(self) -> None:
+        """Test that None falls back to config value (True case)."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            disable_streaming_logs=True,
+        )
+        client = CodexAgentClient(config, disable_streaming_logs=None)
+
+        assert client._disable_streaming_logs is True
+
+    def test_disable_streaming_logs_none_falls_back_to_config_false(self) -> None:
+        """Test that None falls back to config value (False case)."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            disable_streaming_logs=False,
+        )
+        client = CodexAgentClient(config, disable_streaming_logs=None)
+
+        assert client._disable_streaming_logs is False
+
+    def test_disable_streaming_logs_default_omitted(self) -> None:
+        """Test that omitting disable_streaming_logs falls back to config default."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            disable_streaming_logs=False,
+        )
+        # Don't pass disable_streaming_logs at all (defaults to None)
+        client = CodexAgentClient(config)
+
+        assert client._disable_streaming_logs is False
+
+
+class TestRunSimpleDirect:
+    """Tests for CodexAgentClient._run_simple() called directly (DS-874).
+
+    These tests exercise _run_simple() in isolation, verifying its behaviour
+    without going through run_agent(). This covers the subprocess execution
+    path, output file reading, fallback to stdout, error handling, and
+    circuit breaker recording.
+    """
+
+    def test_run_simple_success(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple returns response from output file on success."""
+        client = CodexAgentClient(codex_config)
+
+        result = asyncio.run(client._run_simple("test prompt", None, None, None))
+
+        assert result == "Agent response"
+        mock_codex_subprocess.run.assert_called_once()
+
+    def test_run_simple_with_timeout(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple passes timeout to subprocess.run."""
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+
+        client = CodexAgentClient(codex_config)
+
+        asyncio.run(client._run_simple("prompt", timeout=300, workdir=None, model=None))
+
+        call_kwargs = mock_codex_subprocess.run.call_args[1]
+        assert call_kwargs["timeout"] == 300
+
+    def test_run_simple_with_model(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple passes model to _build_command."""
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+
+        client = CodexAgentClient(codex_config)
+
+        asyncio.run(client._run_simple("prompt", timeout=None, workdir=None, model="gpt-4o"))
+
+        call_args = mock_codex_subprocess.run.call_args
+        cmd = call_args[0][0]
+        model_idx = cmd.index("--model") + 1
+        assert cmd[model_idx] == "gpt-4o"
+
+    def test_run_simple_with_workdir(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple passes workdir to _build_command."""
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
+        mock_codex_subprocess.output_path.read_text.return_value = "Response"
+        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
+
+        client = CodexAgentClient(codex_config)
+        workdir = Path("/tmp/test-workdir")
+
+        asyncio.run(client._run_simple("prompt", timeout=None, workdir=workdir, model=None))
+
+        call_args = mock_codex_subprocess.run.call_args
+        cmd = call_args[0][0]
+        assert "--cd" in cmd
+        assert "/tmp/test-workdir" in cmd
+
+    def test_run_simple_falls_back_to_stdout(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple falls back to stdout when output file is empty."""
+        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=0)
+        mock_codex_subprocess.run.return_value = MagicMock(
+            returncode=0,
+            stdout="Stdout response",
+            stderr="",
+        )
+
+        client = CodexAgentClient(codex_config)
+
+        result = asyncio.run(client._run_simple("prompt", None, None, None))
+
+        assert result == "Stdout response"
+
+    def test_run_simple_nonzero_exit_raises_error(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple raises AgentClientError on non-zero exit code."""
+        mock_codex_subprocess.output_path.exists.return_value = False
+        mock_codex_subprocess.run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Error: command failed",
+        )
+
+        client = CodexAgentClient(codex_config)
+
+        with pytest.raises(AgentClientError) as exc_info:
+            asyncio.run(client._run_simple("prompt", None, None, None))
+
+        assert "Codex CLI execution failed" in str(exc_info.value)
+        assert "command failed" in str(exc_info.value)
+
+    def test_run_simple_timeout_raises_error(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple raises AgentTimeoutError on subprocess timeout."""
+        mock_codex_subprocess.run.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=120)
+
+        client = CodexAgentClient(codex_config)
+
+        with pytest.raises(AgentTimeoutError) as exc_info:
+            asyncio.run(client._run_simple("prompt", timeout=120, workdir=None, model=None))
+
+        assert "timed out after 120s" in str(exc_info.value)
+
+    def test_run_simple_file_not_found_raises_error(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple raises AgentClientError on FileNotFoundError."""
+        mock_codex_subprocess.run.side_effect = FileNotFoundError("codex not found")
+
+        client = CodexAgentClient(codex_config)
+
+        with pytest.raises(AgentClientError) as exc_info:
+            asyncio.run(client._run_simple("prompt", None, None, None))
+
+        assert "Codex CLI executable not found" in str(exc_info.value)
+
+    def test_run_simple_os_error_raises_error(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple raises AgentClientError on OSError."""
+        mock_codex_subprocess.run.side_effect = OSError("Permission denied")
+
+        client = CodexAgentClient(codex_config)
+
+        with pytest.raises(AgentClientError) as exc_info:
+            asyncio.run(client._run_simple("prompt", None, None, None))
+
+        assert "Failed to execute Codex CLI" in str(exc_info.value)
+
+    def test_run_simple_records_success_on_circuit_breaker(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple records success on the circuit breaker."""
+        cb = CircuitBreaker(service_name="codex-direct")
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        asyncio.run(client._run_simple("prompt", None, None, None))
+
+        assert cb.metrics.successful_calls == 1
+        assert cb.metrics.failed_calls == 0
+
+    def test_run_simple_records_failure_on_circuit_breaker(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple records failure on the circuit breaker."""
+        mock_codex_subprocess.output_path.exists.return_value = False
+        mock_codex_subprocess.run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="Error: service failure",
+        )
+
+        cb = CircuitBreaker(service_name="codex-direct")
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        with pytest.raises(AgentClientError):
+            asyncio.run(client._run_simple("prompt", None, None, None))
+
+        assert cb.metrics.failed_calls == 1
+        assert cb.metrics.successful_calls == 0
+
+    def test_run_simple_asserts_circuit_breaker_not_open(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+        codex_config: Config,
+    ) -> None:
+        """Test _run_simple assertion fails when circuit breaker is open.
+
+        This validates the defensive assert that prevents _run_simple from being
+        called directly when the circuit breaker is open (it should only be called
+        via run_agent which checks the circuit breaker first).
+        """
+        cb = CircuitBreaker(
+            service_name="codex",
+            config=CircuitBreakerConfig(failure_threshold=1),
+        )
+        cb.record_failure(Exception("test failure"))
+        assert cb.state == CircuitState.OPEN
+
+        client = CodexAgentClient(codex_config, circuit_breaker=cb)
+
+        with pytest.raises(AssertionError, match="Circuit breaker is OPEN"):
+            asyncio.run(client._run_simple("prompt", None, None, None))
+
+
+class TestCanStreamUseStreamingRouting:
+    """Tests for can_stream / use_streaming routing logic in run_agent() (DS-874).
+
+    Verifies that run_agent correctly routes to _run_simple() vs _run_with_log()
+    based on the combination of log_base_dir, issue_key, orchestration_name,
+    and _disable_streaming_logs.
+    """
+
+    def test_routes_to_streaming_when_all_conditions_met(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Test run_agent routes to _run_with_log when all streaming conditions met.
+
+        Streaming requires: log_base_dir, issue_key, orchestration_name all provided
+        AND _disable_streaming_logs is False.
+        """
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        client = CodexAgentClient(
+            config,
+            log_base_dir=log_dir,
+            disable_streaming_logs=False,
+        )
+
+        mock_proc = _make_mock_process(returncode=0)
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_output_path.exists.return_value = True
+            mock_output_path.stat.return_value = MagicMock(st_size=8)
+            mock_output_path.read_text.return_value = "Response"
+            mock_path_cls.return_value = mock_output_path
+
+            result = asyncio.run(
+                client.run_agent(
+                    "test prompt",
+                    issue_key="TEST-ROUTE-1",
+                    orchestration_name="test-orch",
+                )
+            )
+
+        # Should have used the async subprocess path (streaming)
+        assert result.response == "Response"
+        # Verify streaming log was created
+        orch_dir = log_dir / "test-orch"
+        assert orch_dir.exists()
+
+    def test_routes_to_simple_when_no_issue_key(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+    ) -> None:
+        """Test run_agent routes to _run_simple when issue_key is None."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = Path("/tmp/test-logs")
+        client = CodexAgentClient(
+            config,
+            log_base_dir=log_dir,
+            disable_streaming_logs=False,
+        )
+
+        result = asyncio.run(
+            client.run_agent(
+                "test prompt",
+                issue_key=None,  # Missing issue_key
+                orchestration_name="test-orch",
+            )
+        )
+
+        # Should use simple path (subprocess.run)
+        assert result.response == "Agent response"
+        mock_codex_subprocess.run.assert_called_once()
+
+    def test_routes_to_simple_when_no_orchestration_name(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+    ) -> None:
+        """Test run_agent routes to _run_simple when orchestration_name is None."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = Path("/tmp/test-logs")
+        client = CodexAgentClient(
+            config,
+            log_base_dir=log_dir,
+            disable_streaming_logs=False,
+        )
+
+        result = asyncio.run(
+            client.run_agent(
+                "test prompt",
+                issue_key="TEST-ROUTE-2",
+                orchestration_name=None,  # Missing orchestration_name
+            )
+        )
+
+        # Should use simple path (subprocess.run)
+        assert result.response == "Agent response"
+        mock_codex_subprocess.run.assert_called_once()
+
+    def test_routes_to_simple_when_no_log_dir(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+    ) -> None:
+        """Test run_agent routes to _run_simple when log_base_dir is None."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        client = CodexAgentClient(
+            config,
+            log_base_dir=None,  # No log directory
+            disable_streaming_logs=False,
+        )
+
+        result = asyncio.run(
+            client.run_agent(
+                "test prompt",
+                issue_key="TEST-ROUTE-3",
+                orchestration_name="test-orch",
+            )
+        )
+
+        # Should use simple path (subprocess.run)
+        assert result.response == "Agent response"
+        mock_codex_subprocess.run.assert_called_once()
+
+    def test_routes_to_simple_when_streaming_disabled(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+    ) -> None:
+        """Test run_agent routes to _run_simple when streaming is disabled.
+
+        Even when all streaming conditions (log_base_dir, issue_key,
+        orchestration_name) are met, if _disable_streaming_logs is True,
+        the simple path should be used.
+        """
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = Path("/tmp/test-logs")
+        client = CodexAgentClient(
+            config,
+            log_base_dir=log_dir,
+            disable_streaming_logs=True,  # Streaming disabled
+        )
+
+        result = asyncio.run(
+            client.run_agent(
+                "test prompt",
+                issue_key="TEST-ROUTE-4",
+                orchestration_name="test-orch",
+            )
+        )
+
+        # Should use simple path (subprocess.run) despite all conditions met
+        assert result.response == "Agent response"
+        mock_codex_subprocess.run.assert_called_once()
+
+    def test_routes_to_simple_when_config_disables_streaming(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+    ) -> None:
+        """Test run_agent routes to _run_simple when config disables streaming.
+
+        When disable_streaming_logs is not passed to constructor (defaults to None),
+        the config.execution.disable_streaming_logs value is used. If it's True,
+        the simple path should be used.
+        """
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+            disable_streaming_logs=True,  # Config disables streaming
+        )
+        log_dir = Path("/tmp/test-logs")
+        client = CodexAgentClient(
+            config,
+            log_base_dir=log_dir,
+            # disable_streaming_logs not passed, falls back to config
+        )
+
+        result = asyncio.run(
+            client.run_agent(
+                "test prompt",
+                issue_key="TEST-ROUTE-5",
+                orchestration_name="test-orch",
+            )
+        )
+
+        # Should use simple path (subprocess.run) because config disables streaming
+        assert result.response == "Agent response"
+        mock_codex_subprocess.run.assert_called_once()
