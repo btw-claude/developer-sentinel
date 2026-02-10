@@ -30,7 +30,7 @@ import contextlib
 import json
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -412,7 +412,7 @@ class CodexAgentClient(AgentClient):
         )
         assert self.log_base_dir is not None
 
-        start_time = datetime.now(tz=timezone.utc)  # noqa: UP017
+        start_time = datetime.now(tz=UTC)
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / generate_log_filename(start_time)
@@ -548,7 +548,7 @@ class CodexAgentClient(AgentClient):
                 pass  # Ignore errors when writing error to log
             raise AgentClientError(f"Failed to execute Codex CLI: {e}") from e
         finally:
-            end_time = datetime.now(tz=timezone.utc)  # noqa: UP017
+            end_time = datetime.now(tz=UTC)
             duration = (end_time - start_time).total_seconds()
             try:
                 with open(log_path, "a", encoding="utf-8") as f:

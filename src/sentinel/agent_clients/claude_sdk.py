@@ -19,7 +19,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -886,12 +886,12 @@ class ClaudeSdkAgentClient(AgentClient):
         if self.log_base_dir is None:
             return
 
-        start_time = datetime.now(tz=timezone.utc)  # noqa: UP017
+        start_time = datetime.now(tz=UTC)
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / generate_log_filename(start_time)
 
-        end_time = datetime.now(tz=timezone.utc)  # noqa: UP017
+        end_time = datetime.now(tz=UTC)
         elapsed_time = (end_time - start_time).total_seconds()
         sep = "=" * 80
         log_content = (
@@ -975,7 +975,7 @@ class ClaudeSdkAgentClient(AgentClient):
             self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Claude API rate limit exceeded: {e}") from e
 
-        start_time = datetime.now(tz=timezone.utc)  # noqa: UP017
+        start_time = datetime.now(tz=UTC)
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / generate_log_filename(start_time)
@@ -1127,7 +1127,7 @@ class ClaudeSdkAgentClient(AgentClient):
                 pass  # Ignore errors when writing error to log
             raise AgentClientError(f"Agent execution failed due to runtime error: {e}") from e
         finally:
-            end_time = datetime.now(tz=timezone.utc)  # noqa: UP017
+            end_time = datetime.now(tz=UTC)
             duration = (end_time - start_time).total_seconds()
             io_start = time.perf_counter()
             with open(log_path, "a", encoding="utf-8") as f:
