@@ -18,7 +18,7 @@ import logging
 import signal
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, wait
-from datetime import datetime
+from datetime import UTC, datetime
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 
@@ -421,7 +421,7 @@ class Sentinel:
             orchestration_name=result.orchestration_name,
             attempt_number=running_step.attempt_number,
             started_at=running_step.started_at,
-            completed_at=datetime.now(),
+            completed_at=datetime.now(tz=UTC),
             status="success" if result.succeeded else "failure",
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -849,7 +849,7 @@ class Sentinel:
         # Poll Jira triggers
         if grouped.jira:
             if self._health_gate.should_poll("jira"):
-                self._state_tracker.last_jira_poll = datetime.now()
+                self._state_tracker.last_jira_poll = datetime.now(tz=UTC)
                 routing_results, jira_issues_found, jira_error_count = (
                     self._poll_coordinator.poll_jira_triggers(
                         grouped.jira,
@@ -904,7 +904,7 @@ class Sentinel:
         if grouped.github:
             if self.github_poller:
                 if self._health_gate.should_poll("github"):
-                    self._state_tracker.last_github_poll = datetime.now()
+                    self._state_tracker.last_github_poll = datetime.now(tz=UTC)
                     routing_results, gh_issues_found, gh_error_count = (
                         self._poll_coordinator.poll_github_triggers(
                             grouped.github,

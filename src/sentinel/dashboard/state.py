@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
@@ -625,7 +625,7 @@ class SentinelStateAccessor:
 
         # Get running step info
         running_steps_raw = sentinel.get_running_steps()
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
         running_step_views = [
             RunningStepInfoView(
                 issue_key=step.issue_key,
@@ -1068,7 +1068,9 @@ class SentinelStateAccessor:
                                 "filename": log_file.name,
                                 "display_name": display_name,
                                 "size": stat.st_size,
-                                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                                "modified": datetime.fromtimestamp(
+                                    stat.st_mtime, tz=UTC
+                                ).isoformat(),
                             }
                         )
                     except OSError:

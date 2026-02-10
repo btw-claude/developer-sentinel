@@ -6,7 +6,7 @@ import os
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -474,7 +474,7 @@ class OrchestrationVersion:
             orchestration=orchestration,
             source_file=source_file,
             mtime=mtime,
-            loaded_at=datetime.now(),
+            loaded_at=datetime.now(tz=UTC),
         )
 
     @property

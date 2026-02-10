@@ -1,7 +1,7 @@
 """Tests for Sentinel queue eviction and orchestration logging."""
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -282,14 +282,14 @@ class TestQueueEvictionBehavior:
         )
 
         mock_times = [
-            datetime(2026, 1, 15, 10, 0, 0),
-            datetime(2026, 1, 15, 10, 0, 1),
-            datetime(2026, 1, 15, 10, 0, 2),
+            datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
+            datetime(2026, 1, 15, 10, 0, 1, tzinfo=UTC),
+            datetime(2026, 1, 15, 10, 0, 2, tzinfo=UTC),
         ]
         time_iterator = iter(mock_times)
 
         with patch("sentinel.state_tracker.datetime") as mock_datetime:
-            mock_datetime.now.side_effect = lambda: next(time_iterator)
+            mock_datetime.now.side_effect = lambda tz=None: next(time_iterator)
             mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
 
             sentinel._state_tracker.add_to_issue_queue("TEST-1", "orch-1")
@@ -302,8 +302,8 @@ class TestQueueEvictionBehavior:
         assert queue_items[0].issue_key == "TEST-2"
         assert queue_items[1].issue_key == "TEST-3"
         assert queue_items[0].queued_at < queue_items[1].queued_at
-        assert queue_items[0].queued_at == datetime(2026, 1, 15, 10, 0, 1)
-        assert queue_items[1].queued_at == datetime(2026, 1, 15, 10, 0, 2)
+        assert queue_items[0].queued_at == datetime(2026, 1, 15, 10, 0, 1, tzinfo=UTC)
+        assert queue_items[1].queued_at == datetime(2026, 1, 15, 10, 0, 2, tzinfo=UTC)
 
 
 class TestSentinelOrchestrationLogging:

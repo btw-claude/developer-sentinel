@@ -35,7 +35,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from sentinel.logging import get_logger
@@ -203,7 +203,7 @@ class StateTracker:
         self._completed_executions_lock = threading.Lock()
 
         # Track process start time
-        self._start_time: datetime = datetime.now()
+        self._start_time: datetime = datetime.now(tz=UTC)
 
         # Track last poll times
         self._last_jira_poll: datetime | None = None
@@ -349,7 +349,7 @@ class StateTracker:
                 issue_key=issue_key,
                 orchestration_name=orchestration_name,
                 attempt_number=attempt_number,
-                started_at=datetime.now(),
+                started_at=datetime.now(tz=UTC),
                 issue_url=issue_url,
             )
 
@@ -418,7 +418,7 @@ class StateTracker:
                 QueuedIssueInfo(
                     issue_key=issue_key,
                     orchestration_name=orchestration_name,
-                    queued_at=datetime.now(),
+                    queued_at=datetime.now(tz=UTC),
                 )
             )
 

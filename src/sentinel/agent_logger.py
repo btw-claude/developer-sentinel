@@ -12,7 +12,7 @@ Each log file contains:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, TYPE_CHECKING
 
@@ -55,7 +55,7 @@ class StreamingLogWriter:
         self.orchestration_name = orchestration_name
         self.issue_key = issue_key
         self.prompt = prompt
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(tz=UTC)
         self._file: IO[str] | None = None
         self._log_path: Path | None = None
         self._response_lines: list[str] = []
@@ -105,7 +105,7 @@ AGENT OUTPUT (streaming)
 
     def _get_timestamp(self) -> str:
         """Get the current timestamp in [HH:MM:SS.mmm] format."""
-        now = datetime.now()
+        now = datetime.now(tz=UTC)
         return now.strftime("[%H:%M:%S.") + f"{now.microsecond // 1000:03d}]"
 
     def write_line(self, line: str) -> None:
@@ -161,7 +161,7 @@ AGENT OUTPUT (streaming)
         if self._file is None:
             return
 
-        end_time = datetime.now()
+        end_time = datetime.now(tz=UTC)
         duration = (end_time - self.start_time).total_seconds()
         separator = "=" * 80
 
