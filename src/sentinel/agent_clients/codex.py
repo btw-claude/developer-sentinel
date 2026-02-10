@@ -150,7 +150,9 @@ class CodexAgentClient(AgentClient):
 
         Constructs a command of the form::
 
-            codex exec "<prompt>" --full-auto --output-last-message <tmpfile>
+            codex exec "<prompt>" --full-auto
+                -c sandbox_workspace_write.network_access=true
+                --output-last-message <tmpfile>
                 [--model <model>] [--cd <workdir>]
 
         Args:
@@ -169,6 +171,7 @@ class CodexAgentClient(AgentClient):
             "exec",
             prompt,
             "--full-auto",
+            "-c", "sandbox_workspace_write.network_access=true",
             "--output-last-message",
             output_file,
         ]
