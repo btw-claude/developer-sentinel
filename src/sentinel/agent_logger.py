@@ -8,6 +8,12 @@ Each log file contains:
 - Agent prompt
 - Agent response (streamed in real-time when using StreamingLogWriter)
 - Execution status
+
+Note:
+    All timestamps in log output (line-level ``[HH:MM:SS.mmm]`` prefixes,
+    header/footer ISO timestamps, and log filenames) use UTC. This is
+    consistent with the project-wide convention established in DS-879.
+    See ``docs/UTC_TIMESTAMPS.md`` for details.
 """
 
 from __future__ import annotations
@@ -104,7 +110,7 @@ AGENT OUTPUT (streaming)
         return self
 
     def _get_timestamp(self) -> str:
-        """Get the current timestamp in [HH:MM:SS.mmm] format."""
+        """Get the current UTC timestamp in [HH:MM:SS.mmm] format."""
         now = datetime.now(tz=UTC)
         return now.strftime("[%H:%M:%S.") + f"{now.microsecond // 1000:03d}]"
 
