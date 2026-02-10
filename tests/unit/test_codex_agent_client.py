@@ -29,6 +29,11 @@ from sentinel.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, Circu
 from sentinel.config import CodexConfig, Config
 from tests.helpers import make_config
 
+# Canonical mock response values shared across mock_codex_subprocess,
+# _tmpdir_and_path_context, and _streaming_context (DS-893).
+MOCK_CODEX_RESPONSE_TEXT = "Agent response"
+MOCK_CODEX_RESPONSE_SIZE = len(MOCK_CODEX_RESPONSE_TEXT)  # 14
+
 
 class CodexSubprocessMocks(NamedTuple):
     """Container for subprocess mocks used in codex agent tests.
@@ -119,7 +124,7 @@ def mock_codex_subprocess() -> CodexSubprocessMocks:
     Yields a CodexSubprocessMocks NamedTuple with tmpdir_cls, output_path,
     run, and path_cls mocks. Common setup for tempfile.TemporaryDirectory,
     Path, and subprocess.run. The output file defaults to existing with
-    content "Agent response". Tests can customize output_path and run as
+    content MOCK_CODEX_RESPONSE_TEXT. Tests can customize output_path and run as
     needed.
     """
     with (
@@ -134,15 +139,15 @@ def mock_codex_subprocess() -> CodexSubprocessMocks:
 
         mock_output_path = MagicMock()
         mock_output_path.exists.return_value = True
-        mock_output_path.stat.return_value = MagicMock(st_size=14)
-        mock_output_path.read_text.return_value = "Agent response"
+        mock_output_path.stat.return_value = MagicMock(st_size=MOCK_CODEX_RESPONSE_SIZE)
+        mock_output_path.read_text.return_value = MOCK_CODEX_RESPONSE_TEXT
         mock_path_cls.return_value = mock_output_path
         # Make Path(tmp_dir) / "codex_output.txt" work
         mock_path_cls.__truediv__ = MagicMock(return_value=mock_output_path)
 
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout="Agent response",
+            stdout=MOCK_CODEX_RESPONSE_TEXT,
             stderr="",
         )
 
@@ -299,7 +304,7 @@ class TestCodexAgentClientRunAgent:
 
         result = asyncio.run(client.run_agent("test prompt"))
 
-        assert result.response == "Agent response"
+        assert result.response == MOCK_CODEX_RESPONSE_TEXT
         assert result.workdir is None
         mock_codex_subprocess.run.assert_called_once()
 
@@ -999,8 +1004,8 @@ class StreamingMocks(NamedTuple):
 def _tmpdir_and_path_context(
     *,
     output_exists: bool = True,
-    output_size: int = 14,
-    output_text: str = "Agent response",
+    output_size: int = MOCK_CODEX_RESPONSE_SIZE,
+    output_text: str = MOCK_CODEX_RESPONSE_TEXT,
 ) -> Iterator[StreamingMocks]:
     """Set up TemporaryDirectory + Path mocks without patching subprocess exec.
 
@@ -1054,8 +1059,8 @@ def _streaming_context(
     mock_proc: MagicMock,
     *,
     output_exists: bool = True,
-    output_size: int = 14,
-    output_text: str = "Agent response",
+    output_size: int = MOCK_CODEX_RESPONSE_SIZE,
+    output_text: str = MOCK_CODEX_RESPONSE_TEXT,
 ) -> Iterator[StreamingMocks]:
     """Set up TemporaryDirectory + Path + subprocess-exec mocks for streaming tests.
 
@@ -1417,7 +1422,7 @@ class TestCodexStreamingLogs:
         )
 
         # Should use the simple path (subprocess.run) instead of streaming
-        assert result.response == "Agent response"
+        assert result.response == MOCK_CODEX_RESPONSE_TEXT
         mock_codex_subprocess.run.assert_called_once()
 
     def test_streaming_fallback_when_no_log_dir(
@@ -1441,7 +1446,7 @@ class TestCodexStreamingLogs:
         )
 
         # Should use the simple path (subprocess.run)
-        assert result.response == "Agent response"
+        assert result.response == MOCK_CODEX_RESPONSE_TEXT
         mock_codex_subprocess.run.assert_called_once()
 
     def test_streaming_circuit_breaker_records(self, tmp_path: Path) -> None:
@@ -1580,7 +1585,7 @@ class TestRunSimpleDirect:
 
         result = asyncio.run(client._run_simple("test prompt", None, None, None))
 
-        assert result == "Agent response"
+        assert result == MOCK_CODEX_RESPONSE_TEXT
         mock_codex_subprocess.run.assert_called_once()
 
     def test_run_simple_with_timeout(
@@ -1813,7 +1818,7 @@ class TestCanStreamUseStreamingRouting:
             )
 
         # Should have used the async subprocess path (streaming)
-        assert result.response == "Agent response"
+        assert result.response == MOCK_CODEX_RESPONSE_TEXT
         # Verify streaming log was created
         orch_dir = log_dir / "test-orch"
         assert orch_dir.exists()
@@ -1843,7 +1848,7 @@ class TestCanStreamUseStreamingRouting:
         )
 
         # Should use simple path (subprocess.run)
-        assert result.response == "Agent response"
+        assert result.response == MOCK_CODEX_RESPONSE_TEXT
         mock_codex_subprocess.run.assert_called_once()
 
     def test_routes_to_simple_when_no_orchestration_name(
@@ -1871,7 +1876,7 @@ class TestCanStreamUseStreamingRouting:
         )
 
         # Should use simple path (subprocess.run)
-        assert result.response == "Agent response"
+        assert result.response == MOCK_CODEX_RESPONSE_TEXT
         mock_codex_subprocess.run.assert_called_once()
 
     def test_routes_to_simple_when_no_log_dir(
@@ -1898,7 +1903,7 @@ class TestCanStreamUseStreamingRouting:
         )
 
         # Should use simple path (subprocess.run)
-        assert result.response == "Agent response"
+        assert result.response == MOCK_CODEX_RESPONSE_TEXT
         mock_codex_subprocess.run.assert_called_once()
 
     def test_routes_to_simple_when_streaming_disabled(
@@ -1931,7 +1936,7 @@ class TestCanStreamUseStreamingRouting:
         )
 
         # Should use simple path (subprocess.run) despite all conditions met
-        assert result.response == "Agent response"
+        assert result.response == MOCK_CODEX_RESPONSE_TEXT
         mock_codex_subprocess.run.assert_called_once()
 
     def test_routes_to_simple_when_config_disables_streaming(
@@ -1965,5 +1970,5 @@ class TestCanStreamUseStreamingRouting:
         )
 
         # Should use simple path (subprocess.run) because config disables streaming
-        assert result.response == "Agent response"
+        assert result.response == MOCK_CODEX_RESPONSE_TEXT
         mock_codex_subprocess.run.assert_called_once()
