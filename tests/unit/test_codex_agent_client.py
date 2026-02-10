@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import NamedTuple, Protocol, runtime_checkable
@@ -982,6 +982,10 @@ class MockProcess(Protocol):
     bare MagicMock makes the expected attributes discoverable for future
     maintainers (DS-876).
 
+    Uses abstract types (``AsyncIterator``, ``Callable``, ``Awaitable``)
+    instead of concrete mock types so the protocol describes the *interface*
+    rather than the *implementation* (DS-881).
+
     Attributes:
         returncode: Process exit code.
         stderr: Async-iterable of ``bytes`` lines (one per line).
@@ -991,10 +995,10 @@ class MockProcess(Protocol):
     """
 
     returncode: int
-    stderr: _AsyncIterLines
+    stderr: AsyncIterator[bytes]
     stdout: MagicMock
-    wait: AsyncMock
-    kill: MagicMock
+    wait: Callable[[], Awaitable[None]]
+    kill: Callable[[], None]
 
 
 class StreamingMocks(NamedTuple):
@@ -1010,6 +1014,60 @@ class StreamingMocks(NamedTuple):
 
 
 @contextmanager
+def _tmpdir_and_path_context(
+    *,
+    output_exists: bool = True,
+    output_size: int = 8,
+    output_text: str = "Response",
+) -> Iterator[StreamingMocks]:
+    """Set up TemporaryDirectory + Path mocks without patching subprocess exec.
+
+    This is the lower layer of a two-layer helper split (DS-881).  It provides
+    the temp-directory and output-path mocks that almost every streaming test
+    needs, but does **not** patch ``asyncio.create_subprocess_exec``.  Tests
+    that need a custom subprocess mock (e.g. ``test_streaming_timeout_kills_process``)
+    can use this layer directly and patch ``create_subprocess_exec`` themselves.
+
+    When ``output_exists=False``, ``.stat()`` and ``.read_text()`` are **not**
+    configured on the mock output path.  This preserves the implicit assertion
+    that production code must not access these attributes when the file does
+    not exist (DS-881).
+
+    Args:
+        output_exists: Whether the output file should report as existing.
+        output_size: Value for ``output_path.stat().st_size`` (ignored when
+            ``output_exists`` is ``False``).
+        output_text: Value returned by ``output_path.read_text()`` (ignored
+            when ``output_exists`` is ``False``).
+
+    Yields:
+        A ``StreamingMocks`` named-tuple with *tmpdir_cls*, *output_path*,
+        and *path_cls* for any per-test customisation.
+    """
+    with (
+        patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+        patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+    ):
+        mock_tmpdir_ctx = MagicMock()
+        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+        mock_output_path = MagicMock()
+        mock_output_path.exists.return_value = output_exists
+        if output_exists:
+            mock_output_path.stat.return_value = MagicMock(st_size=output_size)
+            mock_output_path.read_text.return_value = output_text
+        mock_path_cls.return_value = mock_output_path
+
+        yield StreamingMocks(
+            tmpdir_cls=mock_tmpdir_cls,
+            output_path=mock_output_path,
+            path_cls=mock_path_cls,
+        )
+
+
+@contextmanager
 def _streaming_context(
     mock_proc: MagicMock,
     *,
@@ -1017,10 +1075,13 @@ def _streaming_context(
     output_size: int = 8,
     output_text: str = "Response",
 ) -> Iterator[StreamingMocks]:
-    """Set up the TemporaryDirectory + Path mocks shared by streaming tests.
+    """Set up TemporaryDirectory + Path + subprocess-exec mocks for streaming tests.
 
-    Encapsulates the boilerplate that was previously repeated ~8 times across
-    ``TestCodexStreamingLogs`` and ``TestCanStreamUseStreamingRouting`` (DS-876).
+    This is the upper layer that combines ``_tmpdir_and_path_context()`` with a
+    patch of ``asyncio.create_subprocess_exec`` (DS-881).  Most streaming tests
+    should use this helper; tests that need a custom subprocess mock (e.g.
+    ``test_streaming_timeout_kills_process``) can call
+    ``_tmpdir_and_path_context()`` directly.
 
     Args:
         mock_proc: The mock process returned by ``_make_mock_process()``.
@@ -1037,25 +1098,13 @@ def _streaming_context(
             "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
             new=AsyncMock(return_value=mock_proc),
         ),
-        patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
-        patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        _tmpdir_and_path_context(
+            output_exists=output_exists,
+            output_size=output_size,
+            output_text=output_text,
+        ) as mocks,
     ):
-        mock_tmpdir_ctx = MagicMock()
-        mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
-        mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
-        mock_tmpdir_cls.return_value = mock_tmpdir_ctx
-
-        mock_output_path = MagicMock()
-        mock_output_path.exists.return_value = output_exists
-        mock_output_path.stat.return_value = MagicMock(st_size=output_size)
-        mock_output_path.read_text.return_value = output_text
-        mock_path_cls.return_value = mock_output_path
-
-        yield StreamingMocks(
-            tmpdir_cls=mock_tmpdir_cls,
-            output_path=mock_output_path,
-            path_cls=mock_path_cls,
-        )
+        yield mocks
 
 
 def _make_mock_process(
@@ -1069,13 +1118,17 @@ def _make_mock_process(
     it exposes the ``stderr``, ``stdout.read``, ``wait``, and ``kill``
     attributes consumed by ``CodexAgentClient._run_with_log()`` (DS-876).
 
+    An ``isinstance`` check against ``MockProcess`` validates at construction
+    time that the mock conforms to the protocol (DS-881).
+
     Args:
         returncode: Process exit code.
         stderr_lines: Byte lines to yield from ``async for line in process.stderr``.
         stdout_data: Bytes returned by ``process.stdout.read()``.
 
     Returns:
-        A MagicMock that behaves like an asyncio subprocess Process.
+        A MagicMock that behaves like an asyncio subprocess Process and
+        satisfies the ``MockProcess`` runtime-checkable protocol.
     """
     proc = MagicMock()
     proc.returncode = returncode
@@ -1084,6 +1137,9 @@ def _make_mock_process(
     proc.stdout.read = AsyncMock(return_value=stdout_data)
     proc.wait = AsyncMock()
     proc.kill = MagicMock()
+    assert isinstance(proc, MockProcess), (
+        f"Mock process does not satisfy MockProcess protocol: {proc!r}"
+    )
     return proc
 
 
@@ -1238,7 +1294,12 @@ class TestCodexStreamingLogs:
         mocks.output_path.read_text.assert_called_once()
 
     def test_streaming_timeout_kills_process(self, tmp_path: Path) -> None:
-        """On timeout, process.kill() is called and AgentTimeoutError is raised."""
+        """On timeout, process.kill() is called and AgentTimeoutError is raised.
+
+        Uses ``_tmpdir_and_path_context()`` (the lower layer) so that the test
+        can supply its own custom ``create_subprocess_exec`` patch with a
+        stalling process (DS-881).
+        """
         config = make_config(
             codex_path="/usr/local/bin/codex",
             codex_default_model="o3-mini",
@@ -1275,17 +1336,8 @@ class TestCodexStreamingLogs:
                 "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
                 new=AsyncMock(side_effect=_slow_exec),
             ),
-            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
-            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+            _tmpdir_and_path_context(output_exists=False),
         ):
-            mock_tmpdir_ctx = MagicMock()
-            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
-            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
-            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
-
-            mock_output_path = MagicMock()
-            mock_path_cls.return_value = mock_output_path
-
             with pytest.raises(AgentTimeoutError) as exc_info:
                 asyncio.run(
                     client.run_agent(
