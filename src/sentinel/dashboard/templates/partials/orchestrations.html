@@ -12,26 +12,26 @@
         <div class="nested-accordion-header" onclick="toggleNestedAccordion(this)">
             <span class="collapse-icon">&#9654;</span>
             <strong>{{ project.identifier }}</strong>
-            <span class="badge ml-2">{{ project.count }} orchestration{% if project.count != 1 %}s{% endif %}</span>
+            <span class="badge ml-2">{{ project.count }} step{% if project.count != 1 %}s{% endif %}</span>
             <div class="bulk-toggle-buttons">
                 <button class="btn-sm btn-success"
                         hx-post="/api/orchestrations/bulk-toggle"
                         hx-vals='js:{"source": encodeURIComponent("{{ source_type }}"), "identifier": encodeURIComponent("{{ project.identifier }}"), "enabled": true}'
                         hx-swap="none"
-                        hx-confirm="Enable all orchestrations in {{ project.identifier }}?"
+                        hx-confirm="Enable all steps in {{ project.identifier }}?"
                         hx-on::after-request="handleToggleResponse(event)"
                         onclick="event.stopPropagation()"
-                        aria-label="Enable all orchestrations in {{ project.identifier }}">
+                        aria-label="Enable all steps in {{ project.identifier }}">
                     Enable All
                 </button>
                 <button class="btn-sm btn-danger"
                         hx-post="/api/orchestrations/bulk-toggle"
                         hx-vals='js:{"source": encodeURIComponent("{{ source_type }}"), "identifier": encodeURIComponent("{{ project.identifier }}"), "enabled": false}'
                         hx-swap="none"
-                        hx-confirm="Disable all orchestrations in {{ project.identifier }}?"
+                        hx-confirm="Disable all steps in {{ project.identifier }}?"
                         hx-on::after-request="handleToggleResponse(event)"
                         onclick="event.stopPropagation()"
-                        aria-label="Disable all orchestrations in {{ project.identifier }}">
+                        aria-label="Disable all steps in {{ project.identifier }}">
                     Disable All
                 </button>
             </div>

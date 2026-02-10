@@ -27,30 +27,30 @@ var UI_MESSAGES = Object.freeze({
         // Toggle operations (base.html - handleToggleResponse)
         TOGGLE_FAILED: 'Toggle operation failed',
         PARSE_RESPONSE_FAILED: 'Failed to process server response',
-        ORCHESTRATION_ENABLED: 'Orchestration enabled successfully',
-        ORCHESTRATION_DISABLED: 'Orchestration disabled successfully',
+        ORCHESTRATION_ENABLED: 'Step enabled successfully',
+        ORCHESTRATION_DISABLED: 'Step disabled successfully',
 
         // Delete operations (base.html - handleDeleteResponse)
-        DELETE_SUCCESS: function(name) { return 'Orchestration \'' + name + '\' deleted successfully'; },
-        DELETE_FAILED: function(name) { return 'Failed to delete orchestration \'' + name + '\''; },
+        DELETE_SUCCESS: function(name) { return 'Step \'' + name + '\' deleted successfully'; },
+        DELETE_FAILED: function(name) { return 'Failed to delete step \'' + name + '\''; },
         RATE_LIMIT_EXCEEDED: 'Rate limit exceeded. Please wait before trying again.',
 
         // Create operations (orchestration-forms.js)
-        CREATE_SUCCESS: function(name) { return 'Orchestration \'' + name + '\' created successfully'; },
+        CREATE_SUCCESS: function(name) { return 'Step \'' + name + '\' created successfully'; },
         CREATE_CSRF_REFRESH_FAILED: 'CSRF token refresh failed. Please reload the page.',
         CREATE_CSRF_VALIDATION_FAILED: 'CSRF token validation failed. Please reload the page.',
         VALIDATION_ERROR: 'Validation error',
-        CREATE_FAILED: 'Failed to create orchestration',
-        CREATE_NETWORK_ERROR: 'Network error while creating orchestration',
+        CREATE_FAILED: 'Failed to create step',
+        CREATE_NETWORK_ERROR: 'Network error while creating step',
 
         // Edit operations (orchestration-forms.js)
-        EDIT_SUCCESS: function(name) { return 'Orchestration \'' + name + '\' updated successfully'; },
-        EDIT_FAILED: 'Failed to update orchestration',
-        EDIT_NETWORK_ERROR: 'Network error while updating orchestration',
+        EDIT_SUCCESS: function(name) { return 'Step \'' + name + '\' updated successfully'; },
+        EDIT_FAILED: 'Failed to update step',
+        EDIT_NETWORK_ERROR: 'Network error while updating step',
 
         // Log viewer invalid URL parameters (log_viewer.html)
-        LOG_FILE_NOT_FOUND: function(file) { return 'Log file \'' + file + '\' not found in selected orchestration'; },
-        ORCHESTRATION_NOT_FOUND: function(name) { return 'Orchestration \'' + name + '\' not found'; }
+        LOG_FILE_NOT_FOUND: function(file) { return 'Log file \'' + file + '\' not found in selected step'; },
+        ORCHESTRATION_NOT_FOUND: function(name) { return 'Step \'' + name + '\' not found'; }
     }),
 
     /** CSRF token messages (orchestration_create_form.html). */
@@ -60,7 +60,7 @@ var UI_MESSAGES = Object.freeze({
 
     /** Form validation messages shown to users (orchestration-forms.js). */
     FORM_VALIDATION: Object.freeze({
-        NAME_REQUIRED: 'Orchestration name is required',
+        NAME_REQUIRED: 'Step name is required',
         TARGET_FILE_REQUIRED: 'Target file must be selected',
         NEW_FILE_NAME_REQUIRED: 'New file name is required'
     }),
@@ -68,7 +68,7 @@ var UI_MESSAGES = Object.freeze({
     /** Log viewer UI text (log_viewer.html). */
     LOG_VIEWER: Object.freeze({
         NO_FILE_SELECTED: 'No log file selected',
-        SELECT_PROMPT: '\uD83D\uDCCB Select an orchestration and log file to view',
+        SELECT_PROMPT: '\uD83D\uDCCB Select a step and log file to view',
         SELECT_PROMPT_SUBTITLE: 'Log files are updated in real-time via SSE',
         LOADING: 'Loading...',
         CONNECTED: 'Connected',
