@@ -1626,10 +1626,6 @@ class TestRunSimpleDirect:
         codex_config: Config,
     ) -> None:
         """Test _run_simple passes timeout to subprocess.run."""
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config)
 
         asyncio.run(client._run_simple("prompt", timeout=300, workdir=None, model=None))
@@ -1643,10 +1639,6 @@ class TestRunSimpleDirect:
         codex_config: Config,
     ) -> None:
         """Test _run_simple passes model to _build_command."""
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config)
 
         asyncio.run(client._run_simple("prompt", timeout=None, workdir=None, model="gpt-4o"))
@@ -1662,10 +1654,6 @@ class TestRunSimpleDirect:
         codex_config: Config,
     ) -> None:
         """Test _run_simple passes workdir to _build_command."""
-        mock_codex_subprocess.output_path.stat.return_value = MagicMock(st_size=8)
-        mock_codex_subprocess.output_path.read_text.return_value = "Response"
-        mock_codex_subprocess.run.return_value = MagicMock(returncode=0, stdout="Response", stderr="")
-
         client = CodexAgentClient(codex_config)
         workdir = Path("/tmp/test-workdir")
 
