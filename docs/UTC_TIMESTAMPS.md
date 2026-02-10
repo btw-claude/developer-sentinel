@@ -60,8 +60,10 @@ The following source modules use `datetime.now(tz=UTC)`:
 - `src/sentinel/orchestration.py` -- orchestration version load times
 - `src/sentinel/state_tracker.py` -- tracking start, queue, and run times
 
-> **Note:** This list was accurate as of DS-879/DS-880. As the codebase evolves,
-> new modules may adopt this pattern. To find the current set of modules, run:
+> **Note:** This list is validated automatically by the CI test
+> `tests/unit/test_utc_modules_list.py` (added in DS-886). If a module is added
+> or removed, the test will fail until this section is updated. To find the
+> current set of modules manually, run:
 >
 > ```bash
 > grep -r --include="*.py" "datetime.now(tz=UTC)" src/
@@ -71,3 +73,4 @@ The following source modules use `datetime.now(tz=UTC)`:
 
 - **DS-879:** Audited and replaced all naive `datetime.now()` calls with `datetime.now(tz=UTC)` across 7 source modules and 2 test files.
 - **DS-880:** Documented the UTC convention (this file) and added clarifying code comments to `base.py` and `agent_logger.py`.
+- **DS-886:** Added CI validation test (`tests/unit/test_utc_modules_list.py`) to automatically detect when the affected modules list drifts from the actual source tree.
