@@ -999,8 +999,8 @@ class StreamingMocks(NamedTuple):
 def _tmpdir_and_path_context(
     *,
     output_exists: bool = True,
-    output_size: int = 8,
-    output_text: str = "Response",
+    output_size: int = 14,
+    output_text: str = "Agent response",
 ) -> Iterator[StreamingMocks]:
     """Set up TemporaryDirectory + Path mocks without patching subprocess exec.
 
@@ -1054,8 +1054,8 @@ def _streaming_context(
     mock_proc: MagicMock,
     *,
     output_exists: bool = True,
-    output_size: int = 8,
-    output_text: str = "Response",
+    output_size: int = 14,
+    output_text: str = "Agent response",
 ) -> Iterator[StreamingMocks]:
     """Set up TemporaryDirectory + Path + subprocess-exec mocks for streaming tests.
 
@@ -1813,7 +1813,7 @@ class TestCanStreamUseStreamingRouting:
             )
 
         # Should have used the async subprocess path (streaming)
-        assert result.response == "Response"
+        assert result.response == "Agent response"
         # Verify streaming log was created
         orch_dir = log_dir / "test-orch"
         assert orch_dir.exists()
