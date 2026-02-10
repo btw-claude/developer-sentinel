@@ -13,7 +13,7 @@ import asyncio
 import subprocess
 from pathlib import Path
 from typing import NamedTuple
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -946,3 +946,568 @@ class TestCodexFactoryCircuitBreakerIntegration:
         # Should have a default circuit breaker
         assert client.circuit_breaker is not None
         assert client.circuit_breaker.service_name == "codex"
+
+
+class _AsyncIterLines:
+    """Async iterator over byte lines for mocking process.stderr.
+
+    Simulates asyncio.subprocess.Process.stderr which yields ``bytes``
+    objects (one per line) via ``async for raw_line in process.stderr``.
+    """
+
+    def __init__(self, lines: list[bytes]) -> None:
+        self._lines = lines
+        self._index = 0
+
+    def __aiter__(self) -> _AsyncIterLines:
+        return self
+
+    async def __anext__(self) -> bytes:
+        if self._index >= len(self._lines):
+            raise StopAsyncIteration
+        line = self._lines[self._index]
+        self._index += 1
+        return line
+
+
+def _make_mock_process(
+    returncode: int = 0,
+    stderr_lines: list[bytes] | None = None,
+    stdout_data: bytes = b"",
+) -> MagicMock:
+    """Create an asyncio.subprocess.Process mock with configurable behaviour.
+
+    Args:
+        returncode: Process exit code.
+        stderr_lines: Byte lines to yield from ``async for line in process.stderr``.
+        stdout_data: Bytes returned by ``process.stdout.read()``.
+
+    Returns:
+        A MagicMock that behaves like an asyncio subprocess Process.
+    """
+    proc = MagicMock()
+    proc.returncode = returncode
+    proc.stderr = _AsyncIterLines(stderr_lines or [])
+    proc.stdout = MagicMock()
+    proc.stdout.read = AsyncMock(return_value=stdout_data)
+    proc.wait = AsyncMock()
+    proc.kill = MagicMock()
+    return proc
+
+
+class TestCodexStreamingLogs:
+    """Tests for CodexAgentClient._run_with_log() streaming path.
+
+    Covers the async subprocess streaming mode introduced in DS-872:
+    log file creation, header writing, stderr streaming, response reading,
+    timeout handling, execution summary, and circuit breaker integration.
+
+    All tests use asyncio.run() for async test support and patch
+    asyncio.create_subprocess_exec to avoid real process creation.
+    """
+
+    def test_streaming_creates_log_file(self, tmp_path: Path) -> None:
+        """Verify that _run_with_log creates a log at logs/<orch>/YYYYMMDD_HHMMSS.log."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        client = CodexAgentClient(
+            config,
+            log_base_dir=log_dir,
+        )
+
+        mock_proc = _make_mock_process(returncode=0)
+        output_content = "Streaming response"
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_output_path.exists.return_value = True
+            mock_output_path.stat.return_value = MagicMock(st_size=len(output_content))
+            mock_output_path.read_text.return_value = output_content
+            mock_path_cls.return_value = mock_output_path
+
+            asyncio.run(
+                client.run_agent(
+                    "test prompt",
+                    issue_key="TEST-100",
+                    orchestration_name="test-orch",
+                )
+            )
+
+        # The log directory structure should be logs/<orch>/<timestamp>.log
+        orch_dir = log_dir / "test-orch"
+        assert orch_dir.exists(), "Orchestration log directory should be created"
+        log_files = list(orch_dir.glob("*.log"))
+        assert len(log_files) == 1, "Exactly one log file should be created"
+        assert log_files[0].name.endswith(".log")
+        # Filename format: YYYYMMDD_HHMMSS.log
+        stem = log_files[0].stem
+        assert len(stem) == 15  # YYYYMMDD_HHMMSS
+        assert stem[8] == "_"
+
+    def test_streaming_writes_header(self, tmp_path: Path) -> None:
+        """Verify log header contains issue key, orchestration name, and prompt."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        client = CodexAgentClient(config, log_base_dir=log_dir)
+
+        mock_proc = _make_mock_process(returncode=0)
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_output_path.exists.return_value = True
+            mock_output_path.stat.return_value = MagicMock(st_size=8)
+            mock_output_path.read_text.return_value = "Response"
+            mock_path_cls.return_value = mock_output_path
+
+            asyncio.run(
+                client.run_agent(
+                    "my test prompt",
+                    issue_key="PROJ-42",
+                    orchestration_name="review-orch",
+                )
+            )
+
+        log_file = next((log_dir / "review-orch").glob("*.log"))
+        log_content = log_file.read_text()
+
+        assert "AGENT EXECUTION LOG" in log_content
+        assert "Issue Key:      PROJ-42" in log_content
+        assert "Orchestration:  review-orch" in log_content
+        assert "PROMPT" in log_content
+        assert "my test prompt" in log_content
+
+    def test_streaming_writes_stderr_lines(self, tmp_path: Path) -> None:
+        """Mock stderr and verify lines appear in the log file."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        client = CodexAgentClient(config, log_base_dir=log_dir)
+
+        stderr_lines = [
+            b"Processing step 1...\n",
+            b"Processing step 2...\n",
+            b"Done.\n",
+        ]
+        mock_proc = _make_mock_process(returncode=0, stderr_lines=stderr_lines)
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_output_path.exists.return_value = True
+            mock_output_path.stat.return_value = MagicMock(st_size=8)
+            mock_output_path.read_text.return_value = "Response"
+            mock_path_cls.return_value = mock_output_path
+
+            asyncio.run(
+                client.run_agent(
+                    "test prompt",
+                    issue_key="TEST-200",
+                    orchestration_name="stderr-orch",
+                )
+            )
+
+        log_file = next((log_dir / "stderr-orch").glob("*.log"))
+        log_content = log_file.read_text()
+
+        assert "Processing step 1..." in log_content
+        assert "Processing step 2..." in log_content
+        assert "Done." in log_content
+
+    def test_streaming_reads_response_from_output_file(self, tmp_path: Path) -> None:
+        """Response comes from --output-last-message file, not stderr."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        client = CodexAgentClient(config, log_base_dir=log_dir)
+
+        stderr_lines = [b"progress line\n"]
+        mock_proc = _make_mock_process(
+            returncode=0,
+            stderr_lines=stderr_lines,
+            stdout_data=b"stdout fallback data",
+        )
+
+        expected_response = "Output file response content"
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_output_path.exists.return_value = True
+            mock_output_path.stat.return_value = MagicMock(st_size=len(expected_response))
+            mock_output_path.read_text.return_value = expected_response
+            mock_path_cls.return_value = mock_output_path
+
+            result = asyncio.run(
+                client.run_agent(
+                    "test prompt",
+                    issue_key="TEST-300",
+                    orchestration_name="output-orch",
+                )
+            )
+
+        # Response should come from the output file, NOT from stderr or stdout
+        assert result.response == expected_response
+        mock_output_path.read_text.assert_called_once()
+
+    def test_streaming_timeout_kills_process(self, tmp_path: Path) -> None:
+        """On timeout, process.kill() is called and AgentTimeoutError is raised."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        client = CodexAgentClient(config, log_base_dir=log_dir)
+
+        mock_proc = _make_mock_process(returncode=0)
+
+        # Make create_subprocess_exec return a process that causes timeout
+        async def _slow_exec(*args: object, **kwargs: object) -> MagicMock:
+            return mock_proc
+
+        # Override stderr to be a slow iterator that causes timeout
+        async def _slow_wait() -> None:
+            await asyncio.sleep(100)  # Will be cancelled by wait_for
+
+        mock_proc.wait = _slow_wait
+
+        # Stderr needs to be an async iterator that also stalls
+        class _StallIterator:
+            def __aiter__(self) -> _StallIterator:
+                return self
+
+            async def __anext__(self) -> bytes:
+                await asyncio.sleep(100)  # Will be cancelled by wait_for
+                return b""
+
+        mock_proc.stderr = _StallIterator()
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=_slow_exec),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_path_cls.return_value = mock_output_path
+
+            with pytest.raises(AgentTimeoutError) as exc_info:
+                asyncio.run(
+                    client.run_agent(
+                        "test prompt",
+                        issue_key="TEST-400",
+                        orchestration_name="timeout-orch",
+                        timeout_seconds=1,
+                    )
+                )
+
+        assert "timed out" in str(exc_info.value)
+        mock_proc.kill.assert_called_once()
+
+    def test_streaming_writes_summary_on_success(self, tmp_path: Path) -> None:
+        """Verify execution summary is appended on successful completion."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        client = CodexAgentClient(config, log_base_dir=log_dir)
+
+        mock_proc = _make_mock_process(returncode=0)
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_output_path.exists.return_value = True
+            mock_output_path.stat.return_value = MagicMock(st_size=8)
+            mock_output_path.read_text.return_value = "Response"
+            mock_path_cls.return_value = mock_output_path
+
+            asyncio.run(
+                client.run_agent(
+                    "test prompt",
+                    issue_key="TEST-500",
+                    orchestration_name="summary-orch",
+                )
+            )
+
+        log_file = next((log_dir / "summary-orch").glob("*.log"))
+        log_content = log_file.read_text()
+
+        assert "EXECUTION SUMMARY" in log_content
+        assert "Status:         COMPLETED" in log_content
+        assert "END OF LOG" in log_content
+        assert "Duration:" in log_content
+        assert "METRICS JSON" in log_content
+
+    def test_streaming_writes_summary_on_failure(self, tmp_path: Path) -> None:
+        """Verify error summary is appended when the agent process fails."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        client = CodexAgentClient(config, log_base_dir=log_dir)
+
+        mock_proc = _make_mock_process(
+            returncode=1,
+            stdout_data=b"error detail from stdout",
+        )
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_output_path.exists.return_value = False
+            mock_path_cls.return_value = mock_output_path
+
+            with pytest.raises(AgentClientError) as exc_info:
+                asyncio.run(
+                    client.run_agent(
+                        "test prompt",
+                        issue_key="TEST-600",
+                        orchestration_name="failure-orch",
+                    )
+                )
+
+        assert "Codex CLI execution failed" in str(exc_info.value)
+
+        log_file = next((log_dir / "failure-orch").glob("*.log"))
+        log_content = log_file.read_text()
+
+        assert "EXECUTION SUMMARY" in log_content
+        assert "Status:         ERROR" in log_content
+        assert "END OF LOG" in log_content
+
+    def test_streaming_disabled_uses_simple_path(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+    ) -> None:
+        """When disable_streaming_logs=True, run_agent uses subprocess.run (simple path)."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = Path("/tmp/test-logs-disabled")
+        client = CodexAgentClient(
+            config,
+            log_base_dir=log_dir,
+            disable_streaming_logs=True,
+        )
+
+        result = asyncio.run(
+            client.run_agent(
+                "test prompt",
+                issue_key="TEST-700",
+                orchestration_name="disabled-orch",
+            )
+        )
+
+        # Should use the simple path (subprocess.run) instead of streaming
+        assert result.response == "Agent response"
+        mock_codex_subprocess.run.assert_called_once()
+
+    def test_streaming_fallback_when_no_log_dir(
+        self,
+        mock_codex_subprocess: CodexSubprocessMocks,
+    ) -> None:
+        """When log_base_dir is None, run_agent falls back to the simple path."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        # No log_base_dir => cannot use streaming
+        client = CodexAgentClient(config, log_base_dir=None)
+
+        result = asyncio.run(
+            client.run_agent(
+                "test prompt",
+                issue_key="TEST-800",
+                orchestration_name="no-logdir-orch",
+            )
+        )
+
+        # Should use the simple path (subprocess.run)
+        assert result.response == "Agent response"
+        mock_codex_subprocess.run.assert_called_once()
+
+    def test_streaming_circuit_breaker_records(self, tmp_path: Path) -> None:
+        """Circuit breaker records success and failure in the streaming path."""
+        config = make_config(
+            codex_path="/usr/local/bin/codex",
+            codex_default_model="o3-mini",
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+
+        # --- Test success recording ---
+        cb_success = CircuitBreaker(service_name="codex-stream-success")
+        client_success = CodexAgentClient(
+            config,
+            log_base_dir=log_dir,
+            circuit_breaker=cb_success,
+        )
+
+        mock_proc_ok = _make_mock_process(returncode=0)
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc_ok),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_output_path.exists.return_value = True
+            mock_output_path.stat.return_value = MagicMock(st_size=8)
+            mock_output_path.read_text.return_value = "Response"
+            mock_path_cls.return_value = mock_output_path
+
+            asyncio.run(
+                client_success.run_agent(
+                    "test prompt",
+                    issue_key="TEST-900",
+                    orchestration_name="cb-success-orch",
+                )
+            )
+
+        assert cb_success.metrics.successful_calls == 1
+        assert cb_success.metrics.failed_calls == 0
+
+        # --- Test failure recording ---
+        cb_failure = CircuitBreaker(service_name="codex-stream-failure")
+        client_failure = CodexAgentClient(
+            config,
+            log_base_dir=log_dir,
+            circuit_breaker=cb_failure,
+        )
+
+        mock_proc_fail = _make_mock_process(
+            returncode=1,
+            stdout_data=b"error output",
+        )
+
+        with (
+            patch(
+                "sentinel.agent_clients.codex.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc_fail),
+            ),
+            patch("sentinel.agent_clients.codex.tempfile.TemporaryDirectory") as mock_tmpdir_cls,
+            patch("sentinel.agent_clients.codex.Path") as mock_path_cls,
+        ):
+            mock_tmpdir_ctx = MagicMock()
+            mock_tmpdir_ctx.__enter__ = MagicMock(return_value="/tmp/codex_tmpdir")
+            mock_tmpdir_ctx.__exit__ = MagicMock(return_value=False)
+            mock_tmpdir_cls.return_value = mock_tmpdir_ctx
+
+            mock_output_path = MagicMock()
+            mock_output_path.exists.return_value = False
+            mock_path_cls.return_value = mock_output_path
+
+            with pytest.raises(AgentClientError):
+                asyncio.run(
+                    client_failure.run_agent(
+                        "test prompt",
+                        issue_key="TEST-901",
+                        orchestration_name="cb-failure-orch",
+                    )
+                )
+
+        assert cb_failure.metrics.failed_calls == 1
+        assert cb_failure.metrics.successful_calls == 0
