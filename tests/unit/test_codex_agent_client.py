@@ -972,6 +972,27 @@ class _AsyncIterLines:
         return line
 
 
+class _FakeStdout:
+    """Concrete implementation of ``ReadableStdout`` for test doubles.
+
+    Replaces the previous ``MagicMock()`` assignment on ``proc.stdout``
+    in ``_make_mock_process()``, providing static type-safety against the
+    ``ReadableStdout`` protocol (DS-883).  This mirrors how
+    ``_AsyncIterLines`` already provides a concrete ``AsyncIterator``
+    for stderr.
+
+    Args:
+        data: The bytes payload returned by ``read()``.
+    """
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    async def read(self) -> bytes:
+        """Return the pre-configured bytes payload."""
+        return self._data
+
+
 @runtime_checkable
 class ReadableStdout(Protocol):
     """Protocol for an object with an async ``read()`` method returning bytes.
@@ -1147,8 +1168,7 @@ def _make_mock_process(
     proc = MagicMock()
     proc.returncode = returncode
     proc.stderr = _AsyncIterLines(stderr_lines or [])
-    proc.stdout = MagicMock()
-    proc.stdout.read = AsyncMock(return_value=stdout_data)
+    proc.stdout = _FakeStdout(stdout_data)
     proc.wait = AsyncMock()
     proc.kill = MagicMock()
     assert isinstance(proc, MockProcess), (
