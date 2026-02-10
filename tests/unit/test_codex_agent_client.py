@@ -124,7 +124,7 @@ def mock_codex_subprocess() -> CodexSubprocessMocks:
     Yields a CodexSubprocessMocks NamedTuple with tmpdir_cls, output_path,
     run, and path_cls mocks. Common setup for tempfile.TemporaryDirectory,
     Path, and subprocess.run. The output file defaults to existing with
-    content MOCK_CODEX_RESPONSE_TEXT. Tests can customize output_path and run as
+    content matching the MOCK_CODEX_RESPONSE_TEXT constant. Tests can customize output_path and run as
     needed.
     """
     with (
