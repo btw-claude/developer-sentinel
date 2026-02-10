@@ -30,7 +30,7 @@ import contextlib
 import json
 import subprocess
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -412,7 +412,7 @@ class CodexAgentClient(AgentClient):
         )
         assert self.log_base_dir is not None
 
-        start_time = datetime.now()
+        start_time = datetime.now(tz=timezone.utc)  # noqa: UP017
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / generate_log_filename(start_time)
@@ -476,8 +476,8 @@ class CodexAgentClient(AgentClient):
                         stdout_data = b""
                         if process.stdout is not None:
                             stdout_data = await process.stdout.read()
-                        stderr_snippet = stdout_data.decode("utf-8", errors="replace").strip()
-                        error_msg = stderr_snippet or f"Exit code: {process.returncode}"
+                        stdout_snippet = stdout_data.decode("utf-8", errors="replace").strip()
+                        error_msg = stdout_snippet or f"Exit code: {process.returncode}"
                         logger.error("Codex CLI failed (streaming): %s", error_msg)
                         error = AgentClientError(
                             f"Codex CLI execution failed: {error_msg}"
@@ -548,7 +548,7 @@ class CodexAgentClient(AgentClient):
                 pass  # Ignore errors when writing error to log
             raise AgentClientError(f"Failed to execute Codex CLI: {e}") from e
         finally:
-            end_time = datetime.now()
+            end_time = datetime.now(tz=timezone.utc)  # noqa: UP017
             duration = (end_time - start_time).total_seconds()
             try:
                 with open(log_path, "a", encoding="utf-8") as f:
