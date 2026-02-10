@@ -13,16 +13,30 @@ Usage:
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
 
+# Pattern used to detect UTC-aware datetime calls in source files.
+_UTC_PATTERN = "datetime.now(tz=UTC)"
+
 
 def get_project_root() -> Path:
-    """Get the project root directory."""
-    # Navigate from tests/unit/ to project root
-    return Path(__file__).parent.parent.parent
+    """Get the project root directory by searching upward for pyproject.toml.
+
+    Walks up from the current file's directory until a ``pyproject.toml`` marker
+    file is found.  This is resilient to future file relocations, unlike a
+    hard-coded chain of ``.parent`` calls.
+
+    Raises:
+        FileNotFoundError: If no ``pyproject.toml`` is found in any ancestor.
+    """
+    current = Path(__file__).resolve().parent
+    for directory in (current, *current.parents):
+        if (directory / "pyproject.toml").is_file():
+            return directory
+    msg = "Could not locate project root (no pyproject.toml found in ancestors)"
+    raise FileNotFoundError(msg)
 
 
 def get_documented_modules(utc_doc: Path) -> set[str]:
@@ -58,8 +72,11 @@ def get_documented_modules(utc_doc: Path) -> set[str]:
 def get_actual_modules(project_root: Path) -> set[str]:
     """Find source modules that actually use ``datetime.now(tz=UTC)``.
 
-    Uses ``grep`` to search the ``src/`` directory for Python files containing
-    the pattern, matching the command documented in UTC_TIMESTAMPS.md.
+    Uses a pure-Python ``pathlib`` glob and file-content search to find
+    matching Python files under ``src/``.  This replaces the previous
+    ``subprocess.run(["grep", ...])`` call, eliminating the platform
+    dependency on ``grep`` (macOS vs GNU/Linux flag differences) and making
+    local cross-platform test runs more reliable.
 
     Args:
         project_root: Path to the project root directory.
@@ -67,21 +84,20 @@ def get_actual_modules(project_root: Path) -> set[str]:
     Returns:
         Set of module path strings relative to the project root.
     """
-    result = subprocess.run(
-        ["grep", "-r", "--include=*.py", "-l", "datetime.now(tz=UTC)", "src/"],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        # returncode 1 means no matches; other codes are real errors
-        if result.returncode == 1:
-            return set()
-        msg = f"grep failed with return code {result.returncode}: {result.stderr}"
-        raise RuntimeError(msg)
+    src_dir = project_root / "src"
+    if not src_dir.is_dir():
+        return set()
 
-    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    modules: set[str] = set()
+    for py_file in src_dir.rglob("*.py"):
+        try:
+            content = py_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if _UTC_PATTERN in content:
+            # Return path relative to project_root using forward slashes
+            modules.add(str(py_file.relative_to(project_root)))
+    return modules
 
 
 class TestUTCModulesList:
@@ -117,7 +133,7 @@ class TestUTCModulesList:
         """Verify the documented module list matches the actual source files.
 
         Compares the manually curated list in UTC_TIMESTAMPS.md against
-        a live ``grep`` of the source tree. Fails if any modules are
+        a live scan of the source tree. Fails if any modules are
         missing from or extra in the documentation.
         """
         documented = get_documented_modules(utc_doc)
