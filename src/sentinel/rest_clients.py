@@ -16,7 +16,7 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any
 
 import httpx
 
@@ -29,9 +29,6 @@ logger = get_logger(__name__)
 
 # Default timeout for HTTP requests (connect, read, write, pool)
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, read=30.0)
-
-# Type variable for generic retry function
-T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -123,7 +120,7 @@ def _get_retry_after(response: httpx.Response) -> float | None:
     return None
 
 
-def _execute_with_retry(
+def _execute_with_retry[T](
     operation: Callable[[], T],
     config: RetryConfig = DEFAULT_RETRY_CONFIG,
     error_class: type[Exception] = Exception,

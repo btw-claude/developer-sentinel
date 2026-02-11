@@ -13,7 +13,7 @@ agent clients rather than having clients create their own.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any
 
 from sentinel.agent_clients.base import AgentClient, AgentType
 from sentinel.config import Config
@@ -35,9 +35,9 @@ AgentClientBuilder = Callable[[Config], AgentClient]
 # - OrchestrationCacheKey: Used by get_or_create_for_orchestration() -
 #   tuple of (agent_type, config_id, kwargs_key) where kwargs_key is a
 #   hashable tuple representation of the kwargs dict
-SimpleCacheKey: TypeAlias = tuple[AgentType, int]
-OrchestrationCacheKey: TypeAlias = tuple[AgentType, int, tuple[tuple[str, Any], ...]]
-CacheKey: TypeAlias = SimpleCacheKey | OrchestrationCacheKey
+type SimpleCacheKey = tuple[AgentType, int]
+type OrchestrationCacheKey = tuple[AgentType, int, tuple[tuple[str, Any], ...]]
+type CacheKey = SimpleCacheKey | OrchestrationCacheKey
 
 
 class AgentClientFactory:

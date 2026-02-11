@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any
 
 from sentinel.agent_clients.base import AgentClient, AgentClientError, AgentTimeoutError
 from sentinel.branch_validation import validate_runtime_branch_name
@@ -27,7 +27,7 @@ from sentinel.orchestration import (
 from sentinel.poller import JiraIssue
 
 # Type alias for issues from any supported source
-AnyIssue: TypeAlias = JiraIssue | GitHubIssue
+type AnyIssue = JiraIssue | GitHubIssue
 
 if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
@@ -445,7 +445,7 @@ class ExecutionResult:
 
 # Explicit async return type alias for executor methods (DS-533).
 # This type alias makes the async nature of the execute method more discoverable.
-ExecutionCoroutine: TypeAlias = Coroutine[Any, Any, ExecutionResult]
+type ExecutionCoroutine = Coroutine[Any, Any, ExecutionResult]
 """Coroutine type for async execution methods returning ExecutionResult."""
 
 # NOTE: Update this list when adding new exports to this module.

@@ -7,7 +7,7 @@ name = "developer-sentinel"
 version = "0.1.0"
 description = "Python orchestration app that polls Jira for tagged issues and routes them to Claude-based agents"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "Brent Walker"}
@@ -18,7 +18,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
@@ -87,7 +86,7 @@ Issues = "https://github.com/btw-claude/developer-sentinel/issues"
 where = ["src"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 100
 # preview = true was removed in DS-591 to avoid enabling ALL preview rules.
 # UP042 (replace-str-enum), which was the original reason for preview mode (DS-582),
@@ -125,7 +124,7 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "G"]
 "tests/**/*.py" = ["E501", "SIM117"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
@@ -168,10 +167,12 @@ match = "(?!test_).*\\.py"
 match_dir = "^(?!tests).*"
 # Ignore certain rules that are overly strict or don't apply well:
 # D102: Missing docstring in public method - not always needed for simple methods
+# D103: Missing docstring in public function - false positive on PEP 695 type parameter
+#       syntax (def func[T](...)) which pydocstyle 6.3.0 cannot parse (DS-902)
 # D105: Missing docstring in magic method - magic methods are self-documenting
 # D107: Missing docstring in __init__ - class docstring is often sufficient
 # D214: Section is over-indented - flexible indentation in examples is acceptable
 # D301: Use r""" if any backslashes - raw strings not needed for well-escaped content
 # D402: First line should not be function's signature - some property docstrings are fine
 # D403: First word should be capitalized - false positives for proper nouns (e.g., "GitHub")
-add_ignore = ["D102", "D105", "D107", "D214", "D301", "D402", "D403"]
+add_ignore = ["D102", "D103", "D105", "D107", "D214", "D301", "D402", "D403"]
