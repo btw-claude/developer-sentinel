@@ -876,6 +876,249 @@ class TestRunOnce:
 
 
 # =========================================================================
+# 6b. TestPollService
+# =========================================================================
+
+
+class TestPollService:
+    """Tests for the generic _poll_service() helper (DS-931).
+
+    These tests verify the extracted polling logic that was previously
+    duplicated in the Jira and GitHub branches of run_once().
+    """
+
+    def _make_poll_fn(
+        self,
+        routing_results: list | None = None,
+        issues_found: int = 0,
+        error_count: int = 0,
+    ):
+        """Build a mock poll function matching the PollCoordinator signature."""
+        if routing_results is None:
+            routing_results = []
+        return MagicMock(return_value=(routing_results, issues_found, error_count))
+
+    def test_poll_service_happy_path_submits_tasks(self) -> None:
+        """_poll_service should poll, submit, log, and record health on success."""
+        sentinel = _make_sentinel()
+        sentinel._execution_manager.start()
+        try:
+            mock_poll_fn = self._make_poll_fn(issues_found=2, error_count=0)
+            all_results: list = []
+            submitted_pairs: set[tuple[str, str]] = set()
+
+            with patch.object(sentinel, "_submit_execution_tasks", return_value=2) as mock_submit:
+                submitted = sentinel._poll_service(
+                    service_name="jira",
+                    display_name="Jira",
+                    orchestrations=[make_orchestration(tags=["review"])],
+                    poll_fn=mock_poll_fn,
+                    probe_kwargs={"base_url": "https://jira.example.com"},
+                    all_results=all_results,
+                    submitted_pairs=submitted_pairs,
+                )
+
+            assert submitted == 2
+            mock_poll_fn.assert_called_once()
+            mock_submit.assert_called_once()
+        finally:
+            sentinel._execution_manager.shutdown()
+
+    def test_poll_service_records_success_health(self) -> None:
+        """_poll_service should record poll success when no errors occurred."""
+        sentinel = _make_sentinel()
+        sentinel._health_gate = MagicMock()
+        sentinel._health_gate.should_poll.return_value = True
+
+        mock_poll_fn = self._make_poll_fn(issues_found=3, error_count=0)
+        with patch.object(sentinel, "_submit_execution_tasks", return_value=0):
+            sentinel._poll_service(
+                service_name="jira",
+                display_name="Jira",
+                orchestrations=[make_orchestration(tags=["review"])],
+                poll_fn=mock_poll_fn,
+                probe_kwargs={},
+                all_results=[],
+                submitted_pairs=set(),
+            )
+
+        sentinel._health_gate.record_poll_success.assert_called_once_with(service_name="jira")
+
+    def test_poll_service_records_failure_health(self) -> None:
+        """_poll_service should record poll failure when all triggers errored."""
+        sentinel = _make_sentinel()
+        sentinel._health_gate = MagicMock()
+        sentinel._health_gate.should_poll.return_value = True
+
+        mock_poll_fn = self._make_poll_fn(issues_found=0, error_count=2)
+        with patch.object(sentinel, "_submit_execution_tasks", return_value=0):
+            sentinel._poll_service(
+                service_name="github",
+                display_name="GitHub",
+                orchestrations=[make_orchestration(tags=["review"])],
+                poll_fn=mock_poll_fn,
+                probe_kwargs={},
+                all_results=[],
+                submitted_pairs=set(),
+            )
+
+        sentinel._health_gate.record_poll_failure.assert_called_once_with(service_name="github")
+
+    def test_poll_service_logs_summary_when_issues_or_errors(self) -> None:
+        """_poll_service should log a polling summary when issues or errors exist."""
+        sentinel = _make_sentinel()
+        mock_poll_fn = self._make_poll_fn(issues_found=5, error_count=1)
+
+        with patch.object(sentinel, "_submit_execution_tasks", return_value=3):
+            with patch("sentinel.main.logger") as mock_logger:
+                sentinel._poll_service(
+                    service_name="jira",
+                    display_name="Jira",
+                    orchestrations=[make_orchestration(tags=["review"])],
+                    poll_fn=mock_poll_fn,
+                    probe_kwargs={},
+                    all_results=[],
+                    submitted_pairs=set(),
+                )
+                info_calls = [
+                    c for c in mock_logger.info.call_args_list
+                    if "polling summary" in str(c)
+                ]
+                assert len(info_calls) >= 1
+
+    def test_poll_service_skips_summary_when_no_issues_or_errors(self) -> None:
+        """_poll_service should not log a polling summary when nothing happened."""
+        sentinel = _make_sentinel()
+        mock_poll_fn = self._make_poll_fn(issues_found=0, error_count=0)
+
+        with patch.object(sentinel, "_submit_execution_tasks", return_value=0):
+            with patch("sentinel.main.logger") as mock_logger:
+                sentinel._poll_service(
+                    service_name="jira",
+                    display_name="Jira",
+                    orchestrations=[make_orchestration(tags=["review"])],
+                    poll_fn=mock_poll_fn,
+                    probe_kwargs={},
+                    all_results=[],
+                    submitted_pairs=set(),
+                )
+                summary_calls = [
+                    c for c in mock_logger.info.call_args_list
+                    if "polling summary" in str(c)
+                ]
+                assert len(summary_calls) == 0
+
+    def test_poll_service_gated_no_probe(self) -> None:
+        """_poll_service should return 0 when service is gated and probe is not due."""
+        sentinel = _make_sentinel()
+        sentinel._health_gate = MagicMock()
+        sentinel._health_gate.should_poll.return_value = False
+        sentinel._health_gate.should_probe.return_value = False
+
+        mock_poll_fn = self._make_poll_fn()
+        submitted = sentinel._poll_service(
+            service_name="jira",
+            display_name="Jira",
+            orchestrations=[make_orchestration(tags=["review"])],
+            poll_fn=mock_poll_fn,
+            probe_kwargs={},
+            all_results=[],
+            submitted_pairs=set(),
+        )
+
+        assert submitted == 0
+        mock_poll_fn.assert_not_called()
+        sentinel._health_gate.probe_service.assert_not_called()
+
+    def test_poll_service_gated_with_probe(self) -> None:
+        """_poll_service should probe the service when gated and probe is due."""
+        sentinel = _make_sentinel()
+        sentinel._health_gate = MagicMock()
+        sentinel._health_gate.should_poll.return_value = False
+        sentinel._health_gate.should_probe.return_value = True
+
+        mock_poll_fn = self._make_poll_fn()
+        probe_kwargs = {"base_url": "https://jira.example.com", "auth": ("user", "token")}
+        submitted = sentinel._poll_service(
+            service_name="jira",
+            display_name="Jira",
+            orchestrations=[make_orchestration(tags=["review"])],
+            poll_fn=mock_poll_fn,
+            probe_kwargs=probe_kwargs,
+            all_results=[],
+            submitted_pairs=set(),
+        )
+
+        assert submitted == 0
+        mock_poll_fn.assert_not_called()
+        sentinel._health_gate.probe_service.assert_called_once_with(
+            "jira", base_url="https://jira.example.com", auth=("user", "token")
+        )
+
+    def test_poll_service_updates_jira_last_poll_timestamp(self) -> None:
+        """_poll_service should update last_jira_poll when service_name is 'jira'."""
+        sentinel = _make_sentinel()
+        assert sentinel._state_tracker.last_jira_poll is None
+
+        mock_poll_fn = self._make_poll_fn(issues_found=0, error_count=0)
+        with patch.object(sentinel, "_submit_execution_tasks", return_value=0):
+            sentinel._poll_service(
+                service_name="jira",
+                display_name="Jira",
+                orchestrations=[make_orchestration(tags=["review"])],
+                poll_fn=mock_poll_fn,
+                probe_kwargs={},
+                all_results=[],
+                submitted_pairs=set(),
+            )
+
+        assert sentinel._state_tracker.last_jira_poll is not None
+
+    def test_poll_service_updates_github_last_poll_timestamp(self) -> None:
+        """_poll_service should update last_github_poll when service_name is 'github'."""
+        sentinel = _make_sentinel()
+        assert sentinel._state_tracker.last_github_poll is None
+
+        mock_poll_fn = self._make_poll_fn(issues_found=0, error_count=0)
+        with patch.object(sentinel, "_submit_execution_tasks", return_value=0):
+            sentinel._poll_service(
+                service_name="github",
+                display_name="GitHub",
+                orchestrations=[make_orchestration(tags=["review"])],
+                poll_fn=mock_poll_fn,
+                probe_kwargs={},
+                all_results=[],
+                submitted_pairs=set(),
+            )
+
+        assert sentinel._state_tracker.last_github_poll is not None
+
+    def test_poll_service_calls_log_total_failure(self) -> None:
+        """_poll_service should invoke _log_total_failure with correct parameters."""
+        sentinel = _make_sentinel()
+        orch = make_orchestration(tags=["review"])
+        mock_poll_fn = self._make_poll_fn(issues_found=0, error_count=3)
+
+        with patch.object(sentinel, "_submit_execution_tasks", return_value=0):
+            with patch.object(sentinel, "_log_total_failure") as mock_ltf:
+                sentinel._poll_service(
+                    service_name="jira",
+                    display_name="Jira",
+                    orchestrations=[orch],
+                    poll_fn=mock_poll_fn,
+                    probe_kwargs={},
+                    all_results=[],
+                    submitted_pairs=set(),
+                )
+                mock_ltf.assert_called_once_with(
+                    "Jira",
+                    3,
+                    1,  # len([orch])
+                    sentinel.config.polling.error_threshold_pct,
+                )
+
+
+# =========================================================================
 # 7. TestRun
 # =========================================================================
 
