@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from cachetools import TTLCache
@@ -575,6 +576,7 @@ class SentinelStateAccessor:
         self._state_cache: TTLCache[str, DashboardState] = TTLCache(
             maxsize=1, ttl=self._STATE_CACHE_TTL
         )
+        self._state_cache_lock = Lock()
 
     def get_state(self) -> DashboardState:
         """Get a snapshot of the current Sentinel state.
@@ -584,16 +586,22 @@ class SentinelStateAccessor:
         redundant computation under rapid successive requests (e.g., HTMX
         auto-refresh every 2-5 seconds).
 
+        Thread-safety: Access to the underlying TTLCache is protected by a
+        threading.Lock to prevent race conditions when multiple threads call
+        get_state() concurrently. Without the lock, concurrent reads and writes
+        to the TTLCache could lead to inconsistent state or redundant rebuilds.
+
         Returns:
             An immutable DashboardState object containing current state.
         """
-        cached = self._state_cache.get("state")
-        if cached is not None:
-            return cached
+        with self._state_cache_lock:
+            cached_state = self._state_cache.get("state")
+            if cached_state is not None:
+                return cached_state
 
-        state = self._build_state()
-        self._state_cache["state"] = state
-        return state
+            state = self._build_state()
+            self._state_cache["state"] = state
+            return state
 
     def _build_state(self) -> DashboardState:
         """Build a fresh DashboardState snapshot from the provider.
