@@ -36,17 +36,7 @@ from sentinel.orchestration import (
 )
 from sentinel.state_tracker import CompletedExecutionInfo
 from tests.conftest import create_test_app
-from tests.helpers import assert_call_args_length
-
-
-def _get_csrf_token(client: TestClient) -> str:
-    """Fetch a fresh CSRF token from the test server.
-
-    Helper to reduce boilerplate in tests that exercise state-changing
-    endpoints protected by CSRF validation (DS-935).
-    """
-    resp = client.get("/api/csrf-token")
-    return resp.json()["csrf_token"]
+from tests.helpers import assert_call_args_length, get_csrf_token
 
 
 @pytest.fixture(autouse=True)
@@ -716,7 +706,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations/test-orch/toggle",
@@ -766,7 +756,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations/test-orch/toggle",
@@ -794,7 +784,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations/nonexistent/toggle",
@@ -827,7 +817,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations/test-orch/toggle",
@@ -922,7 +912,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations/bulk-toggle",
@@ -997,7 +987,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations/bulk-toggle",
@@ -1021,7 +1011,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations/bulk-toggle",
@@ -1051,7 +1041,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations/bulk-toggle",
@@ -1106,7 +1096,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.delete("/api/orchestrations/test-orch", headers={"X-CSRF-Token": csrf_token})
 
@@ -1130,7 +1120,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.delete("/api/orchestrations/nonexistent", headers={"X-CSRF-Token": csrf_token})
 
@@ -1158,7 +1148,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.delete("/api/orchestrations/test-orch", headers={"X-CSRF-Token": csrf_token})
 
@@ -1227,14 +1217,14 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token for first delete (DS-926)
-            csrf_token1 = _get_csrf_token(client)
+            csrf_token1 = get_csrf_token(client)
 
             # First delete should succeed
             response1 = client.delete("/api/orchestrations/orch-1", headers={"X-CSRF-Token": csrf_token1})
             assert response1.status_code == 200
 
             # Get CSRF token for second delete (DS-926)
-            csrf_token2 = _get_csrf_token(client)
+            csrf_token2 = get_csrf_token(client)
 
             # Immediate second delete should be rate limited (same file)
             response2 = client.delete("/api/orchestrations/orch-2", headers={"X-CSRF-Token": csrf_token2})
@@ -1286,7 +1276,7 @@ orchestrations:
         with patch("sentinel.dashboard.routes.logger") as mock_logger:
             with TestClient(app) as client:
                 # Get CSRF token (DS-926)
-                csrf_token = _get_csrf_token(client)
+                csrf_token = get_csrf_token(client)
 
                 client.delete("/api/orchestrations/test-orch", headers={"X-CSRF-Token": csrf_token})
 
@@ -1346,7 +1336,7 @@ orchestrations:
         with patch("sentinel.dashboard.routes.logger") as mock_logger:
             with TestClient(app) as client:
                 # Get CSRF token (DS-926)
-                csrf_token = _get_csrf_token(client)
+                csrf_token = get_csrf_token(client)
 
                 client.delete("/api/orchestrations/test-orch", headers={"X-CSRF-Token": csrf_token})
 
@@ -1380,7 +1370,7 @@ orchestrations:
         with patch("sentinel.dashboard.routes.logger") as mock_logger:
             with TestClient(app) as client:
                 # Get CSRF token (DS-926)
-                csrf_token = _get_csrf_token(client)
+                csrf_token = get_csrf_token(client)
 
                 response = client.delete("/api/orchestrations/nonexistent", headers={"X-CSRF-Token": csrf_token})
 
@@ -1436,7 +1426,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.put(
                 "/api/orchestrations/test-orch",
@@ -1462,7 +1452,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.put(
                 "/api/orchestrations/nonexistent",
@@ -1506,7 +1496,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             # Send invalid max_concurrent (must be positive integer)
             response = client.put(
@@ -1551,7 +1541,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             # Send request with no fields set (all None)
             response = client.put(
@@ -1596,7 +1586,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.put(
                 "/api/orchestrations/test-orch",
@@ -1650,7 +1640,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token for first toggle (DS-926)
-            csrf_token1 = _get_csrf_token(client)
+            csrf_token1 = get_csrf_token(client)
 
             # First toggle should succeed
             response1 = client.post(
@@ -1661,7 +1651,7 @@ orchestrations:
             assert response1.status_code == 200
 
             # Get CSRF token for second toggle (DS-926)
-            csrf_token2 = _get_csrf_token(client)
+            csrf_token2 = get_csrf_token(client)
 
             # Immediate second toggle should be rate limited
             response2 = client.post(
@@ -1717,7 +1707,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token for first toggle (DS-926)
-            csrf_token1 = _get_csrf_token(client)
+            csrf_token1 = get_csrf_token(client)
 
             with patch("sentinel.dashboard.routes.time") as mock_time:
                 mock_time.monotonic = fake_monotonic
@@ -1735,7 +1725,7 @@ orchestrations:
                 monotonic_value[0] = 1000.2
 
                 # Get CSRF token for second toggle (DS-926)
-                csrf_token2 = _get_csrf_token(client)
+                csrf_token2 = get_csrf_token(client)
 
                 # Second toggle should now succeed
                 response2 = client.post(
@@ -1780,7 +1770,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token for first bulk toggle (DS-926)
-            csrf_token1 = _get_csrf_token(client)
+            csrf_token1 = get_csrf_token(client)
 
             # First bulk toggle should succeed
             response1 = client.post(
@@ -1791,7 +1781,7 @@ orchestrations:
             assert response1.status_code == 200
 
             # Get CSRF token for second bulk toggle (DS-926)
-            csrf_token2 = _get_csrf_token(client)
+            csrf_token2 = get_csrf_token(client)
 
             # Immediate second bulk toggle should be rate limited
             response2 = client.post(
@@ -2283,7 +2273,7 @@ class TestCreateOrchestrationEndpoint:
 
         with TestClient(app) as client:
             # Get CSRF token first (DS-736)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations",
@@ -2337,7 +2327,7 @@ class TestCreateOrchestrationEndpoint:
 
         with TestClient(app) as client:
             # Get CSRF token first (DS-736)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations",
@@ -2370,7 +2360,7 @@ class TestCreateOrchestrationEndpoint:
 
         with TestClient(app) as client:
             # Get CSRF token first (DS-736)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations",
@@ -2416,7 +2406,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token first (DS-736)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.post(
                 "/api/orchestrations",
@@ -2553,187 +2543,133 @@ class TestOrchestrationFilesEndpoint:
 class TestCsrfProtection:
     """Tests for CSRF protection on state-changing endpoints (DS-935)."""
 
-    def test_toggle_orchestration_missing_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    @pytest.fixture
+    def csrf_client(self, temp_logs_dir: Path) -> Generator[TestClient, None, None]:
+        """Provide a TestClient with CSRF-protected routes for testing.
+
+        Sets up the standard Config/MockSentinel/MockStateAccessor/create_test_app
+        pipeline used by all CSRF protection tests, eliminating the repeated 4-line
+        setup pattern (DS-944).
+
+        Yields:
+            A TestClient connected to a test app with CSRF protection enabled.
+        """
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
+        app = create_test_app(accessor)
+        with TestClient(app) as client:
+            yield client
+
+    def test_toggle_orchestration_missing_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token header is absent."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.post(
+            "/api/orchestrations/test-orch/toggle",
+            json={"enabled": False},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/orchestrations/test-orch/toggle",
-                json={"enabled": False},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_toggle_orchestration_invalid_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_toggle_orchestration_invalid_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token is invalid."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.post(
+            "/api/orchestrations/test-orch/toggle",
+            json={"enabled": False},
+            headers={"X-CSRF-Token": "invalid-token-value"},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/orchestrations/test-orch/toggle",
-                json={"enabled": False},
-                headers={"X-CSRF-Token": "invalid-token-value"},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_bulk_toggle_missing_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_bulk_toggle_missing_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token header is absent."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.post(
+            "/api/orchestrations/bulk-toggle",
+            json={"source": "jira", "identifier": "TEST", "enabled": False},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/orchestrations/bulk-toggle",
-                json={"source": "jira", "identifier": "TEST", "enabled": False},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_bulk_toggle_invalid_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_bulk_toggle_invalid_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token is invalid."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.post(
+            "/api/orchestrations/bulk-toggle",
+            json={"source": "jira", "identifier": "TEST", "enabled": False},
+            headers={"X-CSRF-Token": "invalid-token-value"},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/orchestrations/bulk-toggle",
-                json={"source": "jira", "identifier": "TEST", "enabled": False},
-                headers={"X-CSRF-Token": "invalid-token-value"},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_edit_orchestration_missing_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_edit_orchestration_missing_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token header is absent."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.put(
+            "/api/orchestrations/test-orch",
+            json={"enabled": False},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.put(
-                "/api/orchestrations/test-orch",
-                json={"enabled": False},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_edit_orchestration_invalid_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_edit_orchestration_invalid_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token is invalid."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.put(
+            "/api/orchestrations/test-orch",
+            json={"enabled": False},
+            headers={"X-CSRF-Token": "invalid-token-value"},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.put(
-                "/api/orchestrations/test-orch",
-                json={"enabled": False},
-                headers={"X-CSRF-Token": "invalid-token-value"},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_delete_orchestration_missing_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_delete_orchestration_missing_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token header is absent."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.delete("/api/orchestrations/test-orch")
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.delete("/api/orchestrations/test-orch")
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_delete_orchestration_invalid_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_delete_orchestration_invalid_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token is invalid."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.delete(
+            "/api/orchestrations/test-orch",
+            headers={"X-CSRF-Token": "invalid-token-value"},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.delete(
-                "/api/orchestrations/test-orch",
-                headers={"X-CSRF-Token": "invalid-token-value"},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_create_orchestration_missing_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_create_orchestration_missing_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token header is absent."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.post(
+            "/api/orchestrations",
+            json={"name": "test", "target_file": "test.yaml"},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/orchestrations",
-                json={"name": "test", "target_file": "test.yaml"},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_create_orchestration_invalid_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_create_orchestration_invalid_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token is invalid."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.post(
+            "/api/orchestrations",
+            json={"name": "test", "target_file": "test.yaml"},
+            headers={"X-CSRF-Token": "invalid-token-value"},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/orchestrations",
-                json={"name": "test", "target_file": "test.yaml"},
-                headers={"X-CSRF-Token": "invalid-token-value"},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_update_file_trigger_missing_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_update_file_trigger_missing_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token header is absent."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        response = csrf_client.put(
+            "/api/orchestrations/files/test.yaml/trigger",
+            json={"source": "jira"},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
-        with TestClient(app) as client:
-            response = client.put(
-                "/api/orchestrations/files/test.yaml/trigger",
-                json={"source": "jira"},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
-
-    def test_update_file_trigger_invalid_csrf_returns_403(self, temp_logs_dir: Path) -> None:
+    def test_update_file_trigger_invalid_csrf_returns_403(self, csrf_client: TestClient) -> None:
         """Verify 403 when CSRF token is invalid."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
-            response = client.put(
-                "/api/orchestrations/files/test.yaml/trigger",
-                json={"source": "jira"},
-                headers={"X-CSRF-Token": "invalid-token-value"},
-            )
-            assert response.status_code == 403
-            assert "csrf" in response.json()["detail"].lower()
+        response = csrf_client.put(
+            "/api/orchestrations/files/test.yaml/trigger",
+            json={"source": "jira"},
+            headers={"X-CSRF-Token": "invalid-token-value"},
+        )
+        assert response.status_code == 403
+        assert "csrf" in response.json()["detail"].lower()
 
 
 class TestCsrfTokenRateLimiting:

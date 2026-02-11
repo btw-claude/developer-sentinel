@@ -12,6 +12,7 @@ Usage:
 
         from tests.helpers import (
             assert_call_args_length,
+            get_csrf_token,
             make_completed_execution_info,
             make_config,
             make_orchestration,
@@ -35,6 +36,8 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from unittest.mock import _Call
+
+    from fastapi.testclient import TestClient
 
     from sentinel.agent_clients.base import UsageInfo
     from sentinel.router import Router
@@ -66,6 +69,22 @@ from sentinel.orchestration import (
 from sentinel.poller import JiraIssue
 from sentinel.state_tracker import CompletedExecutionInfo
 from sentinel.types import AgentType
+
+
+def get_csrf_token(client: TestClient) -> str:
+    """Fetch a fresh CSRF token from the test server.
+
+    Shared helper to reduce boilerplate in tests that exercise state-changing
+    endpoints protected by CSRF validation (DS-935).
+
+    Args:
+        client: The FastAPI TestClient to fetch the CSRF token from.
+
+    Returns:
+        The CSRF token string.
+    """
+    resp = client.get("/api/csrf-token")
+    return resp.json()["csrf_token"]
 
 
 def make_config(

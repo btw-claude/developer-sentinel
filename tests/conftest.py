@@ -53,6 +53,7 @@ from sentinel.deduplication import build_github_trigger_key
 # Re-export helpers for backwards compatibility with existing test imports
 from tests.helpers import (
     assert_call_args_length,
+    get_csrf_token,
     make_agent_factory,
     make_config,
     make_issue,
@@ -92,6 +93,7 @@ __all__ = [
     "assert_call_args_length",
     "build_github_trigger_key",
     "create_test_app",
+    "get_csrf_token",
     "make_agent_factory",
     "make_config",
     "make_issue",

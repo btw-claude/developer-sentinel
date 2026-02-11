@@ -37,16 +37,7 @@ from sentinel.orchestration_edit import (
     _validate_orchestration_updates,
 )
 from tests.conftest import create_test_app
-
-
-def _get_csrf_token(client: TestClient) -> str:
-    """Fetch a fresh CSRF token from the test server.
-
-    Helper to reduce boilerplate in tests that exercise state-changing
-    endpoints protected by CSRF validation (DS-935).
-    """
-    resp = client.get("/api/csrf-token")
-    return resp.json()["csrf_token"]
+from tests.helpers import get_csrf_token
 
 
 class TestBuildYamlUpdates:
@@ -1171,7 +1162,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.put(
                 "/api/orchestrations/test-orch",
@@ -1222,7 +1213,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.put(
                 "/api/orchestrations/test-orch",
@@ -1281,7 +1272,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             # Send updates with errors in multiple sections (orchestration-level validation)
             response = client.put(
@@ -1346,7 +1337,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             # cursor_mode="agent" with agent_type="claude" is invalid combo,
             # timeout_seconds=-5 is out-of-range — both pass Pydantic but
@@ -1386,7 +1377,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.put(
                 "/api/orchestrations/nonexistent",
@@ -1434,7 +1425,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             # First edit should succeed
             response1 = client.put(
@@ -1490,7 +1481,7 @@ orchestrations:
 
         with TestClient(app) as client:
             # Get CSRF token (DS-926)
-            csrf_token = _get_csrf_token(client)
+            csrf_token = get_csrf_token(client)
 
             response = client.put(
                 "/api/orchestrations/test-orch",
