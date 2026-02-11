@@ -168,7 +168,8 @@ match_dir = "^(?!tests).*"
 # Ignore certain rules that are overly strict or don't apply well:
 # D102: Missing docstring in public method - not always needed for simple methods
 # D103: Missing docstring in public function - false positive on PEP 695 type parameter
-#       syntax (def func[T](...)) which pydocstyle 6.3.0 cannot parse (DS-902)
+#       syntax (def func[T](...)) which pydocstyle 6.3.0 cannot parse (DS-902).
+#       Re-enable once pydocstyle supports PEP 695 (tracked in DS-903).
 # D105: Missing docstring in magic method - magic methods are self-documenting
 # D107: Missing docstring in __init__ - class docstring is often sufficient
 # D214: Section is over-indented - flexible indentation in examples is acceptable
