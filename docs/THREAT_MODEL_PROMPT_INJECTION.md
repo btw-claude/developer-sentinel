@@ -165,7 +165,12 @@ The current codebase applies length limits inconsistently:
 
 ### Recommendations
 
-- Apply explicit length truncation to all template variable values before substitution. A reasonable default would be 10,000 characters for description/body fields and 500 characters for title/summary fields. The 10,000 character limit balances several considerations: it is well above the typical size of legitimate Jira descriptions and GitHub issue bodies (which rarely exceed 5,000 characters), while remaining a small fraction of LLM context windows (typically 100K–200K tokens). This constrains the injection surface area an attacker can use to craft adversarial prompts, limits the token budget consumed by any single untrusted field, and still accommodates detailed technical specifications or reproduction steps that operators may include in legitimate issues.
+- Apply explicit length truncation to all template variable values before substitution. A reasonable default would be 10,000 characters for description/body fields and 500 characters for title/summary fields. The 10,000 character limit balances several considerations:
+  - Well above the typical size of legitimate Jira descriptions and GitHub issue bodies (which rarely exceed 5,000 characters)
+  - Remains a small fraction of LLM context windows (typically 100K–200K tokens)
+  - Constrains the injection surface area an attacker can use to craft adversarial prompts
+  - Limits the token budget consumed by any single untrusted field
+  - Still accommodates detailed technical specifications or reproduction steps that operators may include in legitimate issues
 - Document the configured limits so operators can tune them for their use cases.
 - Log a warning when truncation occurs, including the original length and the truncated length.
 
