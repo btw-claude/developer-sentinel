@@ -14,6 +14,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
+from cachetools import TTLCache
+
 from sentinel.config import DEFAULT_GREEN_THRESHOLD, DEFAULT_YELLOW_THRESHOLD
 from sentinel.logging import generate_log_filename, parse_log_filename
 from sentinel.types import TriggerSource
@@ -558,6 +560,11 @@ class SentinelStateAccessor:
     easier to test and maintain independently.
     """
 
+    # TTL in seconds for the dashboard state cache. Rapid successive requests
+    # within this window (e.g., HTMX auto-refresh every 2-5 seconds) reuse the
+    # same computed DashboardState, avoiding redundant CPU and memory churn.
+    _STATE_CACHE_TTL: float = 1.0
+
     def __init__(self, sentinel: SentinelStateProvider) -> None:
         """Initialize the state accessor.
 
@@ -565,9 +572,35 @@ class SentinelStateAccessor:
             sentinel: An object implementing SentinelStateProvider protocol.
         """
         self._sentinel = sentinel
+        self._state_cache: TTLCache[str, DashboardState] = TTLCache(
+            maxsize=1, ttl=self._STATE_CACHE_TTL
+        )
 
     def get_state(self) -> DashboardState:
         """Get a snapshot of the current Sentinel state.
+
+        Returns a cached DashboardState if one exists within the TTL window,
+        otherwise rebuilds the full state and caches the result. This avoids
+        redundant computation under rapid successive requests (e.g., HTMX
+        auto-refresh every 2-5 seconds).
+
+        Returns:
+            An immutable DashboardState object containing current state.
+        """
+        cached = self._state_cache.get("state")
+        if cached is not None:
+            return cached
+
+        state = self._build_state()
+        self._state_cache["state"] = state
+        return state
+
+    def _build_state(self) -> DashboardState:
+        """Build a fresh DashboardState snapshot from the provider.
+
+        This method performs the full state computation: iterating all active
+        orchestrations, completed executions, running steps, issue queues,
+        and computing per-orchestration statistics.
 
         Returns:
             An immutable DashboardState object containing current state.

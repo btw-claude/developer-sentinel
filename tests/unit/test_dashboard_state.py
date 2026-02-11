@@ -2,12 +2,14 @@
 
 Tests for the _compute_execution_stats method of SentinelStateAccessor,
 verifying global summary statistics and per-orchestration grouping.
-Also tests for configurable success rate thresholds propagation to DashboardState.
+Also tests for configurable success rate thresholds propagation to DashboardState,
+and TTL caching behavior of get_state().
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 from sentinel.config import (
     DEFAULT_GREEN_THRESHOLD,
@@ -17,6 +19,7 @@ from sentinel.config import (
 )
 from sentinel.dashboard.state import (
     CompletedExecutionInfoView,
+    DashboardState,
     ExecutionSummaryStats,
     SentinelStateAccessor,
     ServiceHealthInfo,
@@ -824,3 +827,78 @@ class TestServiceHealthInDashboardState:
         assert len(state.service_health) == 2
         names = {svc.service_name for svc in state.service_health}
         assert names == {"jira", "github"}
+
+
+class TestGetStateTTLCache:
+    """Tests for TTL cache behavior in SentinelStateAccessor.get_state()."""
+
+    def test_get_state_returns_cached_result_on_second_call(self) -> None:
+        """Test that consecutive get_state() calls return the same cached object."""
+        accessor = _create_accessor()
+        state1 = accessor.get_state()
+        state2 = accessor.get_state()
+
+        assert state1 is state2
+
+    def test_get_state_returns_dashboard_state(self) -> None:
+        """Test that get_state() returns a DashboardState instance."""
+        accessor = _create_accessor()
+        state = accessor.get_state()
+
+        assert isinstance(state, DashboardState)
+
+    def test_get_state_rebuilds_after_cache_expiry(self) -> None:
+        """Test that get_state() rebuilds state after TTL cache expires."""
+        accessor = _create_accessor()
+        state1 = accessor.get_state()
+
+        # Manually clear the cache to simulate TTL expiry
+        accessor._state_cache.clear()
+
+        state2 = accessor.get_state()
+
+        # Both should be valid DashboardState objects but different instances
+        assert isinstance(state1, DashboardState)
+        assert isinstance(state2, DashboardState)
+        assert state1 is not state2
+
+    def test_get_state_cache_has_correct_ttl(self) -> None:
+        """Test that the state cache is configured with the expected TTL."""
+        accessor = _create_accessor()
+
+        assert accessor._state_cache.ttl == SentinelStateAccessor._STATE_CACHE_TTL
+
+    def test_get_state_cache_has_maxsize_one(self) -> None:
+        """Test that the state cache has maxsize=1."""
+        accessor = _create_accessor()
+
+        assert accessor._state_cache.maxsize == 1
+
+    def test_get_state_cache_ttl_is_one_second(self) -> None:
+        """Test that the default TTL is 1 second."""
+        assert SentinelStateAccessor._STATE_CACHE_TTL == 1.0
+
+    def test_build_state_bypasses_cache(self) -> None:
+        """Test that _build_state() always computes fresh state."""
+        accessor = _create_accessor()
+        state1 = accessor._build_state()
+        state2 = accessor._build_state()
+
+        # _build_state always returns a new instance
+        assert state1 is not state2
+        assert isinstance(state1, DashboardState)
+        assert isinstance(state2, DashboardState)
+
+    def test_get_state_does_not_call_build_state_when_cached(self) -> None:
+        """Test that get_state() skips _build_state() when cache is populated."""
+        accessor = _create_accessor()
+
+        # First call populates the cache
+        accessor.get_state()
+
+        # Patch _build_state to verify it's NOT called on second invocation
+        with patch.object(accessor, "_build_state") as mock_build:
+            state = accessor.get_state()
+
+        mock_build.assert_not_called()
+        assert isinstance(state, DashboardState)
