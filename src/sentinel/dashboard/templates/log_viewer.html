@@ -212,9 +212,9 @@
 
     <div class="log-controls">
         <div class="log-select-group">
-            <label for="orchestration-select">Orchestration:</label>
-            <select id="orchestration-select">
-                <option value="">Select orchestration...</option>
+            <label for="step-select">Step:</label>
+            <select id="step-select">
+                <option value="">Select step...</option>
                 {% for log_file in log_files %}
                 <option value="{{ log_file.orchestration }}">{{ log_file.orchestration }}</option>
                 {% endfor %}
@@ -265,11 +265,11 @@ const logFilesData = {{ log_files | tojson | safe }};
 let eventSource = null;
 let isPaused = false;
 let autoScroll = true;
-let currentOrchestration = '';
+let currentStep = '';
 let currentLogFile = '';
 
 // DOM elements
-const orchestrationSelect = document.getElementById('orchestration-select');
+const stepSelect = document.getElementById('step-select');
 const logfileSelect = document.getElementById('logfile-select');
 const logContent = document.getElementById('log-content');
 const pauseBtn = document.getElementById('pause-btn');
@@ -301,22 +301,22 @@ function wrapEmptyState(text, subtitle) {
     return div.outerHTML;
 }
 
-// Update log file dropdown when orchestration changes
+// Update log file dropdown when step changes
 function updateLogFileOptions() {
-    const orchestration = orchestrationSelect.value;
-    currentOrchestration = orchestration;
+    const step = stepSelect.value;
+    currentStep = step;
 
     // Clear current selection
     logfileSelect.innerHTML = '<option value="">Select log file...</option>';
 
-    if (!orchestration) {
+    if (!step) {
         return;
     }
 
-    // Find files for this orchestration
-    const orchData = logFilesData.find(d => d.orchestration === orchestration);
-    if (orchData && orchData.files) {
-        orchData.files.forEach(file => {
+    // Find files for this step
+    const stepData = logFilesData.find(d => d.orchestration === step);
+    if (stepData && stepData.files) {
+        stepData.files.forEach(file => {
             const option = document.createElement('option');
             option.value = file.filename;
             option.textContent = file.display_name;
@@ -333,7 +333,7 @@ function loadLogFile() {
     // Close existing connection
     closeSSE();
 
-    if (!currentOrchestration || !logFile) {
+    if (!currentStep || !logFile) {
         logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT, UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT_SUBTITLE);
         logTitle.textContent = UI_MESSAGES.LOG_VIEWER.NO_FILE_SELECTED;
         pauseBtn.disabled = true;
@@ -341,7 +341,7 @@ function loadLogFile() {
     }
 
     // Update title
-    logTitle.textContent = `${currentOrchestration}/${logFile}`;
+    logTitle.textContent = `${currentStep}/${logFile}`;
     pauseBtn.disabled = false;
 
     // Clear content and show loading
@@ -353,11 +353,11 @@ function loadLogFile() {
 
 // Connect to SSE endpoint
 function connectSSE() {
-    if (!currentOrchestration || !currentLogFile) {
+    if (!currentStep || !currentLogFile) {
         return;
     }
 
-    const url = `/api/logs/stream/${encodeURIComponent(currentOrchestration)}/${encodeURIComponent(currentLogFile)}`;
+    const url = `/api/logs/stream/${encodeURIComponent(currentStep)}/${encodeURIComponent(currentLogFile)}`;
     eventSource = new EventSource(url);
 
     eventSource.onopen = function() {
@@ -391,7 +391,7 @@ function connectSSE() {
         updateStatus(false);
         // Try to reconnect after 5 seconds
         setTimeout(() => {
-            if (currentOrchestration && currentLogFile && !isPaused) {
+            if (currentStep && currentLogFile && !isPaused) {
                 connectSSE();
             }
         }, 5000);
@@ -514,7 +514,7 @@ window.addEventListener('beforeunload', function() {
 });
 
 // Event listeners for controls (replacing inline handlers with addEventListener)
-orchestrationSelect.addEventListener('change', updateLogFileOptions);
+stepSelect.addEventListener('change', updateLogFileOptions);
 logfileSelect.addEventListener('change', loadLogFile);
 pauseBtn.addEventListener('click', togglePause);
 document.getElementById('refresh-btn').addEventListener('click', refreshLogFiles);
@@ -529,14 +529,15 @@ logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT, UI_M
 // Added user feedback when invalid URL parameters are detected
 (function initFromUrlParams() {
     const params = new URLSearchParams(window.location.search);
+    // Keep 'orchestration' URL param for backward compat with Running Steps links
     const step = params.get('orchestration');
     const file = params.get('file');
 
     if (step) {
         // Validate step parameter exists in dropdown before selecting
-        const stepOption = Array.from(orchestrationSelect.options).find(opt => opt.value === step);
+        const stepOption = Array.from(stepSelect.options).find(opt => opt.value === step);
         if (stepOption) {
-            orchestrationSelect.value = step;
+            stepSelect.value = step;
             updateLogFileOptions();
 
             if (file) {
