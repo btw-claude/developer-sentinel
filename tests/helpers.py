@@ -53,6 +53,7 @@ from sentinel.config import (
     RateLimitConfig,
     ServiceHealthGateConfig,
 )
+from sentinel.github_poller import GitHubIssue
 from sentinel.orchestration import (
     AgentConfig,
     GitHubContext,
@@ -361,6 +362,61 @@ def make_issue(
         links=links or [],
         epic_key=epic_key,
         parent_key=parent_key,
+    )
+
+
+def make_github_issue(
+    number: int = 1,
+    title: str = "Test Issue",
+    body: str = "Test body",
+    state: str = "open",
+    author: str = "testuser",
+    assignees: list[str] | None = None,
+    labels: list[str] | None = None,
+    is_pull_request: bool = False,
+    head_ref: str = "",
+    base_ref: str = "",
+    draft: bool = False,
+    repo_url: str = "https://github.com/org/repo/issues/1",
+    parent_issue_number: int | None = None,
+) -> GitHubIssue:
+    """Create a GitHubIssue instance for testing.
+
+    Provides sensible defaults for all issue fields, with the ability
+    to override any parameter.
+
+    Args:
+        number: The GitHub issue or PR number.
+        title: Issue title.
+        body: Issue body text.
+        state: Issue state (e.g., "open", "closed").
+        author: GitHub username of the author.
+        assignees: List of assigned GitHub usernames.
+        labels: List of labels on the issue.
+        is_pull_request: Whether this is a pull request.
+        head_ref: Head branch ref (for PRs).
+        base_ref: Base branch ref (for PRs).
+        draft: Whether the PR is a draft.
+        repo_url: The GitHub repository URL for this issue.
+        parent_issue_number: Parent issue number (if applicable).
+
+    Returns:
+        A GitHubIssue instance with the specified parameters.
+    """
+    return GitHubIssue(
+        number=number,
+        title=title,
+        body=body,
+        state=state,
+        author=author,
+        assignees=assignees or [],
+        labels=labels or [],
+        is_pull_request=is_pull_request,
+        head_ref=head_ref,
+        base_ref=base_ref,
+        draft=draft,
+        repo_url=repo_url,
+        parent_issue_number=parent_issue_number,
     )
 
 

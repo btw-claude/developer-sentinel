@@ -15,6 +15,12 @@ exercised by test_execution_manager_ttl.py. Focus areas include:
 - get_futures_stats comprehensive validation
 """
 
+# NOTE: This test module intentionally accesses private attributes (e.g.,
+# _active_futures, _futures_lock, _future_ttl_seconds) for white-box testing
+# of internal ExecutionManager state. This is deliberate and provides coverage
+# of internal error handling and state management paths that cannot be tested
+# through the public API alone.
+
 from __future__ import annotations
 
 import threading
@@ -31,6 +37,25 @@ from sentinel.execution_manager import (
     ExecutionManager,
     TrackedFuture,
 )
+
+
+def _make_manager(
+    max_concurrent_executions: int = 2,
+    future_ttl_seconds: float = 9999,
+    max_futures: int = 1000,
+    stale_removal_fraction: float = 0.5,
+) -> ExecutionManager:
+    """Create an ExecutionManager with sensible test defaults.
+
+    Centralizes manager creation to reduce boilerplate across test classes.
+    Uses a high TTL by default to avoid stale-cleanup interference.
+    """
+    return ExecutionManager(
+        max_concurrent_executions=max_concurrent_executions,
+        future_ttl_seconds=future_ttl_seconds,
+        max_futures=max_futures,
+        stale_removal_fraction=stale_removal_fraction,
+    )
 
 # ---------------------------------------------------------------------------
 # 1. Lifecycle: start(), shutdown(), is_running()
@@ -247,16 +272,9 @@ class TestExecutionManagerSubmit:
 class TestCollectCompletedResultsErrors:
     """Tests for error handling branches in collect_completed_results."""
 
-    def _make_manager(self) -> ExecutionManager:
-        """Create a manager with a high TTL so stale cleanup does not interfere."""
-        return ExecutionManager(
-            max_concurrent_executions=2,
-            future_ttl_seconds=9999,
-        )
-
     def test_future_raises_os_error(self) -> None:
         """An OSError from future.result() should be logged, not propagated."""
-        manager = self._make_manager()
+        manager = _make_manager()
 
         future: Future[None] = Future()
         future.set_exception(OSError("disk full"))
@@ -269,13 +287,14 @@ class TestCollectCompletedResultsErrors:
             assert results == []
             io_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "I/O or timeout" in str(c) and "disk full" in str(c)
+                if "I/O or timeout" in c.args[0]
             ]
             assert len(io_calls) == 1
+            assert "disk full" in str(io_calls[0].args[1])
 
     def test_future_raises_timeout_error(self) -> None:
         """A TimeoutError from future.result() should be caught by the OSError/TimeoutError branch."""
-        manager = self._make_manager()
+        manager = _make_manager()
 
         future: Future[None] = Future()
         future.set_exception(TimeoutError("timed out"))
@@ -288,13 +307,14 @@ class TestCollectCompletedResultsErrors:
             assert results == []
             io_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "I/O or timeout" in str(c) and "timed out" in str(c)
+                if "I/O or timeout" in c.args[0]
             ]
             assert len(io_calls) == 1
+            assert "timed out" in str(io_calls[0].args[1])
 
     def test_future_raises_runtime_error(self) -> None:
         """A RuntimeError from future.result() should be logged."""
-        manager = self._make_manager()
+        manager = _make_manager()
 
         future: Future[None] = Future()
         future.set_exception(RuntimeError("bad state"))
@@ -307,13 +327,14 @@ class TestCollectCompletedResultsErrors:
             assert results == []
             rt_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "runtime error" in str(c) and "bad state" in str(c)
+                if "runtime error" in c.args[0]
             ]
             assert len(rt_calls) == 1
+            assert "bad state" in str(rt_calls[0].args[1])
 
     def test_future_raises_key_error(self) -> None:
         """A KeyError from future.result() should be logged as data error."""
-        manager = self._make_manager()
+        manager = _make_manager()
 
         future: Future[None] = Future()
         future.set_exception(KeyError("missing_key"))
@@ -327,13 +348,13 @@ class TestCollectCompletedResultsErrors:
             # Verify any error call mentioning data error was made
             data_error_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "data error" in str(c)
+                if "data error" in c.args[0]
             ]
             assert len(data_error_calls) >= 1
 
     def test_future_raises_value_error(self) -> None:
         """A ValueError from future.result() should be logged as data error."""
-        manager = self._make_manager()
+        manager = _make_manager()
 
         future: Future[None] = Future()
         future.set_exception(ValueError("bad value"))
@@ -346,13 +367,13 @@ class TestCollectCompletedResultsErrors:
             assert results == []
             data_error_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "data error" in str(c)
+                if "data error" in c.args[0]
             ]
             assert len(data_error_calls) >= 1
 
     def test_future_returns_none_result(self) -> None:
         """A future that returns None should not add anything to results."""
-        manager = self._make_manager()
+        manager = _make_manager()
 
         future: Future[None] = Future()
         future.set_result(None)
@@ -365,7 +386,7 @@ class TestCollectCompletedResultsErrors:
 
     def test_future_returns_valid_result(self) -> None:
         """A future that returns a non-None result should be included in results."""
-        manager = self._make_manager()
+        manager = _make_manager()
 
         sentinel_result = MagicMock()
         future: Future[MagicMock] = Future()
@@ -404,9 +425,10 @@ class TestExecuteSynchronously:
             assert result is None
             io_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "I/O or timeout" in str(c) and "disk failure" in str(c)
+                if "I/O or timeout" in c.args[0]
             ]
             assert len(io_calls) == 1
+            assert "disk failure" in str(io_calls[0].args[1])
 
     def test_timeout_error_returns_none(self) -> None:
         """TimeoutError during synchronous execution should return None and log."""
@@ -420,9 +442,10 @@ class TestExecuteSynchronously:
             assert result is None
             io_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "I/O or timeout" in str(c) and "timed out" in str(c)
+                if "I/O or timeout" in c.args[0]
             ]
             assert len(io_calls) == 1
+            assert "timed out" in str(io_calls[0].args[1])
 
     def test_runtime_error_returns_none(self) -> None:
         """RuntimeError during synchronous execution should return None and log."""
@@ -436,9 +459,10 @@ class TestExecuteSynchronously:
             assert result is None
             rt_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "runtime error" in str(c) and "runtime issue" in str(c)
+                if "runtime error" in c.args[0]
             ]
             assert len(rt_calls) == 1
+            assert "runtime issue" in str(rt_calls[0].args[1])
 
     def test_key_error_returns_none(self) -> None:
         """KeyError during synchronous execution should return None and log."""
@@ -452,7 +476,7 @@ class TestExecuteSynchronously:
             assert result is None
             data_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "data error" in str(c)
+                if "data error" in c.args[0]
             ]
             assert len(data_calls) == 1
 
@@ -468,7 +492,7 @@ class TestExecuteSynchronously:
             assert result is None
             data_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "data error" in str(c)
+                if "data error" in c.args[0]
             ]
             assert len(data_calls) == 1
 
@@ -538,7 +562,7 @@ class TestCleanupCompletedFutures:
             assert cleaned == 1
             runtime_io_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "runtime/I/O error" in str(c)
+                if "runtime/I/O error" in c.args[0]
             ]
             assert len(runtime_io_calls) >= 1
 
@@ -560,7 +584,7 @@ class TestCleanupCompletedFutures:
             assert cleaned == 1
             runtime_io_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "runtime/I/O error" in str(c)
+                if "runtime/I/O error" in c.args[0]
             ]
             assert len(runtime_io_calls) >= 1
 
@@ -582,7 +606,7 @@ class TestCleanupCompletedFutures:
             assert cleaned == 1
             data_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "data error" in str(c)
+                if "data error" in c.args[0]
             ]
             assert len(data_calls) >= 1
 
@@ -604,7 +628,7 @@ class TestCleanupCompletedFutures:
             assert cleaned == 1
             data_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "data error" in str(c)
+                if "data error" in c.args[0]
             ]
             assert len(data_calls) >= 1
 
@@ -903,7 +927,7 @@ class TestEnforceMaxFuturesLimit:
             # Warning about max futures limit should have been logged
             stale_warning_calls = [
                 c for c in mock_logger.warning.call_args_list
-                if "Max futures limit" in str(c)
+                if "Max futures limit" in c.args[0]
             ]
             assert len(stale_warning_calls) >= 1
 
@@ -1017,7 +1041,7 @@ class TestLogLongRunningFutures:
 
             warning_calls = [
                 c for c in mock_logger.warning.call_args_list
-                if "Long-running future detected" in str(c)
+                if "Long-running future detected" in c.args[0]
             ]
             assert len(warning_calls) == 1
 
@@ -1045,13 +1069,13 @@ class TestLogLongRunningFutures:
             # Should have DEBUG, not WARNING
             debug_calls = [
                 c for c in mock_logger.debug.call_args_list
-                if "Long-running future detected" in str(c)
+                if "Long-running future detected" in c.args[0]
             ]
             assert len(debug_calls) == 1
 
             warning_calls = [
                 c for c in mock_logger.warning.call_args_list
-                if "Long-running future detected" in str(c)
+                if "Long-running future detected" in c.args[0]
             ]
             assert len(warning_calls) == 0
 
@@ -1075,7 +1099,7 @@ class TestLogLongRunningFutures:
 
             warning_calls = [
                 c for c in mock_logger.warning.call_args_list
-                if "Long-running future detected" in str(c)
+                if "Long-running future detected" in c.args[0]
             ]
             assert len(warning_calls) == 1
 
@@ -1102,7 +1126,7 @@ class TestLogLongRunningFutures:
             # No long-running warnings should be logged for done futures
             warning_calls = [
                 c for c in mock_logger.warning.call_args_list
-                if "Long-running future detected" in str(c)
+                if "Long-running future detected" in c.args[0]
             ]
             assert len(warning_calls) == 0
 
@@ -1124,7 +1148,7 @@ class TestLogLongRunningFutures:
 
             warning_calls = [
                 c for c in mock_logger.warning.call_args_list
-                if "unnamed task" in str(c)
+                if "unnamed task" in c.args[0]
             ]
             assert len(warning_calls) == 1
 
@@ -1221,7 +1245,7 @@ class TestCleanupStaleFutures:
 
             error_calls = [
                 c for c in mock_logger.error.call_args_list
-                if "Future exceeded TTL" in str(c) and "hung task" in str(c)
+                if "Future exceeded TTL" in c.args[0] and "hung task" in c.args[0]
             ]
             assert len(error_calls) == 1
 
@@ -1318,7 +1342,7 @@ class TestGetFuturesStatsComprehensive:
         """Stats should correctly handle a mix of completed, pending, stale, long-running."""
         manager = ExecutionManager(
             max_concurrent_executions=10,
-            future_ttl_seconds=50,
+            future_ttl_seconds=500,
         )
 
         now = time.monotonic()
@@ -1336,14 +1360,7 @@ class TestGetFuturesStatsComprehensive:
             TrackedFuture(future=f_fresh, description="fresh", created_at=now - 1)
         )
 
-        # 1 long-running pending future (not stale, TTL=50s, but > 60s threshold)
-        # This won't be stale because TTL is 50s and age is 70s, so it IS stale actually.
-        # Let's make it long-running but not stale: age > 60 but < TTL.
-        # With TTL=50, anything over 50 is stale. So set TTL higher.
-        # Actually let's just set individual ages carefully.
-        # We'll use TTL=500 so 70s is not stale but IS long-running.
-        manager._future_ttl_seconds = 500
-
+        # 1 long-running pending future (not stale because TTL=500s, but > 60s threshold)
         f_long: Future[int] = Future()
         manager._active_futures.append(
             TrackedFuture(
@@ -1353,8 +1370,7 @@ class TestGetFuturesStatsComprehensive:
             )
         )
 
-        # 1 stale pending future (age > TTL)
-        manager._future_ttl_seconds = 500  # Keep high TTL
+        # 1 stale pending future (age > TTL of 500s)
         f_stale: Future[int] = Future()
         manager._active_futures.append(
             TrackedFuture(
