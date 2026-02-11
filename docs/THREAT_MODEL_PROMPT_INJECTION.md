@@ -14,7 +14,7 @@ Sentinel's prompt construction has two distinct substitution layers with differe
 
 ### Layer 1: Template Variable Substitution (Unsanitized)
 
-**File:** `src/sentinel/executor.py`, `build_prompt()` (lines 621–678)
+**File:** `src/sentinel/executor.py`, `build_prompt()` (around line 619)
 
 The `build_prompt()` method performs regex-based substitution of `{variable_name}` patterns in the orchestration prompt template. Template variables include untrusted content from external sources:
 
@@ -31,7 +31,7 @@ The `build_prompt()` method performs regex-based substitution of `{variable_name
 
 ### Layer 2: Context Dict Sanitization (Sanitized)
 
-**File:** `src/sentinel/agent_clients/base.py`, `_build_prompt_with_context()` (line 177)
+**File:** `src/sentinel/agent_clients/base.py`, `_build_prompt_with_context()` (around line 177)
 
 The `_build_prompt_with_context()` method appends a `Context:` section to the prompt using a separate `context` dict (typically containing GitHub repository metadata like host, org, repo). This layer **does** apply sanitization (DS-666, DS-675):
 
@@ -51,12 +51,12 @@ An attacker's payload in a Jira description or GitHub issue body passes through 
 
 ## Permission Model: bypassPermissions
 
-**File:** `src/sentinel/agent_clients/claude_sdk.py`, lines 434 and 870
+**File:** `src/sentinel/agent_clients/claude_sdk.py` (around lines 434 and 870)
 
 The Claude Agent SDK is invoked with `permission_mode="bypassPermissions"` in both code paths:
 
-1. `_run_query()` (line 434) — used by `_run_simple()`
-2. `_run_with_log()` (line 870) — used for streaming log execution
+1. `_run_query()` (around line 434) — used by `_run_simple()`
+2. `_run_with_log()` (around line 870) — used for streaming log execution
 
 This permission mode grants the agent **unrestricted capabilities**:
 
@@ -165,7 +165,7 @@ The current codebase applies length limits inconsistently:
 
 ### Recommendations
 
-- Apply explicit length truncation to all template variable values before substitution. A reasonable default would be 10,000 characters for description/body fields and 500 characters for title/summary fields.
+- Apply explicit length truncation to all template variable values before substitution. A reasonable default would be 10,000 characters for description/body fields and 500 characters for title/summary fields. The 10,000 character limit balances several considerations: it is well above the typical size of legitimate Jira descriptions and GitHub issue bodies (which rarely exceed 5,000 characters), while remaining a small fraction of LLM context windows (typically 100K–200K tokens). This constrains the injection surface area an attacker can use to craft adversarial prompts, limits the token budget consumed by any single untrusted field, and still accommodates detailed technical specifications or reproduction steps that operators may include in legitimate issues.
 - Document the configured limits so operators can tune them for their use cases.
 - Log a warning when truncation occurs, including the original length and the truncated length.
 
@@ -204,6 +204,6 @@ Orchestration YAML prompt template
 - **DS-666**: Initial context sanitization implementation
 - **DS-675**: Extracted shared sanitization to `_build_prompt_with_context()` in `base.py`
 - **DS-934**: This threat model document
-- `src/sentinel/agent_clients/claude_sdk.py`: `bypassPermissions` usage (lines 434, 870)
-- `src/sentinel/executor.py`: Template variable substitution (lines 621–678)
-- `src/sentinel/agent_clients/base.py`: Context dict sanitization (line 177)
+- `src/sentinel/agent_clients/claude_sdk.py`: `bypassPermissions` usage (around lines 434, 870)
+- `src/sentinel/executor.py`: Template variable substitution in `build_prompt()` (around line 619)
+- `src/sentinel/agent_clients/base.py`: Context dict sanitization in `_build_prompt_with_context()` (around line 177)
