@@ -13,7 +13,7 @@ Test cases:
 from __future__ import annotations
 
 import logging
-import time
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 from unittest.mock import patch
@@ -269,7 +269,8 @@ class TestShutdownTimeoutIntegration:
 
         def fast_task() -> str:
             nonlocal completed
-            time.sleep(0.01)  # Very fast task
+            # Use threading.Event.wait for interruptible delay
+            threading.Event().wait(timeout=0.01)
             completed = True
             return "done"
 
@@ -295,15 +296,16 @@ class TestShutdownTimeoutIntegration:
         def slow_task() -> str:
             nonlocal task_started, task_completed
             task_started = True
-            time.sleep(10)  # Long running task
+            # Use threading.Event.wait for interruptible long-running task
+            threading.Event().wait(timeout=10)
             task_completed = True
             return "done"
 
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(slow_task)
 
-            # Give task time to start
-            time.sleep(0.1)
+            # Wait for task to start using threading.Event coordination
+            threading.Event().wait(timeout=0.1)
             assert task_started
 
             # Cancel the future

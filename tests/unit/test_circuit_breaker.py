@@ -229,8 +229,9 @@ class TestCircuitBreakerStates:
         cb.record_failure(Exception("Error"))
         assert cb.state == CircuitState.OPEN
 
-        # Wait for recovery timeout
-        time.sleep(0.15)
+        # Simulate recovery timeout by manipulating internal timestamp
+        # instead of sleeping (eliminates timing dependency)
+        cb._last_failure_time = time.monotonic() - config.recovery_timeout - 0.1
 
         # Should now be half-open
         assert cb.state == CircuitState.HALF_OPEN
@@ -245,7 +246,8 @@ class TestCircuitBreakerStates:
         cb = CircuitBreaker("test", config)
 
         cb.record_failure(Exception("Error"))
-        time.sleep(0.15)
+        # Simulate recovery timeout by manipulating internal timestamp
+        cb._last_failure_time = time.monotonic() - config.recovery_timeout - 0.1
         assert cb.state == CircuitState.HALF_OPEN
 
         # Should allow limited requests
@@ -270,7 +272,8 @@ class TestCircuitBreakerStates:
         cb = CircuitBreaker("test", config)
 
         cb.record_failure(Exception("Error"))
-        time.sleep(0.15)
+        # Simulate recovery timeout by manipulating internal timestamp
+        cb._last_failure_time = time.monotonic() - config.recovery_timeout - 0.1
         assert cb.state == CircuitState.HALF_OPEN
 
         # Record successful calls
@@ -297,7 +300,8 @@ class TestCircuitBreakerStates:
         cb = CircuitBreaker("test", config)
 
         cb.record_failure(Exception("Error"))
-        time.sleep(0.15)
+        # Simulate recovery timeout by manipulating internal timestamp
+        cb._last_failure_time = time.monotonic() - config.recovery_timeout - 0.1
         assert cb.state == CircuitState.HALF_OPEN
 
         # Any failure should reopen
@@ -332,8 +336,8 @@ class TestCircuitBreakerIsOpenProperty:
         cb.record_failure(Exception("Error"))
         assert cb.is_open is True
 
-        # Wait for recovery timeout
-        time.sleep(0.15)
+        # Simulate recovery timeout by manipulating internal timestamp
+        cb._last_failure_time = time.monotonic() - config.recovery_timeout - 0.1
         assert cb.is_open is False
         assert cb.state == CircuitState.HALF_OPEN
 
@@ -812,8 +816,8 @@ class TestExcludedExceptions:
         cb.record_failure(ValueError("Real error"))
         assert cb.state == CircuitState.OPEN
 
-        # Wait for half-open
-        time.sleep(0.15)
+        # Simulate recovery timeout by manipulating internal timestamp
+        cb._last_failure_time = time.monotonic() - config.recovery_timeout - 0.1
         assert cb.state == CircuitState.HALF_OPEN
 
         # Excluded exception should not reopen the circuit

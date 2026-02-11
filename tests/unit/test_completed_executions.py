@@ -7,7 +7,6 @@ Also includes tests for usage data propagation (DS-528):
 """
 
 import threading
-import time
 from datetime import datetime
 
 import pytest
@@ -109,13 +108,16 @@ class TestStateTrackerCompletedExecutions:
         """Test that completed executions are ordered most recent first."""
         tracker = StateTracker(max_completed_executions=10)
 
+        # Create executions with explicit completed_at timestamps to ensure ordering
+        # without needing to sleep (deterministic approach - DS-933)
+        base_time = datetime.now()
         for i in range(3):
             info = CompletedExecutionInfo(
                 issue_key=f"TEST-{i}",
                 orchestration_name="orch-1",
                 attempt_number=1,
-                started_at=datetime.now(),
-                completed_at=datetime.now(),
+                started_at=base_time,
+                completed_at=datetime.fromtimestamp(base_time.timestamp() + i),
                 status="success",
                 input_tokens=100,
                 output_tokens=50,
@@ -123,7 +125,6 @@ class TestStateTrackerCompletedExecutions:
                 issue_url=f"https://jira.example.com/TEST-{i}",
             )
             tracker.add_completed_execution(info)
-            time.sleep(0.01)  # Small delay to ensure ordering
 
         executions = tracker.get_completed_executions()
 

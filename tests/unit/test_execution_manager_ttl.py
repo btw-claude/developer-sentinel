@@ -151,8 +151,10 @@ class TestExecutionManagerTTL:
                 description="stale task",
             )
 
-            # Wait for the future to become stale
-            time.sleep(0.2)
+            # Make the future stale by backdating its created_at timestamp
+            # instead of sleeping (deterministic approach - DS-933)
+            with manager._futures_lock:
+                manager._active_futures[0].created_at = time.monotonic() - 100
 
             # Collect results - should clean up stale future
             with patch("sentinel.execution_manager.logger"):
@@ -179,18 +181,28 @@ class TestExecutionManagerTTL:
 
         try:
             # Submit futures that complete quickly
+            futures = []
             for i in range(3):
-                manager.submit(lambda: 42, description=f"quick-{i}")
+                f = manager.submit(lambda: 42, description=f"quick-{i}")
+                futures.append(f)
 
             # Wait for them to complete
-            time.sleep(0.1)
+            for f in futures:
+                if f:
+                    f.result(timeout=1.0)
 
             # Submit more futures - should trigger cleanup of completed futures
+            # Submit slow futures
+            slow_futures = []
             for i in range(5):
-                manager.submit(lambda: time.sleep(0.5), description=f"slow-{i}")
+                f = manager.submit(lambda: time.sleep(0.5), description=f"slow-{i}")
+                slow_futures.append(f)
 
-            # Wait a bit for TTL to expire on some
-            time.sleep(0.1)
+            # Make some futures stale by backdating their created_at timestamps
+            # instead of sleeping (deterministic approach - DS-933)
+            with manager._futures_lock:
+                for tracked in manager._active_futures[:3]:
+                    tracked.created_at = time.monotonic() - 100
 
             # Submit more futures to trigger overflow handling
             for i in range(5):
@@ -334,8 +346,10 @@ class TestExecutionManagerTTL:
             block_event = threading.Event()
             manager.submit(lambda: block_event.wait(timeout=10))
 
-            # Wait for future to become stale
-            time.sleep(0.2)
+            # Make the future stale by backdating its created_at timestamp
+            # instead of sleeping (deterministic approach - DS-933)
+            with manager._futures_lock:
+                manager._active_futures[0].created_at = time.monotonic() - 100
 
             # Cleanup should include the stale future
             cleaned = manager.cleanup_completed_futures()
@@ -618,8 +632,11 @@ class TestDS481StaleRemovalFraction:
                 events.append(event)
                 manager.submit(lambda e=event: e.wait(timeout=10), description=f"task-{i}")
 
-            # Wait for them to become stale
-            time.sleep(0.1)
+            # Make them stale by backdating their created_at timestamps
+            # instead of sleeping (deterministic approach - DS-933)
+            with manager._futures_lock:
+                for tracked in manager._active_futures:
+                    tracked.created_at = time.monotonic() - 100
 
             # Submit one more to trigger max_futures enforcement
             with patch("sentinel.execution_manager.logger"):

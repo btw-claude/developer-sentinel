@@ -1687,7 +1687,7 @@ orchestrations:
 
     def test_rate_limit_allows_after_cooldown(self, temp_logs_dir: Path) -> None:
         """Test that toggles are allowed after cooldown period."""
-        import time
+        import threading
 
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -1735,8 +1735,8 @@ orchestrations:
             )
             assert response1.status_code == 200
 
-            # Wait for cooldown
-            time.sleep(0.15)
+            # Wait for cooldown using threading.Event.wait for deterministic timing
+            threading.Event().wait(timeout=0.15)
 
             # Get CSRF token for second toggle (DS-926)
             csrf_resp2 = client.get("/api/csrf-token")

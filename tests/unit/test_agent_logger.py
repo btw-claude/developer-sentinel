@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
-import time
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from sentinel.agent_logger import AgentLogger, StreamingLogWriter
 from sentinel.executor import ExecutionStatus
@@ -365,20 +365,29 @@ class TestStreamingLogWriter:
 
     def test_duration_calculation(self, tmp_path: Path) -> None:
         """Should calculate duration between start and finalize."""
-        with StreamingLogWriter(
-            base_dir=tmp_path,
-            orchestration_name="test",
-            issue_key="DS-123",
-            prompt="Test",
-        ) as writer:
-            # Sleep a bit to ensure measurable duration
-            time.sleep(0.1)
-            writer.finalize(status="COMPLETED", attempts=1)
+        # Mock datetime.now to control the duration instead of sleeping (deterministic approach - DS-933)
+        start_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
+        end_time = start_time + timedelta(seconds=0.1)
 
-            assert writer.log_path is not None
-            content = writer.log_path.read_text()
-            # Duration should be at least 0.1 seconds
-            assert "Duration:" in content
+        with patch("sentinel.agent_logger.datetime") as mock_datetime:
+            # Set up the mock to return start_time on enter, end_time on finalize
+            mock_datetime.now.side_effect = [start_time, end_time]
+            # Keep other datetime methods working
+            mock_datetime.fromisoformat = datetime.fromisoformat
+            mock_datetime.fromtimestamp = datetime.fromtimestamp
+
+            with StreamingLogWriter(
+                base_dir=tmp_path,
+                orchestration_name="test",
+                issue_key="DS-123",
+                prompt="Test",
+            ) as writer:
+                writer.finalize(status="COMPLETED", attempts=1)
+
+                assert writer.log_path is not None
+                content = writer.log_path.read_text()
+                # Duration should be 0.10 seconds (as mocked)
+                assert "Duration:       0.10s" in content
 
     def test_context_manager_closes_file(self, tmp_path: Path) -> None:
         """Should close file when exiting context."""

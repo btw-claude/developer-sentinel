@@ -2,7 +2,6 @@
 
 import signal
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -77,11 +76,14 @@ class TestSentinelSignalHandling:
         )
 
         captured_handler: SignalHandler | None = None
+        # Use threading.Event for deterministic signal handler registration coordination
+        handler_registered = threading.Event()
 
         def capture_sigint_handler(signum: int, handler: SignalHandler) -> None:
             nonlocal captured_handler
             if signum == signal.SIGINT:
                 captured_handler = handler
+                handler_registered.set()
 
         with patch("signal.signal", side_effect=capture_sigint_handler):
             # Start run in a thread that will be stopped by the signal
@@ -91,8 +93,8 @@ class TestSentinelSignalHandling:
             thread = threading.Thread(target=run_sentinel)
             thread.start()
 
-            # Give it a moment to register handlers
-            time.sleep(0.05)
+            # Wait for signal handler to be registered (deterministic coordination)
+            handler_registered.wait(timeout=2)
 
             # Simulate SIGINT by calling the captured handler
             if captured_handler:
@@ -120,11 +122,14 @@ class TestSentinelSignalHandling:
         )
 
         captured_handler: SignalHandler | None = None
+        # Use threading.Event for deterministic signal handler registration coordination
+        handler_registered = threading.Event()
 
         def capture_sigterm_handler(signum: int, handler: SignalHandler) -> None:
             nonlocal captured_handler
             if signum == signal.SIGTERM:
                 captured_handler = handler
+                handler_registered.set()
 
         with patch("signal.signal", side_effect=capture_sigterm_handler):
             # Start run in a thread that will be stopped by the signal
@@ -134,8 +139,8 @@ class TestSentinelSignalHandling:
             thread = threading.Thread(target=run_sentinel)
             thread.start()
 
-            # Give it a moment to register handlers
-            time.sleep(0.05)
+            # Wait for signal handler to be registered (deterministic coordination)
+            handler_registered.wait(timeout=2)
 
             # Simulate SIGTERM by calling the captured handler
             if captured_handler:
@@ -182,8 +187,8 @@ class TestSentinelConcurrentExecution:
                     if execution_count > max_concurrent_seen:
                         max_concurrent_seen = execution_count
 
-                # Simulate some work
-                time.sleep(0.1)
+                # Simulate work with threading.Event.wait for interruptibility
+                threading.Event().wait(timeout=0.1)
 
                 with lock:
                     execution_count -= 1

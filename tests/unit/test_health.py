@@ -211,16 +211,20 @@ class TestHealthCheckContext:
 
     def test_handle_exceptions_latency_is_tracked(self) -> None:
         """Test that latency is tracked even when exceptions occur."""
-        import time
+        # Mock time.perf_counter to control latency measurement deterministically
+        start_time = 1000.0
+        with patch("time.perf_counter") as mock_perf_counter:
+            mock_perf_counter.return_value = start_time
 
-        ctx = HealthCheckContext("TestService")
-        with ctx.handle_exceptions():
-            time.sleep(0.01)  # Sleep for 10ms
-            raise ValueError("test error")
+            ctx = HealthCheckContext("TestService")
+            with ctx.handle_exceptions():
+                # Advance time by 10ms (0.01 seconds)
+                mock_perf_counter.return_value = start_time + 0.01
+                raise ValueError("test error")
 
-        assert ctx.result is not None
-        # Latency should be at least 10ms (we slept for 10ms)
-        assert ctx.result.latency_ms >= 10.0
+            assert ctx.result is not None
+            # Latency should be approximately 10ms (we advanced time by 10ms)
+            assert ctx.result.latency_ms == pytest.approx(10.0, abs=0.1)
 
     def test_handle_exceptions_httpx_timeout(self) -> None:
         """Test context manager handles httpx.TimeoutException."""

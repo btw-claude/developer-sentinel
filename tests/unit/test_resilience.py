@@ -195,8 +195,8 @@ class TestResilienceWrapperTokenSaving:
         # Token count should still be ~9
         assert limiter.get_metrics()["bucket_status"]["minute_tokens"] == pytest.approx(9.0, abs=0.1)
 
-        # Phase 3: Wait for half-open
-        time.sleep(0.15)
+        # Phase 3: Simulate recovery timeout by manipulating internal timestamp
+        cb._last_failure_time = time.monotonic() - config.recovery_timeout - 0.1
         assert cb.state == CircuitState.HALF_OPEN
 
         # Phase 3: Circuit HALF_OPEN - token should be consumed (allows limited requests)
@@ -583,8 +583,7 @@ class TestResilienceWrapperThreadSafety:
             """Worker that uses the wrapper as a context manager."""
             try:
                 with wrapper:
-                    # Simulate some work inside the context
-                    time.sleep(0.01)
+                    # Record result (no sleep needed - test is about concurrency, not timing)
                     with lock:
                         results.append(True)
                     return True
