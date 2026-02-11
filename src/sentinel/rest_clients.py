@@ -180,6 +180,15 @@ def _execute_with_retry[T](
     raise error_class("Retry failed with no exception")
 
 
+"""Type alias for authentication credentials used by Jira HTTP clients.
+
+Supports basic auth (email, token) tuples and httpx.BasicAuth for extensibility.
+Token-based or custom auth schemes can be added to this union in the future
+without changing the BaseJiraHttpClient interface or its subclasses.
+"""
+JiraAuth = tuple[str, str] | httpx.BasicAuth
+
+
 class BaseJiraHttpClient:
     """Base class providing HTTP client connection pooling for Jira API clients.
 
@@ -189,6 +198,21 @@ class BaseJiraHttpClient:
     - Context manager support (__enter__/__exit__)
 
     Subclasses must set self.timeout and self.auth before using _get_client().
+
+    MRO note:
+        Concrete subclasses (e.g., JiraRestClient, JiraRestTagClient) use cooperative
+        multiple inheritance, inheriting from both BaseJiraHttpClient and an abstract
+        interface (JiraClient or JiraTagClient). Currently the abstract interfaces do
+        not define ``__init__`` methods, so the MRO chain works without explicit
+        ``super().__init__()`` forwarding in every class.
+
+        If JiraClient or JiraTagClient ever gain ``__init__`` methods, all classes
+        in the MRO chain must use cooperative ``super().__init__(**kwargs)`` calls to
+        ensure every ``__init__`` in the chain is invoked. Failing to do so would
+        silently skip initialization of parent classes that appear later in the MRO.
+        See the Python docs on `cooperative multiple inheritance
+        <https://docs.python.org/3/tutorial/classes.html#multiple-inheritance>`_ for
+        details.
 
     Example subclass implementation::
 
@@ -202,7 +226,7 @@ class BaseJiraHttpClient:
             ) -> None:
                 super().__init__()
                 self.base_url = base_url.rstrip("/")
-                self.auth = (email, api_token)
+                self.auth = httpx.BasicAuth(email, api_token)
                 self.timeout = timeout or DEFAULT_TIMEOUT
 
             def my_api_method(self) -> dict:
@@ -215,7 +239,7 @@ class BaseJiraHttpClient:
     # before calling _get_client(). These are declared here to support static
     # type checking and IDE autocompletion for the abstract contract.
     timeout: httpx.Timeout
-    auth: tuple[str, str]
+    auth: JiraAuth
 
     def __init__(self) -> None:
         """Initialize the base HTTP client.
@@ -300,7 +324,7 @@ class JiraRestClient(BaseJiraHttpClient, JiraClient):
         """
         super().__init__()
         self.base_url = base_url.rstrip("/")
-        self.auth = (email, api_token)
+        self.auth: JiraAuth = httpx.BasicAuth(email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
         self._circuit_breaker = circuit_breaker or CircuitBreaker(
@@ -410,7 +434,7 @@ class JiraRestTagClient(BaseJiraHttpClient, JiraTagClient):
         """
         super().__init__()
         self.base_url = base_url.rstrip("/")
-        self.auth = (email, api_token)
+        self.auth: JiraAuth = httpx.BasicAuth(email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.retry_config = retry_config or DEFAULT_RETRY_CONFIG
         self._circuit_breaker = circuit_breaker or CircuitBreaker(
