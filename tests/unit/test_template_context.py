@@ -4,10 +4,18 @@ This module tests the data-driven template variable generation using
 dataclass introspection, as implemented in DS-396.
 """
 
-from sentinel.executor import TemplateContext, _compute_slug, _format_comments, _format_list
+from sentinel.executor import (
+    AgentExecutor,
+    TemplateContext,
+    _compute_slug,
+    _format_comments,
+    _format_list,
+)
 from sentinel.github_poller import GitHubIssue
 from sentinel.orchestration import GitHubContext
 from sentinel.poller import JiraIssue
+from tests.helpers import make_issue, make_orchestration
+from tests.mocks import MockAgentClient
 
 
 class TestHelperFunctions:
@@ -395,3 +403,128 @@ class TestTemplateContextIntegration:
         assert result["github_issue_url"] == "https://github.com/myorg/myrepo/pull/42"
         # Jira fields should be empty
         assert result["jira_issue_key"] == ""
+
+
+class TestBaseBranchTemplateVariable:
+    """Tests for {base_branch} template variable (DS-905).
+
+    Verifies that base_branch is available in to_dict() output,
+    substituted in branch patterns and prompts, and defaults
+    to "main" when github context is absent.
+    """
+
+    def test_base_branch_appears_in_to_dict(self) -> None:
+        """Should include base_branch in to_dict() output."""
+        context = TemplateContext(base_branch="develop")
+
+        result = context.to_dict()
+
+        assert "base_branch" in result
+        assert result["base_branch"] == "develop"
+
+    def test_base_branch_default_value_in_to_dict(self) -> None:
+        """Should default base_branch to 'main' in to_dict() output."""
+        context = TemplateContext()
+
+        result = context.to_dict()
+
+        assert result["base_branch"] == "main"
+
+    def test_base_branch_from_jira_issue_with_github_context(self) -> None:
+        """Should populate base_branch from github.base_branch for Jira issues."""
+        issue = JiraIssue(key="DS-123", summary="Test issue")
+        github = GitHubContext(
+            host="github.com", org="myorg", repo="myrepo", base_branch="develop"
+        )
+
+        context = TemplateContext.from_jira_issue(issue, github)
+
+        assert context.base_branch == "develop"
+        assert context.to_dict()["base_branch"] == "develop"
+
+    def test_base_branch_from_jira_issue_without_github_context(self) -> None:
+        """Should default base_branch to 'main' when github context is absent for Jira issues."""
+        issue = JiraIssue(key="DS-123", summary="Test issue")
+
+        context = TemplateContext.from_jira_issue(issue)
+
+        assert context.base_branch == "main"
+        assert context.to_dict()["base_branch"] == "main"
+
+    def test_base_branch_from_github_issue_with_github_context(self) -> None:
+        """Should populate base_branch from github.base_branch for GitHub issues."""
+        issue = GitHubIssue(number=42, title="Fix bug")
+        github = GitHubContext(
+            host="github.com", org="myorg", repo="myrepo", base_branch="release"
+        )
+
+        context = TemplateContext.from_github_issue(issue, github)
+
+        assert context.base_branch == "release"
+        assert context.to_dict()["base_branch"] == "release"
+
+    def test_base_branch_from_github_issue_without_github_context(self) -> None:
+        """Should default base_branch to 'main' when github context is absent for GitHub issues."""
+        issue = GitHubIssue(number=42, title="Fix bug")
+
+        context = TemplateContext.from_github_issue(issue)
+
+        assert context.base_branch == "main"
+        assert context.to_dict()["base_branch"] == "main"
+
+    def test_base_branch_substituted_in_prompts(self) -> None:
+        """Should substitute {base_branch} in prompts."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(
+            prompt="Create a PR targeting {base_branch}",
+            github=GitHubContext(
+                host="github.com", org="myorg", repo="myrepo", base_branch="develop"
+            ),
+        )
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Create a PR targeting develop"
+
+    def test_base_branch_substituted_in_branch_patterns(self) -> None:
+        """Should substitute {base_branch} in branch patterns."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(
+            github=GitHubContext(
+                host="github.com",
+                org="myorg",
+                repo="myrepo",
+                branch="feature/{base_branch}/{jira_issue_key}",
+                base_branch="develop",
+            ),
+        )
+
+        result = executor._expand_branch_pattern(issue, orch)
+
+        assert result == "feature/develop/DS-123"
+
+    def test_base_branch_default_main_in_prompt_without_github(self) -> None:
+        """Should use default 'main' for {base_branch} in prompts when no github context."""
+        client = MockAgentClient()
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-123", summary="Test")
+        orch = make_orchestration(prompt="Target branch: {base_branch}")
+
+        prompt = executor.build_prompt(issue, orch)
+
+        assert prompt == "Target branch: main"
+
+    def test_base_branch_with_github_default_base_branch(self) -> None:
+        """Should use github default base_branch 'main' when not explicitly set."""
+        issue = JiraIssue(key="DS-123", summary="Test issue")
+        github = GitHubContext(host="github.com", org="myorg", repo="myrepo")
+
+        context = TemplateContext.from_jira_issue(issue, github)
+
+        # GitHubContext defaults base_branch to "main"
+        assert context.base_branch == "main"
+        assert context.to_dict()["base_branch"] == "main"

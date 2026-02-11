@@ -130,6 +130,9 @@ class TemplateContext:
     - github_issue_labels (formatted): Derived from _github_issue_labels_list
     """
 
+    # Common context (always available)
+    base_branch: str = field(default="main", metadata={"source": "common"})
+
     # GitHub repository context (always available)
     github_host: str = field(default="", metadata={"source": "common"})
     github_org: str = field(default="", metadata={"source": "common"})
@@ -228,6 +231,8 @@ class TemplateContext:
         """
         # Only specify Jira-specific and common fields - GitHub fields use defaults via metadata
         return cls(
+            # Common context
+            base_branch=github.base_branch if github else "main",
             # GitHub repository context (common fields)
             github_host=github.host if github else "",
             github_org=github.org if github else "",
@@ -272,6 +277,8 @@ class TemplateContext:
 
         # Only specify GitHub-specific and common fields - Jira fields use defaults via metadata
         return cls(
+            # Common context
+            base_branch=github.base_branch if github else "main",
             # GitHub repository context (common fields)
             github_host=github.host if github else "",
             github_org=github.org if github else "",

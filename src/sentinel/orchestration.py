@@ -176,6 +176,12 @@ class GitHubContext:
         Use ``{variable_name}`` syntax in branch patterns and prompts.
         This is the authoritative reference for all available template variables.
 
+        Common Variables (always available regardless of trigger source):
+            - ``{base_branch}``: The base branch for new branch creation (from
+              ``github.base_branch``). Defaults to ``"main"`` when GitHub context
+              is absent. Useful in prompts (e.g., "Create a PR targeting {base_branch}")
+              or in branch patterns.
+
         Jira Variables (populated when source is Jira, empty for GitHub triggers):
             - ``{jira_issue_key}``: The Jira issue key (e.g., "PROJ-123").
             - ``{jira_summary}``: Issue title/summary text.
