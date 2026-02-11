@@ -451,6 +451,8 @@ class ExecutionResult:
 
 
 # Explicit async return type alias for executor methods (DS-533).
+# Orphaned docstring removed in DS-902 (PR #911) — Python does not associate
+# docstrings with type statements, so a comment block is preferred.
 # This type alias makes the async nature of the execute method more discoverable.
 type ExecutionCoroutine = Coroutine[Any, Any, ExecutionResult]
 
