@@ -105,7 +105,7 @@ var UI_MESSAGES = Object.freeze({
         CREATE_FETCH_ERROR: 'submitOrchestrationCreate: fetch error:',
 
         // log_viewer.html - URL parameter validation
-        INVALID_FILE_PARAM: function(file, orch) { return 'Invalid URL parameter: file \'' + file + '\' not found in orchestration \'' + orch + '\''; },
+        INVALID_FILE_PARAM: function(file, step) { return 'Invalid URL parameter: file \'' + file + '\' not found in step \'' + step + '\''; },
         INVALID_STEP_PARAM: function(step) { return 'Invalid URL parameter: step \'' + step + '\' not found'; }
     })
 });
