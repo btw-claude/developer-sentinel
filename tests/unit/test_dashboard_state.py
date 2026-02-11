@@ -3,12 +3,13 @@
 Tests for the _compute_execution_stats method of SentinelStateAccessor,
 verifying global summary statistics and per-orchestration grouping.
 Also tests for configurable success rate thresholds propagation to DashboardState,
-and TTL caching behavior of get_state().
+TTL caching behavior of get_state(), and thread-safety of the state cache.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from threading import Lock
 from unittest.mock import patch
 
 from sentinel.config import (
@@ -902,3 +903,92 @@ class TestGetStateTTLCache:
 
         mock_build.assert_not_called()
         assert isinstance(state, DashboardState)
+
+
+class TestGetStateCacheThreadSafety:
+    """Tests for thread-safety of the TTLCache in SentinelStateAccessor.get_state()."""
+
+    def test_state_cache_lock_exists(self) -> None:
+        """Test that the state accessor has a threading.Lock for cache protection."""
+        accessor = _create_accessor()
+
+        assert hasattr(accessor, "_state_cache_lock")
+        assert isinstance(accessor._state_cache_lock, Lock)
+
+    def test_get_state_acquires_lock(self) -> None:
+        """Test that get_state() acquires the cache lock during execution.
+
+        Verifies the lock is used as a context manager by checking that
+        the lock is not held before or after the call, confirming it was
+        acquired and released properly during get_state().
+        """
+        accessor = _create_accessor()
+
+        # Verify the lock is not held before the call
+        assert not accessor._state_cache_lock.locked()
+
+        # Replace the real lock with one we can track
+        acquired = False
+        original_lock = accessor._state_cache_lock
+        real_lock = Lock()
+
+        class TrackingLock:
+            """A lock wrapper that tracks whether acquire was called."""
+
+            def __enter__(self) -> None:
+                nonlocal acquired
+                acquired = True
+                return real_lock.__enter__()
+
+            def __exit__(self, *args: object) -> None:
+                return real_lock.__exit__(*args)
+
+        accessor._state_cache_lock = TrackingLock()  # type: ignore[assignment]
+        accessor.get_state()
+
+        assert acquired, "Lock was not acquired during get_state()"
+        accessor._state_cache_lock = original_lock
+
+    def test_concurrent_get_state_calls_are_serialized(self) -> None:
+        """Test that concurrent get_state() calls are serialized by the lock.
+
+        Verifies that _build_state() is called exactly once even when
+        multiple threads race to populate an empty cache.
+        """
+        import threading
+
+        accessor = _create_accessor()
+        results: list[DashboardState] = []
+        barrier = threading.Barrier(4)
+
+        original_build = accessor._build_state
+
+        build_call_count = 0
+        count_lock = Lock()
+
+        def counting_build() -> DashboardState:
+            nonlocal build_call_count
+            with count_lock:
+                build_call_count += 1
+            return original_build()
+
+        accessor._build_state = counting_build  # type: ignore[assignment]
+
+        def worker() -> None:
+            barrier.wait()
+            state = accessor.get_state()
+            with count_lock:
+                results.append(state)
+
+        threads = [threading.Thread(target=worker) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5.0)
+
+        # All threads should get the same cached state
+        assert len(results) == 4
+        assert all(r is results[0] for r in results)
+
+        # _build_state should be called exactly once due to lock serialization
+        assert build_call_count == 1
