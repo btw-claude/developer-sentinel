@@ -9,6 +9,8 @@ sub-configs for each subsystem:
 - RateLimitConfig: Claude API rate limiting settings
 - CircuitBreakerConfig: Circuit breaker settings for external services
 - ServiceHealthGateConfig: Service health gate settings for external service availability
+  (canonical definition lives in ``sentinel.service_health_gate``; re-exported here
+  for backward compatibility — consolidated in DS-930)
 - ExecutionConfig: Agent execution settings (paths, concurrency, timeouts)
 - CodexConfig: Codex CLI settings
 
@@ -26,6 +28,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from sentinel.branch_validation import validate_branch_name_core
+from sentinel.service_health_gate import ServiceHealthGateConfig
 from sentinel.types import (
     VALID_AGENT_TYPES,
     VALID_CURSOR_MODES,
@@ -176,30 +179,9 @@ class HealthCheckConfig:
     timeout: float = 5.0
 
 
-@dataclass(frozen=True)
-class ServiceHealthGateConfig:
-    """Service health gate configuration.
-
-    Controls how the system gates operations based on external service
-    availability. When a service fails health checks beyond the failure
-    threshold, operations depending on that service are paused until
-    probe checks confirm recovery.
-
-    Attributes:
-        enabled: Enable/disable service health gating.
-        failure_threshold: Number of consecutive failures before gating.
-        initial_probe_interval: Initial seconds between recovery probes.
-        max_probe_interval: Maximum seconds between recovery probes.
-        probe_backoff_factor: Multiplier for probe interval on continued failure (>= 1.0).
-        probe_timeout: Timeout in seconds for individual probe checks.
-    """
-
-    enabled: bool = True
-    failure_threshold: int = 3
-    initial_probe_interval: float = 30.0
-    max_probe_interval: float = 300.0
-    probe_backoff_factor: float = 2.0
-    probe_timeout: float = 5.0
+# ServiceHealthGateConfig is imported from sentinel.service_health_gate (DS-930).
+# It was previously duplicated here; now a single canonical definition exists in
+# service_health_gate.py and is re-exported via the import at the top of this file.
 
 
 @dataclass(frozen=True)

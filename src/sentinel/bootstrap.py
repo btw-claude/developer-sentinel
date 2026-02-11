@@ -39,7 +39,6 @@ from sentinel.poller import JiraClient
 from sentinel.rest_clients import JiraRestClient, JiraRestTagClient
 from sentinel.sdk_clients import JiraSdkClient, JiraSdkTagClient
 from sentinel.service_health_gate import ServiceHealthGate
-from sentinel.service_health_gate import ServiceHealthGateConfig as _SHGConfig
 from sentinel.tag_manager import JiraTagClient
 from sentinel.types import TriggerSource
 
@@ -326,18 +325,10 @@ def create_sentinel_from_context(context: BootstrapContext) -> Sentinel:
         GitHubPoller(context.github_client) if context.github_client else None
     )
 
-    # Create ServiceHealthGate from configuration
-    # Bridge between config.ServiceHealthGateConfig and service_health_gate.ServiceHealthGateConfig
-    shg_cfg = context.config.service_health_gate
-    gate_config = _SHGConfig(
-        enabled=shg_cfg.enabled,
-        failure_threshold=shg_cfg.failure_threshold,
-        initial_probe_interval=shg_cfg.initial_probe_interval,
-        max_probe_interval=shg_cfg.max_probe_interval,
-        probe_backoff_factor=shg_cfg.probe_backoff_factor,
-        probe_timeout=shg_cfg.probe_timeout,
-    )
-    service_health_gate = ServiceHealthGate(gate_config)
+    # Create ServiceHealthGate from configuration (DS-930: single canonical class,
+    # no bridging needed since config.ServiceHealthGateConfig is now imported from
+    # service_health_gate.ServiceHealthGateConfig).
+    service_health_gate = ServiceHealthGate(context.config.service_health_gate)
     if context.config.service_health_gate.enabled:
         logger.info("Service health gate enabled with failure_threshold=%d",
                      context.config.service_health_gate.failure_threshold)
