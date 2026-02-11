@@ -543,6 +543,7 @@ class AgentExecutor:
                 github_host=github.host if github else "",
                 github_org=github.org if github else "",
                 github_repo=github.repo if github else "",
+                base_branch=github.base_branch if github else "main",
             )
 
         return context.to_dict()
