@@ -347,8 +347,15 @@ class OrchestrationYamlWriter:
         """Get the steps (or orchestrations) list from YAML data.
 
         Checks for 'steps' first (new format), then 'orchestrations' (legacy).
+
+        Uses explicit key membership tests instead of ``or`` so that an empty
+        list ``[]`` (which is falsy) under the ``"steps"`` key is returned
+        correctly rather than falling through to ``"orchestrations"``.
         """
-        result: CommentedSeq | None = data.get("steps") or data.get("orchestrations")
+        if "steps" in data:
+            result: CommentedSeq | None = data.get("steps")
+        else:
+            result = data.get("orchestrations")
         return result
 
     def _find_orchestration_index(self, orchestrations: CommentedSeq, orch_name: str) -> int | None:

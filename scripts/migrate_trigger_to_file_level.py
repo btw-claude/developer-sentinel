@@ -15,7 +15,7 @@ Example:
     python scripts/migrate_trigger_to_file_level.py ./examples/basic-setup/orchestrations
 
 The script:
-- Scans the directory for .yaml and .yml files
+- Recursively scans the directory for .yaml and .yml files
 - Extracts project-level fields from the first step
 - Validates all steps share the same project-level values
 - Creates a file-level trigger block
@@ -199,16 +199,21 @@ def main() -> None:
     skipped = 0
     errors = 0
 
-    for file_path in sorted(directory.iterdir()):
-        if file_path.suffix in (".yaml", ".yml") and not file_path.name.endswith(".bak"):
-            try:
-                if migrate_file(file_path, dry_run=dry_run):
-                    migrated += 1
-                else:
-                    skipped += 1
-            except Exception as e:
-                print(f"  ERROR {file_path}: {e}")
-                errors += 1
+    # Use rglob for recursive scanning so nested subdirectories are included
+    yaml_files = sorted(
+        set(directory.rglob("*.yaml")) | set(directory.rglob("*.yml"))
+    )
+    for file_path in yaml_files:
+        if file_path.name.endswith(".bak"):
+            continue
+        try:
+            if migrate_file(file_path, dry_run=dry_run):
+                migrated += 1
+            else:
+                skipped += 1
+        except Exception as e:
+            print(f"  ERROR {file_path}: {e}")
+            errors += 1
 
     print()
     print(f"Results: {migrated} migrated, {skipped} skipped, {errors} errors")
