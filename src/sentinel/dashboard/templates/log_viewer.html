@@ -534,8 +534,8 @@ logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT, UI_M
 
     if (step) {
         // Validate step parameter exists in dropdown before selecting
-        const orchOption = Array.from(orchestrationSelect.options).find(opt => opt.value === step);
-        if (orchOption) {
+        const stepOption = Array.from(orchestrationSelect.options).find(opt => opt.value === step);
+        if (stepOption) {
             orchestrationSelect.value = step;
             updateLogFileOptions();
 
