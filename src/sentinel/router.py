@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import assert_never
 
 from sentinel.github_poller import GitHubIssueProtocol
 from sentinel.logging import get_logger
@@ -98,6 +99,8 @@ class Router:
                 for label in trigger.labels:
                     if label.lower() not in issue_labels_lower:
                         return False
+        else:
+            assert_never(issue)
 
         # Check tag/label filter - issue must have ALL specified tags (case-insensitive)
         if trigger.tags:
