@@ -1,5 +1,21 @@
 {# Orchestration detail view - displayed inline when clicking an orchestration row #}
 <div class="orchestration-detail">
+    {# Header row with step name and action buttons #}
+    <div class="detail-header">
+        <h4 class="detail-header__name">{{ detail.name }}</h4>
+        <div class="detail-header__actions">
+            <button class="btn-sm btn-accent"
+                    hx-get="/partials/orchestration_edit/{{ detail.name|urlencode }}"
+                    hx-target="closest .orchestration-detail"
+                    hx-swap="outerHTML">Edit</button>
+            <button class="btn-sm btn-danger"
+                    hx-delete="/api/orchestrations/{{ detail.name|urlencode }}"
+                    hx-confirm="Are you sure you want to delete the step '{{ detail.name }}'? This action cannot be undone."
+                    hx-swap="none"
+                    hx-on::after-request="handleDeleteResponse(event, '{{ detail.name|url_quote }}')">Delete</button>
+        </div>
+    </div>
+
     {# Trigger Config Section #}
     <div class="detail-section">
         <h4>Trigger Config</h4>
@@ -210,16 +226,4 @@
         </div>
     </div>
 
-    {# Action Buttons #}
-    <div class="detail-actions">
-        <button class="btn-sm btn-accent"
-                hx-get="/partials/orchestration_edit/{{ detail.name|urlencode }}"
-                hx-target="closest .orchestration-detail"
-                hx-swap="outerHTML">Edit</button>
-        <button class="btn-sm btn-danger"
-                hx-delete="/api/orchestrations/{{ detail.name|urlencode }}"
-                hx-confirm="Are you sure you want to delete the orchestration '{{ detail.name }}'? This action cannot be undone."
-                hx-swap="none"
-                hx-on::after-request="handleDeleteResponse(event, '{{ detail.name|url_quote }}')">Delete</button>
-    </div>
 </div>

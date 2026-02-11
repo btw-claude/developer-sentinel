@@ -1,14 +1,17 @@
 {# Orchestration edit form - displayed when clicking Edit button #}
 <div class="orchestration-detail">
-    <form id="edit-form-{{ detail.name }}" aria-label="Edit orchestration {{ detail.name }}">
-        {# Name Section (Read-only) #}
-        <div class="detail-section">
-            <h4>Orchestration Name</h4>
-            <div class="config-grid">
-                <div class="detail-row">
-                    <span class="detail-label">Name</span>
-                    <span>{{ detail.name }}</span>
-                </div>
+    <form id="edit-form-{{ detail.name }}" aria-label="Edit step {{ detail.name }}">
+        {# Header row with step name and action buttons #}
+        <div class="detail-header">
+            <h4 class="detail-header__name">{{ detail.name }}</h4>
+            <div class="detail-header__actions">
+                <button type="button" class="btn-sm btn-accent" onclick="submitOrchestrationEdit(this.closest('form'), '{{ detail.name }}')"
+                        aria-label="Save step changes">Save</button>
+                <button type="button" class="btn-sm btn-sm--secondary"
+                        hx-get="/partials/orchestration_detail/{{ detail.name|urlencode }}"
+                        hx-target="closest .orchestration-detail"
+                        hx-swap="outerHTML"
+                        aria-label="Cancel editing and return to detail view">Cancel</button>
             </div>
         </div>
 
@@ -308,16 +311,6 @@
             </div>
         </div>
 
-        {# Action Buttons #}
-        <div class="detail-actions">
-            <button type="button" class="btn-sm btn-accent" onclick="submitOrchestrationEdit(this.closest('form'), '{{ detail.name }}')"
-                    aria-label="Save orchestration changes">Save</button>
-            <button type="button" class="btn-sm btn-sm--secondary"
-                    hx-get="/partials/orchestration_detail/{{ detail.name|urlencode }}"
-                    hx-target="closest .orchestration-detail"
-                    hx-swap="outerHTML"
-                    aria-label="Cancel editing and return to detail view">Cancel</button>
-        </div>
     </form>
 </div>
 
