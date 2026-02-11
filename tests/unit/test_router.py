@@ -5,7 +5,8 @@ from typing import Literal
 from sentinel.github_poller import GitHubIssue
 from sentinel.orchestration import AgentConfig, Orchestration, TriggerConfig
 from sentinel.poller import JiraIssue
-from sentinel.router import AnyIssue, Router, RoutingResult
+from sentinel.router import Router, RoutingResult
+from sentinel.types import AnyIssue
 
 
 def make_issue(

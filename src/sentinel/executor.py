@@ -25,9 +25,7 @@ from sentinel.orchestration import (
     get_effective_timeout,
 )
 from sentinel.poller import JiraIssue
-
-# Type alias for issues from any supported source
-type AnyIssue = JiraIssue | GitHubIssueProtocol
+from sentinel.types import AnyIssue
 
 if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger

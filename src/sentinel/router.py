@@ -14,13 +14,9 @@ from sentinel.github_poller import GitHubIssueProtocol
 from sentinel.logging import get_logger
 from sentinel.orchestration import Orchestration
 from sentinel.poller import JiraIssue
-from sentinel.types import TriggerSource
+from sentinel.types import AnyIssue, TriggerSource
 
 logger = get_logger(__name__)
-
-# Type alias for issues from any supported source
-# Uses GitHubIssueProtocol to support both GitHubIssue and GitHubIssueWithRepo
-AnyIssue = JiraIssue | GitHubIssueProtocol
 
 
 @dataclass

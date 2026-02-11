@@ -4,8 +4,12 @@ This module provides centralized type definitions including enums for
 trigger sources and agent types, replacing magic strings throughout
 the codebase with type-safe constants.
 
+It also defines shared type aliases (e.g. ``AnyIssue``) that are used
+by multiple modules, avoiding duplicate definitions and style drift
+(consolidated in DS-930).
+
 Usage:
-    from sentinel.types import TriggerSource, AgentType
+    from sentinel.types import TriggerSource, AgentType, AnyIssue
 
     # Enum usage - since TriggerSource inherits from StrEnum, direct comparison works
     if trigger.source == TriggerSource.JIRA:
@@ -23,7 +27,20 @@ Usage:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING, Literal, get_args
+from typing import TYPE_CHECKING, Literal, Union, get_args
+
+if TYPE_CHECKING:
+    from sentinel.github_poller import GitHubIssueProtocol
+    from sentinel.poller import JiraIssue
+
+# Type alias for issues from any supported source (DS-930).
+# Defined once here and imported by executor.py and router.py.
+# The ``from __future__ import annotations`` PEP 563 import at the top of this
+# module turns all annotations into strings, so the forward references to
+# ``JiraIssue`` and ``GitHubIssueProtocol`` (guarded by ``TYPE_CHECKING``) are
+# resolved lazily by type checkers without triggering a circular import at
+# runtime.
+AnyIssue = Union["JiraIssue", "GitHubIssueProtocol"]
 
 
 class TriggerSource(StrEnum):
