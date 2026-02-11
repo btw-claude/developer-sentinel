@@ -324,7 +324,7 @@ class TestApiLogsFilesEndpoint:
             logs_dir = Path(tmpdir)
 
             # Create step directory with log files
-            step_dir = logs_dir / "test-orch"
+            step_dir = logs_dir / "test-step"
             step_dir.mkdir()
 
             # Create files with different modification times
@@ -361,7 +361,7 @@ class TestApiLogsFilesEndpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            step_dir = logs_dir / "test-orch"
+            step_dir = logs_dir / "test-step"
             step_dir.mkdir()
             (step_dir / "20260114_153045.log").write_text("Test content")
 
@@ -415,7 +415,7 @@ class TestApiLogsFilesEndpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            step_dir = logs_dir / "test-orch"
+            step_dir = logs_dir / "test-step"
             step_dir.mkdir()
             (step_dir / "20260114_100000.log").write_text("Log content")
             (step_dir / "readme.txt").write_text("Not a log file")
@@ -442,7 +442,7 @@ class TestApiLogsFilesEndpoint:
             (logs_dir / "root_file.log").write_text("Root level log")
 
             # File in step subdirectory (should be included)
-            step_dir = logs_dir / "test-orch"
+            step_dir = logs_dir / "test-step"
             step_dir.mkdir()
             (step_dir / "20260114_100000.log").write_text("Step log")
 
@@ -454,7 +454,7 @@ class TestApiLogsFilesEndpoint:
 
             # Should only have the step directory
             assert len(result) == 1
-            assert result[0]["step"] == "test-orch"
+            assert result[0]["step"] == "test-step"
 
     def test_skips_empty_step_directories(self) -> None:
         """Test that step directories with no log files are not included."""
@@ -566,7 +566,7 @@ class TestSseLogStreamingEndpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            step_dir = logs_dir / "my-orch"
+            step_dir = logs_dir / "my-step"
             step_dir.mkdir()
             log_file = step_dir / "20260114_100000.log"
             log_file.write_text("Log content")
@@ -575,7 +575,7 @@ class TestSseLogStreamingEndpoint:
             sentinel = MockSentinel(config)
             accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
 
-            result = accessor.get_log_file_path("my-orch", "20260114_100000.log")
+            result = accessor.get_log_file_path("my-step", "20260114_100000.log")
 
             assert result is not None
             assert result == log_file
