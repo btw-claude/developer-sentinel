@@ -24,6 +24,11 @@ Usage:
     AgentType.is_valid("claude")  # True
 """
 
+# PEP 563 (deferred evaluation of annotations) — still required for all regular
+# annotations in this module (function signatures, variable annotations, class
+# attributes, etc.).  The PEP 695 ``type`` statement used for ``AnyIssue`` below
+# has its own built-in lazy evaluation and does not depend on this import, but
+# every other annotation in the file does.
 from __future__ import annotations
 
 from enum import StrEnum
