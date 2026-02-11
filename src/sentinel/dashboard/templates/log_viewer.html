@@ -216,7 +216,7 @@
             <select id="step-select">
                 <option value="">Select step...</option>
                 {% for log_file in log_files %}
-                <option value="{{ log_file.orchestration }}">{{ log_file.orchestration }}</option>
+                <option value="{{ log_file.step }}">{{ log_file.step }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -314,7 +314,7 @@ function updateLogFileOptions() {
     }
 
     // Find files for this step
-    const stepData = logFilesData.find(d => d.orchestration === step);
+    const stepData = logFilesData.find(d => d.step === step);
     if (stepData && stepData.files) {
         stepData.files.forEach(file => {
             const option = document.createElement('option');

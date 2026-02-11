@@ -286,20 +286,20 @@ class TestApiLogsFilesEndpoint:
 
             assert result == []
 
-    def test_discovers_log_files_grouped_by_orchestration(self) -> None:
-        """Test that log files are discovered and grouped by orchestration name."""
+    def test_discovers_log_files_grouped_by_step(self) -> None:
+        """Test that log files are discovered and grouped by step name."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            # Create orchestration directories with log files
-            orch1_dir = logs_dir / "my-orchestration"
-            orch1_dir.mkdir()
-            (orch1_dir / "20260114_100000.log").write_text("Log content 1")
-            (orch1_dir / "20260114_110000.log").write_text("Log content 2")
+            # Create step directories with log files
+            step1_dir = logs_dir / "my-step"
+            step1_dir.mkdir()
+            (step1_dir / "20260114_100000.log").write_text("Log content 1")
+            (step1_dir / "20260114_110000.log").write_text("Log content 2")
 
-            orch2_dir = logs_dir / "another-orch"
-            orch2_dir.mkdir()
-            (orch2_dir / "20260114_120000.log").write_text("Log content 3")
+            step2_dir = logs_dir / "another-step"
+            step2_dir.mkdir()
+            (step2_dir / "20260114_120000.log").write_text("Log content 3")
 
             config = Config(execution=ExecutionConfig(agent_logs_dir=logs_dir))
             sentinel = MockSentinel(config)
@@ -307,12 +307,12 @@ class TestApiLogsFilesEndpoint:
 
             result = accessor.get_log_files()
 
-            # Should have 2 orchestrations
+            # Should have 2 steps
             assert len(result) == 2
 
-            # Orchestrations should be sorted alphabetically
-            assert result[0]["orchestration"] == "another-orch"
-            assert result[1]["orchestration"] == "my-orchestration"
+            # Steps should be sorted alphabetically
+            assert result[0]["step"] == "another-step"
+            assert result[1]["step"] == "my-step"
 
             # Check files are present
             assert len(result[0]["files"]) == 1
@@ -323,7 +323,7 @@ class TestApiLogsFilesEndpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            # Create orchestration directory with log files
+            # Create step directory with log files
             orch_dir = logs_dir / "test-orch"
             orch_dir.mkdir()
 
@@ -347,7 +347,7 @@ class TestApiLogsFilesEndpoint:
 
             result = accessor.get_log_files()
 
-            # Should have 1 orchestration with 2 files
+            # Should have 1 step with 2 files
             assert len(result) == 1
             files = result[0]["files"]
             assert len(files) == 2
@@ -386,18 +386,18 @@ class TestApiLogsFilesEndpoint:
             assert file_info["size"] > 0
 
     def test_directory_structure_matches_expected_format(self) -> None:
-        """Test that expected directory structure {base_dir}/{orchestration_name}/{timestamp}.log works."""
+        """Test that expected directory structure {base_dir}/{step_name}/{timestamp}.log works."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
             # Create the expected directory structure
-            # {base_dir}/{orchestration_name}/{timestamp}.log
-            orch_name = "my-workflow"
+            # {base_dir}/{step_name}/{timestamp}.log
+            step_name = "my-workflow"
             timestamp = "20260114_143022"
 
-            orch_dir = logs_dir / orch_name
-            orch_dir.mkdir()
-            log_file = orch_dir / f"{timestamp}.log"
+            step_dir = logs_dir / step_name
+            step_dir.mkdir()
+            log_file = step_dir / f"{timestamp}.log"
             log_file.write_text("Execution log content")
 
             config = Config(execution=ExecutionConfig(agent_logs_dir=logs_dir))
@@ -407,7 +407,7 @@ class TestApiLogsFilesEndpoint:
             result = accessor.get_log_files()
 
             assert len(result) == 1
-            assert result[0]["orchestration"] == "my-workflow"
+            assert result[0]["step"] == "my-workflow"
             assert result[0]["files"][0]["filename"] == "20260114_143022.log"
 
     def test_ignores_non_log_files(self) -> None:
@@ -434,17 +434,17 @@ class TestApiLogsFilesEndpoint:
             assert files[0]["filename"] == "20260114_100000.log"
 
     def test_ignores_files_at_root_level(self) -> None:
-        """Test that files directly in logs_dir (not in orchestration subdirs) are ignored."""
+        """Test that files directly in logs_dir (not in step subdirs) are ignored."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
             # File at root level (should be ignored)
             (logs_dir / "root_file.log").write_text("Root level log")
 
-            # File in orchestration subdirectory (should be included)
+            # File in step subdirectory (should be included)
             orch_dir = logs_dir / "test-orch"
             orch_dir.mkdir()
-            (orch_dir / "20260114_100000.log").write_text("Orchestration log")
+            (orch_dir / "20260114_100000.log").write_text("Step log")
 
             config = Config(execution=ExecutionConfig(agent_logs_dir=logs_dir))
             sentinel = MockSentinel(config)
@@ -452,20 +452,20 @@ class TestApiLogsFilesEndpoint:
 
             result = accessor.get_log_files()
 
-            # Should only have the orchestration directory
+            # Should only have the step directory
             assert len(result) == 1
-            assert result[0]["orchestration"] == "test-orch"
+            assert result[0]["step"] == "test-orch"
 
-    def test_skips_empty_orchestration_directories(self) -> None:
-        """Test that orchestration directories with no log files are not included."""
+    def test_skips_empty_step_directories(self) -> None:
+        """Test that step directories with no log files are not included."""
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            # Empty orchestration directory
-            empty_dir = logs_dir / "empty-orch"
+            # Empty step directory
+            empty_dir = logs_dir / "empty-step"
             empty_dir.mkdir()
 
-            # Orchestration directory with logs
+            # Step directory with logs
             with_logs_dir = logs_dir / "has-logs"
             with_logs_dir.mkdir()
             (with_logs_dir / "20260114_100000.log").write_text("Log content")
@@ -478,7 +478,7 @@ class TestApiLogsFilesEndpoint:
 
             # Should only have the directory with logs
             assert len(result) == 1
-            assert result[0]["orchestration"] == "has-logs"
+            assert result[0]["step"] == "has-logs"
 
 
 class TestSseLogStreamingEndpoint:
