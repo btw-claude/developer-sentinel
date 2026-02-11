@@ -17,6 +17,7 @@ import asyncio
 import logging
 import signal
 import time
+from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from datetime import UTC, datetime
 from types import FrameType
@@ -807,6 +808,99 @@ class Sentinel:
     # Main Run Methods
     # =========================================================================
 
+    def _poll_service(
+        self,
+        *,
+        service_name: str,
+        display_name: str,
+        orchestrations: list[Orchestration],
+        poll_fn: Callable[
+            [list[Orchestration], Router, bool, Any],
+            tuple[list[RoutingResult], int, int],
+        ],
+        probe_kwargs: dict[str, Any],
+        all_results: list[ExecutionResult],
+        submitted_pairs: set[tuple[str, str]],
+    ) -> int:
+        """Execute a single service polling cycle (poll, submit, log, health).
+
+        This generic helper eliminates the duplicated Jira / GitHub polling
+        blocks in ``run_once()`` (DS-931).  It accepts the service-specific
+        parameters (poller function, probe kwargs, display name) and executes
+        the common polling, submission, logging, and health-gate sequence.
+
+        Args:
+            service_name: Health-gate key, e.g. ``"jira"`` or ``"github"``.
+            display_name: Human-readable label for log messages,
+                e.g. ``"Jira"`` or ``"GitHub"``.
+            orchestrations: Orchestrations whose trigger source matches this
+                service.
+            poll_fn: Callable that polls the service for issues.  Expected
+                signature matches ``PollCoordinator.poll_jira_triggers`` /
+                ``poll_github_triggers``.
+            probe_kwargs: Keyword arguments forwarded to
+                ``ServiceHealthGate.probe_service`` when the service is
+                gated and a recovery probe is due.
+            all_results: Mutable list to which completed execution results
+                are appended (passed through to ``_submit_execution_tasks``).
+            submitted_pairs: Cycle-level deduplication set (passed through
+                to ``_submit_execution_tasks``).
+
+        Returns:
+            Number of execution tasks submitted during this polling cycle.
+        """
+        if self._health_gate.should_poll(service_name):
+            # Update the appropriate last-poll timestamp
+            if service_name == "jira":
+                self._state_tracker.last_jira_poll = datetime.now(tz=UTC)
+            else:
+                self._state_tracker.last_github_poll = datetime.now(tz=UTC)
+
+            routing_results, issues_found, error_count = poll_fn(
+                orchestrations,
+                self.router,
+                self._shutdown_requested,
+                self._log_for_orchestration,
+            )
+            submitted = self._submit_execution_tasks(
+                routing_results, all_results, submitted_pairs
+            )
+
+            # Log polling summary for observability (DS-820).
+            if issues_found > 0 or error_count > 0:
+                logger.info(
+                    "%s polling summary: %s issue(s) found, %s error(s), "
+                    "%s task(s) submitted",
+                    display_name,
+                    issues_found,
+                    error_count,
+                    submitted,
+                )
+
+            # Warn when error count meets or exceeds the configurable
+            # threshold, indicating service degradation that may need
+            # attention (DS-828).
+            self._log_total_failure(
+                display_name,
+                error_count,
+                len(orchestrations),
+                self.config.polling.error_threshold_pct,
+            )
+
+            # Record health gate outcome based on polling errors (DS-835).
+            self._record_poll_health(
+                service_name=service_name,
+                display_name=display_name,
+                error_count=error_count,
+                issues_found=issues_found,
+            )
+            return submitted
+
+        # Service is gated — probe for recovery
+        if self._health_gate.should_probe(service_name):
+            self._health_gate.probe_service(service_name, **probe_kwargs)
+        return 0
+
     def run_once(self) -> tuple[list[ExecutionResult], int]:
         """Run a single polling cycle."""
         # Clear state for new cycle
@@ -848,112 +942,34 @@ class Sentinel:
 
         # Poll Jira triggers
         if grouped.jira:
-            if self._health_gate.should_poll("jira"):
-                self._state_tracker.last_jira_poll = datetime.now(tz=UTC)
-                routing_results, jira_issues_found, jira_error_count = (
-                    self._poll_coordinator.poll_jira_triggers(
-                        grouped.jira,
-                        self.router,
-                        self._shutdown_requested,
-                        self._log_for_orchestration,
-                    )
-                )
-                jira_submitted = self._submit_execution_tasks(
-                    routing_results, all_results, submitted_pairs
-                )
-                submitted_count += jira_submitted
-
-                # Log polling summary for observability (DS-820).
-                if jira_issues_found > 0 or jira_error_count > 0:
-                    logger.info(
-                        "Jira polling summary: %s issue(s) found, %s error(s), "
-                        "%s task(s) submitted",
-                        jira_issues_found,
-                        jira_error_count,
-                        jira_submitted,
-                    )
-
-                # Warn when error count meets or exceeds the configurable
-                # threshold, indicating service degradation that may need
-                # attention.  The threshold defaults to 1.0 (all triggers)
-                # but can be lowered for earlier warnings (DS-828).
-                self._log_total_failure(
-                    "Jira",
-                    jira_error_count,
-                    len(grouped.jira),
-                    self.config.polling.error_threshold_pct,
-                )
-
-                # Record health gate outcome based on polling errors (DS-835).
-                self._record_poll_health(
-                    service_name="jira",
-                    display_name="Jira",
-                    error_count=jira_error_count,
-                    issues_found=jira_issues_found,
-                )
-            else:
-                # Service is gated — probe for recovery
-                if self._health_gate.should_probe("jira"):
-                    self._health_gate.probe_service(
-                        "jira",
-                        base_url=self.config.jira.base_url,
-                        auth=(self.config.jira.email, self.config.jira.api_token),
-                    )
+            submitted_count += self._poll_service(
+                service_name="jira",
+                display_name="Jira",
+                orchestrations=grouped.jira,
+                poll_fn=self._poll_coordinator.poll_jira_triggers,
+                probe_kwargs={
+                    "base_url": self.config.jira.base_url,
+                    "auth": (self.config.jira.email, self.config.jira.api_token),
+                },
+                all_results=all_results,
+                submitted_pairs=submitted_pairs,
+            )
 
         # Poll GitHub triggers
         if grouped.github:
             if self.github_poller:
-                if self._health_gate.should_poll("github"):
-                    self._state_tracker.last_github_poll = datetime.now(tz=UTC)
-                    routing_results, gh_issues_found, gh_error_count = (
-                        self._poll_coordinator.poll_github_triggers(
-                            grouped.github,
-                            self.router,
-                            self._shutdown_requested,
-                            self._log_for_orchestration,
-                        )
-                    )
-                    github_submitted = self._submit_execution_tasks(
-                        routing_results, all_results, submitted_pairs
-                    )
-                    submitted_count += github_submitted
-
-                    # Log polling summary for observability (DS-820).
-                    if gh_issues_found > 0 or gh_error_count > 0:
-                        logger.info(
-                            "GitHub polling summary: %s issue(s) found, %s error(s), "
-                            "%s task(s) submitted",
-                            gh_issues_found,
-                            gh_error_count,
-                            github_submitted,
-                        )
-
-                    # Warn when error count meets or exceeds the configurable
-                    # threshold, indicating service degradation that may need
-                    # attention.  The threshold defaults to 1.0 (all triggers)
-                    # but can be lowered for earlier warnings (DS-828).
-                    self._log_total_failure(
-                        "GitHub",
-                        gh_error_count,
-                        len(grouped.github),
-                        self.config.polling.error_threshold_pct,
-                    )
-
-                    # Record health gate outcome based on polling errors (DS-835).
-                    self._record_poll_health(
-                        service_name="github",
-                        display_name="GitHub",
-                        error_count=gh_error_count,
-                        issues_found=gh_issues_found,
-                    )
-                else:
-                    # Service is gated — probe for recovery
-                    if self._health_gate.should_probe("github"):
-                        self._health_gate.probe_service(
-                            "github",
-                            base_url=self.config.github.effective_api_url,
-                            token=self.config.github.token,
-                        )
+                submitted_count += self._poll_service(
+                    service_name="github",
+                    display_name="GitHub",
+                    orchestrations=grouped.github,
+                    poll_fn=self._poll_coordinator.poll_github_triggers,
+                    probe_kwargs={
+                        "base_url": self.config.github.effective_api_url,
+                        "token": self.config.github.token,
+                    },
+                    all_results=all_results,
+                    submitted_pairs=submitted_pairs,
+                )
             else:
                 logger.warning(
                     "Found %s GitHub-triggered orchestrations but GitHub client is not "
