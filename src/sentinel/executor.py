@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, assert_never
 
 from sentinel.agent_clients.base import AgentClient, AgentClientError, AgentTimeoutError
 from sentinel.branch_validation import validate_runtime_branch_name
@@ -538,13 +538,8 @@ class AgentExecutor:
         elif isinstance(issue, GitHubIssue):
             context = TemplateContext.from_github_issue(issue, github)
         else:
-            # Fallback for unknown issue types - return empty context
-            context = TemplateContext(
-                github_host=github.host if github else "",
-                github_org=github.org if github else "",
-                github_repo=github.repo if github else "",
-                base_branch=github.base_branch if github else "main",
-            )
+            # Ensures all AnyIssue variants are handled at type-check time (DS-909)
+            assert_never(issue)
 
         return context.to_dict()
 
