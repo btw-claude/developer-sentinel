@@ -5,15 +5,16 @@
 # 2. Analyzes and categorizes each issue/PR
 # 3. Sets appropriate labels and priority
 
-orchestrations:
+trigger:
+  source: github
+  project_number: 1          # Change to your project number
+  project_owner: "your-org"  # Change to your org/username
+  project_scope: "org"       # "org" or "user"
+
+steps:
   - name: "github-triage"
 
     trigger:
-      source: github
-      project_number: 1          # Change to your project number
-      project_owner: "your-org"  # Change to your org/username
-      project_scope: "org"       # "org" or "user"
-
       # Filter for items needing triage
       project_filter: 'Status = "Needs Triage"'
 

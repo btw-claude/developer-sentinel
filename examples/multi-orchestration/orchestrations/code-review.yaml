@@ -6,12 +6,14 @@
 # 3. Posts feedback on both Jira and GitHub
 # 4. Uses outcome-based tagging (approved vs changes-requested)
 
-orchestrations:
+trigger:
+  source: jira
+  project: "DEMO"           # Change to your Jira project key
+
+steps:
   - name: "code-review"
 
     trigger:
-      source: jira
-      project: "DEMO"           # Change to your Jira project key
       tags:
         - "needs-code-review"
 

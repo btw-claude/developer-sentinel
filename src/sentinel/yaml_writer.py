@@ -342,6 +342,15 @@ class OrchestrationYamlWriter:
         except OSError as e:
             raise OrchestrationYamlWriterError(f"Failed to write to {file_path}: {e}") from e
 
+    @staticmethod
+    def _get_steps_list(data: CommentedMap) -> CommentedSeq | None:
+        """Get the steps (or orchestrations) list from YAML data.
+
+        Checks for 'steps' first (new format), then 'orchestrations' (legacy).
+        """
+        result: CommentedSeq | None = data.get("steps") or data.get("orchestrations")
+        return result
+
     def _find_orchestration_index(self, orchestrations: CommentedSeq, orch_name: str) -> int | None:
         """Find the index of an orchestration by name.
 
@@ -385,10 +394,10 @@ class OrchestrationYamlWriter:
         ):
             data = self._load_yaml(file_path)
 
-            orchestrations = data.get("orchestrations")
+            orchestrations = self._get_steps_list(data)
             if orchestrations is None:
                 logger.warning(
-                    "No orchestrations key found in %s",
+                    "No orchestrations/steps key found in %s",
                     file_path,
                 )
                 return False
@@ -440,10 +449,10 @@ class OrchestrationYamlWriter:
         ):
             data = self._load_yaml(file_path)
 
-            orchestrations = data.get("orchestrations")
+            orchestrations = self._get_steps_list(data)
             if orchestrations is None:
                 logger.warning(
-                    "No orchestrations key found in %s",
+                    "No orchestrations/steps key found in %s",
                     file_path,
                 )
                 return 0
@@ -471,6 +480,8 @@ class OrchestrationYamlWriter:
         Searches through the provided orchestration files and toggles the
         `enabled` status for any orchestration whose trigger.project (Jira)
         or trigger.project_owner (GitHub) matches the specified identifier.
+
+        Supports both file-level triggers (DS-896) and legacy per-step triggers.
 
         Args:
             orch_files: A mapping of orchestration names to their file paths.
@@ -507,7 +518,17 @@ class OrchestrationYamlWriter:
             ):
                 data = self._load_yaml(file_path)
 
-                orchestrations = data.get("orchestrations")
+                # Check file-level trigger first (DS-896)
+                file_trigger = data.get("trigger")
+                file_matches = False
+                if file_trigger and isinstance(file_trigger, dict):
+                    source = file_trigger.get("source", "jira")
+                    if (source == "jira" and file_trigger.get("project") == project) or (
+                        source == "github" and file_trigger.get("project_owner") == project
+                    ):
+                        file_matches = True
+
+                orchestrations = self._get_steps_list(data)
                 if orchestrations is None:
                     continue
 
@@ -516,24 +537,30 @@ class OrchestrationYamlWriter:
                     if not isinstance(orch, dict):
                         continue
 
-                    trigger = orch.get("trigger")
-                    if not isinstance(trigger, dict):
-                        continue
-
-                    source = trigger.get("source", "jira")
-                    if (source == "jira" and trigger.get("project") == project) or (
-                        source == "github" and trigger.get("project_owner") == project
-                    ):
+                    if file_matches:
+                        # File-level trigger matches - toggle this step
                         orch["enabled"] = enabled
                         file_count += 1
-                    elif source not in ("jira", "github"):
-                        logger.warning(
-                            "Unrecognized source type '%s' in orchestration '%s' "
-                            "in %s; skipping project match evaluation",
-                            source,
-                            orch.get("name", "<unnamed>"),
-                            file_path,
-                        )
+                    else:
+                        # Legacy per-step checking
+                        trigger = orch.get("trigger")
+                        if not isinstance(trigger, dict):
+                            continue
+
+                        source = trigger.get("source", "jira")
+                        if (source == "jira" and trigger.get("project") == project) or (
+                            source == "github" and trigger.get("project_owner") == project
+                        ):
+                            orch["enabled"] = enabled
+                            file_count += 1
+                        elif source not in ("jira", "github"):
+                            logger.warning(
+                                "Unrecognized source type '%s' in orchestration '%s' "
+                                "in %s; skipping project match evaluation",
+                                source,
+                                orch.get("name", "<unnamed>"),
+                                file_path,
+                            )
 
                 if file_count > 0:
                     self._save_yaml(file_path, data)
@@ -566,6 +593,7 @@ class OrchestrationYamlWriter:
         """Read a single orchestration's data from a YAML file.
 
         Returns the orchestration data as a plain dict for use in validation.
+        Merges file-level trigger into the result (DS-896).
         Does not modify the file.
 
         Note: This method reads outside of a file lock. The write lock in
@@ -586,7 +614,7 @@ class OrchestrationYamlWriter:
         """
         data = self._load_yaml(file_path)
 
-        orchestrations = data.get("orchestrations")
+        orchestrations = self._get_steps_list(data)
         if orchestrations is None:
             return None
 
@@ -596,7 +624,85 @@ class OrchestrationYamlWriter:
 
         # Convert CommentedMap to plain dict recursively for validation
         orch = orchestrations[idx]
-        return self._to_plain_dict(orch) if isinstance(orch, dict) else None
+        result = self._to_plain_dict(orch) if isinstance(orch, dict) else None
+
+        # Merge file-level trigger into result (DS-896)
+        if result is not None:
+            file_trigger = data.get("trigger")
+            if file_trigger and isinstance(file_trigger, dict):
+                ft = self._to_plain_dict(file_trigger)
+                if "trigger" not in result:
+                    result["trigger"] = dict(ft)
+                else:
+                    for key, value in ft.items():
+                        if key not in result["trigger"]:
+                            result["trigger"][key] = value
+
+        return result
+
+    def read_file_trigger(self, file_path: Path) -> dict[str, Any] | None:
+        """Read file-level trigger from a YAML file.
+
+        Returns the file-level trigger data as a plain dict, or None if
+        the file doesn't have a file-level trigger.
+
+        Args:
+            file_path: Path to the orchestration YAML file.
+
+        Returns:
+            A plain dict of the file-level trigger, or None if not found.
+
+        Raises:
+            OrchestrationYamlWriterError: If there's an error reading or parsing
+                the file.
+        """
+        data = self._load_yaml(file_path)
+        trigger = data.get("trigger")
+        if trigger and isinstance(trigger, dict):
+            result: dict[str, Any] = self._to_plain_dict(trigger)
+            return result
+        return None
+
+    def update_file_trigger(self, file_path: Path, updates: dict[str, Any]) -> bool:
+        """Update file-level trigger block with locking.
+
+        Deep-merges the provided updates into the existing file-level trigger.
+        Creates the trigger block if it doesn't exist.
+
+        Args:
+            file_path: Path to the orchestration YAML file.
+            updates: Dictionary of updates to merge into the file-level trigger.
+
+        Returns:
+            True if the update was successful.
+
+        Raises:
+            OrchestrationYamlWriterError: If there's an error reading, parsing,
+                or writing the file.
+            FileLockTimeoutError: If the file lock cannot be acquired within
+                the configured timeout.
+        """
+        if not updates:
+            return True
+
+        with _file_lock(
+            file_path,
+            max_wait_seconds=self._lock_timeout_seconds,
+            cleanup_lock_file=self._cleanup_lock_files,
+            retry_interval_seconds=self._retry_interval_seconds,
+        ):
+            data = self._load_yaml(file_path)
+            if "trigger" not in data:
+                data["trigger"] = CommentedMap()
+
+            self._deep_update_commented_map(data["trigger"], updates)
+            self._save_yaml(file_path, data)
+
+            logger.info(
+                "Updated file-level trigger in %s",
+                file_path,
+            )
+            return True
 
     @staticmethod
     def _to_plain_dict(data: Any) -> Any:
@@ -683,10 +789,10 @@ class OrchestrationYamlWriter:
         ):
             data = self._load_yaml(file_path)
 
-            orchestrations = data.get("orchestrations")
+            orchestrations = self._get_steps_list(data)
             if orchestrations is None:
                 logger.warning(
-                    "No orchestrations key found in %s",
+                    "No orchestrations/steps key found in %s",
                     file_path,
                 )
                 return False
@@ -716,9 +822,9 @@ class OrchestrationYamlWriter:
 
         Removes the orchestration entry from the file's orchestrations list.
         If this is the last orchestration in the file, leaves the file with
-        an empty ``orchestrations: []`` list rather than deleting the file.
-        This preserves file-level comments and avoids file watcher race
-        conditions.
+        an empty ``orchestrations: []`` or ``steps: []`` list rather than
+        deleting the file. This preserves file-level comments and avoids
+        file watcher race conditions.
 
         Args:
             file_path: Path to the orchestration YAML file.
@@ -741,10 +847,10 @@ class OrchestrationYamlWriter:
         ):
             data = self._load_yaml(file_path)
 
-            orchestrations = data.get("orchestrations")
+            orchestrations = self._get_steps_list(data)
             if orchestrations is None:
                 logger.warning(
-                    "No orchestrations key found in %s",
+                    "No orchestrations/steps key found in %s",
                     file_path,
                 )
                 return False
@@ -773,18 +879,27 @@ class OrchestrationYamlWriter:
         file_path: Path,
         orchestration_data: dict[str, Any],
         orchestrations_dir: Path,
+        file_trigger: dict[str, Any] | None = None,
     ) -> bool:
         """Add a new orchestration to a YAML file.
 
-        Appends the orchestration to an existing file's orchestrations list,
+        Appends the orchestration to an existing file's orchestrations/steps list,
         or creates a new file with proper YAML structure if it doesn't exist.
         Validates that the target file path is within the orchestrations
         directory to prevent path traversal attacks.
+
+        When creating a new file:
+        - If file_trigger is provided, writes it at top level and uses 'steps' key
+        - If no file_trigger, uses 'orchestrations' key (legacy format)
+
+        When appending to an existing file:
+        - Uses whichever key already exists in the file
 
         Args:
             file_path: Path to the target YAML file (must be within orchestrations_dir).
             orchestration_data: Dictionary containing the orchestration configuration.
             orchestrations_dir: Base directory for orchestration files (for validation).
+            file_trigger: Optional file-level trigger dict (DS-896).
 
         Returns:
             True if the orchestration was successfully added.
@@ -811,24 +926,37 @@ class OrchestrationYamlWriter:
             retry_interval_seconds=self._retry_interval_seconds,
         ):
             if file_path.exists():
-                # Load existing file and append to orchestrations list
+                # Load existing file and append to orchestrations/steps list
                 data = self._load_yaml(file_path)
 
-                # Get or create orchestrations list
-                if "orchestrations" not in data:
-                    data["orchestrations"] = []
+                # Determine which key the file uses
+                if "steps" in data:
+                    list_key = "steps"
+                elif "orchestrations" in data:
+                    list_key = "orchestrations"
+                else:
+                    # Neither key exists, use the appropriate one based on file_trigger
+                    list_key = "steps" if file_trigger else "orchestrations"
+                    data[list_key] = []
 
-                # Ensure orchestrations is a list
-                if not isinstance(data["orchestrations"], list):
+                # Ensure the list is actually a list
+                if not isinstance(data[list_key], list):
                     raise OrchestrationYamlWriterError(
-                        f"'orchestrations' key in {file_path} is not a list"
+                        f"'{list_key}' key in {file_path} is not a list"
                     )
 
-                data["orchestrations"].append(orchestration_data)
+                data[list_key].append(orchestration_data)
             else:
-                # Create new file with orchestrations structure
+                # Create new file with proper structure
                 data = CommentedMap()
-                data["orchestrations"] = [orchestration_data]
+
+                if file_trigger:
+                    # New format: file-level trigger + steps
+                    data["trigger"] = CommentedMap(file_trigger)
+                    data["steps"] = [orchestration_data]
+                else:
+                    # Legacy format: orchestrations only
+                    data["orchestrations"] = [orchestration_data]
 
             self._save_yaml(file_path, data)
 

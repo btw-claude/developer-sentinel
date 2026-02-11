@@ -5,12 +5,14 @@
 # 2. Updates Confluence documentation based on issue content
 # 3. Posts a summary on the Jira issue
 
-orchestrations:
+trigger:
+  source: jira
+  project: "DEMO"           # Change to your Jira project key
+
+steps:
   - name: "docs-update"
 
     trigger:
-      source: jira
-      project: "DEMO"           # Change to your Jira project key
       tags:
         - "needs-docs"
 

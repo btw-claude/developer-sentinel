@@ -40,6 +40,8 @@ from sentinel.dashboard.models import (
     BulkToggleRequest,
     BulkToggleResponse,
     DeleteResponse,
+    FileTriggerEditRequest,
+    FileTriggerEditResponse,
     OrchestrationCreateRequest,
     OrchestrationCreateResponse,
     OrchestrationDetailResponse,
@@ -830,6 +832,86 @@ def create_routes(
         yaml_files.sort()
         return yaml_files
 
+    @dashboard_router.get("/api/orchestrations/files/{file_path:path}/trigger")
+    async def api_file_trigger(file_path: str) -> dict[str, Any]:
+        """Return the file-level trigger for an orchestration file."""
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+        full_path = orchestrations_dir / file_path
+
+        # Validate path is within orchestrations_dir
+        try:
+            full_path.resolve().relative_to(orchestrations_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid file path"
+            ) from None
+
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+        try:
+            writer = OrchestrationYamlWriter()
+            trigger = writer.read_file_trigger(full_path)
+            return {"trigger": trigger}
+        except OrchestrationYamlWriterError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @dashboard_router.put(
+        "/api/orchestrations/files/{file_path:path}/trigger",
+        response_model=FileTriggerEditResponse,
+    )
+    async def update_file_trigger(
+        file_path: str,
+        request_body: FileTriggerEditRequest,
+        x_csrf_token: str | None = Header(None),
+    ) -> FileTriggerEditResponse:
+        """Update the file-level trigger for an orchestration file."""
+        _validate_csrf_token(x_csrf_token)
+
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+        full_path = orchestrations_dir / file_path
+
+        try:
+            full_path.resolve().relative_to(orchestrations_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid file path"
+            ) from None
+
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+        from sentinel.orchestration_edit import _build_file_trigger_updates
+
+        updates = _build_file_trigger_updates(request_body)
+
+        if not updates:
+            return FileTriggerEditResponse(success=True)
+
+        # Validate
+        from sentinel.orchestration import _collect_file_trigger_errors
+
+        try:
+            writer = OrchestrationYamlWriter()
+            current = writer.read_file_trigger(full_path) or {}
+        except OrchestrationYamlWriterError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+        merged = {**current, **updates}
+        errors = _collect_file_trigger_errors(merged)
+        if errors:
+            raise HTTPException(status_code=422, detail=errors)
+
+        # Check rate limit
+        rate_limiter.check_rate_limit(str(full_path))
+
+        try:
+            writer.update_file_trigger(full_path, updates)
+            rate_limiter.record_write(str(full_path))
+            return FileTriggerEditResponse(success=True)
+        except OrchestrationYamlWriterError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
     @dashboard_router.get(
         "/api/orchestrations/{name}/detail",
         response_model=OrchestrationDetailResponse,
@@ -950,6 +1032,40 @@ def create_routes(
                 request=request,
                 name="partials/orchestration_create_form.html",
                 context={"csrf_token": _generate_csrf_token()},
+            ),
+        )
+
+    @dashboard_router.get(
+        "/partials/file_trigger_edit/{file_path:path}", response_class=HTMLResponse
+    )
+    async def partial_file_trigger_edit(request: Request, file_path: str) -> HTMLResponse:
+        """Render the file-level trigger edit form."""
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+        full_path = orchestrations_dir / file_path
+
+        try:
+            full_path.resolve().relative_to(orchestrations_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid file path"
+            ) from None
+
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+        try:
+            writer = OrchestrationYamlWriter()
+            trigger = writer.read_file_trigger(full_path)
+        except OrchestrationYamlWriterError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+        templates = request.app.state.templates
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/file_trigger_edit_form.html",
+                context={"file_path": file_path, "trigger": trigger},
             ),
         )
 
@@ -1424,6 +1540,17 @@ def create_routes(
         )
         orch_data.update(updates)
 
+        # Extract file_trigger for new file creation (DS-896)
+        file_trigger_dict = None
+        if request_body.file_trigger:
+            file_trigger_dict = request_body.file_trigger.model_dump(exclude_none=True)
+            # Merge file trigger into orch_data for validation
+            if "trigger" not in orch_data:
+                orch_data["trigger"] = {}
+            for key, value in file_trigger_dict.items():
+                if key not in orch_data.get("trigger", {}):
+                    orch_data.setdefault("trigger", {})[key] = value
+
         # Validate via _parse_orchestration
         try:
             _parse_orchestration(orch_data)
@@ -1435,7 +1562,9 @@ def create_routes(
 
         try:
             writer = OrchestrationYamlWriter()
-            writer.add_orchestration(target_file_path, orch_data, orchestrations_dir)
+            writer.add_orchestration(
+                target_file_path, orch_data, orchestrations_dir, file_trigger=file_trigger_dict
+            )
 
             # Record successful write for rate limiting
             rate_limiter.record_write(str(target_file_path))

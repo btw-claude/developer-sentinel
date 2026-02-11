@@ -8,7 +8,11 @@
 #
 # Customize the project key and prompts for your use case.
 
-orchestrations:
+trigger:
+  source: jira
+  project: "DEMO"           # Change to your Jira project key
+
+steps:
   - name: "code-review"
 
     # Trigger: Which issues activate this workflow
@@ -26,8 +30,6 @@ orchestrations:
     #     jql_filter: 'priority = "High" AND type = "Bug"'
     #
     trigger:
-      source: jira
-      project: "DEMO"           # Change to your Jira project key
       tags:
         - "needs-code-review"   # Issues with this label trigger processing
 
