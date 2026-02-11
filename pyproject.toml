@@ -126,8 +126,11 @@ line-length = 100
 select = ["D103", "E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "G"]
 
 [tool.ruff.lint.per-file-ignores]
-# Relax line length and nested-with rules in tests for readability
-"tests/**/*.py" = ["E501", "SIM117"]
+# Relax line length, nested-with, and missing-docstring rules in tests for readability.
+# D103 was added in DS-918 to maintain parity with the previous pydocstyle behavior
+# that excluded test files via match/match_dir patterns. Without this exemption,
+# test helper functions (not prefixed with test_) would be flagged for missing docstrings.
+"tests/**/*.py" = ["D103", "E501", "SIM117"]
 
 [tool.mypy]
 python_version = "3.12"
