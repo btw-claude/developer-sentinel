@@ -35,11 +35,11 @@ if TYPE_CHECKING:
 
 # Type alias for issues from any supported source (DS-930).
 # Defined once here and imported by executor.py and router.py.
-# The ``from __future__ import annotations`` PEP 563 import at the top of this
-# module turns all annotations into strings, so the forward references to
-# ``JiraIssue`` and ``GitHubIssueProtocol`` (guarded by ``TYPE_CHECKING``) are
-# resolved lazily by type checkers without triggering a circular import at
-# runtime.
+# The PEP 695 ``type`` statement below provides built-in lazy evaluation — the
+# right-hand side is not eagerly evaluated at runtime — so the forward
+# references to ``JiraIssue`` and ``GitHubIssueProtocol`` (guarded by
+# ``TYPE_CHECKING``) are resolved lazily by type checkers without triggering a
+# circular import at runtime.
 type AnyIssue = JiraIssue | GitHubIssueProtocol
 
 
