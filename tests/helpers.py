@@ -12,6 +12,7 @@ Usage:
 
         from tests.helpers import (
             assert_call_args_length,
+            make_completed_execution_info,
             make_config,
             make_orchestration,
             make_issue,
@@ -28,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -62,6 +64,7 @@ from sentinel.orchestration import (
     TriggerConfig,
 )
 from sentinel.poller import JiraIssue
+from sentinel.state_tracker import CompletedExecutionInfo
 from sentinel.types import AgentType
 
 
@@ -491,6 +494,65 @@ def make_orchestration(
             success_patterns=success_patterns or ["SUCCESS", "completed successfully"],
             failure_patterns=failure_patterns or ["FAILURE", "failed", "error"],
         ),
+    )
+
+
+def make_completed_execution_info(
+    issue_key: str = "TEST-1",
+    orchestration_name: str = "test-orch",
+    attempt_number: int = 1,
+    started_at: datetime | None = None,
+    completed_at: datetime | None = None,
+    status: str = "success",
+    input_tokens: int = 100,
+    output_tokens: int = 50,
+    total_cost_usd: float = 0.01,
+    issue_url: str = "https://example.com/TEST-1",
+) -> CompletedExecutionInfo:
+    """Create a CompletedExecutionInfo instance for testing.
+
+    Provides sensible defaults for all fields, with the ability to override
+    any parameter. This factory follows the same pattern as make_orchestration
+    and make_issue.
+
+    Args:
+        issue_key: The issue key (e.g., "TEST-1").
+        orchestration_name: The orchestration name (e.g., "test-orch").
+        attempt_number: The attempt number for this execution.
+        started_at: The execution start time. Defaults to ``datetime.now(tz=UTC)``.
+        completed_at: The execution end time. Defaults to ``datetime.now(tz=UTC)``.
+        status: The execution status ("success" or "failure").
+        input_tokens: Number of input tokens consumed.
+        output_tokens: Number of output tokens generated.
+        total_cost_usd: Total cost in USD.
+        issue_url: URL to the issue.
+
+    Returns:
+        A CompletedExecutionInfo instance with the specified parameters.
+
+    Example::
+
+        # Create with all defaults
+        info = make_completed_execution_info()
+
+        # Override specific fields
+        info = make_completed_execution_info(
+            issue_key="PROJ-42",
+            status="failure",
+            input_tokens=500,
+        )
+    """
+    return CompletedExecutionInfo(
+        issue_key=issue_key,
+        orchestration_name=orchestration_name,
+        attempt_number=attempt_number,
+        started_at=started_at or datetime.now(tz=UTC),
+        completed_at=completed_at or datetime.now(tz=UTC),
+        status=status,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_cost_usd=total_cost_usd,
+        issue_url=issue_url,
     )
 
 
