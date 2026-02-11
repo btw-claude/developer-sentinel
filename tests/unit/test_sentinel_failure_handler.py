@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from sentinel.main import Sentinel
+from sentinel.poller import JiraIssue
 from sentinel.types import ErrorType
 from tests.conftest import (
     MockAgentClient,
@@ -596,12 +597,11 @@ class TestExecuteOrchestrationTaskUsesHelper:
             sentinel, _ = _create_sentinel()
             orchestration = make_orchestration(name="test-orch")
 
-            mock_issue = MagicMock()
-            mock_issue.key = issue_key
+            issue = JiraIssue(key=issue_key, summary="Test issue")
 
             with patch.object(sentinel, "_handle_execution_failure") as mock_handler:
                 result = sentinel._execute_orchestration_task(
-                    issue=mock_issue, orchestration=orchestration
+                    issue=issue, orchestration=orchestration
                 )
 
                 assert result is None
@@ -869,12 +869,11 @@ class TestClaudeProcessInterruptedUsesHelper:
             sentinel, _ = _create_sentinel()
             orchestration = make_orchestration(name="test-orch")
 
-            mock_issue = MagicMock()
-            mock_issue.key = "TEST-999"
+            issue = JiraIssue(key="TEST-999", summary="Test issue")
 
             with patch.object(sentinel, "_apply_failure_tags_safely") as mock_apply:
                 result = sentinel._execute_orchestration_task(
-                    issue=mock_issue, orchestration=orchestration
+                    issue=issue, orchestration=orchestration
                 )
 
                 assert result is None
