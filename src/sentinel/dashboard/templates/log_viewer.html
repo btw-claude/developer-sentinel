@@ -526,7 +526,7 @@ statusText.textContent = UI_MESSAGES.LOG_VIEWER.DISCONNECTED;
 logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT, UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT_SUBTITLE);
 
 // Auto-select from URL query parameters (for direct links from Running Steps)
-// Added user feedback when invalid URL parameters are detected
+// Shows user feedback when invalid step or file URL parameters are detected
 (function initFromUrlParams() {
     const params = new URLSearchParams(window.location.search);
     // Keep 'orchestration' URL param for backward compat with Running Steps links
