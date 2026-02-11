@@ -140,7 +140,6 @@ class AgentTimeoutError(AgentClientError):
 # This type alias makes the async nature of run_agent more discoverable and provides
 # better autocomplete and type inference in IDEs.
 AgentRunCoroutine = Coroutine[Any, Any, AgentRunResult]
-"""Coroutine type for async agent execution methods returning AgentRunResult."""
 
 
 class AgentClient(ABC):
