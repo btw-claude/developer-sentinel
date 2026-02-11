@@ -2171,7 +2171,7 @@ class TestCreateOrchestrationEndpoint:
                 json={
                     "name": "new-orch",
                     "target_file": "new-file.yaml",
-                    "trigger": {"source": "jira", "project": "TEST"},
+                    "file_trigger": {"source": "jira", "project": "TEST"},
                     "agent": {"prompt": "Test prompt"},
                 },
                 headers={"X-CSRF-Token": csrf_token},
@@ -2307,7 +2307,7 @@ orchestrations:
                 json={
                     "name": "second-orch",
                     "target_file": "existing.yaml",
-                    "trigger": {"source": "jira", "project": "TEST"},
+                    "file_trigger": {"source": "jira", "project": "TEST"},
                     "agent": {"prompt": "Second"},
                 },
                 headers={"X-CSRF-Token": csrf_token},

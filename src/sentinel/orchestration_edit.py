@@ -43,7 +43,7 @@ import os
 import re
 from typing import Any
 
-from sentinel.dashboard.models import OrchestrationEditRequest
+from sentinel.dashboard.models import FileTriggerEditRequest, OrchestrationEditRequest
 from sentinel.orchestration import (
     OrchestrationError,
     _collect_agent_errors,
@@ -277,6 +277,18 @@ def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
             updates.setdefault("on_failure", {})["add_tag"] = lc["on_failure_add_tag"]
 
     return updates
+
+
+def _build_file_trigger_updates(request: FileTriggerEditRequest) -> dict[str, Any]:
+    """Convert a FileTriggerEditRequest to a YAML-compatible update dict.
+
+    Args:
+        request: The file-level trigger edit request.
+
+    Returns:
+        A dictionary with only non-None fields for file-level trigger update.
+    """
+    return request.model_dump(exclude_none=True)
 
 
 def _validate_orchestration_updates(

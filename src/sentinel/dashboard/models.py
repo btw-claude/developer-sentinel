@@ -30,6 +30,7 @@ __all__: list[str] = [
     "BulkToggleRequest",
     "BulkToggleResponse",
     # Edit models
+    "FileTriggerEditRequest",
     "TriggerEditRequest",
     "GitHubContextEditRequest",
     "AgentEditRequest",
@@ -38,6 +39,7 @@ __all__: list[str] = [
     "LifecycleEditRequest",
     "OrchestrationEditRequest",
     "OrchestrationEditResponse",
+    "FileTriggerEditResponse",
     # Delete models
     "DeleteResponse",
     # Create models
@@ -85,16 +87,28 @@ class BulkToggleResponse(BaseModel):
 
 
 # Pydantic models for orchestration edit endpoints (DS-727)
-class TriggerEditRequest(BaseModel):
-    """Request model for editing trigger configuration."""
+class FileTriggerEditRequest(BaseModel):
+    """Request model for editing file-level trigger configuration.
 
+    File-level trigger contains project-scoping fields that apply to all
+    steps in the file (DS-896).
+    """
     source: TriggerSourceLiteral | None = None
     project: str | None = None
-    jql_filter: str | None = None
-    tags: list[str] | None = None
     project_number: int | None = None
     project_scope: Literal["org", "user"] | None = None
     project_owner: str | None = None
+
+
+class TriggerEditRequest(BaseModel):
+    """Request model for editing step-level trigger configuration.
+
+    After DS-896, file-level fields (source, project, project_number,
+    project_scope, project_owner) are managed via FileTriggerEditRequest.
+    Step-level trigger only contains filter fields.
+    """
+    jql_filter: str | None = None
+    tags: list[str] | None = None
     project_filter: str | None = None
     labels: list[str] | None = None
 
@@ -174,6 +188,13 @@ class OrchestrationEditResponse(BaseModel):
     errors: list[str] = []
 
 
+class FileTriggerEditResponse(BaseModel):
+    """Response model for file-level trigger edit."""
+
+    success: bool
+    errors: list[str] = []
+
+
 class DeleteResponse(BaseModel):
     """Response model for orchestration deletion."""
 
@@ -188,6 +209,7 @@ class OrchestrationCreateRequest(BaseModel):
     target_file: str
     enabled: bool | None = None
     max_concurrent: int | None = None
+    file_trigger: FileTriggerEditRequest | None = None  # DS-896
     trigger: TriggerEditRequest | None = None
     agent: AgentEditRequest | None = None
     retry: RetryEditRequest | None = None

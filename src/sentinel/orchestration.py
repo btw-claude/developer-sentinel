@@ -828,6 +828,135 @@ def _validate_strict_template_variables(strict_template_variables: Any) -> str |
     return None
 
 
+# File-level trigger fields that get merged into each step (DS-896)
+_FILE_TRIGGER_FIELDS = frozenset({
+    "source", "project", "project_number", "project_scope", "project_owner",
+})
+
+# Step-level trigger fields that remain per-step (DS-896)
+_STEP_TRIGGER_FIELDS = frozenset({
+    "tags", "labels", "jql_filter", "project_filter",
+})
+
+
+def _parse_file_trigger(data: dict[str, Any]) -> dict[str, Any]:
+    """Parse and validate the file-level trigger block.
+
+    File-level trigger contains project-scoping fields (source, project,
+    project_number, project_scope, project_owner) that apply to all steps
+    in the file.  These are merged into each step's trigger at load time.
+
+    Args:
+        data: The file-level trigger dict.
+
+    Returns:
+        A validated dict of file-level trigger fields.
+
+    Raises:
+        OrchestrationError: If validation fails.
+    """
+    source = data.get("source", "jira")
+    error = _validate_trigger_source(source)
+    if error:
+        raise OrchestrationError(f"File-level trigger: {error}")
+
+    result: dict[str, Any] = {"source": source}
+
+    if source == "jira":
+        project = data.get("project", "")
+        result["project"] = project
+    elif source == "github":
+        project_number = data.get("project_number")
+        error = _validate_project_number(project_number)
+        if error:
+            raise OrchestrationError(f"File-level trigger: {error}")
+        result["project_number"] = project_number
+
+        project_scope = data.get("project_scope", "org")
+        error = _validate_project_scope(project_scope)
+        if error:
+            raise OrchestrationError(f"File-level trigger: {error}")
+        result["project_scope"] = project_scope
+
+        project_owner = data.get("project_owner", "")
+        error = _validate_project_owner(project_owner)
+        if error:
+            raise OrchestrationError(f"File-level trigger: {error}")
+        result["project_owner"] = project_owner
+
+    return result
+
+
+def _collect_file_trigger_errors(data: dict[str, Any]) -> list[str]:
+    """Collect all validation errors from file-level trigger configuration.
+
+    Error-collecting variant of ``_parse_file_trigger`` for API validation
+    that reports all errors at once instead of failing on the first.
+
+    Args:
+        data: The file-level trigger dict.
+
+    Returns:
+        A list of error messages.  Empty means valid.
+    """
+    errors: list[str] = []
+
+    source = data.get("source", "jira")
+    error = _validate_trigger_source(source)
+    if error:
+        errors.append(f"File-level trigger: {error}")
+
+    if source == "github":
+        project_number = data.get("project_number")
+        error = _validate_project_number(project_number)
+        if error:
+            errors.append(f"File-level trigger: {error}")
+
+        project_scope = data.get("project_scope", "org")
+        error = _validate_project_scope(project_scope)
+        if error:
+            errors.append(f"File-level trigger: {error}")
+
+        project_owner = data.get("project_owner", "")
+        error = _validate_project_owner(project_owner)
+        if error:
+            errors.append(f"File-level trigger: {error}")
+
+    return errors
+
+
+def _merge_file_trigger_into_step(
+    file_trigger: dict[str, Any],
+    step_data: dict[str, Any],
+) -> None:
+    """Merge file-level trigger fields into a step's trigger dict in place.
+
+    File-level fields (source, project, project_number, etc.) are copied into
+    the step's trigger if not already present there.  Step-level fields
+    (tags, labels, jql_filter, project_filter) are preserved as-is.
+
+    If the step has no trigger key at all, one is created from the file-level
+    fields.
+
+    Args:
+        file_trigger: Validated file-level trigger fields.
+        step_data: The step dict (modified in place).
+    """
+    if "trigger" not in step_data:
+        step_data["trigger"] = dict(file_trigger)
+        return
+
+    step_trigger = step_data["trigger"]
+    if not isinstance(step_trigger, dict):
+        step_trigger = {}
+        step_data["trigger"] = step_trigger
+
+    # Merge file-level fields into step trigger (file-level provides defaults)
+    for key, value in file_trigger.items():
+        if key not in step_trigger:
+            step_trigger[key] = value
+
+
 def _collect_trigger_errors(data: dict[str, Any]) -> list[str]:
     """Collect all validation errors from trigger configuration (DS-734).
 
@@ -1313,9 +1442,18 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
     if not isinstance(file_enabled, bool):
         raise OrchestrationError(f"File-level 'enabled' must be a boolean in {file_path}")
 
-    orchestrations_data = data.get("orchestrations", [])
+    # Read file-level trigger (DS-896)
+    file_trigger_data = data.get("trigger")
+    file_trigger: dict[str, Any] | None = None
+    if file_trigger_data and isinstance(file_trigger_data, dict):
+        file_trigger = _parse_file_trigger(file_trigger_data)
+
+    # Support both "steps" (new) and "orchestrations" (legacy) keys (DS-896)
+    orchestrations_data = data.get("steps") or data.get("orchestrations", [])
     if not isinstance(orchestrations_data, list):
-        raise OrchestrationError(f"'orchestrations' must be a list in {file_path}")
+        raise OrchestrationError(
+            f"'steps' (or 'orchestrations') must be a list in {file_path}"
+        )
 
     total_count = len(orchestrations_data)
 
@@ -1326,6 +1464,12 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
             file_path,
         )
         return [], total_count
+
+    # Merge file-level trigger into each step before parsing (DS-896)
+    if file_trigger:
+        for step in orchestrations_data:
+            if isinstance(step, dict):
+                _merge_file_trigger_into_step(file_trigger, step)
 
     # Parse all orchestrations and filter out disabled ones
     orchestrations = [_parse_orchestration(orch) for orch in orchestrations_data]

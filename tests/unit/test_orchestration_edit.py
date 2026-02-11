@@ -61,30 +61,28 @@ class TestBuildYamlUpdates:
         assert updates == {"max_concurrent": 5}
 
     def test_trigger_fields(self) -> None:
-        """Should build trigger dict from TriggerEditRequest."""
+        """Should build trigger dict from TriggerEditRequest (step-level only)."""
         request = OrchestrationEditRequest(
             trigger=TriggerEditRequest(
-                source="jira",
-                project="NEW-PROJ",
                 tags=["tag1", "tag2"],
+                jql_filter="priority = High",
             )
         )
         updates = _build_yaml_updates(request)
         assert updates == {
             "trigger": {
-                "source": "jira",
-                "project": "NEW-PROJ",
                 "tags": ["tag1", "tag2"],
+                "jql_filter": "priority = High",
             }
         }
 
     def test_trigger_partial_update(self) -> None:
         """Should only include set trigger fields."""
         request = OrchestrationEditRequest(
-            trigger=TriggerEditRequest(project="NEW-PROJ")
+            trigger=TriggerEditRequest(tags=["new-tag"])
         )
         updates = _build_yaml_updates(request)
-        assert updates == {"trigger": {"project": "NEW-PROJ"}}
+        assert updates == {"trigger": {"tags": ["new-tag"]}}
 
     def test_agent_fields(self) -> None:
         """Should build agent dict from AgentEditRequest."""
@@ -928,11 +926,13 @@ class TestPydanticModelValidation:
     """Tests for Pydantic model field validation."""
 
     def test_trigger_source_literal(self) -> None:
-        """Should accept valid trigger sources."""
-        trigger = TriggerEditRequest(source="jira")
+        """Should accept valid trigger sources via FileTriggerEditRequest (DS-896)."""
+        from sentinel.dashboard.models import FileTriggerEditRequest
+
+        trigger = FileTriggerEditRequest(source="jira")
         assert trigger.source == "jira"
 
-        trigger = TriggerEditRequest(source="github")
+        trigger = FileTriggerEditRequest(source="github")
         assert trigger.source == "github"
 
     def test_agent_type_literal(self) -> None:
@@ -1226,7 +1226,12 @@ orchestrations:
             assert "agent" in error_text
 
     def test_multi_error_validation(self, temp_logs_dir: Path) -> None:
-        """Test multiple validation errors are returned together (DS-733)."""
+        """Test multiple validation errors are returned together (DS-733).
+
+        After DS-896, TriggerEditRequest no longer has 'source' field (moved to
+        FileTriggerEditRequest). This test now uses max_concurrent and agent
+        timeout_seconds to generate multiple orchestration validation errors.
+        """
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
 orchestrations:
@@ -1257,12 +1262,12 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
-            # Send updates with errors in both trigger and agent sections
+            # Send updates with errors in multiple sections (orchestration-level validation)
             response = client.put(
                 "/api/orchestrations/test-orch",
                 json={
-                    "trigger": {"source": "gitlab"},
-                    "agent": {"agent_type": "invalid-agent"},
+                    "max_concurrent": -1,
+                    "agent": {"timeout_seconds": -5},
                 },
             )
 
@@ -1277,8 +1282,8 @@ orchestrations:
             else:
                 # FastAPI may wrap as ValidationError format
                 error_text = " ".join(str(item) for item in detail).lower()
-            assert "trigger" in error_text or "source" in error_text
-            assert "agent" in error_text
+            assert "max_concurrent" in error_text
+            assert "timeout_seconds" in error_text
 
     def test_intra_section_multi_error_via_api(self, temp_logs_dir: Path) -> None:
         """Test intra-section multi-error reporting via PUT endpoint (DS-734).

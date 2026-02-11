@@ -3,15 +3,18 @@
 # This is a sample orchestration to verify your Docker setup is working.
 # Replace with your actual workflow configurations.
 
-orchestrations:
+enabled: false
+
+trigger:
+  source: jira
+  project: "DEMO"           # Change to your Jira project key
+
+steps:
   - name: "docker-test"
 
     # Disabled by default - enable after configuring
-    enabled: false
 
     trigger:
-      source: jira
-      project: "DEMO"           # Change to your Jira project key
       tags:
         - "test-docker"
 
