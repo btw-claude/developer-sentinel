@@ -1049,15 +1049,15 @@ class SentinelStateAccessor:
         result = []
 
         # Iterate through step directories
-        for orch_dir in sorted(logs_dir.iterdir()):
-            if not orch_dir.is_dir():
+        for step_dir in sorted(logs_dir.iterdir()):
+            if not step_dir.is_dir():
                 continue
 
-            step_name = orch_dir.name
+            step_name = step_dir.name
             files = []
 
             # Get log files in this step directory
-            for log_file in orch_dir.glob("*.log"):
+            for log_file in step_dir.glob("*.log"):
                 if log_file.is_file():
                     try:
                         stat = log_file.stat()
