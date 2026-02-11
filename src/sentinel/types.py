@@ -27,7 +27,7 @@ Usage:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING, Literal, Union, get_args
+from typing import TYPE_CHECKING, Literal, get_args
 
 if TYPE_CHECKING:
     from sentinel.github_poller import GitHubIssueProtocol
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 # ``JiraIssue`` and ``GitHubIssueProtocol`` (guarded by ``TYPE_CHECKING``) are
 # resolved lazily by type checkers without triggering a circular import at
 # runtime.
-AnyIssue = Union["JiraIssue", "GitHubIssueProtocol"]
+type AnyIssue = JiraIssue | GitHubIssueProtocol
 
 
 class TriggerSource(StrEnum):
