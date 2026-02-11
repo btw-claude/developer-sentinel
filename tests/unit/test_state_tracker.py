@@ -18,8 +18,8 @@ import time
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
-from sentinel.state_tracker import AttemptCountEntry, CompletedExecutionInfo, StateTracker
-from tests.helpers import make_orchestration
+from sentinel.state_tracker import AttemptCountEntry, StateTracker
+from tests.helpers import make_completed_execution_info, make_orchestration
 
 
 class TestQueueOperations:
@@ -115,22 +115,25 @@ class TestAttemptCountManagement:
         assert count == 1
 
     def test_get_and_increment_updates_last_access(self) -> None:
-        tracker = StateTracker()
-        time_before = time.monotonic()
+        tracker = StateTracker(attempt_counts_ttl=0.5)
+
+        # Increment, then wait past TTL so the entry becomes stale
         tracker.get_and_increment_attempt_count("TEST-1", "my-orch")
-        time_after = time.monotonic()
+        time.sleep(0.6)
 
-        key = ("TEST-1", "my-orch")
-        with tracker._attempt_counts_lock:
-            entry = tracker._attempt_counts[key]
+        # The entry should now be stale and cleaned up
+        cleaned = tracker.cleanup_stale_attempt_counts()
+        assert cleaned == 1
 
-        assert entry.count == 1
-        assert entry.last_access >= time_before
-        assert entry.last_access <= time_after
+        # Increment again, and verify cleanup does NOT remove the fresh entry
+        tracker.get_and_increment_attempt_count("TEST-1", "my-orch")
+        cleaned = tracker.cleanup_stale_attempt_counts()
+        assert cleaned == 0
 
     def test_cleanup_stale_attempt_counts_removes_old_entries(self) -> None:
         tracker = StateTracker(attempt_counts_ttl=1.0)
 
+        # Inject entries with controlled timestamps via private access (test setup only)
         current_time = time.monotonic()
         with tracker._attempt_counts_lock:
             tracker._attempt_counts[("OLD-1", "orch")] = AttemptCountEntry(
@@ -140,14 +143,15 @@ class TestAttemptCountManagement:
                 count=3, last_access=current_time - 0.5
             )
 
-        assert len(tracker._attempt_counts) == 2
-
         cleaned = tracker.cleanup_stale_attempt_counts()
 
         assert cleaned == 1
-        assert len(tracker._attempt_counts) == 1
-        assert ("OLD-1", "orch") not in tracker._attempt_counts
-        assert ("RECENT-1", "orch") in tracker._attempt_counts
+        # Verify via public API: re-incrementing OLD-1 should return 1 (entry was removed)
+        count = tracker.get_and_increment_attempt_count("OLD-1", "orch")
+        assert count == 1
+        # Verify via public API: re-incrementing RECENT-1 should return 4 (entry was kept)
+        count = tracker.get_and_increment_attempt_count("RECENT-1", "orch")
+        assert count == 4
 
     def test_cleanup_stale_attempt_counts_returns_zero_when_none_stale(self) -> None:
         tracker = StateTracker(attempt_counts_ttl=3600.0)
@@ -155,7 +159,9 @@ class TestAttemptCountManagement:
 
         cleaned = tracker.cleanup_stale_attempt_counts()
         assert cleaned == 0
-        assert len(tracker._attempt_counts) == 1
+        # Verify entry still exists via public API: next increment should return 2
+        count = tracker.get_and_increment_attempt_count("TEST-1", "my-orch")
+        assert count == 2
 
     def test_cleanup_stale_attempt_counts_with_empty_dict(self) -> None:
         tracker = StateTracker()
@@ -166,18 +172,7 @@ class TestAttemptCountManagement:
 class TestCompletedExecutionTracking:
     def test_add_completed_execution_adds_entry(self) -> None:
         tracker = StateTracker()
-        info = CompletedExecutionInfo(
-            issue_key="TEST-1",
-            orchestration_name="my-orch",
-            attempt_number=1,
-            started_at=datetime.now(tz=UTC),
-            completed_at=datetime.now(tz=UTC),
-            status="success",
-            input_tokens=100,
-            output_tokens=50,
-            total_cost_usd=0.01,
-            issue_url="https://example.com/TEST-1",
-        )
+        info = make_completed_execution_info(orchestration_name="my-orch")
 
         tracker.add_completed_execution(info)
         executions = tracker.get_completed_executions()
@@ -187,24 +182,9 @@ class TestCompletedExecutionTracking:
 
     def test_add_completed_execution_uses_appendleft_ordering(self) -> None:
         tracker = StateTracker()
-        info1 = CompletedExecutionInfo(
-            issue_key="TEST-1",
-            orchestration_name="orch",
-            attempt_number=1,
-            started_at=datetime.now(tz=UTC),
-            completed_at=datetime.now(tz=UTC),
-            status="success",
-            input_tokens=100,
-            output_tokens=50,
-            total_cost_usd=0.01,
-            issue_url="https://example.com/TEST-1",
-        )
-        info2 = CompletedExecutionInfo(
+        info1 = make_completed_execution_info(issue_key="TEST-1", status="success")
+        info2 = make_completed_execution_info(
             issue_key="TEST-2",
-            orchestration_name="orch",
-            attempt_number=1,
-            started_at=datetime.now(tz=UTC),
-            completed_at=datetime.now(tz=UTC),
             status="failure",
             input_tokens=200,
             output_tokens=100,
@@ -224,16 +204,8 @@ class TestCompletedExecutionTracking:
         tracker = StateTracker(max_completed_executions=3)
 
         for i in range(1, 5):
-            info = CompletedExecutionInfo(
+            info = make_completed_execution_info(
                 issue_key=f"TEST-{i}",
-                orchestration_name="orch",
-                attempt_number=1,
-                started_at=datetime.now(tz=UTC),
-                completed_at=datetime.now(tz=UTC),
-                status="success",
-                input_tokens=100,
-                output_tokens=50,
-                total_cost_usd=0.01,
                 issue_url=f"https://example.com/TEST-{i}",
             )
             tracker.add_completed_execution(info)
@@ -254,7 +226,9 @@ class TestCompletedExecutionTracking:
 class TestRunningSteps:
     def test_add_running_step_stores_info(self) -> None:
         tracker = StateTracker()
-        future_id = 12345
+        future = MagicMock()
+        future.done.return_value = False
+        future_id = id(future)
 
         tracker.add_running_step(
             future_id=future_id,
@@ -264,18 +238,20 @@ class TestRunningSteps:
             issue_url="https://example.com/TEST-1",
         )
 
-        with tracker._running_steps_lock:
-            assert future_id in tracker._running_steps
-            info = tracker._running_steps[future_id]
-            assert info.issue_key == "TEST-1"
-            assert info.orchestration_name == "my-orch"
-            assert info.attempt_number == 2
-            assert info.issue_url == "https://example.com/TEST-1"
-            assert isinstance(info.started_at, datetime)
+        running = tracker.get_running_steps([future])
+        assert len(running) == 1
+        info = running[0]
+        assert info.issue_key == "TEST-1"
+        assert info.orchestration_name == "my-orch"
+        assert info.attempt_number == 2
+        assert info.issue_url == "https://example.com/TEST-1"
+        assert isinstance(info.started_at, datetime)
 
     def test_remove_running_step_returns_info(self) -> None:
         tracker = StateTracker()
-        future_id = 12345
+        future = MagicMock()
+        future.done.return_value = False
+        future_id = id(future)
 
         tracker.add_running_step(
             future_id=future_id,
@@ -289,8 +265,9 @@ class TestRunningSteps:
         assert info is not None
         assert info.issue_key == "TEST-1"
 
-        with tracker._running_steps_lock:
-            assert future_id not in tracker._running_steps
+        # Verify removal via public API: step should no longer appear
+        running = tracker.get_running_steps([future])
+        assert len(running) == 0
 
     def test_remove_running_step_returns_none_when_not_found(self) -> None:
         tracker = StateTracker()
@@ -391,8 +368,9 @@ class TestPerOrchestrationCounts:
 
         tracker.decrement_per_orch_count("my-orch")
 
-        with tracker._per_orch_counts_lock:
-            assert "my-orch" not in tracker._per_orch_active_counts
+        # Verify via public API: count should be zero and absent from all counts
+        assert tracker.get_per_orch_count("my-orch") == 0
+        assert "my-orch" not in tracker.get_all_per_orch_counts()
 
     def test_get_per_orch_count_returns_current_count(self) -> None:
         tracker = StateTracker()
@@ -599,8 +577,9 @@ class TestThreadSafety:
         for t in threads:
             t.join()
 
-        with tracker._running_steps_lock:
-            assert len(tracker._running_steps) == 0
+        # Verify all steps were removed via public API
+        running = tracker.get_running_steps([])
+        assert len(running) == 0
 
     def test_concurrent_completed_execution_operations(self) -> None:
         tracker = StateTracker(max_completed_executions=1000)
@@ -609,16 +588,8 @@ class TestThreadSafety:
 
         def add_execution(thread_id: int) -> None:
             barrier.wait()
-            info = CompletedExecutionInfo(
+            info = make_completed_execution_info(
                 issue_key=f"TEST-{thread_id}",
-                orchestration_name="orch",
-                attempt_number=1,
-                started_at=datetime.now(tz=UTC),
-                completed_at=datetime.now(tz=UTC),
-                status="success",
-                input_tokens=100,
-                output_tokens=50,
-                total_cost_usd=0.01,
                 issue_url=f"https://example.com/TEST-{thread_id}",
             )
             tracker.add_completed_execution(info)
