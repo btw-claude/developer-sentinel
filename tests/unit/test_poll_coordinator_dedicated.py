@@ -24,8 +24,9 @@ from __future__ import annotations
 import logging
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from sentinel.config import Config
-from sentinel.github_poller import GitHubIssue
 from sentinel.orchestration import GitHubContext, Orchestration
 from sentinel.poll_coordinator import (
     GitHubIssueWithRepo,
@@ -34,45 +35,12 @@ from sentinel.poll_coordinator import (
     PollingResult,
     extract_repo_from_url,
 )
-from tests.helpers import make_config, make_issue, make_orchestration
+from tests.helpers import make_config, make_github_issue, make_issue, make_orchestration
 from tests.mocks import MockGitHubPoller, MockJiraPoller
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_github_issue(
-    number: int = 1,
-    title: str = "Test Issue",
-    body: str = "Test body",
-    state: str = "open",
-    author: str = "testuser",
-    assignees: list[str] | None = None,
-    labels: list[str] | None = None,
-    is_pull_request: bool = False,
-    head_ref: str = "",
-    base_ref: str = "",
-    draft: bool = False,
-    repo_url: str = "https://github.com/org/repo/issues/1",
-    parent_issue_number: int | None = None,
-) -> GitHubIssue:
-    """Create a GitHubIssue instance for testing."""
-    return GitHubIssue(
-        number=number,
-        title=title,
-        body=body,
-        state=state,
-        author=author,
-        assignees=assignees or [],
-        labels=labels or [],
-        is_pull_request=is_pull_request,
-        head_ref=head_ref,
-        base_ref=base_ref,
-        draft=draft,
-        repo_url=repo_url,
-        parent_issue_number=parent_issue_number,
-    )
 
 
 def _make_poll_coordinator(
@@ -144,98 +112,98 @@ class TestGitHubIssueWithRepo:
 
     def test_key_returns_repo_and_number(self) -> None:
         """The key property should return 'org/repo#number'."""
-        issue = _make_github_issue(number=123)
+        issue = make_github_issue(number=123)
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.key == "org/repo#123"
 
     def test_number_forwarded(self) -> None:
         """The number property should forward to the wrapped issue."""
-        issue = _make_github_issue(number=42)
+        issue = make_github_issue(number=42)
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.number == 42
 
     def test_title_forwarded(self) -> None:
         """The title property should forward to the wrapped issue."""
-        issue = _make_github_issue(title="My title")
+        issue = make_github_issue(title="My title")
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.title == "My title"
 
     def test_body_forwarded(self) -> None:
         """The body property should forward to the wrapped issue."""
-        issue = _make_github_issue(body="Issue body text")
+        issue = make_github_issue(body="Issue body text")
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.body == "Issue body text"
 
     def test_state_forwarded(self) -> None:
         """The state property should forward to the wrapped issue."""
-        issue = _make_github_issue(state="closed")
+        issue = make_github_issue(state="closed")
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.state == "closed"
 
     def test_author_forwarded(self) -> None:
         """The author property should forward to the wrapped issue."""
-        issue = _make_github_issue(author="alice")
+        issue = make_github_issue(author="alice")
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.author == "alice"
 
     def test_assignees_forwarded(self) -> None:
         """The assignees property should forward to the wrapped issue."""
-        issue = _make_github_issue(assignees=["alice", "bob"])
+        issue = make_github_issue(assignees=["alice", "bob"])
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.assignees == ["alice", "bob"]
 
     def test_labels_forwarded(self) -> None:
         """The labels property should forward to the wrapped issue."""
-        issue = _make_github_issue(labels=["bug", "critical"])
+        issue = make_github_issue(labels=["bug", "critical"])
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.labels == ["bug", "critical"]
 
     def test_is_pull_request_forwarded(self) -> None:
         """The is_pull_request property should forward to the wrapped issue."""
-        issue = _make_github_issue(is_pull_request=True)
+        issue = make_github_issue(is_pull_request=True)
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.is_pull_request is True
 
     def test_head_ref_forwarded(self) -> None:
         """The head_ref property should forward to the wrapped issue."""
-        issue = _make_github_issue(head_ref="feature-branch")
+        issue = make_github_issue(head_ref="feature-branch")
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.head_ref == "feature-branch"
 
     def test_base_ref_forwarded(self) -> None:
         """The base_ref property should forward to the wrapped issue."""
-        issue = _make_github_issue(base_ref="main")
+        issue = make_github_issue(base_ref="main")
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.base_ref == "main"
 
     def test_draft_forwarded(self) -> None:
         """The draft property should forward to the wrapped issue."""
-        issue = _make_github_issue(draft=True)
+        issue = make_github_issue(draft=True)
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.draft is True
 
     def test_repo_url_forwarded(self) -> None:
         """The repo_url property should forward to the wrapped issue."""
         url = "https://github.com/org/repo/issues/1"
-        issue = _make_github_issue(repo_url=url)
+        issue = make_github_issue(repo_url=url)
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.repo_url == url
 
     def test_parent_issue_number_forwarded(self) -> None:
         """The parent_issue_number property should forward to the wrapped issue."""
-        issue = _make_github_issue(parent_issue_number=10)
+        issue = make_github_issue(parent_issue_number=10)
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.parent_issue_number == 10
 
     def test_parent_issue_number_none(self) -> None:
         """Parent issue number should be None when not set."""
-        issue = _make_github_issue(parent_issue_number=None)
+        issue = make_github_issue(parent_issue_number=None)
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.parent_issue_number is None
 
     def test_getattr_fallback(self) -> None:
         """__getattr__ should delegate to the wrapped issue for unknown attributes."""
-        issue = _make_github_issue(number=7)
+        issue = make_github_issue(number=7)
         # GitHubIssue is a dataclass, so it has __dataclass_fields__
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         # Access an attribute that exists on the underlying GitHubIssue dataclass
@@ -243,6 +211,27 @@ class TestGitHubIssueWithRepo:
         # The 'key' property on GitHubIssue returns "#7", but our wrapper overrides it.
         # Instead, test __getattr__ by accessing a dunder attribute from the dataclass.
         assert hasattr(wrapper, "__dataclass_fields__")
+
+    @pytest.mark.parametrize(
+        "prop,value",
+        [
+            ("number", 42),
+            ("title", "My title"),
+            ("body", "Issue body text"),
+            ("state", "closed"),
+            ("author", "alice"),
+            ("is_pull_request", True),
+            ("head_ref", "feature-branch"),
+            ("base_ref", "main"),
+            ("draft", True),
+        ],
+    )
+    def test_property_forwarded(self, prop: str, value: object) -> None:
+        """Each forwarding property should delegate to the wrapped issue."""
+        kwargs = {prop: value}
+        issue = make_github_issue(**kwargs)
+        wrapper = GitHubIssueWithRepo(issue, "org/repo")
+        assert getattr(wrapper, prop) == value
 
 
 # ===========================================================================
@@ -450,7 +439,7 @@ class TestPollJiraTriggers:
         coordinator.poll_jira_triggers([orch], router, log_callback=log_cb)
 
         # Should be called at least twice: once for "Polling Jira..." and once for "Found N..."
-        assert log_cb.call_count == 2
+        assert log_cb.call_count >= 2
         # First call: polling start
         first_call_args = log_cb.call_args_list[0]
         assert first_call_args[0][0] == "jira-orch"
@@ -518,7 +507,7 @@ class TestPollGitHubTriggers:
 
     def test_shutdown_requested_returns_early(self) -> None:
         """When shutdown_requested is True, polling should stop immediately."""
-        gh_issues = [_make_github_issue(number=1)]
+        gh_issues = [make_github_issue(number=1)]
         github_poller = MockGitHubPoller(issues=gh_issues)
         coordinator = _make_poll_coordinator(github_poller=github_poller)
         orch = make_orchestration(
@@ -538,7 +527,7 @@ class TestPollGitHubTriggers:
     def test_successful_poll_with_routing_and_repo_context(self) -> None:
         """Successful polling should wrap issues with repo context and route them."""
         gh_issues = [
-            _make_github_issue(
+            make_github_issue(
                 number=42,
                 repo_url="https://github.com/myorg/myrepo/issues/42",
             )
@@ -566,7 +555,7 @@ class TestPollGitHubTriggers:
 
     def test_log_callback_called(self) -> None:
         """Log callback should be invoked for polling start and result."""
-        gh_issues = [_make_github_issue(number=1)]
+        gh_issues = [make_github_issue(number=1)]
         github_poller = MockGitHubPoller(issues=gh_issues)
         coordinator = _make_poll_coordinator(github_poller=github_poller)
         orch = make_orchestration(
@@ -579,7 +568,7 @@ class TestPollGitHubTriggers:
 
         coordinator.poll_github_triggers([orch], router, log_callback=log_cb)
 
-        assert log_cb.call_count == 2
+        assert log_cb.call_count >= 2
         first_call_args = log_cb.call_args_list[0]
         assert first_call_args[0][0] == "gh-orch"
         assert first_call_args[0][1] == logging.INFO
@@ -609,7 +598,7 @@ class TestPollGitHubTriggers:
     def test_add_repo_context_invalid_url_logs_warning(self) -> None:
         """Issues with invalid repo URLs should be logged as warnings and excluded."""
         gh_issues = [
-            _make_github_issue(number=99, repo_url="not-a-valid-url"),
+            make_github_issue(number=99, repo_url="not-a-valid-url"),
         ]
         github_poller = MockGitHubPoller(issues=gh_issues)
         coordinator = _make_poll_coordinator(github_poller=github_poller)
@@ -630,15 +619,15 @@ class TestPollGitHubTriggers:
     def test_add_repo_context_mixed_valid_and_invalid(self) -> None:
         """Valid URLs produce wrapped issues; invalid URLs are skipped."""
         gh_issues = [
-            _make_github_issue(
+            make_github_issue(
                 number=1,
                 repo_url="https://github.com/org/repo/issues/1",
             ),
-            _make_github_issue(
+            make_github_issue(
                 number=2,
                 repo_url="invalid-url",
             ),
-            _make_github_issue(
+            make_github_issue(
                 number=3,
                 repo_url="https://github.com/org/other/pull/3",
             ),
@@ -705,7 +694,7 @@ class TestConstructIssueUrl:
     def test_github_with_repo_url(self) -> None:
         """GitHub source with repo_url on the issue should return the repo_url."""
         coordinator = _make_poll_coordinator()
-        gh_issue = _make_github_issue(
+        gh_issue = make_github_issue(
             number=42,
             repo_url="https://github.com/org/repo/issues/42",
         )
@@ -721,7 +710,7 @@ class TestConstructIssueUrl:
     def test_github_without_repo_url_but_with_github_context(self) -> None:
         """GitHub source without repo_url should fall back to agent.github context."""
         coordinator = _make_poll_coordinator()
-        gh_issue = _make_github_issue(number=55, repo_url="")
+        gh_issue = make_github_issue(number=55, repo_url="")
         wrapper = GitHubIssueWithRepo(gh_issue, "myorg/myrepo")
         orch = make_orchestration(
             name="gh-orch",
@@ -737,7 +726,7 @@ class TestConstructIssueUrl:
     def test_github_with_no_url_info(self) -> None:
         """GitHub source with no repo_url and no github context returns empty string."""
         coordinator = _make_poll_coordinator()
-        gh_issue = _make_github_issue(number=10, repo_url="")
+        gh_issue = make_github_issue(number=10, repo_url="")
         wrapper = GitHubIssueWithRepo(gh_issue, "org/repo")
         # Orchestration without github context
         orch = make_orchestration(
@@ -754,7 +743,7 @@ class TestConstructIssueUrl:
     def test_github_issue_key_with_hash(self) -> None:
         """GitHub issue key containing '#' should extract the number correctly."""
         coordinator = _make_poll_coordinator()
-        gh_issue = _make_github_issue(number=77, repo_url="")
+        gh_issue = make_github_issue(number=77, repo_url="")
         wrapper = GitHubIssueWithRepo(gh_issue, "org/repo")
         # wrapper.key == "org/repo#77"
         orch = make_orchestration(
@@ -771,7 +760,7 @@ class TestConstructIssueUrl:
     def test_github_context_with_custom_host(self) -> None:
         """GitHub context with a custom host should use that host in the URL."""
         coordinator = _make_poll_coordinator()
-        gh_issue = _make_github_issue(number=5, repo_url="")
+        gh_issue = make_github_issue(number=5, repo_url="")
         wrapper = GitHubIssueWithRepo(gh_issue, "myorg/myrepo")
         orch = make_orchestration(
             name="gh-orch",

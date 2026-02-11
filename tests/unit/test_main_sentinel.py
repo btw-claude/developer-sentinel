@@ -498,6 +498,19 @@ class TestExecuteOrchestrationTask:
 
         assert result is None
 
+    def test_timeout_error(self) -> None:
+        """TimeoutError should be caught, logged, and return None."""
+        sentinel = _make_sentinel()
+        sentinel.tag_manager = MagicMock()
+        issue = make_issue(key="TEST-1", labels=["review"])
+        orch = make_orchestration(tags=["review"])
+
+        with patch("sentinel.main.asyncio.run", side_effect=TimeoutError("timed out")):
+            result = sentinel._execute_orchestration_task(issue, orch)
+
+        assert result is None
+        sentinel.tag_manager.apply_failure_tags.assert_called_once()
+
     def test_version_decremented_in_finally(self) -> None:
         """The version's active execution count should be decremented in finally block."""
         sentinel = _make_sentinel()
@@ -534,7 +547,7 @@ class TestExecuteOrchestrationTask:
                 # Should log a warning about unknown trigger source
                 warning_calls = [
                     c for c in mock_logger.warning.call_args_list
-                    if "Unknown trigger source" in str(c)
+                    if "Unknown trigger source" in c.args[0]
                 ]
                 assert len(warning_calls) == 1
 
@@ -553,7 +566,7 @@ class TestExecuteOrchestrationTask:
                 # Should NOT log an "Unknown trigger source" warning
                 warning_calls = [
                     c for c in mock_logger.warning.call_args_list
-                    if "Unknown trigger source" in str(c)
+                    if "Unknown trigger source" in c.args[0]
                 ]
                 assert len(warning_calls) == 0
 
@@ -757,7 +770,7 @@ class TestRunOnce:
             # Should warn about GitHub orchestrations without a poller
             warning_calls = [
                 c for c in mock_logger.warning.call_args_list
-                if "GitHub" in str(c) and "not configured" in str(c)
+                if "GitHub" in c.args[0] and "not configured" in c.args[0]
             ]
             assert len(warning_calls) >= 1
 
@@ -982,7 +995,7 @@ class TestPollService:
                 )
                 info_calls = [
                     c for c in mock_logger.info.call_args_list
-                    if "polling summary" in str(c)
+                    if "polling summary" in c.args[0]
                 ]
                 assert len(info_calls) >= 1
 
@@ -1004,7 +1017,7 @@ class TestPollService:
                 )
                 summary_calls = [
                     c for c in mock_logger.info.call_args_list
-                    if "polling summary" in str(c)
+                    if "polling summary" in c.args[0]
                 ]
                 assert len(summary_calls) == 0
 
@@ -1147,10 +1160,13 @@ class TestRun:
 
         with patch.object(sentinel, "run_once", side_effect=mock_run_once):
             with patch("signal.signal"):
-                thread = self._run_sentinel_in_thread(sentinel)
-                thread.join(timeout=5)
-                assert not thread.is_alive()
-                assert call_count >= 2
+                with patch("sentinel.main.logger") as mock_logger:
+                    thread = self._run_sentinel_in_thread(sentinel)
+                    thread.join(timeout=5)
+                    assert not thread.is_alive()
+                    assert call_count >= 2
+                    # Verify error was logged
+                    mock_logger.error.assert_called()
 
     def test_run_runtime_error_in_cycle(self) -> None:
         """RuntimeError in run_once should be caught and the loop should continue."""
@@ -1167,9 +1183,12 @@ class TestRun:
 
         with patch.object(sentinel, "run_once", side_effect=mock_run_once):
             with patch("signal.signal"):
-                thread = self._run_sentinel_in_thread(sentinel)
-                thread.join(timeout=5)
-                assert not thread.is_alive()
+                with patch("sentinel.main.logger") as mock_logger:
+                    thread = self._run_sentinel_in_thread(sentinel)
+                    thread.join(timeout=5)
+                    assert not thread.is_alive()
+                    # Verify error was logged
+                    mock_logger.error.assert_called()
 
     def test_run_key_value_error_in_cycle(self) -> None:
         """KeyError/ValueError in run_once should be caught and the loop should continue."""
@@ -1186,9 +1205,12 @@ class TestRun:
 
         with patch.object(sentinel, "run_once", side_effect=mock_run_once):
             with patch("signal.signal"):
-                thread = self._run_sentinel_in_thread(sentinel)
-                thread.join(timeout=5)
-                assert not thread.is_alive()
+                with patch("sentinel.main.logger") as mock_logger:
+                    thread = self._run_sentinel_in_thread(sentinel)
+                    thread.join(timeout=5)
+                    assert not thread.is_alive()
+                    # Verify error was logged
+                    mock_logger.error.assert_called()
 
     def test_run_generic_exception_in_cycle(self) -> None:
         """Generic Exception in run_once should be caught and the loop should continue."""
@@ -1205,9 +1227,12 @@ class TestRun:
 
         with patch.object(sentinel, "run_once", side_effect=mock_run_once):
             with patch("signal.signal"):
-                thread = self._run_sentinel_in_thread(sentinel)
-                thread.join(timeout=5)
-                assert not thread.is_alive()
+                with patch("sentinel.main.logger") as mock_logger:
+                    thread = self._run_sentinel_in_thread(sentinel)
+                    thread.join(timeout=5)
+                    assert not thread.is_alive()
+                    # Verify error was logged (generic exceptions use logger.exception)
+                    mock_logger.exception.assert_called()
 
     def test_run_shutdown_after_idle_cycle(self) -> None:
         """run() should sleep poll_interval seconds when idle (submitted_count=0)."""
@@ -1294,7 +1319,7 @@ class TestRun:
                             # Should log about waiting with no timeout
                             info_calls = [
                                 c for c in mock_logger.info.call_args_list
-                                if "no timeout" in str(c).lower()
+                                if "no timeout" in c.args[0].lower()
                             ]
                             assert len(info_calls) >= 1
 
@@ -1321,7 +1346,7 @@ class TestRun:
                     # Should log cycle results
                     info_calls = [
                         c for c in mock_logger.info.call_args_list
-                        if "Cycle completed" in str(c)
+                        if "Cycle completed" in c.args[0]
                     ]
                     assert len(info_calls) >= 1
 
@@ -1397,7 +1422,7 @@ class TestRun:
                         # Should log final batch results
                         info_calls = [
                             c for c in mock_logger.info.call_args_list
-                            if "Final batch" in str(c)
+                            if "Final batch" in c.args[0]
                         ]
                         assert len(info_calls) >= 1
 
@@ -1718,7 +1743,7 @@ class TestRunShutdownTimeout:
                             # Should have logged timeout warning
                             warning_calls = [
                                 c for c in mock_logger.warning.call_args_list
-                                if "timeout reached" in str(c).lower()
+                                if "timeout reached" in c.args[0].lower()
                             ]
                             assert len(warning_calls) >= 1
 
