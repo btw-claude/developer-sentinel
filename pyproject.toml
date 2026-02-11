@@ -105,7 +105,7 @@ line-length = 100
 #     D103 (1 rule, stable, delegated from pydocstyle per DS-903)
 #   Stable + preview-only (preview rules inactive): E (19 stable, 41 preview),
 #     W (6 stable, 1 preview), B (39 stable, 3 preview: B901/B903/B909)
-#   Total: ~230 stable rules across 11 categories (approximate; update on re-audit)
+#   Total: ~230 stable rules across 11 categories (approximate; update on re-audit for ruff 0.16.0+)
 # All rules added since 0.9.0 (UP044-UP050, B911-B912, C420, SIM905, SIM910-SIM911)
 # are confirmed stable in 0.15.0 and are purely additive — they do not exist in older
 # versions and are silently skipped. No version constraint changes needed; the
