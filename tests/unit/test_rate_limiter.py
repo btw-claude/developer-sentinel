@@ -590,7 +590,8 @@ class TestClaudeRateLimiterThreadSafety:
                     assert "successful_requests" in metrics
                     assert isinstance(metrics["total_requests"], int)
                     assert isinstance(metrics["successful_requests"], int)
-                    # Small delay between reads for CPU yield (deterministic alternative to time.sleep)
+                    # Interruptible sleep: yields CPU between reads and exits
+                    # promptly when stop_event is set, unlike time.sleep (DS-943)
                     stop_event.wait(timeout=0.001)
             except Exception as e:
                 with errors_lock:

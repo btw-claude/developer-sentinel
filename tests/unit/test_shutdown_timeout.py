@@ -293,9 +293,12 @@ class TestShutdownTimeoutIntegration:
         task_started = False
         task_completed = False
 
+        task_started_event = threading.Event()
+
         def slow_task() -> str:
             nonlocal task_started, task_completed
             task_started = True
+            task_started_event.set()
             # Use threading.Event.wait for interruptible long-running task
             threading.Event().wait(timeout=10)
             task_completed = True
@@ -304,8 +307,8 @@ class TestShutdownTimeoutIntegration:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(slow_task)
 
-            # Wait for task to start using threading.Event coordination
-            threading.Event().wait(timeout=0.1)
+            # Poll for task start using an event instead of wall-clock sleep (DS-943)
+            assert task_started_event.wait(timeout=5.0), "slow_task did not start in time"
             assert task_started
 
             # Cancel the future

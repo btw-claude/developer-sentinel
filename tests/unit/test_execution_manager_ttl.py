@@ -192,10 +192,11 @@ class TestExecutionManagerTTL:
                     f.result(timeout=1.0)
 
             # Submit more futures - should trigger cleanup of completed futures
-            # Submit slow futures
+            # Submit slow futures using Event.wait for interruptible blocking (DS-943)
+            slow_event = threading.Event()
             slow_futures = []
             for i in range(5):
-                f = manager.submit(lambda: time.sleep(0.5), description=f"slow-{i}")
+                f = manager.submit(lambda: slow_event.wait(timeout=5), description=f"slow-{i}")
                 slow_futures.append(f)
 
             # Make some futures stale by backdating their created_at timestamps
@@ -205,8 +206,9 @@ class TestExecutionManagerTTL:
                     tracked.created_at = time.monotonic() - 100
 
             # Submit more futures to trigger overflow handling
+            overflow_event = threading.Event()
             for i in range(5):
-                manager.submit(lambda: time.sleep(0.5), description=f"overflow-{i}")
+                manager.submit(lambda: overflow_event.wait(timeout=5), description=f"overflow-{i}")
 
             # Should have cleaned up some futures
             # Note: exact count depends on timing, but should be under control
@@ -215,6 +217,8 @@ class TestExecutionManagerTTL:
             assert len(active) <= 10  # Upper bound check
 
         finally:
+            slow_event.set()
+            overflow_event.set()
             manager.shutdown(cancel_futures=True)
 
     def test_max_futures_cleans_completed_first(self) -> None:
@@ -225,18 +229,20 @@ class TestExecutionManagerTTL:
         )
         manager.start()
 
+        # Use a shared event so slow futures block interruptibly (DS-943)
+        block_event = threading.Event()
         try:
             # Submit a future that completes immediately
             fast_future = manager.submit(lambda: 42, description="fast")
             fast_future.result(timeout=1.0)  # Wait for completion
 
             # Submit more futures to reach the limit
-            manager.submit(lambda: time.sleep(5), description="slow-1")
-            manager.submit(lambda: time.sleep(5), description="slow-2")
-            manager.submit(lambda: time.sleep(5), description="slow-3")
+            manager.submit(lambda: block_event.wait(timeout=10), description="slow-1")
+            manager.submit(lambda: block_event.wait(timeout=10), description="slow-2")
+            manager.submit(lambda: block_event.wait(timeout=10), description="slow-3")
 
             # At this point we're at the limit - next submit should clean up the completed future
-            manager.submit(lambda: time.sleep(5), description="slow-4")
+            manager.submit(lambda: block_event.wait(timeout=10), description="slow-4")
 
             # Should have cleaned up the completed future
             tracked = manager.get_tracked_futures()
@@ -245,6 +251,7 @@ class TestExecutionManagerTTL:
             assert pending_count >= 3  # At least the slow ones should be tracked
 
         finally:
+            block_event.set()
             manager.shutdown(cancel_futures=True)
 
     def test_get_futures_stats_returns_correct_info(self) -> None:
