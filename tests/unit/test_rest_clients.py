@@ -12,6 +12,7 @@ from sentinel.rest_clients import (
     DEFAULT_RETRY_CONFIG,
     DEFAULT_TIMEOUT,
     BaseJiraHttpClient,
+    JiraAuth,
     JiraRestClient,
     JiraRestTagClient,
     RetryConfig,
@@ -28,41 +29,44 @@ class TestJiraRestClient:
 
     def test_init_strips_trailing_slash(self) -> None:
         """Test that base_url trailing slash is stripped."""
-        client = JiraRestClient(
+        with JiraRestClient(
             base_url="https://example.atlassian.net/",
             email="test@example.com",
             api_token="token123",
-        )
-        assert client.base_url == "https://example.atlassian.net"
+        ) as client:
+            assert client.base_url == "https://example.atlassian.net"
 
     def test_init_uses_default_timeout(self) -> None:
         """Test that default timeout is used when not specified."""
-        client = JiraRestClient(
+        with JiraRestClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
-        )
-        assert client.timeout == DEFAULT_TIMEOUT
+        ) as client:
+            assert client.timeout == DEFAULT_TIMEOUT
 
     def test_init_uses_custom_timeout(self) -> None:
         """Test that custom timeout is used when specified."""
         custom_timeout = httpx.Timeout(5.0)
-        client = JiraRestClient(
+        with JiraRestClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
             timeout=custom_timeout,
-        )
-        assert client.timeout == custom_timeout
+        ) as client:
+            assert client.timeout == custom_timeout
 
-    def test_search_issues_success(self) -> None:
-        """Test successful issue search."""
-        client = JiraRestClient(
+    def test_init_stores_auth_as_basic_auth(self) -> None:
+        """Test that auth is stored as httpx.BasicAuth for extensibility."""
+        with JiraRestClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
-        )
+        ) as client:
+            assert isinstance(client.auth, httpx.BasicAuth)
 
+    def test_search_issues_success(self) -> None:
+        """Test successful issue search."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "issues": [
@@ -77,29 +81,29 @@ class TestJiraRestClient:
             mock_client.get.return_value = mock_response
             mock_client_class.return_value = mock_client
 
-            issues = client.search_issues("project = PROJ", max_results=50)
+            with JiraRestClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                issues = client.search_issues("project = PROJ", max_results=50)
 
-            assert len(issues) == 2
-            assert issues[0]["key"] == "PROJ-1"
-            assert issues[1]["key"] == "PROJ-2"
+                assert len(issues) == 2
+                assert issues[0]["key"] == "PROJ-1"
+                assert issues[1]["key"] == "PROJ-2"
 
-            # Verify the request was made correctly
-            mock_client.get.assert_called_once()
-            call_args = mock_client.get.call_args
-            assert call_args[0][0] == "https://example.atlassian.net/rest/api/3/search/jql"
-            assert call_args[1]["params"]["jql"] == "project = PROJ"
-            assert call_args[1]["params"]["maxResults"] == 50
-
-        client.close()
+                # Verify the request was made correctly
+                mock_client.get.assert_called_once()
+                call_args = mock_client.get.call_args
+                assert (
+                    call_args[0][0]
+                    == "https://example.atlassian.net/rest/api/3/search/jql"
+                )
+                assert call_args[1]["params"]["jql"] == "project = PROJ"
+                assert call_args[1]["params"]["maxResults"] == 50
 
     def test_search_issues_empty_result(self) -> None:
         """Test search returning no issues."""
-        client = JiraRestClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         mock_response = MagicMock()
         mock_response.json.return_value = {"issues": []}
         mock_response.raise_for_status = MagicMock()
@@ -109,40 +113,34 @@ class TestJiraRestClient:
             mock_client.get.return_value = mock_response
             mock_client_class.return_value = mock_client
 
-            issues = client.search_issues("project = EMPTY")
+            with JiraRestClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                issues = client.search_issues("project = EMPTY")
 
-            assert issues == []
-
-        client.close()
+                assert issues == []
 
     def test_search_issues_timeout_error(self) -> None:
         """Test that timeout raises JiraClientError."""
-        client = JiraRestClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         with patch("httpx.Client") as mock_client_class:
             mock_client = MagicMock()
             mock_client.get.side_effect = httpx.TimeoutException("Connection timed out")
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(JiraClientError) as exc_info:
-                client.search_issues("project = PROJ")
+            with JiraRestClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                with pytest.raises(JiraClientError) as exc_info:
+                    client.search_issues("project = PROJ")
 
-            assert "timed out" in str(exc_info.value)
-
-        client.close()
+                assert "timed out" in str(exc_info.value)
 
     def test_search_issues_http_status_error(self) -> None:
         """Test that HTTP errors raise JiraClientError with error messages."""
-        client = JiraRestClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         mock_request = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 400
@@ -155,33 +153,33 @@ class TestJiraRestClient:
             )
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(JiraClientError) as exc_info:
-                client.search_issues("invalid jql")
+            with JiraRestClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                with pytest.raises(JiraClientError) as exc_info:
+                    client.search_issues("invalid jql")
 
-            assert "400" in str(exc_info.value)
-            assert "Invalid JQL" in str(exc_info.value)
-
-        client.close()
+                assert "400" in str(exc_info.value)
+                assert "Invalid JQL" in str(exc_info.value)
 
     def test_search_issues_request_error(self) -> None:
         """Test that request errors raise JiraClientError."""
-        client = JiraRestClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         with patch("httpx.Client") as mock_client_class:
             mock_client = MagicMock()
             mock_client.get.side_effect = httpx.RequestError("Connection failed")
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(JiraClientError) as exc_info:
-                client.search_issues("project = PROJ")
+            with JiraRestClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                with pytest.raises(JiraClientError) as exc_info:
+                    client.search_issues("project = PROJ")
 
-            assert "request failed" in str(exc_info.value)
-
-        client.close()
+                assert "request failed" in str(exc_info.value)
 
 
 class TestJiraRestTagClient:
@@ -189,21 +187,24 @@ class TestJiraRestTagClient:
 
     def test_init_strips_trailing_slash(self) -> None:
         """Test that base_url trailing slash is stripped."""
-        client = JiraRestTagClient(
+        with JiraRestTagClient(
             base_url="https://example.atlassian.net/",
             email="test@example.com",
             api_token="token123",
-        )
-        assert client.base_url == "https://example.atlassian.net"
+        ) as client:
+            assert client.base_url == "https://example.atlassian.net"
 
-    def test_add_label_success(self) -> None:
-        """Test successfully adding a label."""
-        client = JiraRestTagClient(
+    def test_init_stores_auth_as_basic_auth(self) -> None:
+        """Test that auth is stored as httpx.BasicAuth for extensibility."""
+        with JiraRestTagClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
-        )
+        ) as client:
+            assert isinstance(client.auth, httpx.BasicAuth)
 
+    def test_add_label_success(self) -> None:
+        """Test successfully adding a label."""
         # Mock get labels response
         mock_get_response = MagicMock()
         mock_get_response.json.return_value = {"fields": {"labels": ["existing-label"]}}
@@ -219,26 +220,26 @@ class TestJiraRestTagClient:
             mock_client.put.return_value = mock_put_response
             mock_client_class.return_value = mock_client
 
-            client.add_label("PROJ-123", "new-label")
+            with JiraRestTagClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                client.add_label("PROJ-123", "new-label")
 
-            # Verify get was called to fetch current labels
-            mock_client.get.assert_called()
+                # Verify get was called to fetch current labels
+                mock_client.get.assert_called()
 
-            # Verify put was called with new label added
-            mock_client.put.assert_called()
-            put_call = mock_client.put.call_args
-            assert put_call[1]["json"]["fields"]["labels"] == ["existing-label", "new-label"]
-
-        client.close()
+                # Verify put was called with new label added
+                mock_client.put.assert_called()
+                put_call = mock_client.put.call_args
+                assert put_call[1]["json"]["fields"]["labels"] == [
+                    "existing-label",
+                    "new-label",
+                ]
 
     def test_add_label_already_exists(self) -> None:
         """Test adding a label that already exists (no-op)."""
-        client = JiraRestTagClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         mock_get_response = MagicMock()
         mock_get_response.json.return_value = {"fields": {"labels": ["existing-label"]}}
         mock_get_response.raise_for_status = MagicMock()
@@ -248,21 +249,18 @@ class TestJiraRestTagClient:
             mock_client.get.return_value = mock_get_response
             mock_client_class.return_value = mock_client
 
-            client.add_label("PROJ-123", "existing-label")
+            with JiraRestTagClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                client.add_label("PROJ-123", "existing-label")
 
-            # Verify put was NOT called since label already exists
-            mock_client.put.assert_not_called()
-
-        client.close()
+                # Verify put was NOT called since label already exists
+                mock_client.put.assert_not_called()
 
     def test_remove_label_success(self) -> None:
         """Test successfully removing a label."""
-        client = JiraRestTagClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         mock_get_response = MagicMock()
         mock_get_response.json.return_value = {
             "fields": {"labels": ["label-to-remove", "other-label"]}
@@ -278,22 +276,19 @@ class TestJiraRestTagClient:
             mock_client.put.return_value = mock_put_response
             mock_client_class.return_value = mock_client
 
-            client.remove_label("PROJ-123", "label-to-remove")
+            with JiraRestTagClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                client.remove_label("PROJ-123", "label-to-remove")
 
-            # Verify put was called with label removed
-            put_call = mock_client.put.call_args
-            assert put_call[1]["json"]["fields"]["labels"] == ["other-label"]
-
-        client.close()
+                # Verify put was called with label removed
+                put_call = mock_client.put.call_args
+                assert put_call[1]["json"]["fields"]["labels"] == ["other-label"]
 
     def test_remove_label_not_found(self) -> None:
         """Test removing a label that doesn't exist (no-op)."""
-        client = JiraRestTagClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         mock_get_response = MagicMock()
         mock_get_response.json.return_value = {"fields": {"labels": ["other-label"]}}
         mock_get_response.raise_for_status = MagicMock()
@@ -303,41 +298,35 @@ class TestJiraRestTagClient:
             mock_client.get.return_value = mock_get_response
             mock_client_class.return_value = mock_client
 
-            client.remove_label("PROJ-123", "nonexistent-label")
+            with JiraRestTagClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                client.remove_label("PROJ-123", "nonexistent-label")
 
-            # Verify put was NOT called since label doesn't exist
-            mock_client.put.assert_not_called()
-
-        client.close()
+                # Verify put was NOT called since label doesn't exist
+                mock_client.put.assert_not_called()
 
     def test_add_label_timeout_error(self) -> None:
         """Test that timeout on get labels raises JiraTagClientError."""
-        client = JiraRestTagClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         with patch("httpx.Client") as mock_client_class:
             mock_client = MagicMock()
             mock_client.get.side_effect = httpx.TimeoutException("Timed out")
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(JiraTagClientError) as exc_info:
-                client.add_label("PROJ-123", "new-label")
+            with JiraRestTagClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                with pytest.raises(JiraTagClientError) as exc_info:
+                    client.add_label("PROJ-123", "new-label")
 
-            assert "timed out" in str(exc_info.value)
-
-        client.close()
+                assert "timed out" in str(exc_info.value)
 
     def test_add_label_http_status_error(self) -> None:
         """Test that HTTP error on update raises JiraTagClientError."""
-        client = JiraRestTagClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         mock_get_response = MagicMock()
         mock_get_response.json.return_value = {"fields": {"labels": []}}
         mock_get_response.raise_for_status = MagicMock()
@@ -355,22 +344,19 @@ class TestJiraRestTagClient:
             )
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(JiraTagClientError) as exc_info:
-                client.add_label("PROJ-123", "new-label")
+            with JiraRestTagClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                with pytest.raises(JiraTagClientError) as exc_info:
+                    client.add_label("PROJ-123", "new-label")
 
-            assert "403" in str(exc_info.value)
-            assert "Permission denied" in str(exc_info.value)
-
-        client.close()
+                assert "403" in str(exc_info.value)
+                assert "Permission denied" in str(exc_info.value)
 
     def test_get_current_labels_empty_fields(self) -> None:
         """Test handling of empty fields in get labels response."""
-        client = JiraRestTagClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-        )
-
         mock_get_response = MagicMock()
         mock_get_response.json.return_value = {"fields": {}}
         mock_get_response.raise_for_status = MagicMock()
@@ -384,13 +370,16 @@ class TestJiraRestTagClient:
             mock_client.put.return_value = mock_put_response
             mock_client_class.return_value = mock_client
 
-            # Should not raise, should treat empty labels as []
-            client.add_label("PROJ-123", "new-label")
+            with JiraRestTagClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+            ) as client:
+                # Should not raise, should treat empty labels as []
+                client.add_label("PROJ-123", "new-label")
 
-            put_call = mock_client.put.call_args
-            assert put_call[1]["json"]["fields"]["labels"] == ["new-label"]
-
-        client.close()
+                put_call = mock_client.put.call_args
+                assert put_call[1]["json"]["fields"]["labels"] == ["new-label"]
 
 
 class TestBaseJiraHttpClient:
@@ -403,10 +392,10 @@ class TestBaseJiraHttpClient:
             def __init__(self) -> None:
                 super().__init__()
                 self.timeout = httpx.Timeout(10.0)
-                self.auth = ("test@example.com", "token123")
+                self.auth: JiraAuth = ("test@example.com", "token123")
 
-        client = TestClient()
-        assert client._client is None
+        with TestClient() as client:
+            assert client._client is None
 
     def test_client_reuse(self) -> None:
         """Test that _get_client() returns the same instance on subsequent calls."""
@@ -415,19 +404,16 @@ class TestBaseJiraHttpClient:
             def __init__(self) -> None:
                 super().__init__()
                 self.timeout = httpx.Timeout(10.0)
-                self.auth = ("test@example.com", "token123")
+                self.auth: JiraAuth = ("test@example.com", "token123")
 
         with patch("httpx.Client") as mock_client_class:
             mock_client_class.return_value = MagicMock()
-            client = TestClient()
+            with TestClient() as client:
+                client1 = client._get_client()
+                client2 = client._get_client()
 
-            client1 = client._get_client()
-            client2 = client._get_client()
-
-            assert client1 is client2
-            mock_client_class.assert_called_once()
-
-        client.close()
+                assert client1 is client2
+                mock_client_class.assert_called_once()
 
     def test_close_clears_client(self) -> None:
         """Test that close() releases the httpx.Client."""
@@ -436,19 +422,19 @@ class TestBaseJiraHttpClient:
             def __init__(self) -> None:
                 super().__init__()
                 self.timeout = httpx.Timeout(10.0)
-                self.auth = ("test@example.com", "token123")
+                self.auth: JiraAuth = ("test@example.com", "token123")
 
         with patch("httpx.Client") as mock_client_class:
             mock_inner = MagicMock()
             mock_client_class.return_value = mock_inner
 
-            client = TestClient()
-            client._get_client()
-            assert client._client is not None
+            with TestClient() as client:
+                client._get_client()
+                assert client._client is not None
 
-            client.close()
-            assert client._client is None
-            mock_inner.close.assert_called_once()
+                client.close()
+                assert client._client is None
+                mock_inner.close.assert_called_once()
 
     def test_context_manager(self) -> None:
         """Test that context manager calls close on exit."""
@@ -457,7 +443,7 @@ class TestBaseJiraHttpClient:
             def __init__(self) -> None:
                 super().__init__()
                 self.timeout = httpx.Timeout(10.0)
-                self.auth = ("test@example.com", "token123")
+                self.auth: JiraAuth = ("test@example.com", "token123")
 
         with patch("httpx.Client") as mock_client_class:
             mock_inner = MagicMock()
@@ -477,11 +463,11 @@ class TestBaseJiraHttpClient:
             def __init__(self) -> None:
                 super().__init__()
                 self.timeout = httpx.Timeout(10.0)
-                self.auth = ("test@example.com", "token123")
+                self.auth: JiraAuth = ("test@example.com", "token123")
 
-        client = TestClient()
-        client.close()  # Should not raise
-        assert client._client is None
+        with TestClient() as client:
+            client.close()  # Should not raise
+            assert client._client is None
 
     def test_missing_timeout_raises_runtime_error(self) -> None:
         """Test RuntimeError when timeout is not set before _get_client()."""
@@ -489,11 +475,11 @@ class TestBaseJiraHttpClient:
         class BadClient(BaseJiraHttpClient):
             def __init__(self) -> None:
                 super().__init__()
-                self.auth = ("test@example.com", "token123")
+                self.auth: JiraAuth = ("test@example.com", "token123")
 
-        client = BadClient()
-        with pytest.raises(RuntimeError, match="must set self.timeout"):
-            client._get_client()
+        with BadClient() as client:
+            with pytest.raises(RuntimeError, match="must set self.timeout"):
+                client._get_client()
 
     def test_missing_auth_raises_runtime_error(self) -> None:
         """Test RuntimeError when auth is not set before _get_client()."""
@@ -503,9 +489,9 @@ class TestBaseJiraHttpClient:
                 super().__init__()
                 self.timeout = httpx.Timeout(10.0)
 
-        client = BadClient()
-        with pytest.raises(RuntimeError, match="must set self.auth"):
-            client._get_client()
+        with BadClient() as client:
+            with pytest.raises(RuntimeError, match="must set self.auth"):
+                client._get_client()
 
     def test_client_created_with_auth_and_timeout(self) -> None:
         """Test that httpx.Client is created with correct auth and timeout."""
@@ -514,41 +500,83 @@ class TestBaseJiraHttpClient:
             def __init__(self) -> None:
                 super().__init__()
                 self.timeout = httpx.Timeout(5.0)
-                self.auth = ("user@example.com", "mytoken")
+                self.auth: JiraAuth = ("user@example.com", "mytoken")
 
         with patch("httpx.Client") as mock_client_class:
             mock_client_class.return_value = MagicMock()
-            client = TestClient()
-            client._get_client()
+            with TestClient() as client:
+                client._get_client()
 
-            mock_client_class.assert_called_once_with(
-                auth=("user@example.com", "mytoken"),
-                timeout=httpx.Timeout(5.0),
-            )
+                mock_client_class.assert_called_once_with(
+                    auth=("user@example.com", "mytoken"),
+                    timeout=httpx.Timeout(5.0),
+                )
 
-        client.close()
+    def test_client_created_with_basic_auth(self) -> None:
+        """Test that httpx.Client works with httpx.BasicAuth instances."""
+
+        class TestClient(BaseJiraHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout = httpx.Timeout(5.0)
+                self.auth: JiraAuth = httpx.BasicAuth("user@example.com", "mytoken")
+
+        with patch("httpx.Client") as mock_client_class:
+            mock_client_class.return_value = MagicMock()
+            with TestClient() as client:
+                client._get_client()
+
+                call_kwargs = mock_client_class.call_args[1]
+                assert isinstance(call_kwargs["auth"], httpx.BasicAuth)
+                assert call_kwargs["timeout"] == httpx.Timeout(5.0)
 
     def test_jira_rest_client_inherits_base(self) -> None:
         """Test that JiraRestClient inherits from BaseJiraHttpClient."""
-        client = JiraRestClient(
+        with JiraRestClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
-        )
-        assert isinstance(client, BaseJiraHttpClient)
-        assert client._client is None
-        client.close()
+        ) as client:
+            assert isinstance(client, BaseJiraHttpClient)
+            assert client._client is None
 
     def test_jira_rest_tag_client_inherits_base(self) -> None:
         """Test that JiraRestTagClient inherits from BaseJiraHttpClient."""
-        client = JiraRestTagClient(
+        with JiraRestTagClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
-        )
-        assert isinstance(client, BaseJiraHttpClient)
-        assert client._client is None
-        client.close()
+        ) as client:
+            assert isinstance(client, BaseJiraHttpClient)
+            assert client._client is None
+
+
+class TestJiraAuthType:
+    """Tests for JiraAuth type alias extensibility."""
+
+    def test_tuple_auth_accepted(self) -> None:
+        """Test that tuple-based auth is accepted by the JiraAuth type."""
+
+        class TestClient(BaseJiraHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout = httpx.Timeout(10.0)
+                self.auth: JiraAuth = ("user@example.com", "token")
+
+        with TestClient() as client:
+            assert client.auth == ("user@example.com", "token")
+
+    def test_basic_auth_accepted(self) -> None:
+        """Test that httpx.BasicAuth is accepted by the JiraAuth type."""
+
+        class TestClient(BaseJiraHttpClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.timeout = httpx.Timeout(10.0)
+                self.auth: JiraAuth = httpx.BasicAuth("user@example.com", "token")
+
+        with TestClient() as client:
+            assert isinstance(client.auth, httpx.BasicAuth)
 
 
 class TestRetryConfig:
@@ -710,7 +738,9 @@ class TestExecuteWithRetry:
 
         operation = MagicMock(
             side_effect=[
-                httpx.HTTPStatusError("Rate limited", request=mock_request, response=mock_response),
+                httpx.HTTPStatusError(
+                    "Rate limited", request=mock_request, response=mock_response
+                ),
                 "success",
             ]
         )
@@ -784,35 +814,26 @@ class TestJiraRestClientRetry:
 
     def test_uses_default_retry_config(self) -> None:
         """Test that default retry config is used."""
-        client = JiraRestClient(
+        with JiraRestClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
-        )
-        assert client.retry_config == DEFAULT_RETRY_CONFIG
+        ) as client:
+            assert client.retry_config == DEFAULT_RETRY_CONFIG
 
     def test_uses_custom_retry_config(self) -> None:
         """Test that custom retry config is used."""
         custom_config = RetryConfig(max_retries=2)
-        client = JiraRestClient(
+        with JiraRestClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
             retry_config=custom_config,
-        )
-        assert client.retry_config == custom_config
+        ) as client:
+            assert client.retry_config == custom_config
 
     def test_retries_on_rate_limit(self) -> None:
         """Test that search_issues retries on 429."""
-        client = JiraRestClient(
-            base_url="https://example.atlassian.net",
-            email="test@example.com",
-            api_token="token123",
-            retry_config=RetryConfig(
-                max_retries=1, initial_delay=0.01, jitter_min=1.0, jitter_max=1.0
-            ),
-        )
-
         mock_request = MagicMock()
         mock_429_response = MagicMock()
         mock_429_response.status_code = 429
@@ -839,12 +860,18 @@ class TestJiraRestClientRetry:
             mock_client.get.side_effect = get_side_effect
             mock_client_class.return_value = mock_client
 
-            issues = client.search_issues("project = PROJ")
+            with JiraRestClient(
+                base_url="https://example.atlassian.net",
+                email="test@example.com",
+                api_token="token123",
+                retry_config=RetryConfig(
+                    max_retries=1, initial_delay=0.01, jitter_min=1.0, jitter_max=1.0
+                ),
+            ) as client:
+                issues = client.search_issues("project = PROJ")
 
-            assert len(issues) == 1
-            assert call_count == 2
-
-        client.close()
+                assert len(issues) == 1
+                assert call_count == 2
 
 
 class TestJiraRestTagClientRetry:
@@ -852,20 +879,20 @@ class TestJiraRestTagClientRetry:
 
     def test_uses_default_retry_config(self) -> None:
         """Test that default retry config is used."""
-        client = JiraRestTagClient(
+        with JiraRestTagClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
-        )
-        assert client.retry_config == DEFAULT_RETRY_CONFIG
+        ) as client:
+            assert client.retry_config == DEFAULT_RETRY_CONFIG
 
     def test_uses_custom_retry_config(self) -> None:
         """Test that custom retry config is used."""
         custom_config = RetryConfig(max_retries=2)
-        client = JiraRestTagClient(
+        with JiraRestTagClient(
             base_url="https://example.atlassian.net",
             email="test@example.com",
             api_token="token123",
             retry_config=custom_config,
-        )
-        assert client.retry_config == custom_config
+        ) as client:
+            assert client.retry_config == custom_config
