@@ -16,7 +16,7 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Self
 
 import httpx
 
@@ -180,8 +180,99 @@ def _execute_with_retry[T](
     raise error_class("Retry failed with no exception")
 
 
-class JiraRestClient(JiraClient):
+class BaseJiraHttpClient:
+    """Base class providing HTTP client connection pooling for Jira API clients.
+
+    This class encapsulates the shared connection pooling functionality including:
+    - Lazy initialization of httpx.Client
+    - Resource cleanup via close() method
+    - Context manager support (__enter__/__exit__)
+
+    Subclasses must set self.timeout and self.auth before using _get_client().
+
+    Example subclass implementation::
+
+        class MyJiraClient(BaseJiraHttpClient):
+            def __init__(
+                self,
+                base_url: str,
+                email: str,
+                api_token: str,
+                timeout: httpx.Timeout | None = None,
+            ) -> None:
+                super().__init__()
+                self.base_url = base_url.rstrip("/")
+                self.auth = (email, api_token)
+                self.timeout = timeout or DEFAULT_TIMEOUT
+
+            def my_api_method(self) -> dict:
+                client = self._get_client()
+                response = client.get("https://yoursite.atlassian.net/rest/api/3/...")
+                return response.json()
+    """
+
+    # Instance attribute type stubs - subclasses MUST set these in __init__
+    # before calling _get_client(). These are declared here to support static
+    # type checking and IDE autocompletion for the abstract contract.
+    timeout: httpx.Timeout
+    auth: tuple[str, str]
+
+    def __init__(self) -> None:
+        """Initialize the base HTTP client.
+
+        Note: Subclasses must call super().__init__() and then set
+        self.timeout and self.auth before using _get_client().
+        """
+        # Reusable HTTP client for connection pooling - lazily initialized
+        self._client: httpx.Client | None = None
+
+    def _get_client(self) -> httpx.Client:
+        """Get or create the reusable HTTP client.
+
+        Returns:
+            A configured httpx.Client instance with connection pooling.
+
+        Raises:
+            RuntimeError: If subclass has not set required timeout or auth attributes.
+        """
+        if self._client is None:
+            # Runtime safety check: ensure subclass has properly initialized required attributes
+            if not hasattr(self, "timeout") or self.timeout is None:
+                raise RuntimeError(
+                    f"{self.__class__.__name__} must set self.timeout before "
+                    "calling _get_client(). See BaseJiraHttpClient docstring."
+                )
+            if not hasattr(self, "auth") or self.auth is None:
+                raise RuntimeError(
+                    f"{self.__class__.__name__} must set self.auth before "
+                    "calling _get_client(). See BaseJiraHttpClient docstring."
+                )
+            self._client = httpx.Client(auth=self.auth, timeout=self.timeout)
+        return self._client
+
+    def close(self) -> None:
+        """Close the HTTP client and release resources.
+
+        Should be called when the client is no longer needed.
+        """
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> Self:
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        """Context manager exit - closes the HTTP client."""
+        self.close()
+
+
+class JiraRestClient(BaseJiraHttpClient, JiraClient):
     """Jira client that uses direct REST API calls for searching issues.
+
+    Uses connection pooling via a reusable httpx.Client for better performance
+    in high-volume scenarios.
 
     Implements circuit breaker pattern to prevent cascading failures when
     Jira API is unavailable or experiencing issues.
@@ -207,6 +298,7 @@ class JiraRestClient(JiraClient):
             circuit_breaker: Circuit breaker instance for resilience. If not provided,
                 creates a default circuit breaker for the "jira" service.
         """
+        super().__init__()
         self.base_url = base_url.rstrip("/")
         self.auth = (email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
@@ -254,14 +346,14 @@ class JiraRestClient(JiraClient):
         logger.debug("Searching Jira: %s", jql)
 
         def do_search() -> list[dict[str, Any]]:
-            with httpx.Client(auth=self.auth, timeout=self.timeout) as client:
-                response = client.get(url, params=params)
-                _check_rate_limit_warning(response)
-                response.raise_for_status()
-                data: dict[str, Any] = response.json()
-                issues: list[dict[str, Any]] = data.get("issues", [])
-                logger.info("JQL search returned %s issues", len(issues))
-                return issues
+            client = self._get_client()
+            response = client.get(url, params=params)
+            _check_rate_limit_warning(response)
+            response.raise_for_status()
+            data: dict[str, Any] = response.json()
+            issues: list[dict[str, Any]] = data.get("issues", [])
+            logger.info("JQL search returned %s issues", len(issues))
+            return issues
 
         try:
             result = _execute_with_retry(do_search, self.retry_config, JiraClientError)
@@ -286,8 +378,11 @@ class JiraRestClient(JiraClient):
             raise JiraClientError(f"Jira search request failed: {e}") from e
 
 
-class JiraRestTagClient(JiraTagClient):
+class JiraRestTagClient(BaseJiraHttpClient, JiraTagClient):
     """Jira tag client that uses direct REST API calls for label operations.
+
+    Uses connection pooling via a reusable httpx.Client for better performance
+    in high-volume scenarios.
 
     Implements circuit breaker pattern to prevent cascading failures when
     Jira API is unavailable or experiencing issues.
@@ -313,6 +408,7 @@ class JiraRestTagClient(JiraTagClient):
             circuit_breaker: Circuit breaker instance for resilience. If not provided,
                 creates a default circuit breaker for the "jira" service.
         """
+        super().__init__()
         self.base_url = base_url.rstrip("/")
         self.auth = (email, api_token)
         self.timeout = timeout or DEFAULT_TIMEOUT
@@ -350,13 +446,13 @@ class JiraRestTagClient(JiraTagClient):
         params = {"fields": "labels"}
 
         def do_get() -> list[str]:
-            with httpx.Client(auth=self.auth, timeout=self.timeout) as client:
-                response = client.get(url, params=params)
-                _check_rate_limit_warning(response)
-                response.raise_for_status()
-                data: dict[str, Any] = response.json()
-                labels: list[str] = data.get("fields", {}).get("labels", [])
-                return labels
+            client = self._get_client()
+            response = client.get(url, params=params)
+            _check_rate_limit_warning(response)
+            response.raise_for_status()
+            data: dict[str, Any] = response.json()
+            labels: list[str] = data.get("fields", {}).get("labels", [])
+            return labels
 
         try:
             result = _execute_with_retry(do_get, self.retry_config, JiraTagClientError)
@@ -395,10 +491,10 @@ class JiraRestTagClient(JiraTagClient):
         payload = {"fields": {"labels": labels}}
 
         def do_update() -> None:
-            with httpx.Client(auth=self.auth, timeout=self.timeout) as client:
-                response = client.put(url, json=payload)
-                _check_rate_limit_warning(response)
-                response.raise_for_status()
+            client = self._get_client()
+            response = client.put(url, json=payload)
+            _check_rate_limit_warning(response)
+            response.raise_for_status()
 
         try:
             _execute_with_retry(do_update, self.retry_config, JiraTagClientError)
