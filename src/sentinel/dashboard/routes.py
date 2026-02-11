@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from cachetools import TTLCache
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -199,22 +199,25 @@ def create_routes(
         csrf_tokens[token] = True
         return token
 
-    def _validate_csrf_token(token: str | None) -> None:
-        """Validate and consume a CSRF token.
+    def _require_csrf_token(x_csrf_token: str | None = Header(None)) -> None:
+        """FastAPI dependency that validates and consumes a CSRF token.
+
+        Designed as a FastAPI Depends() injection to centralize CSRF
+        validation across all state-changing endpoints (DS-935).
 
         Args:
-            token: The CSRF token to validate.
+            x_csrf_token: The CSRF token from the X-CSRF-Token header.
 
         Raises:
             HTTPException: 403 if token is missing or invalid.
         """
-        if not token or token not in csrf_tokens:
+        if not x_csrf_token or x_csrf_token not in csrf_tokens:
             raise HTTPException(
                 status_code=403,
                 detail="Invalid or missing CSRF token",
             )
         # Consume token (single-use)
-        del csrf_tokens[token]
+        del csrf_tokens[x_csrf_token]
 
     dashboard_router = APIRouter()
 
@@ -863,11 +866,9 @@ def create_routes(
     async def update_file_trigger(
         file_path: str,
         request_body: FileTriggerEditRequest,
-        x_csrf_token: str | None = Header(None),
+        _csrf: None = Depends(_require_csrf_token),
     ) -> FileTriggerEditResponse:
         """Update the file-level trigger for an orchestration file."""
-        _validate_csrf_token(x_csrf_token)
-
         orchestrations_dir = effective_config.execution.orchestrations_dir
         full_path = orchestrations_dir / file_path
 
@@ -1080,7 +1081,7 @@ def create_routes(
     async def toggle_orchestration(
         name: str,
         request_body: ToggleRequest,
-        x_csrf_token: str | None = Header(None),
+        _csrf: None = Depends(_require_csrf_token),
     ) -> ToggleResponse:
         """Toggle the enabled status of a single orchestration.
 
@@ -1090,7 +1091,6 @@ def create_routes(
         Args:
             name: The name of the orchestration to toggle.
             request_body: The toggle request containing the new enabled status.
-            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             ToggleResponse with success status, new enabled state, and name.
@@ -1099,7 +1099,6 @@ def create_routes(
             HTTPException: 403 for CSRF validation failure,
                 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
-        _validate_csrf_token(x_csrf_token)
         logger.debug(
             "toggle_orchestration called for '%s' with enabled=%s", name, request_body.enabled
         )
@@ -1170,7 +1169,7 @@ def create_routes(
     )
     async def bulk_toggle_orchestrations(
         request_body: BulkToggleRequest,
-        x_csrf_token: str | None = Header(None),
+        _csrf: None = Depends(_require_csrf_token),
     ) -> BulkToggleResponse:
         """Toggle the enabled status of orchestrations by source and identifier.
 
@@ -1180,7 +1179,6 @@ def create_routes(
         Args:
             request_body: The bulk toggle request containing source, identifier,
                 and new enabled status.
-            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             BulkToggleResponse with success status and count of toggled orchestrations.
@@ -1190,7 +1188,6 @@ def create_routes(
                 404 if no matching orchestrations found,
                 429 for rate limit, 500 for YAML errors.
         """
-        _validate_csrf_token(x_csrf_token)
         logger.debug(
             "bulk_toggle_orchestrations called for %s '%s' with enabled=%s",
             request_body.source,
@@ -1279,7 +1276,7 @@ def create_routes(
     async def edit_orchestration(
         name: str,
         request_body: OrchestrationEditRequest,
-        x_csrf_token: str | None = Header(None),
+        _csrf: None = Depends(_require_csrf_token),
     ) -> OrchestrationEditResponse:
         """Edit the configuration of an orchestration.
 
@@ -1298,7 +1295,6 @@ def create_routes(
         Args:
             name: The name of the orchestration to edit.
             request_body: The edit request containing fields to update.
-            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             OrchestrationEditResponse with success status, name, and any errors.
@@ -1308,7 +1304,6 @@ def create_routes(
                 404 if orchestration not found, 422 for validation errors,
                 429 for rate limit, 500 for YAML errors.
         """
-        _validate_csrf_token(x_csrf_token)
         logger.debug("edit_orchestration called for '%s'", name)
         state = state_accessor.get_state()
 
@@ -1398,7 +1393,7 @@ def create_routes(
     async def delete_orchestration(
         name: str,
         request: Request,
-        x_csrf_token: str | None = Header(None),
+        _csrf: None = Depends(_require_csrf_token),
     ) -> DeleteResponse:
         """Delete an orchestration by name.
 
@@ -1408,7 +1403,6 @@ def create_routes(
         Args:
             name: The name of the orchestration to delete.
             request: The incoming HTTP request (used for enriched debug logging).
-            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             DeleteResponse with success status and orchestration name.
@@ -1417,7 +1411,6 @@ def create_routes(
             HTTPException: 403 for CSRF validation failure,
                 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
-        _validate_csrf_token(x_csrf_token)
         logger.info("Received request to delete orchestration '%s'", name)
         client_host = request.client.host if request.client else "unknown"
         client_port = request.client.port if request.client else "unknown"
@@ -1498,7 +1491,7 @@ def create_routes(
     )
     async def create_orchestration(
         request_body: OrchestrationCreateRequest,
-        x_csrf_token: str | None = Header(None),
+        _csrf: None = Depends(_require_csrf_token),
     ) -> OrchestrationCreateResponse:
         """Create a new orchestration.
 
@@ -1507,7 +1500,6 @@ def create_routes(
 
         Args:
             request_body: The create request containing orchestration configuration.
-            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             OrchestrationCreateResponse with success status, name, and any errors.
@@ -1517,7 +1509,6 @@ def create_routes(
                 422 for validation errors (duplicate name, invalid path),
                 429 for rate limit, 500 for YAML errors.
         """
-        _validate_csrf_token(x_csrf_token)
         logger.debug("create_orchestration called for '%s'", request_body.name)
         state = state_accessor.get_state()
 
