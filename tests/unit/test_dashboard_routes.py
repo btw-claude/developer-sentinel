@@ -705,9 +705,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations/test-orch/toggle",
                 json={"enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200
@@ -751,9 +756,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations/test-orch/toggle",
                 json={"enabled": True},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200
@@ -775,9 +785,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations/nonexistent/toggle",
                 json={"enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 404
@@ -804,9 +819,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations/test-orch/toggle",
                 json={"enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 404
@@ -895,9 +915,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations/bulk-toggle",
                 json={"source": "jira", "identifier": "TEST", "enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200
@@ -966,9 +991,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations/bulk-toggle",
                 json={"source": "github", "identifier": "my-org", "enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200
@@ -986,9 +1016,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations/bulk-toggle",
                 json={"source": "jira", "identifier": "NONEXISTENT", "enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 404
@@ -1012,9 +1047,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.post(
                 "/api/orchestrations/bulk-toggle",
                 json={"source": "invalid", "identifier": "TEST", "enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             # Should return 422 for validation error
@@ -1063,7 +1103,11 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
-            response = client.delete("/api/orchestrations/test-orch")
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
+            response = client.delete("/api/orchestrations/test-orch", headers={"X-CSRF-Token": csrf_token})
 
             assert response.status_code == 200
             data = response.json()
@@ -1084,7 +1128,11 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
-            response = client.delete("/api/orchestrations/nonexistent")
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
+            response = client.delete("/api/orchestrations/nonexistent", headers={"X-CSRF-Token": csrf_token})
 
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
@@ -1109,7 +1157,11 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
-            response = client.delete("/api/orchestrations/test-orch")
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
+            response = client.delete("/api/orchestrations/test-orch", headers={"X-CSRF-Token": csrf_token})
 
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
@@ -1175,12 +1227,20 @@ orchestrations:
         app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
+            # Get CSRF token for first delete (DS-926)
+            csrf_resp1 = client.get("/api/csrf-token")
+            csrf_token1 = csrf_resp1.json()["csrf_token"]
+
             # First delete should succeed
-            response1 = client.delete("/api/orchestrations/orch-1")
+            response1 = client.delete("/api/orchestrations/orch-1", headers={"X-CSRF-Token": csrf_token1})
             assert response1.status_code == 200
 
+            # Get CSRF token for second delete (DS-926)
+            csrf_resp2 = client.get("/api/csrf-token")
+            csrf_token2 = csrf_resp2.json()["csrf_token"]
+
             # Immediate second delete should be rate limited (same file)
-            response2 = client.delete("/api/orchestrations/orch-2")
+            response2 = client.delete("/api/orchestrations/orch-2", headers={"X-CSRF-Token": csrf_token2})
             assert response2.status_code == 429
             assert "Rate limit exceeded" in response2.json()["detail"]
 
@@ -1228,7 +1288,11 @@ orchestrations:
 
         with patch("sentinel.dashboard.routes.logger") as mock_logger:
             with TestClient(app) as client:
-                client.delete("/api/orchestrations/test-orch")
+                # Get CSRF token (DS-926)
+                csrf_resp = client.get("/api/csrf-token")
+                csrf_token = csrf_resp.json()["csrf_token"]
+
+                client.delete("/api/orchestrations/test-orch", headers={"X-CSRF-Token": csrf_token})
 
             # Find the debug call for delete_orchestration
             debug_calls = mock_logger.debug.call_args_list
@@ -1285,7 +1349,11 @@ orchestrations:
 
         with patch("sentinel.dashboard.routes.logger") as mock_logger:
             with TestClient(app) as client:
-                client.delete("/api/orchestrations/test-orch")
+                # Get CSRF token (DS-926)
+                csrf_resp = client.get("/api/csrf-token")
+                csrf_token = csrf_resp.json()["csrf_token"]
+
+                client.delete("/api/orchestrations/test-orch", headers={"X-CSRF-Token": csrf_token})
 
             debug_calls = mock_logger.debug.call_args_list
             delete_debug_call = None
@@ -1316,7 +1384,11 @@ orchestrations:
 
         with patch("sentinel.dashboard.routes.logger") as mock_logger:
             with TestClient(app) as client:
-                response = client.delete("/api/orchestrations/nonexistent")
+                # Get CSRF token (DS-926)
+                csrf_resp = client.get("/api/csrf-token")
+                csrf_token = csrf_resp.json()["csrf_token"]
+
+                response = client.delete("/api/orchestrations/nonexistent", headers={"X-CSRF-Token": csrf_token})
 
             assert response.status_code == 404
 
@@ -1369,9 +1441,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.put(
                 "/api/orchestrations/test-orch",
                 json={"agent": {"prompt": "Updated prompt"}},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200
@@ -1391,9 +1468,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.put(
                 "/api/orchestrations/nonexistent",
                 json={"enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 404
@@ -1431,10 +1513,15 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             # Send invalid max_concurrent (must be positive integer)
             response = client.put(
                 "/api/orchestrations/test-orch",
                 json={"max_concurrent": -1},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 422
@@ -1472,10 +1559,15 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             # Send request with no fields set (all None)
             response = client.put(
                 "/api/orchestrations/test-orch",
                 json={},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200
@@ -1513,9 +1605,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.put(
                 "/api/orchestrations/test-orch",
                 json={"enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 404
@@ -1563,17 +1660,27 @@ orchestrations:
         app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
+            # Get CSRF token for first toggle (DS-926)
+            csrf_resp1 = client.get("/api/csrf-token")
+            csrf_token1 = csrf_resp1.json()["csrf_token"]
+
             # First toggle should succeed
             response1 = client.post(
                 "/api/orchestrations/test-orch/toggle",
                 json={"enabled": False},
+                headers={"X-CSRF-Token": csrf_token1},
             )
             assert response1.status_code == 200
+
+            # Get CSRF token for second toggle (DS-926)
+            csrf_resp2 = client.get("/api/csrf-token")
+            csrf_token2 = csrf_resp2.json()["csrf_token"]
 
             # Immediate second toggle should be rate limited
             response2 = client.post(
                 "/api/orchestrations/test-orch/toggle",
                 json={"enabled": True},
+                headers={"X-CSRF-Token": csrf_token2},
             )
             assert response2.status_code == 429
             assert "Rate limit exceeded" in response2.json()["detail"]
@@ -1616,20 +1723,30 @@ orchestrations:
         app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
+            # Get CSRF token for first toggle (DS-926)
+            csrf_resp1 = client.get("/api/csrf-token")
+            csrf_token1 = csrf_resp1.json()["csrf_token"]
+
             # First toggle should succeed
             response1 = client.post(
                 "/api/orchestrations/test-orch/toggle",
                 json={"enabled": False},
+                headers={"X-CSRF-Token": csrf_token1},
             )
             assert response1.status_code == 200
 
             # Wait for cooldown
             time.sleep(0.15)
 
+            # Get CSRF token for second toggle (DS-926)
+            csrf_resp2 = client.get("/api/csrf-token")
+            csrf_token2 = csrf_resp2.json()["csrf_token"]
+
             # Second toggle should now succeed
             response2 = client.post(
                 "/api/orchestrations/test-orch/toggle",
                 json={"enabled": True},
+                headers={"X-CSRF-Token": csrf_token2},
             )
             assert response2.status_code == 200
 
@@ -1667,17 +1784,27 @@ orchestrations:
         app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
+            # Get CSRF token for first bulk toggle (DS-926)
+            csrf_resp1 = client.get("/api/csrf-token")
+            csrf_token1 = csrf_resp1.json()["csrf_token"]
+
             # First bulk toggle should succeed
             response1 = client.post(
                 "/api/orchestrations/bulk-toggle",
                 json={"source": "jira", "identifier": "TEST", "enabled": False},
+                headers={"X-CSRF-Token": csrf_token1},
             )
             assert response1.status_code == 200
+
+            # Get CSRF token for second bulk toggle (DS-926)
+            csrf_resp2 = client.get("/api/csrf-token")
+            csrf_token2 = csrf_resp2.json()["csrf_token"]
 
             # Immediate second bulk toggle should be rate limited
             response2 = client.post(
                 "/api/orchestrations/bulk-toggle",
                 json={"source": "jira", "identifier": "TEST", "enabled": True},
+                headers={"X-CSRF-Token": csrf_token2},
             )
             assert response2.status_code == 429
             assert "Rate limit exceeded" in response2.json()["detail"]

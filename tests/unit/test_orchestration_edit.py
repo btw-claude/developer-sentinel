@@ -1160,9 +1160,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.put(
                 "/api/orchestrations/test-orch",
                 json={"agent": {"prompt": "Updated prompt"}},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200
@@ -1207,9 +1212,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.put(
                 "/api/orchestrations/test-orch",
                 json={"agent": {"agent_type": "invalid-agent"}},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 422
@@ -1262,6 +1272,10 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             # Send updates with errors in multiple sections (orchestration-level validation)
             response = client.put(
                 "/api/orchestrations/test-orch",
@@ -1269,6 +1283,7 @@ orchestrations:
                     "max_concurrent": -1,
                     "agent": {"timeout_seconds": -5},
                 },
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 422
@@ -1323,6 +1338,10 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             # cursor_mode="agent" with agent_type="claude" is invalid combo,
             # timeout_seconds=-5 is out-of-range — both pass Pydantic but
             # fail orchestration validation, testing intra-section collection.
@@ -1335,6 +1354,7 @@ orchestrations:
                         "timeout_seconds": -5,
                     },
                 },
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 422
@@ -1359,9 +1379,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.put(
                 "/api/orchestrations/nonexistent",
                 json={"enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 404
@@ -1403,17 +1428,27 @@ orchestrations:
         app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             # First edit should succeed
             response1 = client.put(
                 "/api/orchestrations/test-orch",
                 json={"enabled": False},
+                headers={"X-CSRF-Token": csrf_token},
             )
             assert response1.status_code == 200
+
+            # Get fresh CSRF token for second request (DS-926)
+            csrf_resp2 = client.get("/api/csrf-token")
+            csrf_token2 = csrf_resp2.json()["csrf_token"]
 
             # Immediate second edit should be rate limited
             response2 = client.put(
                 "/api/orchestrations/test-orch",
                 json={"enabled": True},
+                headers={"X-CSRF-Token": csrf_token2},
             )
             assert response2.status_code == 429
             assert "Rate limit exceeded" in response2.json()["detail"]
@@ -1450,9 +1485,14 @@ orchestrations:
         app = create_test_app(accessor)
 
         with TestClient(app) as client:
+            # Get CSRF token (DS-926)
+            csrf_resp = client.get("/api/csrf-token")
+            csrf_token = csrf_resp.json()["csrf_token"]
+
             response = client.put(
                 "/api/orchestrations/test-orch",
                 json={},
+                headers={"X-CSRF-Token": csrf_token},
             )
 
             assert response.status_code == 200

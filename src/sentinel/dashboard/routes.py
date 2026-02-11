@@ -1077,7 +1077,11 @@ def create_routes(
         "Modifies the orchestration's YAML file and changes take effect on "
         "the next hot-reload cycle. Rate limited to prevent rapid file writes.",
     )
-    async def toggle_orchestration(name: str, request_body: ToggleRequest) -> ToggleResponse:
+    async def toggle_orchestration(
+        name: str,
+        request_body: ToggleRequest,
+        x_csrf_token: str | None = Header(None),
+    ) -> ToggleResponse:
         """Toggle the enabled status of a single orchestration.
 
         This endpoint toggles the enabled field in the orchestration's YAML file.
@@ -1086,13 +1090,16 @@ def create_routes(
         Args:
             name: The name of the orchestration to toggle.
             request_body: The toggle request containing the new enabled status.
+            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             ToggleResponse with success status, new enabled state, and name.
 
         Raises:
-            HTTPException: 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
+            HTTPException: 403 for CSRF validation failure,
+                404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
+        _validate_csrf_token(x_csrf_token)
         logger.debug(
             "toggle_orchestration called for '%s' with enabled=%s", name, request_body.enabled
         )
@@ -1161,7 +1168,10 @@ def create_routes(
         "source type (jira or github) and identifier (project key or org/repo). "
         "Rate limited per file to prevent rapid writes.",
     )
-    async def bulk_toggle_orchestrations(request_body: BulkToggleRequest) -> BulkToggleResponse:
+    async def bulk_toggle_orchestrations(
+        request_body: BulkToggleRequest,
+        x_csrf_token: str | None = Header(None),
+    ) -> BulkToggleResponse:
         """Toggle the enabled status of orchestrations by source and identifier.
 
         This endpoint bulk toggles orchestrations based on their source type
@@ -1170,14 +1180,17 @@ def create_routes(
         Args:
             request_body: The bulk toggle request containing source, identifier,
                 and new enabled status.
+            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             BulkToggleResponse with success status and count of toggled orchestrations.
 
         Raises:
-            HTTPException: 404 if no matching orchestrations found,
+            HTTPException: 403 for CSRF validation failure,
+                404 if no matching orchestrations found,
                 429 for rate limit, 500 for YAML errors.
         """
+        _validate_csrf_token(x_csrf_token)
         logger.debug(
             "bulk_toggle_orchestrations called for %s '%s' with enabled=%s",
             request_body.source,
@@ -1264,7 +1277,9 @@ def create_routes(
         "Rate limited to prevent rapid file writes.",
     )
     async def edit_orchestration(
-        name: str, request_body: OrchestrationEditRequest
+        name: str,
+        request_body: OrchestrationEditRequest,
+        x_csrf_token: str | None = Header(None),
     ) -> OrchestrationEditResponse:
         """Edit the configuration of an orchestration.
 
@@ -1283,14 +1298,17 @@ def create_routes(
         Args:
             name: The name of the orchestration to edit.
             request_body: The edit request containing fields to update.
+            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             OrchestrationEditResponse with success status, name, and any errors.
 
         Raises:
-            HTTPException: 404 if orchestration not found, 422 for validation errors,
+            HTTPException: 403 for CSRF validation failure,
+                404 if orchestration not found, 422 for validation errors,
                 429 for rate limit, 500 for YAML errors.
         """
+        _validate_csrf_token(x_csrf_token)
         logger.debug("edit_orchestration called for '%s'", name)
         state = state_accessor.get_state()
 
@@ -1377,7 +1395,11 @@ def create_routes(
         "its YAML file and hot-reload picks up the change. Rate limited to "
         "prevent rapid file writes.",
     )
-    async def delete_orchestration(name: str, request: Request) -> DeleteResponse:
+    async def delete_orchestration(
+        name: str,
+        request: Request,
+        x_csrf_token: str | None = Header(None),
+    ) -> DeleteResponse:
         """Delete an orchestration by name.
 
         This endpoint removes the orchestration from its YAML source file.
@@ -1386,13 +1408,16 @@ def create_routes(
         Args:
             name: The name of the orchestration to delete.
             request: The incoming HTTP request (used for enriched debug logging).
+            x_csrf_token: CSRF token from X-CSRF-Token header.
 
         Returns:
             DeleteResponse with success status and orchestration name.
 
         Raises:
-            HTTPException: 404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
+            HTTPException: 403 for CSRF validation failure,
+                404 if orchestration not found, 429 for rate limit, 500 for YAML errors.
         """
+        _validate_csrf_token(x_csrf_token)
         logger.info("Received request to delete orchestration '%s'", name)
         client_host = request.client.host if request.client else "unknown"
         client_port = request.client.port if request.client else "unknown"
