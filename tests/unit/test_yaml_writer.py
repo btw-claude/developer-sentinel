@@ -1889,3 +1889,103 @@ orchestrations:
         assert not isinstance(data["trigger"], CommentedMap)
         assert not isinstance(data["agent"], CommentedMap)
         assert not isinstance(data["agent"]["github"], CommentedMap)
+
+
+class TestGetStepsListEdgeCases:
+    """Tests for _get_steps_list empty list edge case (DS-899)."""
+
+    def test_get_steps_list_empty_steps_returns_empty_list(self, tmp_path: Path) -> None:
+        """Should return empty list when 'steps' key exists with empty list.
+
+        Verifies fix for DS-899 item 2: an empty list [] is falsy in Python,
+        so using ``or`` would incorrectly fall through to 'orchestrations'.
+        """
+        yaml_content = """
+trigger:
+  source: jira
+  project: TEST
+steps: []
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer._load_yaml(file_path)
+        result = writer._get_steps_list(data)
+
+        assert result is not None
+        assert result == []
+
+    def test_get_steps_list_empty_steps_not_fallthrough_to_orchestrations(
+        self, tmp_path: Path
+    ) -> None:
+        """Should not fall through to 'orchestrations' when 'steps' is empty.
+
+        If both keys exist and 'steps' is empty, the method must return the
+        empty steps list, not the orchestrations list.
+        """
+        yaml_content = """
+steps: []
+orchestrations:
+  - name: "should-not-be-returned"
+    enabled: true
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer._load_yaml(file_path)
+        result = writer._get_steps_list(data)
+
+        assert result is not None
+        assert result == []
+
+    def test_get_steps_list_populated_steps(self, tmp_path: Path) -> None:
+        """Should return populated steps list when 'steps' key has items."""
+        yaml_content = """
+steps:
+  - name: "step-one"
+    enabled: true
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer._load_yaml(file_path)
+        result = writer._get_steps_list(data)
+
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["name"] == "step-one"
+
+    def test_get_steps_list_falls_back_to_orchestrations(self, tmp_path: Path) -> None:
+        """Should fall back to 'orchestrations' when 'steps' key is absent."""
+        yaml_content = """
+orchestrations:
+  - name: "orch-one"
+    enabled: true
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer._load_yaml(file_path)
+        result = writer._get_steps_list(data)
+
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["name"] == "orch-one"
+
+    def test_get_steps_list_neither_key_returns_none(self, tmp_path: Path) -> None:
+        """Should return None when neither 'steps' nor 'orchestrations' key exists."""
+        yaml_content = """
+some_other_key: value
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer._load_yaml(file_path)
+        result = writer._get_steps_list(data)
+
+        assert result is None
