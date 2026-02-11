@@ -21,6 +21,7 @@ from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.error import YAMLError
 
 from sentinel.logging import get_logger
+from sentinel.steps_key import resolve_steps_key
 
 if TYPE_CHECKING:
     from typing import Any
@@ -346,17 +347,12 @@ class OrchestrationYamlWriter:
     def _get_steps_list(data: CommentedMap) -> CommentedSeq | None:
         """Get the steps (or orchestrations) list from YAML data.
 
-        Checks for 'steps' first (new format), then 'orchestrations' (legacy).
-
-        Uses explicit key membership tests instead of ``or`` so that an empty
-        list ``[]`` (which is falsy) under the ``"steps"`` key is returned
-        correctly rather than falling through to ``"orchestrations"``.
+        Delegates to the shared ``resolve_steps_key()`` utility (DS-900)
+        which checks for ``"steps"`` first (new format), then
+        ``"orchestrations"`` (legacy), using an explicit key membership
+        test to handle empty lists correctly (DS-899).
         """
-        if "steps" in data:
-            result: CommentedSeq | None = data.get("steps")
-        else:
-            result = data.get("orchestrations")
-        return result
+        return resolve_steps_key(data)  # type: ignore[return-value]
 
     def _find_orchestration_index(self, orchestrations: CommentedSeq, orch_name: str) -> int | None:
         """Find the index of an orchestration by name.

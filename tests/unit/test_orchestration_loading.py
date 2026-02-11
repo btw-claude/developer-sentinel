@@ -618,3 +618,113 @@ orchestrations:
 
         with pytest.raises(OrchestrationError, match="not a directory"):
             load_orchestrations(file_path)
+
+
+class TestLoadOrchestrationFileStepsKey:
+    """Tests for steps/orchestrations key resolution in orchestration loading (DS-900).
+
+    Ensures the shared resolve_steps_key() utility is correctly integrated
+    into _load_orchestration_file_with_counts() and that the empty list
+    edge case (DS-899) is handled properly at the orchestration loading level.
+    """
+
+    def test_load_file_with_steps_key(self, tmp_path: Path) -> None:
+        """Should load orchestrations from 'steps' key (new format)."""
+        yaml_content = """
+trigger:
+  source: jira
+  project: TEST
+steps:
+  - name: "step-one"
+    trigger:
+      tags:
+        - "tag1"
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].name == "step-one"
+
+    def test_load_file_with_empty_steps_returns_empty(self, tmp_path: Path) -> None:
+        """Should return empty list when 'steps' key has empty list.
+
+        Verifies the DS-899 fix at the orchestration loading level: an empty
+        list [] under 'steps' must not fall through to 'orchestrations'.
+        """
+        yaml_content = """
+trigger:
+  source: jira
+  project: TEST
+steps: []
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert orchestrations == []
+
+    def test_load_file_empty_steps_not_fallthrough_to_orchestrations(
+        self, tmp_path: Path
+    ) -> None:
+        """Should not fall through to 'orchestrations' when 'steps' is empty.
+
+        If a file has both 'steps: []' and an 'orchestrations' key, the
+        loader must return empty, not load the orchestrations list.
+        """
+        yaml_content = """
+steps: []
+orchestrations:
+  - name: "should-not-load"
+    trigger:
+      source: jira
+      tags:
+        - "tag1"
+    agent:
+      prompt: "This should not be loaded"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert orchestrations == []
+
+    def test_load_file_with_legacy_orchestrations_key(self, tmp_path: Path) -> None:
+        """Should still load from 'orchestrations' key when 'steps' is absent."""
+        yaml_content = """
+orchestrations:
+  - name: "legacy-orch"
+    trigger:
+      source: jira
+      tags:
+        - "tag1"
+    agent:
+      prompt: "Legacy prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].name == "legacy-orch"
+
+    def test_load_file_with_neither_key_returns_empty(self, tmp_path: Path) -> None:
+        """Should return empty list when neither 'steps' nor 'orchestrations' exists."""
+        yaml_content = """
+trigger:
+  source: jira
+  project: TEST
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert orchestrations == []
