@@ -1068,6 +1068,28 @@
     margin-bottom: 0.25rem;
 }
 
+/* Header row for detail/edit views with name + action buttons */
+.detail-header {
+    align-items: center;
+    border-bottom: 1px solid var(--accordion-border, var(--accent, #0f3460));
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+.detail-header__name {
+    color: var(--text-primary, #eee);
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.detail-header__actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
 /* Action buttons container */
 .detail-actions {
     display: flex;

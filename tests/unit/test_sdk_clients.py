@@ -1002,9 +1002,9 @@ class TestClaudeSdkAgentClientBranchSetup:
                 workdir, "feature/DS-456", create_branch=True, base_branch="develop"
             )
 
-        # Verify branch creation command
+        # Verify branch creation command (uses -B to handle pre-existing local branches)
         checkout_with_b = [
-            cmd for cmd in call_history if "checkout" in " ".join(cmd) and "-b" in cmd
+            cmd for cmd in call_history if "checkout" in " ".join(cmd) and "-B" in cmd
         ]
         assert len(checkout_with_b) == 1
         assert "feature/DS-456" in checkout_with_b[0]
@@ -1274,7 +1274,7 @@ class TestClaudeSdkAgentClientBranchSetup:
 
         # All calls should have used the configured timeout
         assert all(t == 30.0 for t in captured_timeouts)
-        # Should have called fetch, ls-remote, and checkout -b
+        # Should have called fetch, ls-remote, and checkout -B
         assert len(captured_timeouts) == 3
 
     def test_zero_timeout_disables_timeout(
