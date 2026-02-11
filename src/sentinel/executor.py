@@ -11,11 +11,11 @@ from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias, assert_never
 
 from sentinel.agent_clients.base import AgentClient, AgentClientError, AgentTimeoutError
 from sentinel.branch_validation import validate_runtime_branch_name
-from sentinel.github_poller import GitHubIssue
+from sentinel.github_poller import GitHubIssueProtocol
 from sentinel.logging import get_logger, log_agent_summary
 from sentinel.orchestration import (
     GitHubContext,
@@ -27,7 +27,8 @@ from sentinel.orchestration import (
 from sentinel.poller import JiraIssue
 
 # Type alias for issues from any supported source
-AnyIssue: TypeAlias = JiraIssue | GitHubIssue
+# Uses GitHubIssueProtocol to support both GitHubIssue and GitHubIssueWithRepo
+AnyIssue: TypeAlias = JiraIssue | GitHubIssueProtocol
 
 if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
@@ -248,7 +249,7 @@ class TemplateContext:
 
     @classmethod
     def from_github_issue(
-        cls, issue: GitHubIssue, github: GitHubContext | None = None
+        cls, issue: GitHubIssueProtocol, github: GitHubContext | None = None
     ) -> TemplateContext:
         """Create a TemplateContext from a GitHub issue.
 
@@ -529,15 +530,10 @@ class AgentExecutor:
 
         if isinstance(issue, JiraIssue):
             context = TemplateContext.from_jira_issue(issue, github)
-        elif isinstance(issue, GitHubIssue):
+        elif isinstance(issue, GitHubIssueProtocol):
             context = TemplateContext.from_github_issue(issue, github)
         else:
-            # Fallback for unknown issue types - return empty context
-            context = TemplateContext(
-                github_host=github.host if github else "",
-                github_org=github.org if github else "",
-                github_repo=github.repo if github else "",
-            )
+            assert_never(issue)
 
         return context.to_dict()
 

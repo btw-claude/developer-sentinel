@@ -29,6 +29,7 @@ from tests.conftest import (
     make_config,
     make_orchestration,
 )
+from tests.helpers import make_issue
 
 
 def _create_sentinel(
@@ -596,12 +597,11 @@ class TestExecuteOrchestrationTaskUsesHelper:
             sentinel, _ = _create_sentinel()
             orchestration = make_orchestration(name="test-orch")
 
-            mock_issue = MagicMock()
-            mock_issue.key = issue_key
+            issue = make_issue(key=issue_key)
 
             with patch.object(sentinel, "_handle_execution_failure") as mock_handler:
                 result = sentinel._execute_orchestration_task(
-                    issue=mock_issue, orchestration=orchestration
+                    issue=issue, orchestration=orchestration
                 )
 
                 assert result is None
@@ -869,12 +869,11 @@ class TestClaudeProcessInterruptedUsesHelper:
             sentinel, _ = _create_sentinel()
             orchestration = make_orchestration(name="test-orch")
 
-            mock_issue = MagicMock()
-            mock_issue.key = "TEST-999"
+            issue = make_issue(key="TEST-999")
 
             with patch.object(sentinel, "_apply_failure_tags_safely") as mock_apply:
                 result = sentinel._execute_orchestration_task(
-                    issue=mock_issue, orchestration=orchestration
+                    issue=issue, orchestration=orchestration
                 )
 
                 assert result is None
