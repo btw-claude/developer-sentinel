@@ -1033,13 +1033,13 @@ class SentinelStateAccessor:
         return execution_summary, orchestration_stats
 
     def get_log_files(self) -> list[dict[str, Any]]:
-        """Get available log files grouped by orchestration.
+        """Get available log files grouped by step.
 
-        Discovers log files in the agent_logs_dir, grouped by orchestration
+        Discovers log files in the agent_logs_dir, grouped by step
         name, with files sorted by modification time (newest first).
 
         Returns:
-            List of dictionaries with orchestration name and files.
+            List of dictionaries with step name and files.
         """
         logs_dir = self._sentinel.config.execution.agent_logs_dir
 
@@ -1048,15 +1048,15 @@ class SentinelStateAccessor:
 
         result = []
 
-        # Iterate through orchestration directories
+        # Iterate through step directories
         for orch_dir in sorted(logs_dir.iterdir()):
             if not orch_dir.is_dir():
                 continue
 
-            orchestration_name = orch_dir.name
+            step_name = orch_dir.name
             files = []
 
-            # Get log files in this orchestration directory
+            # Get log files in this step directory
             for log_file in orch_dir.glob("*.log"):
                 if log_file.is_file():
                     try:
@@ -1086,13 +1086,13 @@ class SentinelStateAccessor:
             if files:
                 result.append(
                     {
-                        "orchestration": orchestration_name,
+                        "step": step_name,
                         "files": files,
                     }
                 )
 
-        # Sort orchestrations alphabetically
-        result.sort(key=lambda x: cast(str, x["orchestration"]))
+        # Sort steps alphabetically
+        result.sort(key=lambda x: cast(str, x["step"]))
 
         return result
 
@@ -1112,18 +1112,18 @@ class SentinelStateAccessor:
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         return filename
 
-    def get_log_file_path(self, orchestration: str, filename: str) -> Path | None:
+    def get_log_file_path(self, step: str, filename: str) -> Path | None:
         """Get the full path to a log file.
 
         Args:
-            orchestration: The orchestration name.
+            step: The step name.
             filename: The log file name.
 
         Returns:
             Path to the log file, or None if not found.
         """
         logs_dir = self._sentinel.config.execution.agent_logs_dir
-        log_path = logs_dir / orchestration / filename
+        log_path = logs_dir / step / filename
 
         # Security check: ensure path is within logs directory
         try:

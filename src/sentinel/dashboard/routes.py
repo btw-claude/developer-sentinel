@@ -641,7 +641,7 @@ def create_routes(
     async def logs(request: Request) -> HTMLResponse:
         """Render the log viewer page.
 
-        This page allows users to view log files from orchestration executions
+        This page allows users to view log files from step executions
         with real-time updates via SSE.
 
         Args:
@@ -663,17 +663,17 @@ def create_routes(
 
     @dashboard_router.get("/api/logs/files")
     async def api_logs_files() -> list[dict[str, Any]]:
-        """Return the list of available log files per orchestration.
+        """Return the list of available log files per step.
 
         This endpoint discovers log files in the agent_logs_dir, grouped by
-        orchestration name. Files are sorted by modification time with most
+        step name. Files are sorted by modification time with most
         recent logs first. Directory structure expected:
-        {base_dir}/{orchestration_name}/{timestamp}.log
+        {base_dir}/{step_name}/{timestamp}.log
 
         Returns:
-            List of dictionaries containing orchestration name and log files.
+            List of dictionaries containing step name and log files.
             Each entry has:
-            - orchestration: The orchestration name
+            - step: The step name
             - files: List of file info (filename, display_name, size, modified)
         """
         return state_accessor.get_log_files()
@@ -692,7 +692,7 @@ def create_routes(
 
         Args:
             request: The incoming HTTP request.
-            orchestration: The orchestration name.
+            orchestration: The step name (URL param kept as 'orchestration' for backward compat).
             filename: The log file name.
 
         Returns:

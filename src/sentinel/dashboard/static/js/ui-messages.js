@@ -99,10 +99,10 @@ var UI_MESSAGES = Object.freeze({
         FILES_LOAD_FAILED: 'Failed to load step files:',
 
         // orchestration-forms.js
-        EDIT_FORM_NULL: 'submitOrchestrationEdit: formElement is null',
-        EDIT_FETCH_ERROR: 'submitOrchestrationEdit: fetch error:',
-        CREATE_FORM_NULL: 'submitOrchestrationCreate: formElement is null',
-        CREATE_FETCH_ERROR: 'submitOrchestrationCreate: fetch error:',
+        EDIT_FORM_NULL: 'submitStepEdit: formElement is null',
+        EDIT_FETCH_ERROR: 'submitStepEdit: fetch error:',
+        CREATE_FORM_NULL: 'submitStepCreate: formElement is null',
+        CREATE_FETCH_ERROR: 'submitStepCreate: fetch error:',
 
         // log_viewer.html - URL parameter validation
         INVALID_FILE_PARAM: function(file, step) { return 'Invalid URL parameter: file \'' + file + '\' not found in step \'' + step + '\''; },
