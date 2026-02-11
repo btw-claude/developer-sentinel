@@ -983,7 +983,7 @@
    BEM Structure:
    - Block: .orchestration-detail
    - Elements: .detail-section, .detail-row, .detail-label,
-               .prompt-block, .config-grid, .detail-actions
+               .prompt-block, .config-grid
    - Modifiers: (none currently)
 
    Usage:
@@ -1088,15 +1088,6 @@
 .detail-header__actions {
     display: flex;
     gap: 0.5rem;
-}
-
-/* Action buttons container */
-.detail-actions {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: flex-end;
-    margin-top: 1rem;
-    padding-top: 0.75rem;
 }
 
 /* Accent button style for Edit */
