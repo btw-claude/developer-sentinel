@@ -15,8 +15,10 @@ Example:
     python scripts/migrate_trigger_to_file_level.py ./examples/basic-setup/orchestrations
 
 The script:
-- Recursively scans the directory for .yaml and .yml files (skipping symlinks)
-  to avoid potential hangs from circular symlinks (DS-900)
+- Recursively scans the directory for .yaml and .yml files, skipping symlinks
+  to avoid potential hangs from circular symlinks.  On Python 3.13+ this uses
+  ``rglob(recurse_symlinks=False)`` for traversal-level filtering; on older
+  Pythons it falls back to post-hoc ``is_symlink()`` checks (DS-900, DS-901)
 - Extracts project-level fields from the first step
 - Validates all steps share the same project-level values
 - Creates a file-level trigger block
@@ -35,10 +37,43 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
+# Python 3.13+ added a ``recurse_symlinks`` parameter to ``Path.rglob()``,
+# allowing symlink filtering at the directory-traversal level rather than
+# post-hoc filtering via ``p.is_symlink()``.  With ``recurse_symlinks=False``
+# (the default in 3.13+), ``rglob()`` will not follow symlinks when expanding
+# ``**`` wildcards, preventing the walker from descending into symlink cycles.
+# We detect support once at import time so that ``_rglob_no_symlinks()`` can
+# choose the most robust strategy available.  See DS-901 item 2.
+_RGLOB_SUPPORTS_RECURSE_SYMLINKS: bool = sys.version_info >= (3, 13)
+
 # Fields that move from step-level trigger to file-level trigger
 FILE_LEVEL_FIELDS = frozenset({
     "source", "project", "project_number", "project_scope", "project_owner",
 })
+
+
+def _rglob_no_symlinks(directory: Path, pattern: str) -> set[Path]:
+    """Recursively glob for *pattern* under *directory*, excluding symlinks.
+
+    On Python 3.13+ this uses ``recurse_symlinks=False`` (the default) to
+    prevent ``**`` expansion from descending into symlinked directories,
+    which avoids hangs from circular directory symlinks at the traversal
+    level (DS-901 item 2).  Symlinked *files* that match the pattern are
+    still returned by ``rglob()``, so we apply a post-hoc
+    ``p.is_symlink()`` filter in all cases.
+
+    On older Pythons the ``recurse_symlinks`` parameter is not available,
+    so we rely solely on the post-hoc filter (DS-900).
+    """
+    if _RGLOB_SUPPORTS_RECURSE_SYMLINKS:
+        # Python 3.13+: prevent traversal into symlinked directories, then
+        # filter out any remaining symlinked files.
+        return {
+            p for p in directory.rglob(pattern, recurse_symlinks=False)
+            if not p.is_symlink()
+        }
+    # Python <3.13: post-hoc filter only
+    return {p for p in directory.rglob(pattern) if not p.is_symlink()}
 
 
 def migrate_file(file_path: Path, *, dry_run: bool = False) -> bool:
@@ -201,10 +236,12 @@ def main() -> None:
     errors = 0
 
     # Use rglob for recursive scanning so nested subdirectories are included.
-    # Filter out symlinks to avoid potential hangs from circular symlinks (DS-900).
+    # On Python 3.13+ symlinks are excluded at traversal time via
+    # recurse_symlinks=False; on older versions they are filtered post-hoc
+    # (DS-900, DS-901).
     yaml_files = sorted(
-        p for p in set(directory.rglob("*.yaml")) | set(directory.rglob("*.yml"))
-        if not p.is_symlink()
+        _rglob_no_symlinks(directory, "*.yaml")
+        | _rglob_no_symlinks(directory, "*.yml")
     )
     for file_path in yaml_files:
         if file_path.name.endswith(".bak"):

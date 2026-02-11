@@ -1,11 +1,18 @@
-"""Tests for the shared steps/orchestrations key resolution utility (DS-900).
+"""Tests for the shared steps/orchestrations key resolution utility (DS-900, DS-901).
 
 This module tests ``sentinel.steps_key.resolve_steps_key()`` which is the
 single source of truth for resolving the ``"steps"`` vs ``"orchestrations"``
 YAML key.
+
+DS-901 added tests verifying that the generic ``_VT`` type variable
+allows ``resolve_steps_key()`` to work with ``CommentedMap`` input
+(returning the original ``CommentedSeq`` instances) without requiring
+``type: ignore`` annotations at call sites.
 """
 
 from __future__ import annotations
+
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from sentinel.steps_key import resolve_steps_key
 
@@ -81,3 +88,55 @@ class TestResolveStepsKey:
         data = {"orchestrations": None}
         result = resolve_steps_key(data)
         assert result is None
+
+
+class TestResolveStepsKeyGenericType:
+    """Tests for generic return type with CommentedMap input (DS-901).
+
+    When ``resolve_steps_key()`` is called with a ``CommentedMap`` (as
+    ``yaml_writer.py`` does), the generic ``_VT`` type variable ensures the
+    return type preserves the original container type (``CommentedSeq``)
+    without requiring a ``type: ignore`` comment.
+    """
+
+    def test_returns_commented_seq_from_commented_map_steps(self) -> None:
+        """Should return CommentedSeq when CommentedMap has 'steps' key."""
+        data = CommentedMap()
+        steps = CommentedSeq([{"name": "a"}])
+        data["steps"] = steps
+        result = resolve_steps_key(data)
+        assert result is steps
+
+    def test_returns_commented_seq_from_commented_map_orchestrations(self) -> None:
+        """Should return CommentedSeq when CommentedMap has 'orchestrations' key."""
+        data = CommentedMap()
+        orchestrations = CommentedSeq([{"name": "b"}])
+        data["orchestrations"] = orchestrations
+        result = resolve_steps_key(data)
+        assert result is orchestrations
+
+    def test_returns_none_from_commented_map_no_matching_key(self) -> None:
+        """Should return None when CommentedMap has neither key."""
+        data = CommentedMap()
+        data["other"] = "value"
+        result = resolve_steps_key(data)
+        assert result is None
+
+    def test_commented_map_steps_takes_precedence(self) -> None:
+        """Should return 'steps' CommentedSeq when both keys exist in CommentedMap."""
+        data = CommentedMap()
+        steps = CommentedSeq([{"name": "step"}])
+        orchestrations = CommentedSeq([{"name": "orch"}])
+        data["steps"] = steps
+        data["orchestrations"] = orchestrations
+        result = resolve_steps_key(data)
+        assert result is steps
+
+    def test_commented_map_empty_steps_does_not_fallthrough(self) -> None:
+        """Should return empty CommentedSeq from CommentedMap, not fall through."""
+        data = CommentedMap()
+        empty_steps = CommentedSeq()
+        data["steps"] = empty_steps
+        data["orchestrations"] = CommentedSeq([{"name": "should-not-return"}])
+        result = resolve_steps_key(data)
+        assert result is empty_steps

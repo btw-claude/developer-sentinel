@@ -1,4 +1,4 @@
-"""Tests for migrate_trigger_to_file_level script (DS-899, DS-900).
+"""Tests for migrate_trigger_to_file_level script (DS-899, DS-900, DS-901).
 
 Tests that the migration script uses recursive scanning (rglob) to find
 YAML files in nested subdirectories, rather than only scanning direct
@@ -6,10 +6,14 @@ children of the orchestrations directory.
 
 Also tests that symlinked YAML files are skipped to avoid potential hangs
 from circular symlinks (DS-900).
+
+DS-901 added tests for the ``_rglob_no_symlinks()`` helper which uses
+``recurse_symlinks=False`` on Python 3.13+ for traversal-level filtering.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -236,3 +240,65 @@ class TestMigrateSymlinkHandling:
 
         # Neither file should be modified in dry-run
         assert real_file.read_text() == yaml_content
+
+
+class TestRglobNoSymlinks:
+    """Tests for _rglob_no_symlinks helper (DS-901 item 2).
+
+    Verifies that the helper correctly excludes symlinks from rglob results
+    regardless of whether the Python 3.13+ ``recurse_symlinks`` parameter
+    is used or the fallback ``is_symlink()`` filter is applied.
+    """
+
+    def test_finds_regular_yaml_files(self, tmp_path: Path) -> None:
+        """Should find regular (non-symlink) YAML files."""
+        (tmp_path / "a.yaml").write_text("key: value")
+        (tmp_path / "b.yaml").write_text("key: value")
+
+        from scripts.migrate_trigger_to_file_level import _rglob_no_symlinks
+
+        result = _rglob_no_symlinks(tmp_path, "*.yaml")
+        names = {p.name for p in result}
+        assert names == {"a.yaml", "b.yaml"}
+
+    def test_excludes_symlinked_files(self, tmp_path: Path) -> None:
+        """Should exclude symlinked YAML files from results."""
+        real_file = tmp_path / "real.yaml"
+        real_file.write_text("key: value")
+        link_file = tmp_path / "link.yaml"
+        link_file.symlink_to(real_file)
+
+        from scripts.migrate_trigger_to_file_level import _rglob_no_symlinks
+
+        result = _rglob_no_symlinks(tmp_path, "*.yaml")
+        names = {p.name for p in result}
+        assert "real.yaml" in names
+        assert "link.yaml" not in names
+
+    def test_finds_files_in_subdirectories(self, tmp_path: Path) -> None:
+        """Should find files in nested subdirectories."""
+        sub = tmp_path / "sub" / "nested"
+        sub.mkdir(parents=True)
+        (sub / "deep.yaml").write_text("key: value")
+
+        from scripts.migrate_trigger_to_file_level import _rglob_no_symlinks
+
+        result = _rglob_no_symlinks(tmp_path, "*.yaml")
+        names = {p.name for p in result}
+        assert "deep.yaml" in names
+
+    def test_returns_empty_set_when_no_matches(self, tmp_path: Path) -> None:
+        """Should return empty set when no files match the pattern."""
+        (tmp_path / "readme.txt").write_text("not yaml")
+
+        from scripts.migrate_trigger_to_file_level import _rglob_no_symlinks
+
+        result = _rglob_no_symlinks(tmp_path, "*.yaml")
+        assert result == set()
+
+    def test_version_flag_matches_runtime(self) -> None:
+        """The _RGLOB_SUPPORTS_RECURSE_SYMLINKS flag should match the runtime version."""
+        from scripts.migrate_trigger_to_file_level import _RGLOB_SUPPORTS_RECURSE_SYMLINKS
+
+        expected = sys.version_info >= (3, 13)
+        assert _RGLOB_SUPPORTS_RECURSE_SYMLINKS is expected

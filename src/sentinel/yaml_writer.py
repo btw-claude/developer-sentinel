@@ -351,8 +351,12 @@ class OrchestrationYamlWriter:
         which checks for ``"steps"`` first (new format), then
         ``"orchestrations"`` (legacy), using an explicit key membership
         test to handle empty lists correctly (DS-899).
+
+        The ``type: ignore`` comment that was previously needed here has been
+        removed thanks to the generic ``_VT`` type variable added to
+        ``resolve_steps_key()`` in DS-901.
         """
-        return resolve_steps_key(data)  # type: ignore[return-value]
+        return resolve_steps_key(data)
 
     def _find_orchestration_index(self, orchestrations: CommentedSeq, orch_name: str) -> int | None:
         """Find the index of an orchestration by name.
