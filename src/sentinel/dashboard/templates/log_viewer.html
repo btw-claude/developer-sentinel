@@ -552,8 +552,8 @@ logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT, UI_M
                 }
             }
         } else {
-            // User feedback for invalid orchestration parameter
-            console.warn(UI_MESSAGES.DEBUG.INVALID_ORCH_PARAM(orchestration));
+            // User feedback for invalid step parameter
+            console.warn(UI_MESSAGES.DEBUG.INVALID_STEP_PARAM(orchestration));
             showToast('warning', UI_MESSAGES.TOAST.ORCHESTRATION_NOT_FOUND(orchestration));
         }
     }
