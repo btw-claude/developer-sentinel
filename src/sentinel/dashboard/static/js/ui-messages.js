@@ -89,14 +89,14 @@ var UI_MESSAGES = Object.freeze({
         COLLAPSIBLE_NO_CONTENT: 'toggleCollapsibleSection: Could not find .collapsible-content within section',
         COLLAPSIBLE_NO_ICON: 'toggleCollapsibleSection: Could not find .collapse-icon within header',
         NESTED_NO_PARENT: 'toggleNestedAccordion: Could not find parent .nested-accordion-item',
-        DETAIL_ROW_NOT_FOUND: function(name) { return 'toggleOrchestrationDetail: Could not find detail row for: ' + name; },
+        DETAIL_ROW_NOT_FOUND: function(name) { return 'toggleStepDetail: Could not find detail row for: ' + name; },
         ELEMENT_NOT_FOUND: function(id) { return 'isExpanded: Element not found: ' + id; },
         INIT_NO_CONTAINER: 'initCollapsibleSections: Could not find main container for event delegation',
         TOGGLE_PARSE_ERROR: 'handleToggleResponse: Failed to parse JSON response:',
         DELETE_PARSE_ERROR: 'handleDeleteResponse: Failed to parse JSON response:',
 
         // orchestration_create_form.html
-        FILES_LOAD_FAILED: 'Failed to load orchestration files:',
+        FILES_LOAD_FAILED: 'Failed to load step files:',
 
         // orchestration-forms.js
         EDIT_FORM_NULL: 'submitOrchestrationEdit: formElement is null',
@@ -106,6 +106,6 @@ var UI_MESSAGES = Object.freeze({
 
         // log_viewer.html - URL parameter validation
         INVALID_FILE_PARAM: function(file, orch) { return 'Invalid URL parameter: file \'' + file + '\' not found in orchestration \'' + orch + '\''; },
-        INVALID_ORCH_PARAM: function(orch) { return 'Invalid URL parameter: orchestration \'' + orch + '\' not found'; }
+        INVALID_STEP_PARAM: function(step) { return 'Invalid URL parameter: step \'' + step + '\' not found'; }
     })
 });
