@@ -324,12 +324,12 @@ class TestApiLogsFilesEndpoint:
             logs_dir = Path(tmpdir)
 
             # Create step directory with log files
-            orch_dir = logs_dir / "test-orch"
-            orch_dir.mkdir()
+            step_dir = logs_dir / "test-orch"
+            step_dir.mkdir()
 
             # Create files with different modification times
-            old_file = orch_dir / "20260114_080000.log"
-            new_file = orch_dir / "20260114_120000.log"
+            old_file = step_dir / "20260114_080000.log"
+            new_file = step_dir / "20260114_120000.log"
 
             old_file.write_text("Old log")
             new_file.write_text("New log")
@@ -361,9 +361,9 @@ class TestApiLogsFilesEndpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            orch_dir = logs_dir / "test-orch"
-            orch_dir.mkdir()
-            (orch_dir / "20260114_153045.log").write_text("Test content")
+            step_dir = logs_dir / "test-orch"
+            step_dir.mkdir()
+            (step_dir / "20260114_153045.log").write_text("Test content")
 
             config = Config(execution=ExecutionConfig(agent_logs_dir=logs_dir))
             sentinel = MockSentinel(config)
@@ -415,11 +415,11 @@ class TestApiLogsFilesEndpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            orch_dir = logs_dir / "test-orch"
-            orch_dir.mkdir()
-            (orch_dir / "20260114_100000.log").write_text("Log content")
-            (orch_dir / "readme.txt").write_text("Not a log file")
-            (orch_dir / "config.json").write_text("{}")
+            step_dir = logs_dir / "test-orch"
+            step_dir.mkdir()
+            (step_dir / "20260114_100000.log").write_text("Log content")
+            (step_dir / "readme.txt").write_text("Not a log file")
+            (step_dir / "config.json").write_text("{}")
 
             config = Config(execution=ExecutionConfig(agent_logs_dir=logs_dir))
             sentinel = MockSentinel(config)
@@ -442,9 +442,9 @@ class TestApiLogsFilesEndpoint:
             (logs_dir / "root_file.log").write_text("Root level log")
 
             # File in step subdirectory (should be included)
-            orch_dir = logs_dir / "test-orch"
-            orch_dir.mkdir()
-            (orch_dir / "20260114_100000.log").write_text("Step log")
+            step_dir = logs_dir / "test-orch"
+            step_dir.mkdir()
+            (step_dir / "20260114_100000.log").write_text("Step log")
 
             config = Config(execution=ExecutionConfig(agent_logs_dir=logs_dir))
             sentinel = MockSentinel(config)
@@ -566,9 +566,9 @@ class TestSseLogStreamingEndpoint:
         with tempfile.TemporaryDirectory() as tmpdir:
             logs_dir = Path(tmpdir)
 
-            orch_dir = logs_dir / "my-orch"
-            orch_dir.mkdir()
-            log_file = orch_dir / "20260114_100000.log"
+            step_dir = logs_dir / "my-orch"
+            step_dir.mkdir()
+            log_file = step_dir / "20260114_100000.log"
             log_file.write_text("Log content")
 
             config = Config(execution=ExecutionConfig(agent_logs_dir=logs_dir))
