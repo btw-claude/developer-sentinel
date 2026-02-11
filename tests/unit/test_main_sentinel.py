@@ -1130,6 +1130,27 @@ class TestPollService:
                     sentinel.config.polling.error_threshold_pct,
                 )
 
+    def test_poll_service_unknown_service_name_raises_value_error(self) -> None:
+        """_poll_service should raise ValueError for an unrecognised service_name (DS-940)."""
+        import pytest
+
+        sentinel = _make_sentinel()
+        mock_poll_fn = self._make_poll_fn(issues_found=0, error_count=0)
+
+        with pytest.raises(ValueError, match="Unknown polling service 'bitbucket'"):
+            sentinel._poll_service(
+                service_name="bitbucket",
+                display_name="Bitbucket",
+                orchestrations=[make_orchestration(tags=["review"])],
+                poll_fn=mock_poll_fn,
+                probe_kwargs={},
+                all_results=[],
+                submitted_pairs=set(),
+            )
+
+        # The poll function should not have been called
+        mock_poll_fn.assert_not_called()
+
 
 # =========================================================================
 # 7. TestRun
