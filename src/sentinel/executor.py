@@ -446,7 +446,6 @@ class ExecutionResult:
 # Explicit async return type alias for executor methods (DS-533).
 # This type alias makes the async nature of the execute method more discoverable.
 type ExecutionCoroutine = Coroutine[Any, Any, ExecutionResult]
-"""Coroutine type for async execution methods returning ExecutionResult."""
 
 # NOTE: Update this list when adding new exports to this module.
 __all__ = [
