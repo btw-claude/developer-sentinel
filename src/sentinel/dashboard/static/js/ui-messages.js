@@ -27,8 +27,8 @@ var UI_MESSAGES = Object.freeze({
         // Toggle operations (base.html - handleToggleResponse)
         TOGGLE_FAILED: 'Toggle operation failed',
         PARSE_RESPONSE_FAILED: 'Failed to process server response',
-        ORCHESTRATION_ENABLED: 'Step enabled successfully',
-        ORCHESTRATION_DISABLED: 'Step disabled successfully',
+        STEP_ENABLED: 'Step enabled successfully',
+        STEP_DISABLED: 'Step disabled successfully',
 
         // Delete operations (base.html - handleDeleteResponse)
         DELETE_SUCCESS: function(name) { return 'Step \'' + name + '\' deleted successfully'; },
@@ -50,7 +50,7 @@ var UI_MESSAGES = Object.freeze({
 
         // Log viewer invalid URL parameters (log_viewer.html)
         LOG_FILE_NOT_FOUND: function(file) { return 'Log file \'' + file + '\' not found in selected step'; },
-        ORCHESTRATION_NOT_FOUND: function(name) { return 'Step \'' + name + '\' not found'; }
+        STEP_NOT_FOUND: function(name) { return 'Step \'' + name + '\' not found'; }
     }),
 
     /** CSRF token messages (orchestration_create_form.html). */
