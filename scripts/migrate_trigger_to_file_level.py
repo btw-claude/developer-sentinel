@@ -15,7 +15,8 @@ Example:
     python scripts/migrate_trigger_to_file_level.py ./examples/basic-setup/orchestrations
 
 The script:
-- Recursively scans the directory for .yaml and .yml files
+- Recursively scans the directory for .yaml and .yml files (skipping symlinks)
+  to avoid potential hangs from circular symlinks (DS-900)
 - Extracts project-level fields from the first step
 - Validates all steps share the same project-level values
 - Creates a file-level trigger block
@@ -199,9 +200,11 @@ def main() -> None:
     skipped = 0
     errors = 0
 
-    # Use rglob for recursive scanning so nested subdirectories are included
+    # Use rglob for recursive scanning so nested subdirectories are included.
+    # Filter out symlinks to avoid potential hangs from circular symlinks (DS-900).
     yaml_files = sorted(
-        set(directory.rglob("*.yaml")) | set(directory.rglob("*.yml"))
+        p for p in set(directory.rglob("*.yaml")) | set(directory.rglob("*.yml"))
+        if not p.is_symlink()
     )
     for file_path in yaml_files:
         if file_path.name.endswith(".bak"):

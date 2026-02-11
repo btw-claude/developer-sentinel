@@ -1,8 +1,11 @@
-"""Tests for migrate_trigger_to_file_level script (DS-899).
+"""Tests for migrate_trigger_to_file_level script (DS-899, DS-900).
 
 Tests that the migration script uses recursive scanning (rglob) to find
 YAML files in nested subdirectories, rather than only scanning direct
 children of the orchestrations directory.
+
+Also tests that symlinked YAML files are skipped to avoid potential hangs
+from circular symlinks (DS-900).
 """
 
 from __future__ import annotations
@@ -162,3 +165,74 @@ class TestMigrateRecursiveScanning:
         with open(nested_file) as f:
             nested_data = yaml.load(f)
         assert "steps" in nested_data
+
+
+class TestMigrateSymlinkHandling:
+    """Tests for symlink skipping in the migration script (DS-900 item 3)."""
+
+    def test_skips_symlinked_yaml_files(self, tmp_path: Path) -> None:
+        """Should skip YAML files that are symlinks.
+
+        Symlinked files are skipped to avoid potential issues with circular
+        symlinks that could cause the script to hang.
+        """
+        # Create a real YAML file
+        real_dir = tmp_path / "real"
+        real_dir.mkdir()
+        yaml_content = """orchestrations:
+  - name: "real-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: REAL
+"""
+        real_file = real_dir / "real.yaml"
+        real_file.write_text(yaml_content)
+
+        # Create a symlink to the real file
+        link_dir = tmp_path / "links"
+        link_dir.mkdir()
+        link_file = link_dir / "linked.yaml"
+        link_file.symlink_to(real_file)
+
+        from scripts.migrate_trigger_to_file_level import main
+
+        with patch("sys.argv", ["migrate", str(tmp_path)]):
+            main()
+
+        # The real file should have been migrated
+        from ruamel.yaml import YAML
+
+        yaml = YAML()
+        with open(real_file) as f:
+            real_data = yaml.load(f)
+        assert "steps" in real_data
+
+        # The symlink target was already migrated via the real path,
+        # so the symlink should have been skipped during file discovery
+        assert link_file.is_symlink()
+
+    def test_skips_symlinked_yaml_in_dry_run(self, tmp_path: Path) -> None:
+        """Should skip symlinked YAML files even in dry-run mode."""
+        # Create a real YAML file
+        yaml_content = """orchestrations:
+  - name: "target-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: TARGET
+"""
+        real_file = tmp_path / "target.yaml"
+        real_file.write_text(yaml_content)
+
+        # Create a symlink
+        link_file = tmp_path / "symlink.yaml"
+        link_file.symlink_to(real_file)
+
+        from scripts.migrate_trigger_to_file_level import main
+
+        with patch("sys.argv", ["migrate", str(tmp_path), "--dry-run"]):
+            main()
+
+        # Neither file should be modified in dry-run
+        assert real_file.read_text() == yaml_content

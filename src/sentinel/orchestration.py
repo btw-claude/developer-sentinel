@@ -14,6 +14,7 @@ import yaml
 
 from sentinel.branch_validation import validate_branch_name_core
 from sentinel.logging import get_logger
+from sentinel.steps_key import resolve_steps_key
 from sentinel.types import (
     AgentType,
     AgentTypeLiteral,
@@ -1448,10 +1449,12 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
     if file_trigger_data and isinstance(file_trigger_data, dict):
         file_trigger = _parse_file_trigger(file_trigger_data)
 
-    # Support both "steps" (new) and "orchestrations" (legacy) keys (DS-896)
-    # Use explicit key check so an empty list under "steps" is not treated as
-    # falsy and incorrectly falls through to the "orchestrations" key (DS-899).
-    orchestrations_data = data.get("steps") if "steps" in data else data.get("orchestrations", [])
+    # Support both "steps" (new) and "orchestrations" (legacy) keys (DS-896).
+    # Delegates to the shared resolve_steps_key() utility (DS-900) which uses
+    # an explicit key membership check to handle empty lists correctly (DS-899).
+    orchestrations_data = resolve_steps_key(data)
+    if orchestrations_data is None:
+        orchestrations_data = []
     if not isinstance(orchestrations_data, list):
         raise OrchestrationError(
             f"'steps' (or 'orchestrations') must be a list in {file_path}"
