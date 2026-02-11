@@ -17,7 +17,7 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Self, TypeVar
+from typing import Any, Self
 
 import httpx
 
@@ -32,9 +32,6 @@ DEFAULT_TIMEOUT = httpx.Timeout(10.0, read=30.0)
 
 # GitHub API default base URL
 DEFAULT_GITHUB_API_URL = "https://api.github.com"
-
-# Type variable for generic retry function
-T = TypeVar("T")
 
 # GraphQL query for fetching organization-owned GitHub Projects (v2)
 # Returns project metadata and field definitions including single-select options
@@ -350,7 +347,7 @@ def _get_retry_after(response: httpx.Response) -> float | None:
     return None
 
 
-def _execute_with_retry(
+def _execute_with_retry[T](
     operation: Callable[[], T],
     config: GitHubRetryConfig = DEFAULT_RETRY_CONFIG,
     error_class: type[Exception] = Exception,

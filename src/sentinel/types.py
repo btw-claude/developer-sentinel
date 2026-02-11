@@ -23,7 +23,7 @@ Usage:
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING, Literal, TypeAlias, get_args
+from typing import TYPE_CHECKING, Literal, get_args
 
 
 class TriggerSource(StrEnum):
@@ -287,7 +287,7 @@ ErrorTypeLiteral = Literal["I/O error", "runtime error", "data error"]
 # If Python ever exposes a public type for Literal forms, this alias should be
 # updated to use it.
 if TYPE_CHECKING:
-    LiteralForm: TypeAlias = object
+    type LiteralForm = object
 else:
     from typing import Protocol, runtime_checkable
 
