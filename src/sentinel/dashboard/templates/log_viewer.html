@@ -529,14 +529,14 @@ logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT, UI_M
 // Added user feedback when invalid URL parameters are detected
 (function initFromUrlParams() {
     const params = new URLSearchParams(window.location.search);
-    const orchestration = params.get('orchestration');
+    const step = params.get('orchestration');
     const file = params.get('file');
 
-    if (orchestration) {
-        // Validate orchestration parameter exists in dropdown before selecting
-        const orchOption = Array.from(orchestrationSelect.options).find(opt => opt.value === orchestration);
+    if (step) {
+        // Validate step parameter exists in dropdown before selecting
+        const orchOption = Array.from(orchestrationSelect.options).find(opt => opt.value === step);
         if (orchOption) {
-            orchestrationSelect.value = orchestration;
+            orchestrationSelect.value = step;
             updateLogFileOptions();
 
             if (file) {
@@ -547,14 +547,14 @@ logContent.innerHTML = wrapEmptyState(UI_MESSAGES.LOG_VIEWER.SELECT_PROMPT, UI_M
                     loadLogFile();
                 } else {
                     // User feedback for invalid file parameter
-                    console.warn(UI_MESSAGES.DEBUG.INVALID_FILE_PARAM(file, orchestration));
+                    console.warn(UI_MESSAGES.DEBUG.INVALID_FILE_PARAM(file, step));
                     showToast('warning', UI_MESSAGES.TOAST.LOG_FILE_NOT_FOUND(file));
                 }
             }
         } else {
             // User feedback for invalid step parameter
-            console.warn(UI_MESSAGES.DEBUG.INVALID_STEP_PARAM(orchestration));
-            showToast('warning', UI_MESSAGES.TOAST.STEP_NOT_FOUND(orchestration));
+            console.warn(UI_MESSAGES.DEBUG.INVALID_STEP_PARAM(step));
+            showToast('warning', UI_MESSAGES.TOAST.STEP_NOT_FOUND(step));
         }
     }
 })();
