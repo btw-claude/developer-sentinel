@@ -1674,8 +1674,6 @@ orchestrations:
 
     def test_rate_limit_allows_after_cooldown(self, temp_logs_dir: Path) -> None:
         """Test that toggles are allowed after cooldown period."""
-        import threading
-
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
 orchestrations:
@@ -1709,31 +1707,43 @@ orchestrations:
         accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
         app = create_test_app(accessor, config=config)
 
+        # Track calls to time.monotonic() so we can simulate cooldown elapsing
+        # without depending on wall-clock time (DS-943).
+        monotonic_value = [0.0]
+        original_monotonic = __import__("time").monotonic
+
+        def fake_monotonic() -> float:
+            return monotonic_value[0] or original_monotonic()
+
         with TestClient(app) as client:
             # Get CSRF token for first toggle (DS-926)
             csrf_token1 = _get_csrf_token(client)
 
-            # First toggle should succeed
-            response1 = client.post(
-                "/api/orchestrations/test-orch/toggle",
-                json={"enabled": False},
-                headers={"X-CSRF-Token": csrf_token1},
-            )
-            assert response1.status_code == 200
+            with patch("sentinel.dashboard.routes.time") as mock_time:
+                mock_time.monotonic = fake_monotonic
 
-            # Wait for cooldown using threading.Event.wait for deterministic timing
-            threading.Event().wait(timeout=0.15)
+                # First toggle should succeed
+                monotonic_value[0] = 1000.0
+                response1 = client.post(
+                    "/api/orchestrations/test-orch/toggle",
+                    json={"enabled": False},
+                    headers={"X-CSRF-Token": csrf_token1},
+                )
+                assert response1.status_code == 200
 
-            # Get CSRF token for second toggle (DS-926)
-            csrf_token2 = _get_csrf_token(client)
+                # Advance monotonic clock past the cooldown period (0.1s)
+                monotonic_value[0] = 1000.2
 
-            # Second toggle should now succeed
-            response2 = client.post(
-                "/api/orchestrations/test-orch/toggle",
-                json={"enabled": True},
-                headers={"X-CSRF-Token": csrf_token2},
-            )
-            assert response2.status_code == 200
+                # Get CSRF token for second toggle (DS-926)
+                csrf_token2 = _get_csrf_token(client)
+
+                # Second toggle should now succeed
+                response2 = client.post(
+                    "/api/orchestrations/test-orch/toggle",
+                    json={"enabled": True},
+                    headers={"X-CSRF-Token": csrf_token2},
+                )
+                assert response2.status_code == 200
 
     def test_bulk_toggle_rate_limit_enforced(self, temp_logs_dir: Path) -> None:
         """Test that rapid bulk toggles are rate limited."""

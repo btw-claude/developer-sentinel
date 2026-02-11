@@ -739,7 +739,13 @@ class TestWaitForCompletion:
             # Schedule the gate to open shortly, so the error occurs during wait()
             # Use a shorter delay to avoid unnecessary waiting (deterministic approach - DS-933)
             def release_gate() -> None:
-                time.sleep(0.01)  # Reduced from 0.05 to 0.01 for faster tests
+                # Brief real-time delay is intentional here: gate_event must be
+                # set *after* wait_for_completion enters its wait() call so the
+                # FIRST_EXCEPTION path is exercised.  An Event-based approach
+                # is impractical because there is no hook to detect that the
+                # caller has entered wait().  The 10 ms sleep is short enough to
+                # keep tests fast while providing the necessary ordering (DS-943).
+                time.sleep(0.01)
                 gate_event.set()
 
             t = threading.Thread(target=release_gate)
