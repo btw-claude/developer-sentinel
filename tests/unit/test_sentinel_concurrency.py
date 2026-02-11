@@ -1,6 +1,6 @@
 """Tests for Sentinel per-orchestration concurrency limits."""
 
-import time
+import threading
 from typing import Any
 
 from sentinel.agent_clients.base import AgentClient, AgentRunResult
@@ -509,7 +509,8 @@ class TestPerOrchestrationConcurrencyLimits:
                 base_branch: str = "main",
                 agent_teams: bool = False,
             ) -> AgentRunResult:
-                time.sleep(0.05)
+                # Use threading.Event.wait for interruptible delay
+                threading.Event().wait(timeout=0.05)
                 return AgentRunResult(response="FAILURE: Error occurred", workdir=None)
 
         tag_client = MockTagClient()

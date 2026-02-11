@@ -674,8 +674,8 @@ class TestFileLockTimeout:
                 lock_acquired.set()
                 # Wait for main thread to start waiting for lock
                 main_thread_waiting.wait(timeout=1.0)
-                # Hold lock a bit longer
-                time.sleep(0.1)
+                # Hold lock briefly using threading.Event.wait for deterministic coordination
+                threading.Event().wait(timeout=0.1)
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
         # Start thread to hold lock briefly
@@ -904,18 +904,22 @@ orchestrations:
         file_path = tmp_path / "test.yaml"
         file_path.write_text(yaml_content)
 
-        # Get original modification time
-        original_mtime = file_path.stat().st_mtime
+        # Set a specific mtime using os.utime for deterministic testing
+        import os
 
-        # Wait a bit to ensure times differ
-        time.sleep(0.1)
+        current_stat = file_path.stat()
+        specific_mtime = current_stat.st_mtime + 0.5
+        os.utime(file_path, (current_stat.st_atime, specific_mtime))
+
+        # Verify the mtime was set
+        assert file_path.stat().st_mtime == specific_mtime
 
         writer = OrchestrationYamlWriter(create_backups=True)
         writer.toggle_orchestration(file_path, "test-orch", False)
 
         backup_path = file_path.with_suffix(".yaml.bak")
-        # Backup should have the original modification time (from copy2)
-        assert backup_path.stat().st_mtime == original_mtime
+        # Backup should preserve the file's mtime (from copy2)
+        assert backup_path.stat().st_mtime == specific_mtime
 
     def test_backup_on_toggle_all_in_file(self, tmp_path: Path) -> None:
         """Backup should be created for toggle_all_in_file."""

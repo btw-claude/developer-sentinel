@@ -250,11 +250,13 @@ class TestAttemptCountTracking:
             # with sufficient timeout to handle CI environments with high load.
             # Using POLLING_ITERATIONS * POLLING_INTERVAL = POLLING_MAX_WAIT provides ample margin.
             running_steps = []
+            # Use threading.Event for deterministic polling coordination
+            poll_event = threading.Event()
             for _ in range(POLLING_ITERATIONS):
                 running_steps = sentinel.get_running_steps()
                 if len(running_steps) == 1:
                     break
-                time.sleep(POLLING_INTERVAL)
+                poll_event.wait(timeout=POLLING_INTERVAL)
 
             assert len(running_steps) == 1, (
                 f"Should have one running step, got {len(running_steps)}. "
@@ -360,7 +362,8 @@ class TestAttemptCountTracking:
         assert entry.last_access >= time_before
         assert entry.last_access <= time_after
 
-        time.sleep(0.01)
+        # Use threading.Event.wait instead of time.sleep for interruptible delay
+        threading.Event().wait(timeout=0.01)
         time_before_second = time.monotonic()
 
         sentinel._state_tracker.get_and_increment_attempt_count("TEST-1", "test-orch")

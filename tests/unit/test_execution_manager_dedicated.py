@@ -220,8 +220,11 @@ class TestExecutionManagerSubmit:
                 events.append(ev)
                 manager.submit(lambda e=ev: e.wait(timeout=10), description=f"task-{i}")
 
-            # Wait for TTL to expire so they become stale
-            time.sleep(0.05)
+            # Make them stale by backdating their created_at timestamps
+            # instead of sleeping (deterministic approach - DS-933)
+            with manager._futures_lock:
+                for tracked in manager._active_futures:
+                    tracked.created_at = time.monotonic() - 100
 
             with patch("sentinel.execution_manager.logger"):
                 # This submit should trigger _enforce_max_futures_limit
@@ -710,8 +713,9 @@ class TestWaitForCompletion:
             manager.submit(lambda: block_event.wait(timeout=10), description="blocking")
 
             # Schedule the gate to open shortly, so the error occurs during wait()
+            # Use a shorter delay to avoid unnecessary waiting (deterministic approach - DS-933)
             def release_gate() -> None:
-                time.sleep(0.05)
+                time.sleep(0.01)  # Reduced from 0.05 to 0.01 for faster tests
                 gate_event.set()
 
             t = threading.Thread(target=release_gate)
@@ -819,11 +823,17 @@ class TestWaitForAllCompletion:
         result_value = MagicMock()
 
         try:
+            # Use an event for synchronization instead of sleep (deterministic approach - DS-933)
+            task_event = threading.Event()
+
             def slow_task() -> MagicMock:
-                time.sleep(0.1)
+                task_event.wait(timeout=10)
                 return result_value
 
             manager.submit(slow_task, description="slow-1")
+
+            # Release the task to complete
+            task_event.set()
 
             results = manager.wait_for_all_completion(poll_interval=0.01)
             assert len(results) == 1

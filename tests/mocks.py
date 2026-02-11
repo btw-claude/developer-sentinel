@@ -25,7 +25,6 @@ Usage Guidelines:
 from __future__ import annotations
 
 import threading
-import time
 import weakref
 from collections.abc import Callable
 from pathlib import Path
@@ -417,8 +416,8 @@ class TrackingAgentClient(AgentClient):
             if self.track_order:
                 self.execution_order.append(f"start:{issue_key}")
 
-        # Simulate work
-        time.sleep(self.execution_delay)
+        # Simulate work with threading.Event.wait for interruptibility
+        threading.Event().wait(timeout=self.execution_delay)
 
         with self.lock:
             # Track execution order if enabled

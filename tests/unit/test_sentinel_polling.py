@@ -511,9 +511,11 @@ class TestSentinelRun:
             tag_client=tag_client,
         )
 
-        # Request shutdown after a short delay
+        # Use threading.Event for deterministic shutdown coordination
+        shutdown_event = threading.Event()
+
         def shutdown_after_delay() -> None:
-            time.sleep(0.1)
+            shutdown_event.wait(timeout=0.1)
             sentinel.request_shutdown()
 
         shutdown_thread = threading.Thread(target=shutdown_after_delay)

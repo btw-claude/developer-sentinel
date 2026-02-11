@@ -3,6 +3,7 @@
 import threading
 import time
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -52,18 +53,23 @@ class TestTokenBucket:
 
     def test_token_refill_over_time(self) -> None:
         """Tokens refill over time."""
-        bucket = TokenBucket(requests_per_minute=60, requests_per_hour=1000)
-        # Consume all minute tokens
-        for _ in range(60):
-            bucket.try_acquire()
-        status = bucket.get_status()
-        assert status["minute_tokens"] < 1.0
+        # Mock time.monotonic to control time progression deterministically
+        start_time = 1000.0
+        with patch("time.monotonic") as mock_monotonic:
+            mock_monotonic.return_value = start_time
+            bucket = TokenBucket(requests_per_minute=60, requests_per_hour=1000)
 
-        # Wait for refill (60 req/min = 1 token/sec)
-        time.sleep(0.1)
-        status = bucket.get_status()
-        # Should have some tokens back
-        assert status["minute_tokens"] > 0.0
+            # Consume all minute tokens
+            for _ in range(60):
+                bucket.try_acquire()
+            status = bucket.get_status()
+            assert status["minute_tokens"] < 1.0
+
+            # Advance time by 0.1 seconds (60 req/min = 1 token/sec, so 0.1s = 0.1 tokens)
+            mock_monotonic.return_value = start_time + 0.1
+            status = bucket.get_status()
+            # Should have some tokens back
+            assert status["minute_tokens"] > 0.0
 
     def test_warning_threshold(self) -> None:
         """Warning is triggered when below threshold."""
@@ -584,7 +590,8 @@ class TestClaudeRateLimiterThreadSafety:
                     assert "successful_requests" in metrics
                     assert isinstance(metrics["total_requests"], int)
                     assert isinstance(metrics["successful_requests"], int)
-                    time.sleep(0.001)  # Small delay between reads
+                    # Small delay between reads for CPU yield (deterministic alternative to time.sleep)
+                    stop_event.wait(timeout=0.001)
             except Exception as e:
                 with errors_lock:
                     errors.append(e)
@@ -641,9 +648,13 @@ class TestClaudeRateLimiterThreadSafety:
         requests_per_thread = 20
         errors: list[Exception] = []
         errors_lock = threading.Lock()
+        # Use barrier to synchronize thread startup
+        startup_barrier = threading.Barrier(num_threads + 1)
 
         def acquire_during_pause() -> None:
             try:
+                # Wait for all threads to be ready
+                startup_barrier.wait()
                 for _ in range(requests_per_thread):
                     limiter.acquire(timeout=1.0)
             except Exception as e:
@@ -657,8 +668,8 @@ class TestClaudeRateLimiterThreadSafety:
             # Start threads inside pause context
             for t in threads:
                 t.start()
-            # Wait for some threads to start acquiring
-            time.sleep(0.05)
+            # Wait for all threads to be ready (deterministic synchronization)
+            startup_barrier.wait()
 
         # Wait for all threads to complete
         for t in threads:
@@ -694,9 +705,13 @@ class TestClaudeRateLimiterThreadSafety:
         errors: list[Exception] = []
         errors_lock = threading.Lock()
         reset_complete = threading.Event()
+        # Use barrier to ensure threads have started before reset
+        startup_barrier = threading.Barrier(num_acquire_threads + 1)
 
         def acquire_requests() -> None:
             try:
+                # Signal that thread is ready
+                startup_barrier.wait()
                 for _ in range(requests_per_thread):
                     limiter.acquire(timeout=1.0)
             except Exception as e:
@@ -705,8 +720,8 @@ class TestClaudeRateLimiterThreadSafety:
 
         def reset_metrics_task() -> None:
             try:
-                # Wait a bit for some requests to be recorded
-                time.sleep(0.01)
+                # Wait for all acquire threads to start (deterministic synchronization)
+                startup_barrier.wait()
                 with limiter.pause_metrics():
                     limiter.reset_metrics()
                 reset_complete.set()
@@ -885,8 +900,14 @@ class TestBoundedQueueBackpressure:
             t.start()
             threads.append(t)
 
-        # Wait for threads to enter the queue
-        time.sleep(0.1)
+        # Poll until both threads have entered the queue (deterministic synchronization
+        # on the actual queue state rather than external signals)
+        deadline = threading.Event()
+        for _ in range(200):  # Up to 2 seconds
+            if limiter.queued_count >= 2:
+                break
+            deadline.wait(timeout=0.01)
+        assert limiter.queued_count >= 2, f"Expected queue count >= 2, got {limiter.queued_count}"
 
         # Now queue should be full, next request should raise QueueFullError
         with pytest.raises(QueueFullError):
@@ -919,7 +940,14 @@ class TestBoundedQueueBackpressure:
 
         t = threading.Thread(target=waiting_acquire)
         t.start()
-        time.sleep(0.05)
+
+        # Poll until thread has entered the queue (deterministic synchronization
+        # on the actual queue state)
+        for _ in range(200):  # Up to 2 seconds
+            if limiter.queued_count >= 1:
+                break
+            threading.Event().wait(timeout=0.01)
+        assert limiter.queued_count >= 1, f"Expected queue count >= 1, got {limiter.queued_count}"
 
         # Try to acquire when queue is full
         import contextlib
