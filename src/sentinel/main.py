@@ -60,6 +60,24 @@ from sentinel.types import ErrorType
 
 logger = get_logger(__name__)
 
+# Type alias for the polling function signature used by _poll_service().
+# Both PollCoordinator.poll_jira_triggers and poll_github_triggers share
+# this signature.  Defining it once avoids a verbose inline Callable that
+# spans multiple lines and aids readability (DS-940).
+type PollFunction = Callable[
+    [list[Orchestration], Router, bool, Any],
+    tuple[list[RoutingResult], int, int],
+]
+
+# Mapping from service_name → StateTracker attribute for last-poll
+# timestamps.  Using a dict lookup instead of if/else guards against
+# silently assigning the wrong timestamp when a new polling service is
+# added (DS-940).
+_LAST_POLL_ATTRS: dict[str, str] = {
+    "jira": "last_jira_poll",
+    "github": "last_github_poll",
+}
+
 
 # Public API exports — update this list when adding new exports to this module.
 __all__ = [
@@ -814,10 +832,7 @@ class Sentinel:
         service_name: str,
         display_name: str,
         orchestrations: list[Orchestration],
-        poll_fn: Callable[
-            [list[Orchestration], Router, bool, Any],
-            tuple[list[RoutingResult], int, int],
-        ],
+        poll_fn: PollFunction,
         probe_kwargs: dict[str, Any],
         all_results: list[ExecutionResult],
         submitted_pairs: set[tuple[str, str]],
@@ -835,8 +850,9 @@ class Sentinel:
                 e.g. ``"Jira"`` or ``"GitHub"``.
             orchestrations: Orchestrations whose trigger source matches this
                 service.
-            poll_fn: Callable that polls the service for issues.  Expected
-                signature matches ``PollCoordinator.poll_jira_triggers`` /
+            poll_fn: Callable (typed as ``PollFunction``) that polls the
+                service for issues.  Expected signature matches
+                ``PollCoordinator.poll_jira_triggers`` /
                 ``poll_github_triggers``.
             probe_kwargs: Keyword arguments forwarded to
                 ``ServiceHealthGate.probe_service`` when the service is
@@ -850,11 +866,15 @@ class Sentinel:
             Number of execution tasks submitted during this polling cycle.
         """
         if self._health_gate.should_poll(service_name):
-            # Update the appropriate last-poll timestamp
-            if service_name == "jira":
-                self._state_tracker.last_jira_poll = datetime.now(tz=UTC)
-            else:
-                self._state_tracker.last_github_poll = datetime.now(tz=UTC)
+            # Update the appropriate last-poll timestamp using dict lookup
+            # instead of an if/else that silently falls through (DS-940).
+            attr = _LAST_POLL_ATTRS.get(service_name)
+            if attr is None:
+                raise ValueError(
+                    f"Unknown polling service '{service_name}'; expected one of "
+                    f"{sorted(_LAST_POLL_ATTRS)}"
+                )
+            setattr(self._state_tracker, attr, datetime.now(tz=UTC))
 
             routing_results, issues_found, error_count = poll_fn(
                 orchestrations,
