@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, assert_never
 
 from sentinel.agent_clients.base import AgentClient, AgentClientError, AgentTimeoutError
 from sentinel.branch_validation import validate_runtime_branch_name
-from sentinel.github_poller import GitHubIssue
+from sentinel.github_poller import GitHubIssueProtocol
 from sentinel.logging import get_logger, log_agent_summary
 from sentinel.orchestration import (
     GitHubContext,
@@ -27,7 +27,7 @@ from sentinel.orchestration import (
 from sentinel.poller import JiraIssue
 
 # Type alias for issues from any supported source
-type AnyIssue = JiraIssue | GitHubIssue
+type AnyIssue = JiraIssue | GitHubIssueProtocol
 
 if TYPE_CHECKING:
     from sentinel.agent_logger import AgentLogger
@@ -253,7 +253,7 @@ class TemplateContext:
 
     @classmethod
     def from_github_issue(
-        cls, issue: GitHubIssue, github: GitHubContext | None = None
+        cls, issue: GitHubIssueProtocol, github: GitHubContext | None = None
     ) -> TemplateContext:
         """Create a TemplateContext from a GitHub issue.
 
@@ -535,7 +535,7 @@ class AgentExecutor:
 
         if isinstance(issue, JiraIssue):
             context = TemplateContext.from_jira_issue(issue, github)
-        elif isinstance(issue, GitHubIssue):
+        elif isinstance(issue, GitHubIssueProtocol):
             context = TemplateContext.from_github_issue(issue, github)
         else:
             # Ensures all AnyIssue variants are handled at type-check time (DS-909)
