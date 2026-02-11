@@ -137,6 +137,8 @@ class AgentTimeoutError(AgentClientError):
 
 
 # Explicit async return type alias for improved IDE support and documentation (DS-533).
+# Orphaned docstring removed in DS-904 (PR #931) — Python does not associate
+# docstrings with type alias assignments, so a comment block is preferred.
 # This type alias makes the async nature of run_agent more discoverable and provides
 # better autocomplete and type inference in IDEs.
 AgentRunCoroutine = Coroutine[Any, Any, AgentRunResult]
