@@ -706,6 +706,81 @@ def orch_client_factory(
     yield _make_client
 
 
+@pytest.fixture
+def orch_app_factory(
+    temp_logs_dir: Path,
+) -> Generator[Any, None, None]:
+    """Provide a factory for creating FastAPI apps with orchestration data.
+
+    Shared fixture for tests that need the raw FastAPI app object rather than
+    a TestClient context manager.  Supports an optional ``orchestrations_dir``
+    so callers can customise the :class:`ExecutionConfig` (DS-970).
+
+    Yields:
+        A callable that accepts optional orchestrations, an optional
+        ``orchestrations_dir``, and an optional ``pass_config`` flag,
+        returning a ``(app, config)`` tuple.
+    """
+
+    def _make_app(
+        orchestrations: list[OrchestrationInfo] | None = None,
+        *,
+        orchestrations_dir: Path | None = None,
+        pass_config: bool = False,
+    ) -> tuple[FastAPI, Config]:
+        exec_kwargs: dict[str, Any] = {"agent_logs_dir": temp_logs_dir}
+        if orchestrations_dir is not None:
+            exec_kwargs["orchestrations_dir"] = orchestrations_dir
+        config = Config(execution=ExecutionConfig(**exec_kwargs))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(
+            sentinel, orchestrations or []
+        )
+        app_kwargs: dict[str, Any] = {}
+        if pass_config:
+            app_kwargs["config"] = config
+        app = create_test_app(accessor, **app_kwargs)
+        return app, config
+
+    yield _make_app
+
+
+@pytest.fixture
+def base_client_factory(
+    temp_logs_dir: Path,
+) -> Generator[Any, None, None]:
+    """Provide a factory for creating TestClients with base Sentinel mocks.
+
+    Unlike :func:`orch_client_factory`, this fixture uses the plain
+    :class:`MockSentinel` and :class:`SentinelStateAccessor` (no
+    orchestration-specific subclasses).  Useful for tests that exercise
+    non-orchestration behaviour such as rate limiting (DS-970).
+
+    Yields:
+        A callable that accepts an optional ``pass_config`` flag, returning
+        a context manager yielding a TestClient.
+    """
+
+    @contextlib.contextmanager
+    def _make_client(
+        *,
+        pass_config: bool = False,
+    ) -> Generator[TestClient, None, None]:
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app_kwargs: dict[str, Any] = {}
+        if pass_config:
+            app_kwargs["config"] = config
+        app = create_test_app(accessor, **app_kwargs)
+        with TestClient(app) as client:
+            yield client
+
+    yield _make_client
+
+
 class TestToggleOrchestrationEndpoint:
     """Tests for POST /api/orchestrations/{name}/toggle endpoint."""
 
@@ -1196,7 +1271,7 @@ class TestDeleteOrchestrationDebugLogging:
     """
 
     def test_delete_orchestration_debug_log_contains_request_metadata(
-        self, temp_logs_dir: Path
+        self, temp_logs_dir: Path, orch_app_factory: Any
     ) -> None:
         """Test that delete_orchestration logs enriched debug with request context."""
         orch_file = temp_logs_dir / "test-orch.yaml"
@@ -1211,9 +1286,6 @@ orchestrations:
       prompt: "Test prompt"
 """)
 
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         orch_info = OrchestrationInfo(
             name="test-orch",
             enabled=True,
@@ -1225,8 +1297,7 @@ orchestrations:
             source_file=str(orch_file),
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
+        app, _config = orch_app_factory([orch_info])
 
         with patch("sentinel.dashboard.routes.logger") as mock_logger:
             with TestClient(app) as client:
@@ -1256,7 +1327,7 @@ orchestrations:
             assert delete_debug_call[0][1] == "test-orch"
 
     def test_delete_orchestration_debug_log_method_is_delete(
-        self, temp_logs_dir: Path
+        self, temp_logs_dir: Path, orch_app_factory: Any
     ) -> None:
         """Test that the debug log captures DELETE as the HTTP method."""
         orch_file = temp_logs_dir / "test-orch.yaml"
@@ -1271,9 +1342,6 @@ orchestrations:
       prompt: "Test prompt"
 """)
 
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         orch_info = OrchestrationInfo(
             name="test-orch",
             enabled=True,
@@ -1285,8 +1353,7 @@ orchestrations:
             source_file=str(orch_file),
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
+        app, _config = orch_app_factory([orch_info])
 
         with patch("sentinel.dashboard.routes.logger") as mock_logger:
             with TestClient(app) as client:
@@ -1309,18 +1376,14 @@ orchestrations:
             assert "method=DELETE" in rendered
 
     def test_delete_orchestration_debug_log_not_found_still_logs(
-        self, temp_logs_dir: Path
+        self, temp_logs_dir: Path, orch_app_factory: Any
     ) -> None:
         """Test that debug log is NOT emitted when orchestration is not found.
 
         The debug log occurs after the info log but before the orchestration
         lookup, so it should still be emitted even for missing orchestrations.
         """
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        app, _config = orch_app_factory()
 
         with patch("sentinel.dashboard.routes.logger") as mock_logger:
             with TestClient(app) as client:
@@ -1795,12 +1858,9 @@ class TestToggleRateLimitConfiguration:
 class TestToggleOpenApiDocs:
     """Tests for OpenAPI documentation on toggle endpoints."""
 
-    def test_toggle_endpoint_has_openapi_summary(self, temp_logs_dir: Path) -> None:
+    def test_toggle_endpoint_has_openapi_summary(self, orch_app_factory: Any) -> None:
         """Test that single toggle endpoint has OpenAPI summary."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        app, _config = orch_app_factory()
 
         openapi_schema = app.openapi()
         toggle_path = openapi_schema["paths"].get("/api/orchestrations/{name}/toggle")
@@ -1810,12 +1870,9 @@ class TestToggleOpenApiDocs:
         assert "summary" in toggle_path["post"]
         assert toggle_path["post"]["summary"] == "Toggle orchestration enabled status"
 
-    def test_toggle_endpoint_has_openapi_description(self, temp_logs_dir: Path) -> None:
+    def test_toggle_endpoint_has_openapi_description(self, orch_app_factory: Any) -> None:
         """Test that single toggle endpoint has OpenAPI description."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        app, _config = orch_app_factory()
 
         openapi_schema = app.openapi()
         toggle_path = openapi_schema["paths"].get("/api/orchestrations/{name}/toggle")
@@ -1824,12 +1881,9 @@ class TestToggleOpenApiDocs:
         assert "description" in toggle_path["post"]
         assert "rate limited" in toggle_path["post"]["description"].lower()
 
-    def test_bulk_toggle_endpoint_has_openapi_summary(self, temp_logs_dir: Path) -> None:
+    def test_bulk_toggle_endpoint_has_openapi_summary(self, orch_app_factory: Any) -> None:
         """Test that bulk toggle endpoint has OpenAPI summary."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        app, _config = orch_app_factory()
 
         openapi_schema = app.openapi()
         bulk_toggle_path = openapi_schema["paths"].get("/api/orchestrations/bulk-toggle")
@@ -1839,12 +1893,9 @@ class TestToggleOpenApiDocs:
         assert "summary" in bulk_toggle_path["post"]
         assert bulk_toggle_path["post"]["summary"] == "Bulk toggle orchestrations by source"
 
-    def test_bulk_toggle_endpoint_has_openapi_description(self, temp_logs_dir: Path) -> None:
+    def test_bulk_toggle_endpoint_has_openapi_description(self, orch_app_factory: Any) -> None:
         """Test that bulk toggle endpoint has OpenAPI description."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        app, _config = orch_app_factory()
 
         openapi_schema = app.openapi()
         bulk_toggle_path = openapi_schema["paths"].get("/api/orchestrations/bulk-toggle")
@@ -2344,22 +2395,16 @@ orchestrations:
 class TestOrchestrationFilesEndpoint:
     """Tests for GET /api/orchestrations/files endpoint (DS-729)."""
 
-    def test_returns_yaml_files(self, temp_logs_dir: Path) -> None:
+    def test_returns_yaml_files(self, temp_logs_dir: Path, orch_app_factory: Any) -> None:
         """Test that endpoint returns list of YAML files."""
         orch_dir = temp_logs_dir / "orchestrations"
         orch_dir.mkdir()
         (orch_dir / "file1.yaml").write_text("orchestrations: []")
         (orch_dir / "file2.yml").write_text("orchestrations: []")
 
-        config = Config(
-            execution=ExecutionConfig(
-                agent_logs_dir=temp_logs_dir,
-                orchestrations_dir=orch_dir,
-            ),
+        app, _config = orch_app_factory(
+            orchestrations_dir=orch_dir, pass_config=True
         )
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
             response = client.get("/api/orchestrations/files")
@@ -2369,20 +2414,14 @@ class TestOrchestrationFilesEndpoint:
             assert "file1.yaml" in files
             assert "file2.yml" in files
 
-    def test_returns_empty_when_no_files(self, temp_logs_dir: Path) -> None:
+    def test_returns_empty_when_no_files(self, temp_logs_dir: Path, orch_app_factory: Any) -> None:
         """Test that endpoint returns empty list when no YAML files exist."""
         orch_dir = temp_logs_dir / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
-            execution=ExecutionConfig(
-                agent_logs_dir=temp_logs_dir,
-                orchestrations_dir=orch_dir,
-            ),
+        app, _config = orch_app_factory(
+            orchestrations_dir=orch_dir, pass_config=True
         )
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
             response = client.get("/api/orchestrations/files")
@@ -2390,7 +2429,7 @@ class TestOrchestrationFilesEndpoint:
             assert response.status_code == 200
             assert response.json() == []
 
-    def test_returns_sorted_files(self, temp_logs_dir: Path) -> None:
+    def test_returns_sorted_files(self, temp_logs_dir: Path, orch_app_factory: Any) -> None:
         """Test that files are returned in sorted order."""
         orch_dir = temp_logs_dir / "orchestrations"
         orch_dir.mkdir()
@@ -2398,15 +2437,9 @@ class TestOrchestrationFilesEndpoint:
         (orch_dir / "a-file.yaml").write_text("orchestrations: []")
         (orch_dir / "b-file.yaml").write_text("orchestrations: []")
 
-        config = Config(
-            execution=ExecutionConfig(
-                agent_logs_dir=temp_logs_dir,
-                orchestrations_dir=orch_dir,
-            ),
+        app, _config = orch_app_factory(
+            orchestrations_dir=orch_dir, pass_config=True
         )
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor, config=config)
 
         with TestClient(app) as client:
             response = client.get("/api/orchestrations/files")
@@ -2415,20 +2448,14 @@ class TestOrchestrationFilesEndpoint:
             files = response.json()
             assert files == ["a-file.yaml", "b-file.yaml", "c-file.yaml"]
 
-    def test_files_endpoint_exists(self, temp_logs_dir: Path) -> None:
+    def test_files_endpoint_exists(self, temp_logs_dir: Path, orch_app_factory: Any) -> None:
         """Test that the files endpoint exists at the correct path."""
         orch_dir = temp_logs_dir / "orchestrations"
         orch_dir.mkdir()
 
-        config = Config(
-            execution=ExecutionConfig(
-                agent_logs_dir=temp_logs_dir,
-                orchestrations_dir=orch_dir,
-            ),
+        app, _config = orch_app_factory(
+            orchestrations_dir=orch_dir, pass_config=True
         )
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor, config=config)
 
         route_paths = [route.path for route in app.routes]
         assert "/api/orchestrations/files" in route_paths
@@ -2438,21 +2465,17 @@ class TestCsrfProtection:
     """Tests for CSRF protection on state-changing endpoints (DS-935)."""
 
     @pytest.fixture
-    def csrf_client(self, temp_logs_dir: Path) -> Generator[TestClient, None, None]:
+    def csrf_client(self, orch_client_factory: Any) -> Generator[TestClient, None, None]:
         """Provide a TestClient with CSRF-protected routes for testing.
 
-        Sets up the standard Config/MockSentinel/MockStateAccessor/create_test_app
-        pipeline used by all CSRF protection tests, eliminating the repeated 4-line
-        setup pattern (DS-944).
+        Delegates to the module-level :func:`orch_client_factory` fixture with
+        no orchestrations, eliminating the duplicated Config/MockSentinel/
+        MockStateAccessor/create_test_app setup (DS-944, DS-970).
 
         Yields:
             A TestClient connected to a test app with CSRF protection enabled.
         """
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
-        with TestClient(app) as client:
+        with orch_client_factory() as client:
             yield client
 
     def test_toggle_orchestration_missing_csrf_returns_403(self, csrf_client: TestClient) -> None:
@@ -2571,23 +2594,17 @@ class TestCsrfTokenRateLimiting:
 
     @pytest.fixture
     def rate_limit_client(
-        self, temp_logs_dir: Path
+        self, base_client_factory: Any
     ) -> Generator[TestClient, None, None]:
         """Provide a TestClient with rate limiting configured for CSRF tests.
 
-        Sets up the MockSentinel/SentinelStateAccessor/create_test_app pipeline
-        with config passed to enable rate limiting (DS-955).
+        Delegates to the module-level :func:`base_client_factory` fixture with
+        ``pass_config=True`` to enable rate limiting (DS-955, DS-970).
 
         Yields:
             A TestClient connected to a test app with rate limiting enabled.
         """
-        config = Config(
-            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
-        )
-        sentinel = MockSentinel(config)
-        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
-        app = create_test_app(accessor, config=config)
-        with TestClient(app) as client:
+        with base_client_factory(pass_config=True) as client:
             yield client
 
     def test_csrf_token_returns_token(self, rate_limit_client: TestClient) -> None:
