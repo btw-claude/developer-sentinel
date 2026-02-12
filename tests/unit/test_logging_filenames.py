@@ -112,12 +112,12 @@ class TestParseLogFilename:
     @pytest.mark.parametrize(
         "filename",
         [
-            "not-a-log-file.txt",
-            "invalid_format.log",
-            "20240115.log",
-            "DS-123_invalid_a1.log",
-            "random.log",
-            "",
+            pytest.param("not-a-log-file.txt", id="wrong-extension"),
+            pytest.param("invalid_format.log", id="no-timestamp"),
+            pytest.param("20240115.log", id="date-only-no-time"),
+            pytest.param("DS-123_invalid_a1.log", id="non-numeric-timestamp"),
+            pytest.param("random.log", id="arbitrary-name"),
+            pytest.param("", id="empty-string"),
         ],
     )
     def test_returns_none_for_invalid_filename(self, filename: str) -> None:
@@ -213,10 +213,12 @@ class TestParseLogFilenameParts:
     @pytest.mark.parametrize(
         "filename",
         [
-            "not-a-log-file.txt",
-            "invalid_format.log",
-            "random.log",
-            "",
+            pytest.param("not-a-log-file.txt", id="wrong-extension"),
+            pytest.param("invalid_format.log", id="no-timestamp"),
+            pytest.param("20240115.log", id="date-only-no-time"),
+            pytest.param("DS-123_invalid_a1.log", id="non-numeric-timestamp"),
+            pytest.param("random.log", id="arbitrary-name"),
+            pytest.param("", id="empty-string"),
         ],
     )
     def test_returns_none_for_invalid_filename(self, filename: str) -> None:
