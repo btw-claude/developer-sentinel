@@ -1387,7 +1387,7 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
 
     The ``enabled`` validation includes an explicit type check to reject
     non-boolean values.  YAML is loosely typed, so values like
-    ``enabled: yes``, ``enabled: 1``, or ``enabled: on`` are parsed as
+    ``enabled: yes``, ``enabled: true``, or ``enabled: on`` are parsed as
     ``True`` by PyYAML (which is fine), but arbitrary strings or numbers
     such as ``enabled: "sure"`` or ``enabled: 2`` must be caught.  The
     ``not isinstance(enabled, bool)`` guard ensures only real booleans
@@ -1470,7 +1470,7 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
 
     The ``file_enabled`` validation includes an explicit type check to reject
     non-boolean values.  YAML is loosely typed, so values like
-    ``enabled: yes``, ``enabled: 1``, or ``enabled: on`` are parsed as
+    ``enabled: yes``, ``enabled: true``, or ``enabled: on`` are parsed as
     ``True`` by PyYAML (which is fine), but arbitrary strings or numbers
     such as ``enabled: "sure"`` or ``enabled: 2`` must be caught.  The
     ``not isinstance(file_enabled, bool)`` guard ensures only real booleans
