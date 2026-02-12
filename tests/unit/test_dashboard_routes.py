@@ -1706,11 +1706,11 @@ orchestrations:
 
         # Track calls to time.monotonic() so we can simulate cooldown elapsing
         # without depending on wall-clock time (DS-943).
-        monotonic_value = [0.0]
+        monotonic_value = [None]
         original_monotonic = __import__("time").monotonic
 
         def fake_monotonic() -> float:
-            return monotonic_value[0] or original_monotonic()
+            return monotonic_value[0] if monotonic_value[0] is not None else original_monotonic()
 
         with TestClient(app) as client:
             # Get CSRF token for first toggle (DS-926)
