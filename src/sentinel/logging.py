@@ -222,7 +222,7 @@ def parse_log_filename_parts(
     This function exposes the regex match groups as a public API, avoiding
     the need for external modules to import the private _LOG_FILENAME_REGEX.
 
-    On a successful match the returned tuple always contains a valid
+    On a successful match the returned :class:`LogFilenameParts` always contains a valid
     :class:`~datetime.datetime` (UTC) and an ``int`` attempt number;
     only *issue_key* may be ``None``.  The greedy ``rsplit("_", 1)``
     used internally to separate the issue key from the timestamp is safe
