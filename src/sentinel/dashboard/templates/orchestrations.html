@@ -76,7 +76,7 @@
             // Restore expanded nested accordion items
             if (expandedAccordionItems.size > 0) {
                 target.querySelectorAll('.nested-accordion-item').forEach(function(item) {
-                    var identifier = item.getAttribute('data-identifier');
+                    const identifier = item.getAttribute('data-identifier');
                     if (identifier && expandedAccordionItems.has(identifier)) {
                         item.classList.add('expanded');
                     }
@@ -89,7 +89,7 @@
                     if (row.id && expandedDetailRows.has(row.id)) {
                         row.classList.add('expanded');
                         // Also restore aria-expanded on the corresponding clickable row
-                        var clickableRow = row.previousElementSibling;
+                        const clickableRow = row.previousElementSibling;
                         if (clickableRow && clickableRow.classList.contains('clickable-row')) {
                             clickableRow.setAttribute('aria-expanded', 'true');
                         }
