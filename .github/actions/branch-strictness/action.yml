@@ -1,0 +1,87 @@
+name: "Branch Strictness"
+description: >
+  Determine the CI strictness level for the current branch context.
+  On main (or PRs targeting main), failures are strictly enforced.
+  On develop and other branches, failures are informational.
+  Extracted from inline workflow expressions (DS-1040) to provide a
+  single source of truth for per-branch CI behavior.
+
+# ---------------------------------------------------------------------------
+# Design notes (DS-1040)
+# ---------------------------------------------------------------------------
+# This composite action centralises the "should failures block the build?"
+# decision that was previously an inline expression on each job's
+# `continue-on-error` key.  Any workflow job that needs per-branch behaviour
+# can call this action once in a setup job and reference the outputs.
+#
+# Adding a new strictness tier:
+#   1. Add a new condition block in the "Determine branch strictness" step.
+#   2. Set `is-strict` / `continue-on-error` / `strictness-level` as needed.
+#   3. Consumers read the outputs — no changes required in the calling jobs.
+# ---------------------------------------------------------------------------
+
+inputs:
+  ref:
+    description: "The full git ref (e.g. refs/heads/main). Defaults to github.ref."
+    required: false
+    default: ""
+  event-name:
+    description: "The GitHub event name (push, pull_request, …). Defaults to github.event_name."
+    required: false
+    default: ""
+  base-ref:
+    description: "The PR base branch (e.g. main). Only relevant for pull_request events. Defaults to github.base_ref."
+    required: false
+    default: ""
+
+outputs:
+  is-strict:
+    description: "'true' when failures must block the build, 'false' when they are informational."
+    value: ${{ steps.determine.outputs.is-strict }}
+  continue-on-error:
+    description: "Inverse of is-strict — ready to plug into a job-level continue-on-error key."
+    value: ${{ steps.determine.outputs.continue-on-error }}
+  strictness-level:
+    description: "Human-readable label: 'strict' or 'lenient'."
+    value: ${{ steps.determine.outputs.strictness-level }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Determine branch strictness
+      id: determine
+      shell: bash
+      run: |
+        # Resolve inputs, falling back to the GitHub context defaults.
+        REF="${{ inputs.ref || github.ref }}"
+        EVENT="${{ inputs.event-name || github.event_name }}"
+        BASE="${{ inputs.base-ref || github.base_ref }}"
+
+        echo "::debug::ref=${REF}  event=${EVENT}  base_ref=${BASE}"
+
+        # ----------------------------------------------------------------
+        # Strictness rule:
+        #   strict  — pushes to main  OR  pull_requests targeting main
+        #   lenient — everything else  (develop, feature branches, etc.)
+        # ----------------------------------------------------------------
+        IS_STRICT="false"
+
+        if [[ "${REF}" == "refs/heads/main" ]]; then
+          IS_STRICT="true"
+        elif [[ "${EVENT}" == "pull_request" && "${BASE}" == "main" ]]; then
+          IS_STRICT="true"
+        fi
+
+        if [[ "${IS_STRICT}" == "true" ]]; then
+          CONTINUE_ON_ERROR="false"
+          LEVEL="strict"
+        else
+          CONTINUE_ON_ERROR="true"
+          LEVEL="lenient"
+        fi
+
+        echo "is-strict=${IS_STRICT}"           >> "${GITHUB_OUTPUT}"
+        echo "continue-on-error=${CONTINUE_ON_ERROR}" >> "${GITHUB_OUTPUT}"
+        echo "strictness-level=${LEVEL}"         >> "${GITHUB_OUTPUT}"
+
+        echo "::notice::Branch strictness: ${LEVEL} (is-strict=${IS_STRICT}, continue-on-error=${CONTINUE_ON_ERROR})"

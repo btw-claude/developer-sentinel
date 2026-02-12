@@ -7,6 +7,28 @@ on:
     branches: [main, develop]
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Branch-strictness gate (DS-1040)
+  # ---------------------------------------------------------------------------
+  # Centralised job that determines whether CI failures should block the
+  # build.  Downstream jobs reference its outputs instead of duplicating
+  # inline branch-detection expressions.  See the composite action at
+  # .github/actions/branch-strictness/action.yml for the decision logic.
+  # ---------------------------------------------------------------------------
+  branch-context:
+    name: Branch Context
+    runs-on: ubuntu-latest
+    outputs:
+      is-strict: ${{ steps.strictness.outputs.is-strict }}
+      continue-on-error: ${{ steps.strictness.outputs.continue-on-error }}
+      strictness-level: ${{ steps.strictness.outputs.strictness-level }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Determine branch strictness
+        id: strictness
+        uses: ./.github/actions/branch-strictness
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -40,15 +62,19 @@ jobs:
 
   integration-tests:
     name: Integration Tests
+    needs: [branch-context]
     runs-on: ubuntu-latest
     # Integration tests are optional and run separately
     # They require external services (Jira, GitHub APIs)
     # Tests will be skipped if credentials are not available
     #
-    # Per-branch behavior (DS-1036):
+    # Per-branch behavior (DS-1036, refactored in DS-1040):
     # - On main: integration test failures are strictly enforced
     # - On develop / PRs: integration tests remain informational
-    continue-on-error: ${{ github.ref != 'refs/heads/main' && (github.event_name != 'pull_request' || github.base_ref != 'main') }}
+    # The continue-on-error value is now supplied by the branch-context job
+    # via the branch-strictness composite action, providing a single source
+    # of truth for per-branch CI behavior.
+    continue-on-error: ${{ needs.branch-context.outputs.continue-on-error == 'true' }}
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
