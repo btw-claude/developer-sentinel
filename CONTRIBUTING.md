@@ -518,7 +518,9 @@ The pull request template (`.github/pull_request_template.md`) links to this sec
 repository's `blob/HEAD/` URL, which resolves to the default branch (`main`). When contributing
 documentation changes to this section, ensure that `develop` is merged to `main` promptly so
 that the PR template anchor (`#github-actions-composite-action-documentation-ds-1050`) resolves
-correctly for contributors opening new pull requests.
+correctly for contributors opening new pull requests. If the anchor is not present on `main`, the
+link will land on the CONTRIBUTING.md page but will not scroll to the expected GHA documentation
+section, leaving contributors without the relevant context.
 
 #### Reference Implementation
 
