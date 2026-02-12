@@ -662,8 +662,6 @@ class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
 
     def get_state(self) -> DashboardState:
         """Return a mock state with the configured orchestrations."""
-        from sentinel.dashboard.state import DashboardState
-
         return DashboardState(
             poll_interval=60,
             max_concurrent_executions=5,
