@@ -379,6 +379,10 @@ class StateTracker:
     ) -> None:
         """Add a running step entry for a future.
 
+        Note:
+            This method is thread-safe. Access to the internal running steps
+            dictionary is protected by ``_running_steps_lock``.
+
         Args:
             future_id: The id() of the Future object.
             issue_key: The key of the issue being processed.
@@ -398,6 +402,10 @@ class StateTracker:
     def remove_running_step(self, future_id: int) -> RunningStepInfo | None:
         """Remove a running step entry for a completed future.
 
+        Note:
+            This method is thread-safe. Access to the internal running steps
+            dictionary is protected by ``_running_steps_lock``.
+
         Args:
             future_id: The id() of the Future object.
 
@@ -409,6 +417,10 @@ class StateTracker:
 
     def get_running_steps(self, active_futures: list[Future[Any]]) -> list[RunningStepInfo]:
         """Get information about currently running execution steps.
+
+        Note:
+            This method is thread-safe. Access to the internal running steps
+            dictionary is protected by ``_running_steps_lock``.
 
         Args:
             active_futures: List of currently active Future objects.
@@ -434,6 +446,10 @@ class StateTracker:
 
         The queue is cleared each cycle because issues will be re-polled
         and re-added if they still match and slots are still unavailable.
+
+        Note:
+            This method is thread-safe. Access to the internal issue queue
+            is protected by ``_queue_lock``.
         """
         with self._queue_lock:
             self._issue_queue.clear()
@@ -445,6 +461,10 @@ class StateTracker:
         eviction when full. This provides FIFO behavior - when the queue is at
         capacity, adding a new item automatically evicts the oldest item instead
         of dropping the new one.
+
+        Note:
+            This method is thread-safe. Access to the internal issue queue
+            is protected by ``_queue_lock``.
 
         Args:
             issue_key: The key of the issue being queued.
@@ -474,6 +494,10 @@ class StateTracker:
     def get_issue_queue(self) -> list[QueuedIssueInfo]:
         """Get information about issues waiting in queue for execution slots.
 
+        Note:
+            This method is thread-safe. Access to the internal issue queue
+            is protected by ``_queue_lock``.
+
         Returns:
             List of QueuedIssueInfo for queued issues.
         """
@@ -486,6 +510,10 @@ class StateTracker:
 
     def increment_per_orch_count(self, orchestration_name: str) -> int:
         """Increment the active execution count for an orchestration.
+
+        Note:
+            This method is thread-safe. Access to the internal per-orchestration
+            counts dictionary is protected by ``_per_orch_counts_lock``.
 
         Args:
             orchestration_name: The name of the orchestration being executed.
@@ -504,6 +532,10 @@ class StateTracker:
 
     def decrement_per_orch_count(self, orchestration_name: str) -> int:
         """Decrement the active execution count for an orchestration.
+
+        Note:
+            This method is thread-safe. Access to the internal per-orchestration
+            counts dictionary is protected by ``_per_orch_counts_lock``.
 
         Args:
             orchestration_name: The name of the orchestration that completed.
@@ -534,6 +566,10 @@ class StateTracker:
     def get_per_orch_count(self, orchestration_name: str) -> int:
         """Get the active execution count for a specific orchestration.
 
+        Note:
+            This method is thread-safe. Access to the internal per-orchestration
+            counts dictionary is protected by ``_per_orch_counts_lock``.
+
         Args:
             orchestration_name: The name of the orchestration to query.
 
@@ -545,6 +581,10 @@ class StateTracker:
 
     def get_all_per_orch_counts(self) -> dict[str, int]:
         """Get all per-orchestration active execution counts.
+
+        Note:
+            This method is thread-safe. Access to the internal per-orchestration
+            counts dictionary is protected by ``_per_orch_counts_lock``.
 
         Returns:
             A dictionary mapping orchestration names to their active execution counts.
@@ -558,6 +598,10 @@ class StateTracker:
         global_available: int,
     ) -> int:
         """Get available slots for a specific orchestration considering both limits.
+
+        Note:
+            This method is thread-safe. Access to the internal per-orchestration
+            counts dictionary is protected by ``_per_orch_counts_lock``.
 
         Args:
             orchestration: The orchestration to check available slots for.
@@ -597,6 +641,10 @@ class StateTracker:
         most recent executions are first. The deque's maxlen automatically
         evicts the oldest entry when the maximum size is exceeded.
 
+        Note:
+            This method is thread-safe. Access to the internal completed
+            executions deque is protected by ``_completed_executions_lock``.
+
         Args:
             info: The completed execution information to add.
         """
@@ -609,6 +657,10 @@ class StateTracker:
 
     def get_completed_executions(self) -> list[CompletedExecutionInfo]:
         """Get the list of completed executions for dashboard display.
+
+        Note:
+            This method is thread-safe. Access to the internal completed
+            executions deque is protected by ``_completed_executions_lock``.
 
         Returns:
             A list of CompletedExecutionInfo entries, ordered with most recent first.
