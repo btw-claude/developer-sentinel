@@ -40,7 +40,7 @@ class MockAgentClient(AgentClient):
         prompt: str,
         tools: list[str],
         context: dict[str, Any] | None = None,
-        timeout_seconds: int | None = None,
+        timeout_seconds: int | float | None = None,
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,

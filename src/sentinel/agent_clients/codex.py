@@ -188,7 +188,7 @@ class CodexAgentClient(AgentClient):
         self,
         prompt: str,
         context: dict[str, Any] | None = None,
-        timeout_seconds: int | None = None,
+        timeout_seconds: int | float | None = None,
         issue_key: str | None = None,
         model: str | None = None,
         orchestration_name: str | None = None,
@@ -290,7 +290,7 @@ class CodexAgentClient(AgentClient):
     async def _run_simple(
         self,
         prompt: str,
-        timeout: int | None,
+        timeout: int | float | None,
         workdir: Path | None,
         model: str | None,
     ) -> str:
@@ -390,7 +390,7 @@ class CodexAgentClient(AgentClient):
     async def _run_with_log(
         self,
         prompt: str,
-        timeout: int | None,
+        timeout: int | float | None,
         workdir: Path | None,
         model: str | None,
         issue_key: str,

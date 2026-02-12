@@ -82,7 +82,7 @@ class AgentDetailInfo:
 
     prompt: str
     github: GitHubContextInfo | None
-    timeout_seconds: int | None
+    timeout_seconds: int | float | None
     model: str | None
     agent_type: str | None
     cursor_mode: str | None

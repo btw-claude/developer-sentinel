@@ -129,7 +129,7 @@ class AgentEditRequest(BaseModel):
 
     prompt: str | None = None
     github: GitHubContextEditRequest | None = None
-    timeout_seconds: int | None = None
+    timeout_seconds: int | float | None = None
     model: str | None = None
     agent_type: AgentTypeLiteral | None = None
     cursor_mode: CursorModeLiteral | None = None
@@ -267,7 +267,7 @@ class AgentDetailResponse(BaseModel):
 
     prompt: str
     github: GitHubContextDetailResponse | None
-    timeout_seconds: int | None
+    timeout_seconds: int | float | None
     model: str | None
     agent_type: str | None
     cursor_mode: str | None

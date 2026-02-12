@@ -122,7 +122,7 @@ def _make_jira_orchestration(
     tags: list[str] | None = None,
     prompt: str = "Test prompt for orchestration",
     github: GitHubContext | None = None,
-    timeout_seconds: int | None = None,
+    timeout_seconds: int | float | None = None,
     model: str | None = None,
     agent_type: str | None = None,
     cursor_mode: str | None = None,

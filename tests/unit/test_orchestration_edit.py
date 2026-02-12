@@ -629,7 +629,7 @@ class TestIsSemanticDuplicate:
 
     def test_different_field_errors_not_duplicate(self) -> None:
         """Should not treat errors about different fields as duplicates."""
-        existing = ["Agent error: Invalid timeout_seconds '-5': must be a positive integer"]
+        existing = ["Agent error: Invalid timeout_seconds '-5': must be a positive number"]
         new_error = "Invalid agent_type 'bad': must be 'claude', 'codex', 'cursor'"
         assert _is_semantically_duplicate(new_error, existing) is False
 

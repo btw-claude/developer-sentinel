@@ -273,6 +273,7 @@ class AgentConfig:
         prompt: The prompt template for the agent.
         github: Optional GitHub repository context.
         timeout_seconds: Optional timeout in seconds for agent execution.
+            Supports both integer and fractional (float) values.
             If None, no timeout is applied.
 
             **Agent Teams timeout behaviour (DS-697):** When ``agent_teams`` is
@@ -308,7 +309,7 @@ class AgentConfig:
 
     prompt: str = ""
     github: GitHubContext | None = None
-    timeout_seconds: int | None = None
+    timeout_seconds: int | float | None = None
     model: str | None = None
     agent_type: AgentTypeLiteral | None = None
     cursor_mode: CursorModeLiteral | None = None
@@ -697,10 +698,10 @@ def _validate_timeout_seconds(timeout: Any) -> str | None:
 
     Returns:
         An error message if *timeout* is not ``None`` and is not a positive
-        integer, or ``None`` if valid.
+        number (int or float), or ``None`` if valid.
     """
-    if timeout is not None and (not isinstance(timeout, int) or timeout <= 0):
-        return f"Invalid timeout_seconds '{timeout}': must be a positive integer"
+    if timeout is not None and (not isinstance(timeout, (int, float)) or timeout <= 0):
+        return f"Invalid timeout_seconds '{timeout}': must be a positive number"
     return None
 
 
@@ -1224,9 +1225,9 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     # early as possible.
     if agent_teams and timeout is not None and timeout < AGENT_TEAMS_MIN_TIMEOUT_SECONDS:
         logger.warning(
-            "agent_teams is enabled but timeout_seconds=%d is below the "
+            "agent_teams is enabled but timeout_seconds=%s is below the "
             "recommended minimum of %d seconds for Agent Teams orchestrations. "
-            "The effective timeout will be %d seconds (timeout_seconds * %d). "
+            "The effective timeout will be %s seconds (timeout_seconds * %d). "
             "Consider setting timeout_seconds >= %d to avoid premature timeouts.",
             timeout,
             AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
@@ -1253,7 +1254,7 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     )
 
 
-def get_effective_timeout(agent_config: AgentConfig) -> int | None:
+def get_effective_timeout(agent_config: AgentConfig) -> int | float | None:
     """Compute the effective timeout for an agent configuration.
 
     When ``agent_teams`` is enabled the configured ``timeout_seconds`` is
