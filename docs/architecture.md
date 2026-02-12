@@ -680,7 +680,22 @@ sentinel_circuit_breaker_state_transitions_total{service="jira", from="closed", 
 | Execution result | Per-attempt completion with status and response summary (truncated to 200 chars) | `INFO executor: Agent execution SUCCESS for PROJ-123 (attempt 2/3): <response_summary>` |
 | Retry on failure | Failure pattern matched, retrying next attempt | `WARNING executor: Agent execution failed for PROJ-123 on attempt 2, retrying...` |
 | Timeout retry | Agent timed out, retrying next attempt. Structured log includes `timeout_seconds` value | `WARNING executor: Agent timed out for PROJ-123 on attempt 2, retrying...` |
+| Client error retry | Agent client error, retrying next attempt | `WARNING executor: Agent client error for PROJ-123 on attempt 2: <error>, retrying...` |
+| Pre-retry health check | Health check failed, stopping retries early | `WARNING executor: Pre-retry health check failed for PROJ-123, stopping retries` |
 | Agent log file footer | Per-attempt log file written by AgentLogger | `Attempt:        2` (singular, inside `EXECUTION SUMMARY` / `AGENT EXECUTION LOG` blocks) |
+
+**Structured Extra Fields:**
+
+All retry-related log rows above (except the agent log file footer) include structured `extra` dicts for use with JSON log formatters and structured log queries. The following table documents the fields present in each log event:
+
+| Field | Type | Present In | Description |
+|-------|------|-----------|-------------|
+| `issue_key` | `str` | All log events | The issue key being processed (e.g., `"PROJ-123"`) |
+| `orchestration` | `str` | All log events | Name of the orchestration being executed |
+| `attempt` | `int` | All log events | The 1-based attempt number |
+| `status` | `str` | Execution result only | Execution status: `"SUCCESS"`, `"FAILURE"`, `"ERROR"`, or `"TIMEOUT"` |
+| `response_summary` | `str` | Execution result only | Truncated response text (max 200 chars, newlines replaced with spaces) |
+| `timeout_seconds` | `int` | Timeout retry only | The configured timeout value in seconds that was exceeded |
 
 #### Failure Rate Tracking
 
