@@ -24,10 +24,12 @@ from fastapi.testclient import TestClient
 from sentinel.config import Config, DashboardConfig, ExecutionConfig
 from sentinel.dashboard.routes import HEALTH_ENDPOINT_SUNSET_DATE, create_routes
 from sentinel.dashboard.state import (
+    DashboardState,
     ExecutionStateSnapshot,
     OrchestrationInfo,
     OrchestrationVersionSnapshot,
     SentinelStateAccessor,
+    SentinelStateProvider,
 )
 from sentinel.orchestration import (
     AgentConfig,
@@ -36,7 +38,7 @@ from sentinel.orchestration import (
     RetryConfig,
     TriggerConfig,
 )
-from sentinel.state_tracker import CompletedExecutionInfo
+from sentinel.state_tracker import CompletedExecutionInfo, QueuedIssueInfo, RunningStepInfo
 from tests.conftest import create_test_app
 from tests.helpers import assert_call_args_length, get_csrf_token
 
@@ -90,7 +92,7 @@ class MockSentinel:
         self._last_github_poll: datetime | None = None
 
     @property
-    def orchestrations(self) -> list[Any]:
+    def orchestrations(self) -> list[Orchestration]:
         return []
 
     def get_hot_reload_metrics(self) -> dict[str, int]:
@@ -100,10 +102,10 @@ class MockSentinel:
             "orchestrations_reloaded_total": 0,
         }
 
-    def get_running_steps(self) -> list[Any]:
+    def get_running_steps(self) -> list[RunningStepInfo]:
         return []
 
-    def get_issue_queue(self) -> list[Any]:
+    def get_issue_queue(self) -> list[QueuedIssueInfo]:
         return []
 
     def get_start_time(self) -> datetime:
@@ -645,7 +647,7 @@ class MockSentinelWithOrchestrations(MockSentinel):
         self._orchestrations_data = orchestrations_data
 
     @property
-    def orchestrations(self) -> list[Any]:
+    def orchestrations(self) -> list[Orchestration]:
         """Return mock orchestrations for state accessor."""
         # Return simple mock objects that the state accessor can convert
         return []
@@ -654,11 +656,11 @@ class MockSentinelWithOrchestrations(MockSentinel):
 class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
     """Mock state accessor that returns configured orchestration info."""
 
-    def __init__(self, sentinel: Any, orchestrations_data: list[OrchestrationInfo]) -> None:
+    def __init__(self, sentinel: SentinelStateProvider, orchestrations_data: list[OrchestrationInfo]) -> None:
         self._sentinel = sentinel
         self._orchestrations_data = orchestrations_data
 
-    def get_state(self) -> Any:
+    def get_state(self) -> DashboardState:
         """Return a mock state with the configured orchestrations."""
         from sentinel.dashboard.state import DashboardState
 
@@ -2035,7 +2037,7 @@ class MockSentinelForEditForm(MockSentinel):
         self._active_versions = active_versions or []
 
     @property
-    def orchestrations(self) -> list[Any]:
+    def orchestrations(self) -> list[Orchestration]:
         """Return the list of active orchestrations."""
         return self._orchestration_list
 
