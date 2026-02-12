@@ -60,8 +60,8 @@ def _parse_log_timestamp(timestamp: str, fmt: str = LOG_TIMESTAMP_FORMAT) -> dat
     timestamp string is parsed multiple times (e.g., from both
     ``parse_log_filename`` and ``_format_log_display_name``).
 
-    Centralises the ``strptime`` / ``replace(tzinfo=UTC)`` pattern so
-    that no call site needs to inline it (DS-1001, DS-998).
+    Centralises the ``strptime`` / ``replace(tzinfo=UTC)`` pattern
+    (DS-1001, DS-998) so that no call site needs to inline it.
 
     Args:
         timestamp: Timestamp string (e.g., ``"20240115-103045"``).
@@ -248,8 +248,8 @@ class LogFilenameParts(NamedTuple):
 
         This complements :meth:`__str__`, which reconstructs the filename
         stem for logging contexts.  ``__repr__`` is designed for debugging
-        (e.g., in interactive sessions or log output where the type and
-        field values should be immediately visible) (DS-994).
+        (DS-994) (e.g., in interactive sessions or log output where the
+        type and field values should be immediately visible).
 
         Returns:
             A string in ``LogFilenameParts(...)`` format showing all fields.
