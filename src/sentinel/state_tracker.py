@@ -444,12 +444,12 @@ class StateTracker:
     def clear_issue_queue(self) -> None:
         """Clear the issue queue at the start of a new polling cycle.
 
-        The queue is cleared each cycle because issues will be re-polled
-        and re-added if they still match and slots are still unavailable.
-
         Note:
             This method is thread-safe. Access to the internal issue queue
             is protected by ``_queue_lock``.
+
+        The queue is cleared each cycle because issues will be re-polled
+        and re-added if they still match and slots are still unavailable.
         """
         with self._queue_lock:
             self._issue_queue.clear()
