@@ -62,7 +62,7 @@ runs:
       run: |
         # Resolve inputs, falling back to the GitHub context defaults.
         # Note: The || operator here is evaluated by the GitHub Actions
-        # expression engine (inside ${{ }} delimiters), not by bash.
+        # expression engine (inside double-curly-brace expression delimiters), not by bash.
         # In GitHub Actions expression semantics, empty strings are falsy,
         # so omitted or empty inputs (default: "") will correctly fall
         # through to the github.* context values.
