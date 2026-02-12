@@ -745,7 +745,7 @@ class AgentExecutor:
             response: The agent's response.
             status: The execution status.
             attempt: The 1-based attempt number.  Used both for the
-                ``_a{N}`` filename suffix and the ``"Attempts: N"``
+                ``_a{N}`` filename suffix and the ``"Attempt: N"``
                 line in the log body.
             start_time: When execution started.
         """
@@ -1051,7 +1051,7 @@ class AgentExecutor:
                         total_cost_usd=last_total_cost_usd,
                     )
                     # The single `attempt` parameter serves both the log body
-                    # ("Attempts: N") and the _a{N} filename suffix (DS-994).
+                    # ("Attempt: N") and the _a{N} filename suffix (DS-994).
                     self._log_execution(
                         issue.key,
                         orchestration.name,
@@ -1163,7 +1163,7 @@ class AgentExecutor:
             total_cost_usd=last_total_cost_usd,
         )
         # The single `attempt` parameter serves both the log body
-        # ("Attempts: N") and the _a{N} filename suffix (DS-994).
+        # ("Attempt: N") and the _a{N} filename suffix (DS-994).
         self._log_execution(
             issue.key,
             orchestration.name,

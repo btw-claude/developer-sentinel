@@ -190,7 +190,7 @@ EXECUTION SUMMARY
 {separator}
 
 Status:         {status}
-Attempts:       {attempt}
+Attempt:        {attempt}
 End Time:       {end_time.isoformat()}
 Duration:       {duration:.2f}s
 
@@ -277,7 +277,7 @@ class AgentLogger:
             response: The agent's response.
             status: The execution status.
             attempt: The 1-based attempt number.  Used both for the
-                ``_a{N}`` filename suffix and the ``"Attempts: N"``
+                ``_a{N}`` filename suffix and the ``"Attempt: N"``
                 line in the log body.
             start_time: When execution started.
             end_time: When execution ended.
@@ -298,7 +298,7 @@ AGENT EXECUTION LOG
 Issue Key:      {issue_key}
 Orchestration:  {orchestration_name}
 Status:         {status.value.upper()}
-Attempts:       {attempt}
+Attempt:        {attempt}
 Start Time:     {start_time.isoformat()}
 End Time:       {end_time.isoformat()}
 Duration:       {duration:.2f}s

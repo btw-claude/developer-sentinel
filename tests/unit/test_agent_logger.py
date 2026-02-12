@@ -73,7 +73,7 @@ class TestAgentLogger:
         assert "Issue Key:      DS-456" in content
         assert "Orchestration:  update-docs" in content
         assert "Status:         FAILURE" in content
-        assert "Attempts:       3" in content
+        assert "Attempt:        3" in content
         assert "Duration:       90.00s" in content
 
     def test_log_contains_prompt(self, tmp_path: Path) -> None:
@@ -344,7 +344,7 @@ class TestStreamingLogWriter:
             content = writer.log_path.read_text()
             assert "EXECUTION SUMMARY" in content
             assert "Status:         COMPLETED" in content
-            assert "Attempts:       1" in content
+            assert "Attempt:        1" in content
             assert "Duration:" in content
             assert "END OF LOG" in content
 
@@ -361,7 +361,7 @@ class TestStreamingLogWriter:
             assert writer.log_path is not None
             content = writer.log_path.read_text()
             assert "Status:         FAILED" in content
-            assert "Attempts:       3" in content
+            assert "Attempt:        3" in content
 
     def test_duration_calculation(self, tmp_path: Path) -> None:
         """Should calculate duration between start and finalize."""
