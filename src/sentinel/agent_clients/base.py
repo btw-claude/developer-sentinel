@@ -232,6 +232,14 @@ class AgentClient(ABC):
         - ``-`` separates date from time within timestamp (disambiguates from ``_`` delimiter)
         - ``_a{N}`` suffix guarantees uniqueness across retries
 
+        Failed attempt workdirs persist by design (DS-961):
+            The ``_a{N}`` attempt suffix ensures each retry creates a distinct
+            directory. Failed attempt workdirs are not tracked or cleaned up —
+            they remain on disk for debugging. Only the last attempt's workdir
+            is reported in the execution result. On success with
+            ``cleanup_workdir_on_success=True``, only the successful attempt's
+            workdir is cleaned up; prior failed attempts persist.
+
         Note:
             The timestamp in the directory name uses UTC (not local time).
             This is consistent with the project-wide convention established
@@ -247,6 +255,9 @@ class AgentClient(ABC):
 
         Raises:
             AgentClientError: If ``base_workdir`` is not configured (i.e., is None).
+            FileExistsError: If the directory already exists (should not occur
+                due to unique ``_a{N}`` suffixes, but signals a naming collision
+                rather than silently reusing the directory).
         """
         if self.base_workdir is None:
             raise AgentClientError("base_workdir not configured")
@@ -255,7 +266,10 @@ class AgentClient(ABC):
         # UTC timestamp for directory naming (see docs/UTC_TIMESTAMPS.md)
         timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
         workdir = self.base_workdir / f"{issue_key}_{timestamp}_a{attempt}"
-        workdir.mkdir(parents=True, exist_ok=True)
+        # exist_ok=False (default): unique _a{N} suffixes prevent collisions (DS-961).
+        # If a collision occurs, FileExistsError surfaces the problem rather than
+        # silently reusing a previous attempt's directory.
+        workdir.mkdir(parents=True)
         logger.info("Created agent working directory: %s", workdir)
         return workdir
 
