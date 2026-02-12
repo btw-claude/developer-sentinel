@@ -533,7 +533,7 @@ Then run the verification command using `FETCH_HEAD` to check exactly what was j
 from the remote, rather than the local `main` ref which may be stale:
 
 ```bash
-git show FETCH_HEAD:CONTRIBUTING.md | grep -q "github-actions-composite-action-documentation-ds-1050" && echo "Anchor found" || echo "Anchor missing on main"
+git show FETCH_HEAD:CONTRIBUTING.md | grep -q "github-actions-composite-action-documentation-ds-1050" && echo "Anchor found" || echo "Anchor missing on remote main"
 ```
 
 If the anchor is missing, coordinate with maintainers to merge the documentation changes to
