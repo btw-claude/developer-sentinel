@@ -382,6 +382,58 @@ def test_run_agent_context_sanitizes_newlines(self) -> None:
     ...
 ```
 
+### Documentation-Tooling Improvement Notes (DS-1016)
+
+**Track documentation-tooling ideas in Jira with the `docs-tooling` label, not in inline source
+comments or docstrings.**
+
+When you identify a potential improvement to documentation tooling (e.g., a new Sphinx extension,
+a linting rule for docstrings, or a cross-referencing convention), create a Jira issue with the
+`docs-tooling` label instead of embedding a ``# TODO`` or a candidate-note inside a docstring.
+This keeps the source code focused on runtime behaviour and ensures tooling ideas are tracked,
+prioritised, and discoverable alongside other project work.
+
+**Why?**
+
+- Inline notes are invisible to project management tooling and easy to forget.
+- Jira issues with the `docs-tooling` label can be queried, prioritised, and assigned.
+- Docstrings should document the *current* API contract, not aspirational tooling changes.
+
+**Example — do this:**
+
+Create a Jira issue:
+> **Summary:** Evaluate auto-linking for cross-module references in Sphinx docs
+> **Labels:** `docs-tooling`, `documentation`
+> **Description:** (details of the improvement idea)
+
+**Example — avoid this:**
+
+```python
+class MyClass:
+    """My class docstring.
+
+    .. note:: Candidate for intersphinx linking — see DS-999.
+    """
+```
+
+#### Jira Issue Links in Sphinx Documentation
+
+The project provides a custom Sphinx role (``:jira:``) for linking Jira issue keys in
+documentation.  See ``src/sentinel/sphinx_jira_role.py`` for the extension implementation.
+
+To use the role in reStructuredText or Sphinx-processed docstrings:
+
+```rst
+See :jira:`DS-1016` for details on the documentation-tooling convention.
+```
+
+Configure the Jira base URL in your Sphinx ``conf.py``:
+
+```python
+extensions = ["sentinel.sphinx_jira_role"]
+jira_base_url = "https://your-domain.atlassian.net"
+```
+
 ### Other Conventions
 
 - Follow PEP 8 style guidelines
