@@ -190,8 +190,8 @@ class LogFilenameParts(NamedTuple):
         """Convert the timestamp string to a timezone-aware datetime.
 
         Convenience method to avoid repeating the ``strptime``/``replace``
-        pattern across call sites (e.g., ``_format_log_display_name`` and
-        ``parse_log_filename``) (DS-1001).
+        pattern across call sites such as ``_format_log_display_name`` and
+        ``parse_log_filename`` (DS-1001).
 
         Delegates to the module-level :func:`_parse_log_timestamp` cache
         so that repeated calls with the same timestamp string (e.g., from
