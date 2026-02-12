@@ -920,3 +920,92 @@ class TestDiagnosticFilterSetupLoggingIntegration:
             assert "Polling diagnostic message" in output
         finally:
             test_logger.removeHandler(handler)
+
+
+class TestDiagnosticFilterNotOnOrchestrationFileHandlers:
+    """Integration tests verifying DiagnosticFilter is absent from OrchestrationLogManager FileHandlers (DS-983).
+
+    OrchestrationLogManager creates per-orchestration FileHandlers that should
+    write all DEBUG-level messages unconditionally.  DiagnosticFilter is only
+    intended for the root StreamHandler created by setup_logging().  These tests
+    codify that documented behaviour and protect against accidental regressions.
+    """
+
+    def test_file_handlers_have_no_diagnostic_filter(self, tmp_path: Path) -> None:
+        """Verify that no FileHandler created by OrchestrationLogManager has a DiagnosticFilter."""
+        with OrchestrationLogManager(tmp_path) as manager:
+            manager.get_logger("orch-alpha")
+            manager.get_logger("orch-beta")
+
+            for name, handler in manager._handlers.items():
+                diagnostic_filters = [
+                    f for f in handler.filters if isinstance(f, DiagnosticFilter)
+                ]
+                assert diagnostic_filters == [], (
+                    f"FileHandler for '{name}' unexpectedly has a DiagnosticFilter installed"
+                )
+
+    def test_single_orchestration_handler_has_no_diagnostic_filter(self, tmp_path: Path) -> None:
+        """Verify a single orchestration's FileHandler has no DiagnosticFilter."""
+        manager = OrchestrationLogManager(tmp_path)
+
+        manager.get_logger("solo-orch")
+
+        handler = manager._handlers["solo-orch"]
+        assert isinstance(handler, logging.FileHandler)
+        diagnostic_filters = [
+            f for f in handler.filters if isinstance(f, DiagnosticFilter)
+        ]
+        assert diagnostic_filters == [], (
+            "FileHandler for 'solo-orch' should not have a DiagnosticFilter"
+        )
+        manager.close_all()
+
+    def test_tagged_debug_written_unconditionally_to_orchestration_log(
+        self, tmp_path: Path
+    ) -> None:
+        """Verify tagged DEBUG messages are written unconditionally to orchestration log files.
+
+        Because OrchestrationLogManager FileHandlers do not have a
+        DiagnosticFilter, tagged DEBUG messages must appear in the log file
+        regardless of any global diagnostic-tag configuration.
+        """
+        with OrchestrationLogManager(tmp_path) as manager:
+            logger = manager.get_logger("diagnostics-passthrough")
+
+            # Write a tagged DEBUG message (would be suppressed by DiagnosticFilter
+            # with empty enabled_tags on a StreamHandler)
+            logger.debug(
+                "Tagged debug message",
+                extra={"diagnostic_tag": "polling"},
+            )
+            # Also write an untagged DEBUG message for comparison
+            logger.debug("Untagged debug message")
+
+        log_file = tmp_path / "diagnostics-passthrough.log"
+        content = log_file.read_text()
+
+        assert "Tagged debug message" in content, (
+            "Tagged DEBUG message should be written unconditionally to orchestration log"
+        )
+        assert "Untagged debug message" in content, (
+            "Untagged DEBUG message should be written to orchestration log"
+        )
+
+    def test_multiple_tagged_messages_all_written(self, tmp_path: Path) -> None:
+        """Verify multiple differently-tagged DEBUG messages all appear in orchestration logs."""
+        with OrchestrationLogManager(tmp_path) as manager:
+            logger = manager.get_logger("multi-tag-test")
+
+            logger.debug("Polling data", extra={"diagnostic_tag": "polling"})
+            logger.debug("Execution trace", extra={"diagnostic_tag": "execution"})
+            logger.debug("Router decision", extra={"diagnostic_tag": "routing"})
+            logger.info("Regular info message")
+
+        log_file = tmp_path / "multi-tag-test.log"
+        content = log_file.read_text()
+
+        assert "Polling data" in content
+        assert "Execution trace" in content
+        assert "Router decision" in content
+        assert "Regular info message" in content
