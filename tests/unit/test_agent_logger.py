@@ -24,10 +24,9 @@ class TestAgentLogger:
             prompt="Test prompt",
             response="Test response",
             status=ExecutionStatus.SUCCESS,
-            attempts=1,
+            attempt=1,
             start_time=datetime(2024, 1, 15, 10, 30, 0),
             end_time=datetime(2024, 1, 15, 10, 31, 0),
-            attempt=1,
         )
 
         orch_dir = tmp_path / "code-review"
@@ -45,10 +44,9 @@ class TestAgentLogger:
             prompt="Test prompt",
             response="Test response",
             status=ExecutionStatus.SUCCESS,
-            attempts=1,
+            attempt=1,
             start_time=start_time,
             end_time=datetime(2024, 1, 15, 10, 31, 0),
-            attempt=1,
         )
 
         assert log_path.name == "DS-123_20240115-103045_a1.log"
@@ -66,10 +64,9 @@ class TestAgentLogger:
             prompt="Test prompt",
             response="Test response",
             status=ExecutionStatus.FAILURE,
-            attempts=3,
+            attempt=3,
             start_time=start_time,
             end_time=end_time,
-            attempt=3,
         )
 
         content = log_path.read_text()
@@ -90,10 +87,9 @@ class TestAgentLogger:
             prompt=prompt,
             response="Response",
             status=ExecutionStatus.SUCCESS,
-            attempts=1,
+            attempt=1,
             start_time=datetime.now(),
             end_time=datetime.now(),
-            attempt=1,
         )
 
         content = log_path.read_text()
@@ -111,10 +107,9 @@ class TestAgentLogger:
             prompt="Prompt",
             response=response,
             status=ExecutionStatus.SUCCESS,
-            attempts=1,
+            attempt=1,
             start_time=datetime.now(),
             end_time=datetime.now(),
-            attempt=1,
         )
 
         content = log_path.read_text()
@@ -131,10 +126,9 @@ class TestAgentLogger:
             prompt="Prompt",
             response="Response",
             status=ExecutionStatus.SUCCESS,
-            attempts=1,
+            attempt=1,
             start_time=datetime.now(),
             end_time=datetime.now(),
-            attempt=1,
         )
 
         assert log_path.exists()
@@ -150,10 +144,9 @@ class TestAgentLogger:
             prompt="P1",
             response="R1",
             status=ExecutionStatus.SUCCESS,
-            attempts=1,
+            attempt=1,
             start_time=datetime(2024, 1, 15, 10, 0, 0),
             end_time=datetime(2024, 1, 15, 10, 1, 0),
-            attempt=1,
         )
 
         log2 = logger.log_execution(
@@ -162,10 +155,9 @@ class TestAgentLogger:
             prompt="P2",
             response="R2",
             status=ExecutionStatus.FAILURE,
-            attempts=2,
+            attempt=2,
             start_time=datetime(2024, 1, 15, 11, 0, 0),
             end_time=datetime(2024, 1, 15, 11, 2, 0),
-            attempt=2,
         )
 
         assert log1.parent == log2.parent
@@ -182,10 +174,9 @@ class TestAgentLogger:
             prompt="Prompt",
             response="Response",
             status=ExecutionStatus.SUCCESS,
-            attempts=1,
+            attempt=1,
             start_time=datetime.now(),
             end_time=datetime.now(),
-            attempt=1,
         )
 
         assert isinstance(log_path, Path)
@@ -202,10 +193,9 @@ class TestAgentLogger:
             prompt="Prompt",
             response="Timeout: Agent timed out",
             status=ExecutionStatus.ERROR,
-            attempts=3,
+            attempt=3,
             start_time=datetime.now(),
             end_time=datetime.now(),
-            attempt=3,
         )
 
         content = log_path.read_text()
@@ -348,7 +338,7 @@ class TestStreamingLogWriter:
             prompt="Test",
         ) as writer:
             writer.write_line("Some output")
-            writer.finalize(status="COMPLETED", attempts=1)
+            writer.finalize(status="COMPLETED", attempt=1)
 
             assert writer.log_path is not None
             content = writer.log_path.read_text()
@@ -366,7 +356,7 @@ class TestStreamingLogWriter:
             issue_key="DS-123",
             prompt="Test",
         ) as writer:
-            writer.finalize(status="FAILED", attempts=3)
+            writer.finalize(status="FAILED", attempt=3)
 
             assert writer.log_path is not None
             content = writer.log_path.read_text()
@@ -392,7 +382,7 @@ class TestStreamingLogWriter:
                 issue_key="DS-123",
                 prompt="Test",
             ) as writer:
-                writer.finalize(status="COMPLETED", attempts=1)
+                writer.finalize(status="COMPLETED", attempt=1)
 
                 assert writer.log_path is not None
                 content = writer.log_path.read_text()

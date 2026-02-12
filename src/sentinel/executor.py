@@ -759,10 +759,9 @@ class AgentExecutor:
                 prompt=prompt,
                 response=response,
                 status=status,
-                attempts=attempt,
+                attempt=attempt,
                 start_time=start_time,
                 end_time=datetime.now(tz=UTC),
-                attempt=attempt,
             )
         except OSError as e:
             # Log but don't fail the execution due to file I/O errors
