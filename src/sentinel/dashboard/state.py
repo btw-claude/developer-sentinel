@@ -19,7 +19,7 @@ from cachetools import TTLCache, cachedmethod
 from cachetools.keys import hashkey
 
 from sentinel.config import DEFAULT_GREEN_THRESHOLD, DEFAULT_YELLOW_THRESHOLD
-from sentinel.logging import generate_log_filename, parse_log_filename
+from sentinel.logging import generate_log_filename, parse_log_filename_parts
 from sentinel.types import TriggerSource
 
 if TYPE_CHECKING:
@@ -1156,23 +1156,16 @@ class SentinelStateAccessor:
         Returns:
             Human-readable display name.
         """
-        dt = parse_log_filename(filename)
-        if dt is not None:
-            # Extract issue key and attempt from new format if present
-            name = filename.removesuffix(".log")
-            if "_a" in name:
-                # New format: extract parts for display
-                base = name.rsplit("_a", 1)[0]
-                attempt_str = name.rsplit("_a", 1)[1]
-                parts = base.rsplit("_", 1)
-                if len(parts) > 1:
-                    issue_key = parts[0]
-                    return (
-                        f"{issue_key} {dt.strftime('%Y-%m-%d %H:%M:%S')}"
-                        f" (attempt {attempt_str})"
-                    )
-                return f"{dt.strftime('%Y-%m-%d %H:%M:%S')} (attempt {attempt_str})"
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        parsed = parse_log_filename_parts(filename)
+        if parsed is not None:
+            issue_key, dt, attempt = parsed
+            formatted_ts = dt.strftime("%Y-%m-%d %H:%M:%S")
+            # Legacy filenames have no _a{N} suffix — show timestamp only
+            if "_a" not in filename:
+                return formatted_ts
+            if issue_key is not None:
+                return f"{issue_key} {formatted_ts} (attempt {attempt})"
+            return f"{formatted_ts} (attempt {attempt})"
         return filename
 
     def get_log_file_path(self, step: str, filename: str) -> Path | None:
