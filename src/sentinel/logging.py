@@ -153,12 +153,6 @@ class LogFilenameParts(NamedTuple):
         Prefer using :func:`parse_log_filename_parts` to obtain instances
         whenever possible, as it enforces these invariants automatically.
 
-        .. note:: Intersphinx candidate (DS-999)
-
-            The ``DS-986`` reference in this warning title is a natural
-            candidate for a Jira hyperlink should the project ever adopt
-            ``intersphinx`` or a custom Sphinx role for Jira issue links.
-
     Attributes:
         issue_key: The issue key prefix, or None if the filename has no
             issue key (e.g., ``"DS-123"`` or ``None``).
