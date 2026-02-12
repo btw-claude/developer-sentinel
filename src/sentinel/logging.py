@@ -98,6 +98,16 @@ class DiagnosticFilter(logging.Filter):
     ``SENTINEL_DIAGNOSTIC_TAGS=polling,execution``).  Setting the value
     to ``"*"`` enables all tagged diagnostics.
 
+    .. note::
+
+        This filter is only installed on the root logger's
+        ``StreamHandler`` (created by :func:`setup_logging`).  It does
+        **not** apply to the per-orchestration ``FileHandler`` instances
+        created by :class:`OrchestrationLogManager`, which write all
+        DEBUG-level messages unconditionally.  If you need diagnostic
+        filtering on per-orchestration file logs, you must add a
+        ``DiagnosticFilter`` instance to those handlers explicitly.
+
     Usage in application code::
 
         logger.debug(
