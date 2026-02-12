@@ -65,6 +65,12 @@ def parse_log_filename(filename: str) -> datetime | None:
     Supports both new format ({issue_key}_{YYYYMMDD-HHMMSS}_a{N}.log)
     and legacy format (YYYYMMDD_HHMMSS.log).
 
+    .. seealso::
+
+        :func:`parse_log_filename_parts` — returns all components
+        (issue_key, timestamp, attempt) rather than just the timestamp.
+        Prefer that function when callers need more than the datetime.
+
     Args:
         filename: Log filename to parse.
 
