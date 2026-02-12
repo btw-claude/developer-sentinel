@@ -9,8 +9,29 @@ import sys
 import types
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, NamedTuple
+
+
+@lru_cache(maxsize=128)
+def _parse_log_timestamp(timestamp: str) -> datetime:
+    """Parse a log timestamp string to a UTC-aware datetime (cached).
+
+    Module-level cache avoids redundant ``strptime`` calls when the same
+    timestamp string is parsed multiple times (e.g., from both
+    ``parse_log_filename`` and ``_format_log_display_name``).
+
+    Args:
+        timestamp: Timestamp in ``YYYYMMDD-HHMMSS`` format.
+
+    Returns:
+        A UTC-aware ``datetime``.
+
+    Raises:
+        ValueError: If *timestamp* does not conform to the expected format.
+    """
+    return datetime.strptime(timestamp, LOG_TIMESTAMP_FORMAT).replace(tzinfo=UTC)
 
 # Log filename format constants
 # New format: {issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}.log
@@ -136,6 +157,11 @@ class LogFilenameParts(NamedTuple):
         pattern across call sites (e.g., ``_format_log_display_name`` and
         ``parse_log_filename``).
 
+        Delegates to the module-level :func:`_parse_log_timestamp` cache
+        so that repeated calls with the same timestamp string (e.g., from
+        both ``parse_log_filename`` and ``_format_log_display_name``)
+        avoid redundant ``strptime`` parsing (DS-994).
+
         Returns:
             A UTC-aware ``datetime`` parsed from :attr:`timestamp`.
 
@@ -146,8 +172,26 @@ class LogFilenameParts(NamedTuple):
                 malformed timestamp string rather than via
                 :func:`parse_log_filename_parts`.
         """
-        return datetime.strptime(self.timestamp, LOG_TIMESTAMP_FORMAT).replace(
-            tzinfo=UTC
+        return _parse_log_timestamp(self.timestamp)
+
+    def __repr__(self) -> str:
+        """Return an unambiguous representation for debugging.
+
+        Produces a string like::
+
+            LogFilenameParts(issue_key='DS-123', timestamp='20240115-103045', attempt=1)
+
+        This complements :meth:`__str__`, which reconstructs the filename
+        stem for logging contexts.  ``__repr__`` is designed for debugging
+        (e.g., in interactive sessions or log output where the type and
+        field values should be immediately visible) (DS-994).
+
+        Returns:
+            A string in ``LogFilenameParts(...)`` format showing all fields.
+        """
+        return (
+            f"LogFilenameParts(issue_key={self.issue_key!r}, "
+            f"timestamp={self.timestamp!r}, attempt={self.attempt!r})"
         )
 
     def __str__(self) -> str:

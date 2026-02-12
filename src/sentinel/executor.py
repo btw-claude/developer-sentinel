@@ -722,24 +722,21 @@ class AgentExecutor:
         prompt: str,
         response: str,
         status: ExecutionStatus,
-        attempts: int,
+        attempt: int,
         start_time: datetime,
-        attempt: int = 1,
     ) -> None:
         """Log the agent execution if a logger is configured.
 
-        .. note:: ``attempts`` vs ``attempt`` naming (DS-985)
+        .. note:: Consolidated ``attempt`` parameter (DS-994)
 
-            These two similarly-named parameters serve different purposes:
-
-            * ``attempts`` — the **total** number of attempts made; displayed
-              in the log body (e.g. ``"Attempts: 3"``).
-            * ``attempt`` — the **current** 1-based try number; used to
-              generate the ``_a{N}`` filename suffix for uniqueness.
-
-            At both call sites in :meth:`execute`, the two values are equal
-            because the method is called after the final attempt in both the
-            success and exhaustion paths.
+            Previously this method accepted both ``attempts`` (total count
+            for the log body) and ``attempt`` (1-based try number for the
+            ``_a{N}`` filename suffix).  Both call sites in :meth:`execute`
+            always passed identical values — the current attempt number
+            *is* the total count at the point of logging (success path or
+            exhaustion path).  A single ``attempt`` parameter now serves
+            both purposes, eliminating the redundancy identified during
+            the DS-966 PR #981 code review.
 
         Args:
             issue_key: The Jira issue key.
@@ -747,9 +744,10 @@ class AgentExecutor:
             prompt: The prompt sent to the agent.
             response: The agent's response.
             status: The execution status.
-            attempts: Total number of attempts made (displayed in the log body).
+            attempt: The 1-based attempt number.  Used both for the
+                ``_a{N}`` filename suffix and the ``"Attempts: N"``
+                line in the log body.
             start_time: When execution started.
-            attempt: The 1-based current try number for ``_a{N}`` filename suffix.
         """
         if self.agent_logger is None:
             return
@@ -761,7 +759,7 @@ class AgentExecutor:
                 prompt=prompt,
                 response=response,
                 status=status,
-                attempts=attempts,
+                attempts=attempt,
                 start_time=start_time,
                 end_time=datetime.now(tz=UTC),
                 attempt=attempt,
@@ -1053,20 +1051,16 @@ class AgentExecutor:
                         output_tokens=last_output_tokens,
                         total_cost_usd=last_total_cost_usd,
                     )
-                    # Both `attempts` and `attempt` receive the same value because
-                    # on the successful try the current attempt number *is* the total
-                    # number of attempts made.  `attempts` is displayed in the log body
-                    # ("Attempts: N") while `attempt` drives the _a{N} filename suffix.
-                    # `attempt` is the 1-based current try number.
+                    # The single `attempt` parameter serves both the log body
+                    # ("Attempts: N") and the _a{N} filename suffix (DS-994).
                     self._log_execution(
                         issue.key,
                         orchestration.name,
                         prompt,
                         response,
                         status,
-                        attempts=attempt,
+                        attempt=attempt,
                         start_time=start_time,
-                        attempt=attempt,  # 1-based current try number for _a{N} suffix
                     )
                     # Cleanup only the successful attempt's workdir if enabled (DS-961).
                     # Prior failed attempt workdirs (with unique _a{N} names) persist
@@ -1169,18 +1163,15 @@ class AgentExecutor:
             output_tokens=last_output_tokens,
             total_cost_usd=last_total_cost_usd,
         )
-        # Both `attempts` and `attempt` receive the same value because after
-        # all retries are exhausted the last attempt number equals the total count.
-        # `attempts` is displayed in the log body; `attempt` drives the _a{N}
-        # filename suffix.  `last_attempt` is the 1-based current try number.
+        # The single `attempt` parameter serves both the log body
+        # ("Attempts: N") and the _a{N} filename suffix (DS-994).
         self._log_execution(
             issue.key,
             orchestration.name,
             prompt,
             last_response,
             last_status,
-            attempts=last_attempt,
+            attempt=last_attempt,
             start_time=start_time,
-            attempt=last_attempt,  # 1-based current try number for _a{N} suffix
         )
         return result
