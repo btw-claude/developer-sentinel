@@ -348,6 +348,25 @@ class TestParseLogFilenameParts:
         assert result.to_datetime() == original_ts
         assert result.attempt == 1
 
+    def test_roundtrip_issue_key_with_triple_underscore_segments(self) -> None:
+        """Roundtrip generate -> parse preserves triple-underscore issue keys.
+
+        DS-996 follow-up: extends roundtrip coverage to triple-underscore
+        keys (e.g. FOO_BAR_BAZ-99) beyond the double-underscore case
+        already covered by test_roundtrip_issue_key_with_multiple_underscores.
+        Complements the non-roundtrip test_issue_key_triple_underscore_segments
+        which validates direct parsing only.
+        """
+        original_ts = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+        filename = generate_log_filename(
+            original_ts, issue_key="FOO_BAR_BAZ-99", attempt=7,
+        )
+        result = parse_log_filename_parts(filename)
+        assert result is not None
+        assert result.issue_key == "FOO_BAR_BAZ-99"
+        assert result.to_datetime() == original_ts
+        assert result.attempt == 7
+
     def test_attempt_number_zero(self) -> None:
         """Attempt number 0 should be parsed correctly even though convention is 1-based."""
         result = parse_log_filename_parts("TEST-1_20250115-103045_a0.log")
