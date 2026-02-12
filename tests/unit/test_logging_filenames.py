@@ -10,8 +10,10 @@ import pytest
 from sentinel.config import Config as SentinelConfig
 from sentinel.dashboard.state import SentinelStateAccessor, SentinelStateProvider
 from sentinel.logging import (
+    LOG_FILENAME_EXTENSION,
     LogFilenameParts,
     _parse_log_timestamp,
+    _strip_log_extension,
     generate_log_filename,
     parse_log_filename,
     parse_log_filename_parts,
@@ -889,6 +891,75 @@ class TestLegacyFormatUsesCache:
     def test_legacy_format_invalid_returns_none(self) -> None:
         """Invalid legacy format should still return None."""
         assert parse_log_filename("not_valid.log") is None
+
+
+class TestStripLogExtension:
+    """Tests for _strip_log_extension shared helper (DS-1010)."""
+
+    def test_strips_log_extension(self) -> None:
+        """Should strip .log extension when present."""
+        assert _strip_log_extension("DS-123_20240115-103045_a1.log") == "DS-123_20240115-103045_a1"
+
+    def test_no_op_without_extension(self) -> None:
+        """Should return filename unchanged when .log extension is absent."""
+        assert _strip_log_extension("DS-123_20240115-103045_a1") == "DS-123_20240115-103045_a1"
+
+    def test_strips_legacy_format_extension(self) -> None:
+        """Should strip .log extension from legacy format filenames."""
+        assert _strip_log_extension("20240115_103045.log") == "20240115_103045"
+
+    def test_empty_string(self) -> None:
+        """Should handle empty string without error."""
+        assert _strip_log_extension("") == ""
+
+    def test_only_extension(self) -> None:
+        """Should return empty string when filename is just the extension."""
+        assert _strip_log_extension(LOG_FILENAME_EXTENSION) == ""
+
+    def test_does_not_strip_partial_extension(self) -> None:
+        """Should not strip partial matches like .logfile."""
+        assert _strip_log_extension("test.logfile") == "test.logfile"
+
+    def test_does_not_strip_different_extension(self) -> None:
+        """Should not strip non-.log extensions like .txt."""
+        assert _strip_log_extension("test.txt") == "test.txt"
+
+
+class TestStripLogExtensionUsedByBothPaths:
+    """Verify both parse_log_filename_parts and parse_log_filename use _strip_log_extension (DS-1010)."""
+
+    def test_new_format_uses_strip_log_extension(self) -> None:
+        """parse_log_filename_parts should delegate to _strip_log_extension.
+
+        DS-1010: verifies the new-format pipeline calls the shared helper
+        instead of inlining .removesuffix().
+        """
+        with patch(
+            "sentinel.logging._strip_log_extension",
+            wraps=_strip_log_extension,
+        ) as mock_strip:
+            result = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+            assert result is not None
+            assert result.issue_key == "DS-123"
+            mock_strip.assert_called_once_with("DS-123_20240115-103045_a1.log")
+
+    def test_legacy_fallback_uses_strip_log_extension(self) -> None:
+        """parse_log_filename legacy fallback should delegate to _strip_log_extension.
+
+        DS-1010: verifies the legacy fallback path calls the shared helper
+        instead of inlining .removesuffix().
+        """
+        with patch(
+            "sentinel.logging._strip_log_extension",
+            wraps=_strip_log_extension,
+        ) as mock_strip:
+            result = parse_log_filename("20240115_103045.log")
+            assert result is not None
+            assert result == datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+            # _strip_log_extension should be called at least twice:
+            # once by parse_log_filename_parts (which returns None for legacy),
+            # once by the legacy fallback in parse_log_filename.
+            assert mock_strip.call_count == 2
 
 
 class TestFormatLogDisplayName:
