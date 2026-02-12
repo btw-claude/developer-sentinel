@@ -163,6 +163,7 @@ class CursorAgentClient(AgentClient):
         create_branch: bool = False,
         base_branch: str = "main",
         agent_teams: bool = False,
+        attempt: int = 1,
         mode: CursorMode | str | None = None,
     ) -> AgentRunResult:
         """Run a Cursor agent with the given prompt.
@@ -182,6 +183,8 @@ class CursorAgentClient(AgentClient):
             base_branch: Base branch to create new branches from (reserved for future).
             agent_teams: Whether to enable Claude Code's experimental Agent Teams feature
                 (ignored for Cursor client).
+            attempt: Attempt number (1-based) from the executor retry loop.
+                Used for unique log filenames and workdir names across retries (DS-960).
             mode: Optional operation mode (agent, plan, ask). Can be a CursorMode enum or string.
                   If None, uses the client's default mode.
 
@@ -194,7 +197,7 @@ class CursorAgentClient(AgentClient):
         """
         workdir = None
         if self.base_workdir is not None and issue_key is not None:
-            workdir = self._create_workdir(issue_key)
+            workdir = self._create_workdir(issue_key, attempt=attempt)
 
         # Build full prompt with sanitized context section (DS-675).
         full_prompt = self._build_prompt_with_context(prompt, context)

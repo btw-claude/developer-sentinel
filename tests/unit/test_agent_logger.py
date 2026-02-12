@@ -49,7 +49,7 @@ class TestAgentLogger:
             end_time=datetime(2024, 1, 15, 10, 31, 0),
         )
 
-        assert log_path.name == "20240115_103045.log"
+        assert log_path.name == "DS-123_20240115-103045_a1.log"
         assert log_path.exists()
 
     def test_log_contains_metadata(self, tmp_path: Path) -> None:
@@ -238,10 +238,10 @@ class TestStreamingLogWriter:
         ) as writer:
             assert writer.log_path is not None
             assert writer.log_path.suffix == ".log"
-            # Filename should match YYYYMMDD_HHMMSS.log pattern
+            # Filename should match {issue_key}_{YYYYMMDD-HHMMSS}_a{N}.log pattern (DS-960)
             name = writer.log_path.stem
-            assert len(name) == 15  # 8 + 1 + 6
-            assert name[8] == "_"
+            assert "DS-123" in name
+            assert "_a1" in name
 
     def test_header_contains_metadata(self, tmp_path: Path) -> None:
         """Should write header with metadata when entering context."""

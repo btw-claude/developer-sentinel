@@ -508,6 +508,7 @@ class TestPerOrchestrationConcurrencyLimits:
                 create_branch: bool = False,
                 base_branch: str = "main",
                 agent_teams: bool = False,
+                attempt: int = 1,
             ) -> AgentRunResult:
                 # Use threading.Event.wait for interruptible delay
                 threading.Event().wait(timeout=0.05)

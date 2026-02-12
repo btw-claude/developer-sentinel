@@ -584,6 +584,7 @@ class ClaudeSdkAgentClient(AgentClient):
         create_branch: bool = False,
         base_branch: str = "main",
         agent_teams: bool = False,
+        attempt: int = 1,
     ) -> AgentRunResult:
         """Run a Claude agent with the given prompt.
 
@@ -601,6 +602,8 @@ class ClaudeSdkAgentClient(AgentClient):
             create_branch: If True and branch doesn't exist, create it from base_branch.
             base_branch: Base branch to create new branches from. Defaults to "main".
             agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
+            attempt: Attempt number (1-based) from the executor retry loop.
+                Used for unique log filenames and workdir names across retries (DS-960).
 
         Returns:
             AgentRunResult containing the agent's response text and optional working directory path.
@@ -620,7 +623,7 @@ class ClaudeSdkAgentClient(AgentClient):
 
         workdir = None
         if self.base_workdir is not None and issue_key is not None:
-            workdir = self._create_workdir(issue_key)
+            workdir = self._create_workdir(issue_key, attempt=attempt)
 
         # Setup branch if specified and workdir exists
         if branch and workdir:
@@ -646,6 +649,7 @@ class ClaudeSdkAgentClient(AgentClient):
             response, usage_info = await self._run_with_log(
                 full_prompt, timeout_seconds, workdir, model, issue_key, orchestration_name,
                 agent_teams=agent_teams,
+                attempt=attempt,
             )
         else:
             response, usage_info = await self._run_simple(
@@ -655,7 +659,12 @@ class ClaudeSdkAgentClient(AgentClient):
             # When streaming is disabled but we have logging params, write full
             # response after completion
             if can_stream and self._disable_streaming_logs:
-                self._write_simple_log(full_prompt, response, issue_key, orchestration_name)  # type: ignore
+                self._write_simple_log(
+                    full_prompt, response,
+                    issue_key,  # type: ignore[arg-type]
+                    orchestration_name,  # type: ignore[arg-type]
+                    attempt=attempt,
+                )
         return AgentRunResult(response=response, workdir=workdir, usage=usage_info)
 
     async def _run_simple(
@@ -723,7 +732,14 @@ class ClaudeSdkAgentClient(AgentClient):
             self._circuit_breaker.record_failure(e)
             raise AgentClientError(f"Agent execution failed due to runtime error: {e}") from e
 
-    def _write_simple_log(self, prompt: str, response: str, issue_key: str, orch_name: str) -> None:
+    def _write_simple_log(
+        self,
+        prompt: str,
+        response: str,
+        issue_key: str,
+        orch_name: str,
+        attempt: int = 1,
+    ) -> None:
         """Write a simple (non-streaming) log file after execution completes.
 
         This is used when streaming logs are disabled via SENTINEL_DISABLE_STREAMING_LOGS.
@@ -735,6 +751,7 @@ class ClaudeSdkAgentClient(AgentClient):
             response: The complete response from the agent.
             issue_key: The issue key for the log file.
             orch_name: The orchestration name for organizing logs.
+            attempt: Attempt number (1-based) for unique log filenames (DS-960).
         """
         if self.log_base_dir is None:
             return
@@ -742,7 +759,7 @@ class ClaudeSdkAgentClient(AgentClient):
         start_time = datetime.now(tz=UTC)
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / generate_log_filename(start_time)
+        log_path = log_dir / generate_log_filename(start_time, issue_key=issue_key, attempt=attempt)
 
         end_time = datetime.now(tz=UTC)
         elapsed_time = (end_time - start_time).total_seconds()
@@ -795,6 +812,7 @@ class ClaudeSdkAgentClient(AgentClient):
         issue_key: str,
         orch_name: str,
         agent_teams: bool = False,
+        attempt: int = 1,
     ) -> tuple[str, UsageInfo | None]:
         """Run agent with streaming logs.
 
@@ -808,6 +826,7 @@ class ClaudeSdkAgentClient(AgentClient):
             issue_key: The issue key for organizing logs.
             orch_name: The orchestration name for organizing logs.
             agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
+            attempt: Attempt number (1-based) for unique log filenames (DS-960).
 
         Returns:
             A tuple of (response_text, usage_info).
@@ -831,7 +850,7 @@ class ClaudeSdkAgentClient(AgentClient):
         start_time = datetime.now(tz=UTC)
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / generate_log_filename(start_time)
+        log_path = log_dir / generate_log_filename(start_time, issue_key=issue_key, attempt=attempt)
 
         # Initialize timing metrics with configured threshold
         metrics = TimingMetrics(

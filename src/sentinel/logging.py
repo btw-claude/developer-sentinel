@@ -11,40 +11,74 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-# Log filename format constant
-# Used across the codebase for consistent log file naming: YYYYMMDD_HHMMSS.log
-LOG_FILENAME_FORMAT = "%Y%m%d_%H%M%S"
+# Log filename format constants
+# New format: {issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}.log
+# - _ separates issue key from timestamp (issue keys contain - but not _)
+# - - separates date from time within timestamp (disambiguates from _ delimiter)
+# - _a{N} suffix guarantees uniqueness across retries
+LOG_TIMESTAMP_FORMAT = "%Y%m%d-%H%M%S"
 LOG_FILENAME_EXTENSION = ".log"
 
+# Legacy format for backward compatibility: YYYYMMDD_HHMMSS.log
+_LEGACY_LOG_FILENAME_FORMAT = "%Y%m%d_%H%M%S"
 
-def generate_log_filename(timestamp: datetime) -> str:
-    """Generate a log filename from a timestamp.
 
-    Creates a consistent log filename format (YYYYMMDD_HHMMSS.log) used
-    throughout the codebase for agent execution logs.
+def generate_log_filename(
+    timestamp: datetime,
+    issue_key: str | None = None,
+    attempt: int = 1,
+) -> str:
+    """Generate a log filename from a timestamp, issue key, and attempt number.
+
+    Creates a consistent log filename format used throughout the codebase
+    for agent execution logs.
+
+    Format: {issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}.log
+    Fallback (no issue_key): {YYYYMMDD-HHMMSS}_a{attempt}.log
 
     Args:
         timestamp: The datetime to use for the filename.
+        issue_key: Optional issue key to include in the filename.
+        attempt: Attempt number (1-based). Defaults to 1.
 
     Returns:
-        Log filename string in format YYYYMMDD_HHMMSS.log
+        Log filename string.
     """
-    return timestamp.strftime(LOG_FILENAME_FORMAT) + LOG_FILENAME_EXTENSION
+    ts = timestamp.strftime(LOG_TIMESTAMP_FORMAT)
+    if issue_key:
+        return f"{issue_key}_{ts}_a{attempt}{LOG_FILENAME_EXTENSION}"
+    return f"{ts}_a{attempt}{LOG_FILENAME_EXTENSION}"
 
 
 def parse_log_filename(filename: str) -> datetime | None:
     """Parse a log filename back to a datetime.
 
+    Supports both new format ({issue_key}_{YYYYMMDD-HHMMSS}_a{N}.log)
+    and legacy format (YYYYMMDD_HHMMSS.log).
+
     Args:
-        filename: Log filename in format YYYYMMDD_HHMMSS.log
+        filename: Log filename to parse.
 
     Returns:
-        Parsed datetime, or None if the filename doesn't match the expected format.
+        Parsed datetime, or None if the filename doesn't match any expected format.
     """
     try:
         # Remove .log extension using explicit suffix removal
         name = filename.removesuffix(LOG_FILENAME_EXTENSION)
-        return datetime.strptime(name, LOG_FILENAME_FORMAT).replace(tzinfo=UTC)
+
+        # Try new format: {issue_key}_{YYYYMMDD-HHMMSS}_a{N} or {YYYYMMDD-HHMMSS}_a{N}
+        # The attempt suffix is _a followed by digits at the end
+        if "_a" in name:
+            # Strip the _a{N} suffix
+            base = name.rsplit("_a", 1)[0]
+            # The timestamp is the last YYYYMMDD-HHMMSS portion
+            # If there's an issue key, timestamp follows the last _ before _a
+            parts = base.rsplit("_", 1)
+            ts_str = parts[-1] if len(parts) > 1 else parts[0]
+            return datetime.strptime(ts_str, LOG_TIMESTAMP_FORMAT).replace(tzinfo=UTC)
+
+        # Try legacy format: YYYYMMDD_HHMMSS
+        return datetime.strptime(name, _LEGACY_LOG_FILENAME_FORMAT).replace(tzinfo=UTC)
     except (ValueError, IndexError):
         return None
 

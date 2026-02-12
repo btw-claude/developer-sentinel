@@ -1171,10 +1171,10 @@ class TestCodexStreamingLogs:
         log_files = list(orch_dir.glob("*.log"))
         assert len(log_files) == 1, "Exactly one log file should be created"
         assert log_files[0].name.endswith(".log")
-        # Filename format: YYYYMMDD_HHMMSS.log
+        # Filename format: {issue_key}_{YYYYMMDD-HHMMSS}_a{N}.log (DS-960)
         stem = log_files[0].stem
-        assert len(stem) == 15  # YYYYMMDD_HHMMSS
-        assert stem[8] == "_"
+        assert "TEST-100" in stem
+        assert "_a1" in stem
 
     def test_streaming_writes_header(self, tmp_path: Path) -> None:
         """Verify log header contains issue key, orchestration name, and prompt."""
