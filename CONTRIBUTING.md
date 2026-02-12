@@ -419,7 +419,7 @@ class MyClass:
 #### Jira Issue Links in Sphinx Documentation
 
 The project provides a custom Sphinx role (``:jira:``) for linking Jira issue keys in
-documentation.  See ``src/sentinel/sphinx_jira_role.py`` for the extension implementation.
+documentation. See ``src/sentinel/sphinx_jira_role.py`` for the extension implementation.
 
 To use the role in reStructuredText or Sphinx-processed docstrings:
 
@@ -447,7 +447,7 @@ GitHub Actions uses two distinct evaluation contexts that can be confusing to co
    expression values.
 
 Failing to document which engine handles which operator leads to subtle bugs and
-misunderstandings.  The existing `branch-strictness` action
+misunderstandings. The existing `branch-strictness` action
 (`.github/actions/branch-strictness/action.yml`) is the reference implementation of this
 pattern.
 
@@ -462,7 +462,7 @@ When creating or reviewing a composite action, ensure the following:
 
    ```yaml
    # The output value mappings below use ${{ }} expressions evaluated by the
-   # GitHub Actions expression engine (not by bash).  Each expression simply
+   # GitHub Actions expression engine (not by bash). Each expression simply
    # forwards a step output to a composite-action-level output so that
    # calling workflows can reference the values via the action's output
    # interface (e.g. steps.<id>.outputs.is-strict).
@@ -478,9 +478,9 @@ When creating or reviewing a composite action, ensure the following:
 
 3. **Do NOT use literal `${{ }}` expressions inside `run:` block comments** — The GitHub
    Actions expression engine evaluates *all* `${{ }}` occurrences in a `run:` block, including
-   those inside shell comments (`#`).  This means a comment like
+   those inside shell comments (`#`). This means a comment like
    `# This uses ${{ inputs.ref }}` will be evaluated and substituted, which can cause
-   unexpected behavior or leak values.  Instead, describe the expression in plain English or
+   unexpected behavior or leak values. Instead, describe the expression in plain English or
    use the phrase "double-curly-brace expression delimiters" when referring to the syntax.
 
    ```yaml
@@ -521,7 +521,7 @@ documentation pattern applied to a real composite action.
 
 **Use inline parenthetical format for DS-reference tags in docstrings and code comments.**
 
-DS-reference tags trace code decisions back to Jira issues.  A consistent tagging style keeps
+DS-reference tags trace code decisions back to Jira issues. A consistent tagging style keeps
 comments scannable and ``grep``-friendly across the codebase.
 
 #### Rules
@@ -540,7 +540,7 @@ comments scannable and ``grep``-friendly across the codebase.
    ```
 
 3. **No split key phrases** — When a comment spans multiple lines, avoid breaking a key phrase
-   (such as the DS tag and the concept it annotates) across lines.  Reflow the text so the tag
+   (such as the DS tag and the concept it annotates) across lines. Reflow the text so the tag
    and its surrounding phrase remain on the same line:
 
    ```python
@@ -582,14 +582,14 @@ def _strip_log_extension(filename: str) -> str:
 **Multiple tags in a single comment:**
 
 ```python
-# pattern (DS-1001, DS-998).  Uses _strip_log_extension() shared helper
+# pattern (DS-1001, DS-998). Uses _strip_log_extension() shared helper
 # for extension removal (DS-1010).
 ```
 
 #### Related Issues
 
 This convention was established in DS-1032 (and its predecessor DS-1030) while standardising
-annotations in ``src/sentinel/logging.py``.  See also DS-1017 and DS-1000 for earlier
+annotations in ``src/sentinel/logging.py``. See also DS-1017 and DS-1000 for earlier
 discussion.
 
 ### Other Conventions
