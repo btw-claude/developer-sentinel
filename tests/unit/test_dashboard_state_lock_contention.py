@@ -413,7 +413,8 @@ class TestCachedMethodLockContentionBenchmark:
 
         # Guard-rail threshold: 50x (intentionally generous to avoid CI flakiness).
         # Expected range: 1-5x overhead for single-threaded uncontended lock acquisition.
-        # Values consistently above 5x may indicate a regression worth investigating.
+        # Values consistently above 5x may indicate a regression in lock acquisition
+        # overhead or cache decorator performance worth investigating.
         assert comparison.mean_latency_overhead_ratio < 50.0
 
     @pytest.mark.benchmark
@@ -455,7 +456,9 @@ class TestCachedMethodLockContentionBenchmark:
         # in environments with variable CPU availability).
         # Expected range: 1-10x overhead under moderate contention (4 threads).
         # The Python GIL limits true parallelism, so lock contention impact is
-        # bounded by GIL scheduling. Values consistently above 10x may signal regression.
+        # bounded by GIL scheduling. Values consistently above 10x may indicate
+        # a regression in lock acquisition overhead, GIL scheduling contention,
+        # or cache decorator performance worth investigating.
         assert comparison.mean_latency_overhead_ratio < 100.0
 
     @pytest.mark.benchmark
@@ -498,7 +501,9 @@ class TestCachedMethodLockContentionBenchmark:
         # Expected range: 1-10x overhead under high contention (16 threads).
         # Python's GIL means threads are effectively serialized for CPU-bound
         # work, so lock contention impact is bounded by GIL scheduling.
-        # Values consistently above 10x may signal regression.
+        # Values consistently above 10x may indicate a regression in lock
+        # acquisition overhead, GIL scheduling contention, or cache decorator
+        # performance worth investigating.
         assert comparison.mean_latency_overhead_ratio < 100.0
 
     @pytest.mark.benchmark
