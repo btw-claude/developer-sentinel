@@ -27,6 +27,11 @@ from sentinel.dashboard.state import (
 )
 from tests.unit.test_dashboard_routes import MockSentinel
 
+# Cache the Lock type at module level for isinstance() checks.
+# In Python <3.13, threading.Lock is a factory function, not a type,
+# so we need type(Lock()) to get the actual type for isinstance().
+_LockType = type(Lock())
+
 
 def make_execution(
     *,
@@ -913,10 +918,7 @@ class TestGetStateCacheThreadSafety:
         accessor = _create_accessor()
 
         assert hasattr(accessor, "_state_cache_lock")
-        # Use type(Lock()) instead of Lock directly because in Python <3.13,
-        # threading.Lock is a factory function, not a type, and cannot be
-        # used as the second argument to isinstance().
-        assert isinstance(accessor._state_cache_lock, type(Lock()))
+        assert isinstance(accessor._state_cache_lock, _LockType)
 
     def test_get_state_acquires_lock(self) -> None:
         """Test that get_state() acquires the cache lock during execution.
