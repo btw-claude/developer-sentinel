@@ -171,8 +171,20 @@ def parse_log_filename_parts(
     themselves contain underscores (e.g. ``MY_PROJ-123``) are correctly
     preserved.
 
+    .. note:: Extensionless filenames (intentional API behavior)
+
+        The ``.log`` extension is **not** required.  Internally,
+        ``str.removesuffix`` strips ``LOG_FILENAME_EXTENSION`` when present
+        and is a no-op when the suffix is absent, so bare stems such as
+        ``"DS-123_20240115-103045_a1"`` are matched identically to their
+        ``.log``-suffixed counterparts.  This is intentional — it allows
+        callers that have already stripped the extension (or that operate on
+        stems directly) to use this function without re-appending it.  See
+        ``test_parses_filename_without_log_extension`` for coverage.
+
     Args:
-        filename: Log filename to parse.
+        filename: Log filename to parse.  May include or omit the ``.log``
+            extension — both forms are accepted (see note above).
 
     Returns:
         A :class:`LogFilenameParts` named tuple if the filename matches the
