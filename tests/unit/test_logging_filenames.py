@@ -711,6 +711,21 @@ class TestFormatLogDisplayName:
 
         assert result == "MY_PROJ-123 2024-01-15 10:30:45 (attempt 1)"
 
+    def test_formats_multi_underscore_issue_key(
+        self, accessor: SentinelStateAccessor
+    ) -> None:
+        """Should format display name for issue keys with multiple underscores.
+
+        DS-989 follow-up: extends ``test_formats_underscore_issue_key`` to verify
+        that multi-underscore issue keys (e.g., MY_PROJ_V2-123) are correctly
+        handled end-to-end through the display formatting layer, ensuring the
+        greedy regex captures all underscore segments.
+        """
+        filename = "MY_PROJ_V2-123_20240115-103045_a1.log"
+        result = accessor._format_log_display_name(filename)
+
+        assert result == "MY_PROJ_V2-123 2024-01-15 10:30:45 (attempt 1)"
+
     def test_multi_hyphen_issue_key(self, accessor: SentinelStateAccessor) -> None:
         result = accessor._format_log_display_name(
             "MY-PROJECT-42_20250601-120000_a3.log",
