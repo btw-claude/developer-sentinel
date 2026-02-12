@@ -194,9 +194,9 @@ class LogFilenameParts(NamedTuple):
         ``parse_log_filename`` (DS-1001).
 
         Delegates to the module-level :func:`_parse_log_timestamp` cache
-        so that repeated calls with the same timestamp string (e.g., from
-        both ``parse_log_filename`` and ``_format_log_display_name``)
-        avoid redundant ``strptime`` parsing (DS-994).
+        so that repeated calls with the same timestamp string -- such as
+        from both ``parse_log_filename`` and ``_format_log_display_name``
+        -- avoid redundant ``strptime`` parsing (DS-994).
 
         Returns:
             A UTC-aware ``datetime`` parsed from :attr:`timestamp`.
