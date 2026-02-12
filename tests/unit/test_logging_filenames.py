@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -848,8 +848,6 @@ class TestLegacyFormatUsesCache:
         DS-998: verify the legacy strptime call is now centralised through
         the same _parse_log_timestamp helper used by to_datetime().
         """
-        from unittest.mock import patch
-
         with patch(
             "sentinel.logging._parse_log_timestamp",
             wraps=__import__("sentinel.logging", fromlist=["_parse_log_timestamp"])._parse_log_timestamp,
@@ -984,8 +982,6 @@ class TestFormatLogDisplayName:
         verify that for new-format filenames ``parse_log_filename_parts``
         is called and ``parse_log_filename`` is **not**.
         """
-        from unittest.mock import patch
-
         with (
             patch(
                 "sentinel.dashboard.state.parse_log_filename_parts",
