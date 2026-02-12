@@ -1161,10 +1161,10 @@ class SentinelStateAccessor:
         # match against the same _LOG_FILENAME_REGEX).
         parts = parse_log_filename_parts(filename)
         if parts is not None:
-            # Use named attributes from LogFilenameParts for readability.
-            # to_datetime() centralises the strptime/replace(tzinfo=UTC)
-            # pattern so it isn't duplicated across call sites.
-            formatted_time = parts.to_datetime().strftime("%Y-%m-%d %H:%M:%S")
+            # Use the parsed_datetime property for attribute-style access
+            # (DS-998).  Delegates to to_datetime() which centralises the
+            # strptime/replace(tzinfo=UTC) pattern via _parse_log_timestamp.
+            formatted_time = parts.parsed_datetime.strftime("%Y-%m-%d %H:%M:%S")
             if parts.issue_key:
                 return f"{parts.issue_key} {formatted_time} (attempt {parts.attempt})"
             return f"{formatted_time} (attempt {parts.attempt})"

@@ -13,26 +13,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, NamedTuple
 
-
-@lru_cache(maxsize=128)
-def _parse_log_timestamp(timestamp: str) -> datetime:
-    """Parse a log timestamp string to a UTC-aware datetime (cached).
-
-    Module-level cache avoids redundant ``strptime`` calls when the same
-    timestamp string is parsed multiple times (e.g., from both
-    ``parse_log_filename`` and ``_format_log_display_name``).
-
-    Args:
-        timestamp: Timestamp in ``YYYYMMDD-HHMMSS`` format.
-
-    Returns:
-        A UTC-aware ``datetime``.
-
-    Raises:
-        ValueError: If *timestamp* does not conform to the expected format.
-    """
-    return datetime.strptime(timestamp, LOG_TIMESTAMP_FORMAT).replace(tzinfo=UTC)
-
 # Log filename format constants
 # New format: {issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}.log
 # - _ separates issue key from timestamp (issue keys contain - but not _)
@@ -50,6 +30,32 @@ _LEGACY_LOG_FILENAME_FORMAT = "%Y%m%d_%H%M%S"
 # Note: The greedy (.+) for issue_key is safe because backtracking is anchored
 # by the strict \d{8}-\d{6} timestamp pattern that follows the underscore delimiter.
 _LOG_FILENAME_REGEX = re.compile(r"^(?:(.+)_)?(\d{8}-\d{6})_a(\d+)$")
+
+
+@lru_cache(maxsize=128)
+def _parse_log_timestamp(timestamp: str, fmt: str = LOG_TIMESTAMP_FORMAT) -> datetime:
+    """Parse a log timestamp string to a UTC-aware datetime (cached).
+
+    Module-level cache avoids redundant ``strptime`` calls when the same
+    timestamp string is parsed multiple times (e.g., from both
+    ``parse_log_filename`` and ``_format_log_display_name``).
+
+    Centralises the ``strptime`` / ``replace(tzinfo=UTC)`` pattern so
+    that no call site needs to inline it (DS-998).
+
+    Args:
+        timestamp: Timestamp string (e.g., ``"20240115-103045"``).
+        fmt: ``strftime``/``strptime`` format string.  Defaults to
+            :data:`LOG_TIMESTAMP_FORMAT` (``YYYYMMDD-HHMMSS``).  Pass
+            :data:`_LEGACY_LOG_FILENAME_FORMAT` for legacy timestamps.
+
+    Returns:
+        A UTC-aware ``datetime``.
+
+    Raises:
+        ValueError: If *timestamp* does not conform to *fmt*.
+    """
+    return datetime.strptime(timestamp, fmt).replace(tzinfo=UTC)
 
 
 def generate_log_filename(
@@ -106,9 +112,11 @@ def parse_log_filename(filename: str) -> datetime | None:
         return parts.to_datetime()
 
     # Fall back to legacy format: YYYYMMDD_HHMMSS
+    # Delegates to _parse_log_timestamp to centralise the strptime/replace
+    # pattern (DS-998).
     try:
         name = filename.removesuffix(LOG_FILENAME_EXTENSION)
-        return datetime.strptime(name, _LEGACY_LOG_FILENAME_FORMAT).replace(tzinfo=UTC)
+        return _parse_log_timestamp(name, _LEGACY_LOG_FILENAME_FORMAT)
     except ValueError:
         return None
 
@@ -173,6 +181,28 @@ class LogFilenameParts(NamedTuple):
                 :func:`parse_log_filename_parts`.
         """
         return _parse_log_timestamp(self.timestamp)
+
+    @property
+    def parsed_datetime(self) -> datetime:
+        """UTC-aware datetime parsed from :attr:`timestamp` (read-only property).
+
+        Convenience property alias for :meth:`to_datetime`, providing
+        attribute-style access (``parts.parsed_datetime``) as an
+        alternative to the method-call style (``parts.to_datetime()``).
+        Suggested by DS-998 to improve ergonomics at call sites where
+        the result is used inline (e.g., formatting or comparisons).
+
+        Delegates to :meth:`to_datetime`; see that method for caching
+        behaviour, error semantics, and implementation details.
+
+        Returns:
+            A UTC-aware ``datetime`` parsed from :attr:`timestamp`.
+
+        Raises:
+            ValueError: If :attr:`timestamp` does not conform to the
+                ``YYYYMMDD-HHMMSS`` format.
+        """
+        return self.to_datetime()
 
     def __repr__(self) -> str:
         """Return an unambiguous representation for debugging.
