@@ -1421,11 +1421,7 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
         )
 
     # Parse max_concurrent field (defaults to None for no per-orchestration limit).
-    #
-    # Note: Includes an explicit boolean guard since ``bool`` is a subclass of
-    # ``int`` in Python, so ``isinstance(True, int)`` returns ``True``.
-    # Without the guard, YAML values like ``max_concurrent: true`` would be
-    # silently accepted as numeric values (``True == 1``, ``False == 0``).
+    # See docstring for boolean guard rationale.
     max_concurrent = data.get("max_concurrent")
     if max_concurrent is not None and (
         isinstance(max_concurrent, bool)
