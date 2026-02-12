@@ -7,6 +7,7 @@ Tests for orchestration toggle API endpoints.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import tempfile
 from collections.abc import Generator
@@ -671,7 +672,36 @@ class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
 class TestToggleOrchestrationEndpoint:
     """Tests for POST /api/orchestrations/{name}/toggle endpoint."""
 
-    def test_toggle_orchestration_success(self, temp_logs_dir: Path) -> None:
+    @pytest.fixture
+    def orch_client_factory(
+        self, temp_logs_dir: Path
+    ) -> Generator[Any, None, None]:
+        """Provide a factory for creating TestClients with orchestration data.
+
+        Eliminates the repeated Config/MockSentinel/MockStateAccessor/create_test_app
+        setup pattern across toggle endpoint tests (DS-955).
+
+        Yields:
+            A callable that accepts an optional list of OrchestrationInfo and
+            returns a context manager yielding a TestClient.
+        """
+
+        @contextlib.contextmanager
+        def _make_client(
+            orchestrations: list[OrchestrationInfo] | None = None,
+        ) -> Generator[TestClient, None, None]:
+            config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(
+                sentinel, orchestrations or []
+            )
+            app = create_test_app(accessor)
+            with TestClient(app) as client:
+                yield client
+
+        yield _make_client
+
+    def test_toggle_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test successful toggle of a single orchestration."""
         # Create an orchestration YAML file
         orch_file = temp_logs_dir / "test-orch.yaml"
@@ -686,9 +716,6 @@ orchestrations:
       prompt: "Test prompt"
 """)
 
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         # Create orchestration info pointing to the real file
         orch_info = OrchestrationInfo(
             name="test-orch",
@@ -701,10 +728,7 @@ orchestrations:
             source_file=str(orch_file),
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory([orch_info]) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -724,7 +748,7 @@ orchestrations:
             updated_content = orch_file.read_text()
             assert "enabled: false" in updated_content
 
-    def test_toggle_orchestration_enable(self, temp_logs_dir: Path) -> None:
+    def test_toggle_orchestration_enable(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test enabling a disabled orchestration."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -737,9 +761,6 @@ orchestrations:
       prompt: "Test"
 """)
 
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         orch_info = OrchestrationInfo(
             name="test-orch",
             enabled=False,
@@ -751,10 +772,7 @@ orchestrations:
             source_file=str(orch_file),
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory([orch_info]) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -773,16 +791,10 @@ orchestrations:
             updated_content = orch_file.read_text()
             assert "enabled: true" in updated_content
 
-    def test_toggle_orchestration_not_found(self, temp_logs_dir: Path) -> None:
+    def test_toggle_orchestration_not_found(self, orch_client_factory: Any) -> None:
         """Test 404 when orchestration doesn't exist."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         # No orchestrations configured
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory() as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -795,11 +807,8 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_toggle_orchestration_file_not_found(self, temp_logs_dir: Path) -> None:
+    def test_toggle_orchestration_file_not_found(self, orch_client_factory: Any) -> None:
         """Test 404 when orchestration file doesn't exist."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         # Orchestration info pointing to non-existent file
         orch_info = OrchestrationInfo(
             name="test-orch",
@@ -812,10 +821,7 @@ orchestrations:
             source_file="/nonexistent/path.yaml",
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory([orch_info]) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -828,21 +834,46 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_toggle_endpoint_exists(self, temp_logs_dir: Path) -> None:
+    def test_toggle_endpoint_exists(self, orch_client_factory: Any) -> None:
         """Test that the toggle endpoint exists at the correct path."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
-
-        route_paths = [route.path for route in app.routes]
-        assert "/api/orchestrations/{name}/toggle" in route_paths
+        with orch_client_factory() as client:
+            route_paths = [route.path for route in client.app.routes]
+            assert "/api/orchestrations/{name}/toggle" in route_paths
 
 
 class TestBulkToggleOrchestrationEndpoint:
     """Tests for POST /api/orchestrations/bulk-toggle endpoint."""
 
-    def test_bulk_toggle_jira_orchestrations_success(self, temp_logs_dir: Path) -> None:
+    @pytest.fixture
+    def orch_client_factory(
+        self, temp_logs_dir: Path
+    ) -> Generator[Any, None, None]:
+        """Provide a factory for creating TestClients with orchestration data.
+
+        Eliminates the repeated Config/MockSentinel/MockStateAccessor/create_test_app
+        setup pattern across bulk toggle endpoint tests (DS-955).
+
+        Yields:
+            A callable that accepts an optional list of OrchestrationInfo and
+            returns a context manager yielding a TestClient.
+        """
+
+        @contextlib.contextmanager
+        def _make_client(
+            orchestrations: list[OrchestrationInfo] | None = None,
+        ) -> Generator[TestClient, None, None]:
+            config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(
+                sentinel, orchestrations or []
+            )
+            app = create_test_app(accessor)
+            with TestClient(app) as client:
+                yield client
+
+        yield _make_client
+
+    def test_bulk_toggle_jira_orchestrations_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test bulk toggling Jira orchestrations by project."""
         # Create an orchestration YAML file with multiple orchestrations
         orch_file = temp_logs_dir / "jira-orchestrations.yaml"
@@ -870,9 +901,6 @@ orchestrations:
     agent:
       prompt: "Other project"
 """)
-
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
 
         orchestrations = [
             OrchestrationInfo(
@@ -907,10 +935,7 @@ orchestrations:
             ),
         ]
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory(orchestrations) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -933,7 +958,7 @@ orchestrations:
             # OTHER project should still be enabled
             assert "enabled: true" in updated_content
 
-    def test_bulk_toggle_github_orchestrations_success(self, temp_logs_dir: Path) -> None:
+    def test_bulk_toggle_github_orchestrations_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test bulk toggling GitHub orchestrations by project owner."""
         orch_file = temp_logs_dir / "github-orchestrations.yaml"
         orch_file.write_text("""
@@ -955,9 +980,6 @@ orchestrations:
     agent:
       prompt: "Second"
 """)
-
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
 
         orchestrations = [
             OrchestrationInfo(
@@ -982,10 +1004,7 @@ orchestrations:
             ),
         ]
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory(orchestrations) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1000,16 +1019,10 @@ orchestrations:
             assert data["success"] is True
             assert data["toggled_count"] == 2
 
-    def test_bulk_toggle_no_matching_orchestrations(self, temp_logs_dir: Path) -> None:
+    def test_bulk_toggle_no_matching_orchestrations(self, orch_client_factory: Any) -> None:
         """Test 404 when no orchestrations match the identifier."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         # No matching orchestrations
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory() as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1022,24 +1035,15 @@ orchestrations:
             assert response.status_code == 404
             assert "No orchestrations found" in response.json()["detail"]
 
-    def test_bulk_toggle_endpoint_exists(self, temp_logs_dir: Path) -> None:
+    def test_bulk_toggle_endpoint_exists(self, orch_client_factory: Any) -> None:
         """Test that the bulk toggle endpoint exists at the correct path."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        with orch_client_factory() as client:
+            route_paths = [route.path for route in client.app.routes]
+            assert "/api/orchestrations/bulk-toggle" in route_paths
 
-        route_paths = [route.path for route in app.routes]
-        assert "/api/orchestrations/bulk-toggle" in route_paths
-
-    def test_bulk_toggle_invalid_source(self, temp_logs_dir: Path) -> None:
+    def test_bulk_toggle_invalid_source(self, orch_client_factory: Any) -> None:
         """Test validation error for invalid source type."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory() as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1056,7 +1060,42 @@ orchestrations:
 class TestDeleteOrchestrationEndpoint:
     """Tests for DELETE /api/orchestrations/{name} endpoint."""
 
-    def test_delete_orchestration_success(self, temp_logs_dir: Path) -> None:
+    @pytest.fixture
+    def orch_client_factory(
+        self, temp_logs_dir: Path
+    ) -> Generator[Any, None, None]:
+        """Provide a factory for creating TestClients with orchestration data.
+
+        Eliminates the repeated Config/MockSentinel/MockStateAccessor/create_test_app
+        setup pattern across delete endpoint tests (DS-955).
+
+        Yields:
+            A callable that accepts an optional list of OrchestrationInfo and
+            an optional pass_config flag, returning a context manager yielding
+            a TestClient.
+        """
+
+        @contextlib.contextmanager
+        def _make_client(
+            orchestrations: list[OrchestrationInfo] | None = None,
+            *,
+            pass_config: bool = False,
+        ) -> Generator[TestClient, None, None]:
+            config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(
+                sentinel, orchestrations or []
+            )
+            kwargs: dict[str, Any] = {}
+            if pass_config:
+                kwargs["config"] = config
+            app = create_test_app(accessor, **kwargs)
+            with TestClient(app) as client:
+                yield client
+
+        yield _make_client
+
+    def test_delete_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test successful deletion of an orchestration."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -1077,9 +1116,6 @@ orchestrations:
       prompt: "Other prompt"
 """)
 
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         orch_info = OrchestrationInfo(
             name="test-orch",
             enabled=True,
@@ -1091,10 +1127,7 @@ orchestrations:
             source_file=str(orch_file),
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory([orch_info]) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1110,15 +1143,9 @@ orchestrations:
             assert "test-orch" not in updated_content
             assert "other-orch" in updated_content
 
-    def test_delete_orchestration_not_found(self, temp_logs_dir: Path) -> None:
+    def test_delete_orchestration_not_found(self, orch_client_factory: Any) -> None:
         """Test 404 when orchestration doesn't exist."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory() as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1127,11 +1154,8 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_delete_orchestration_file_not_found(self, temp_logs_dir: Path) -> None:
+    def test_delete_orchestration_file_not_found(self, orch_client_factory: Any) -> None:
         """Test 404 when orchestration file doesn't exist."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         orch_info = OrchestrationInfo(
             name="test-orch",
             enabled=True,
@@ -1143,10 +1167,7 @@ orchestrations:
             source_file="/nonexistent/path.yaml",
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory([orch_info]) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1155,17 +1176,13 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_delete_endpoint_exists(self, temp_logs_dir: Path) -> None:
+    def test_delete_endpoint_exists(self, orch_client_factory: Any) -> None:
         """Test that the delete endpoint exists at the correct path."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        with orch_client_factory() as client:
+            route_paths = [route.path for route in client.app.routes]
+            assert "/api/orchestrations/{name}" in route_paths
 
-        route_paths = [route.path for route in app.routes]
-        assert "/api/orchestrations/{name}" in route_paths
-
-    def test_delete_orchestration_rate_limited(self, temp_logs_dir: Path) -> None:
+    def test_delete_orchestration_rate_limited(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test that rapid deletes are rate limited."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -1185,9 +1202,6 @@ orchestrations:
     agent:
       prompt: "Second"
 """)
-
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
 
         orchestrations = [
             OrchestrationInfo(
@@ -1212,10 +1226,7 @@ orchestrations:
             ),
         ]
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, orchestrations)
-        app = create_test_app(accessor, config=config)
-
-        with TestClient(app) as client:
+        with orch_client_factory(orchestrations, pass_config=True) as client:
             # Get CSRF token for first delete (DS-926)
             csrf_token1 = get_csrf_token(client)
 
@@ -1393,7 +1404,36 @@ orchestrations:
 class TestEditOrchestrationEndpoint:
     """Tests for PUT /api/orchestrations/{name} endpoint (DS-727)."""
 
-    def test_edit_orchestration_success(self, temp_logs_dir: Path) -> None:
+    @pytest.fixture
+    def orch_client_factory(
+        self, temp_logs_dir: Path
+    ) -> Generator[Any, None, None]:
+        """Provide a factory for creating TestClients with orchestration data.
+
+        Eliminates the repeated Config/MockSentinel/MockStateAccessor/create_test_app
+        setup pattern across edit endpoint tests (DS-955).
+
+        Yields:
+            A callable that accepts an optional list of OrchestrationInfo and
+            returns a context manager yielding a TestClient.
+        """
+
+        @contextlib.contextmanager
+        def _make_client(
+            orchestrations: list[OrchestrationInfo] | None = None,
+        ) -> Generator[TestClient, None, None]:
+            config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(
+                sentinel, orchestrations or []
+            )
+            app = create_test_app(accessor)
+            with TestClient(app) as client:
+                yield client
+
+        yield _make_client
+
+    def test_edit_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test successful edit of an orchestration field via PUT."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -1407,9 +1447,6 @@ orchestrations:
       prompt: "Original prompt"
 """)
 
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         orch_info = OrchestrationInfo(
             name="test-orch",
             enabled=True,
@@ -1421,10 +1458,7 @@ orchestrations:
             source_file=str(orch_file),
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory([orch_info]) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1443,14 +1477,9 @@ orchestrations:
             updated_content = orch_file.read_text()
             assert "Updated prompt" in updated_content
 
-    def test_edit_orchestration_not_found(self, temp_logs_dir: Path) -> None:
+    def test_edit_orchestration_not_found(self, orch_client_factory: Any) -> None:
         """Test 404 when orchestration doesn't exist."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory() as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1463,7 +1492,7 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_edit_orchestration_validation_error(self, temp_logs_dir: Path) -> None:
+    def test_edit_orchestration_validation_error(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test 422 when edit produces invalid configuration."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -1477,9 +1506,6 @@ orchestrations:
       prompt: "Test prompt"
 """)
 
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         orch_info = OrchestrationInfo(
             name="test-orch",
             enabled=True,
@@ -1491,10 +1517,7 @@ orchestrations:
             source_file=str(orch_file),
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory([orch_info]) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1507,7 +1530,7 @@ orchestrations:
 
             assert response.status_code == 422
 
-    def test_edit_orchestration_empty_update(self, temp_logs_dir: Path) -> None:
+    def test_edit_orchestration_empty_update(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test that empty update returns success without file modification."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         original_content = """
@@ -1522,9 +1545,6 @@ orchestrations:
 """
         orch_file.write_text(original_content)
 
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         orch_info = OrchestrationInfo(
             name="test-orch",
             enabled=True,
@@ -1536,10 +1556,7 @@ orchestrations:
             source_file=str(orch_file),
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory([orch_info]) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -1555,21 +1572,14 @@ orchestrations:
             assert data["success"] is True
             assert data["name"] == "test-orch"
 
-    def test_edit_endpoint_exists(self, temp_logs_dir: Path) -> None:
+    def test_edit_endpoint_exists(self, orch_client_factory: Any) -> None:
         """Test that the edit endpoint exists at the correct path."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor)
+        with orch_client_factory() as client:
+            route_paths = [route.path for route in client.app.routes]
+            assert "/api/orchestrations/{name}" in route_paths
 
-        route_paths = [route.path for route in app.routes]
-        assert "/api/orchestrations/{name}" in route_paths
-
-    def test_edit_orchestration_file_not_found(self, temp_logs_dir: Path) -> None:
+    def test_edit_orchestration_file_not_found(self, orch_client_factory: Any) -> None:
         """Test 404 when orchestration file doesn't exist."""
-        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-        sentinel = MockSentinelWithOrchestrations(config, [])
-
         orch_info = OrchestrationInfo(
             name="test-orch",
             enabled=True,
@@ -1581,10 +1591,7 @@ orchestrations:
             source_file="/nonexistent/path.yaml",
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor)
-
-        with TestClient(app) as client:
+        with orch_client_factory([orch_info]) as client:
             # Get CSRF token (DS-926)
             csrf_token = get_csrf_token(client)
 
@@ -2255,23 +2262,46 @@ class TestEditFormPartialEndpoint:
 class TestCreateOrchestrationEndpoint:
     """Tests for POST /api/orchestrations endpoint (DS-729)."""
 
-    def test_create_orchestration_success(self, temp_logs_dir: Path) -> None:
+    @pytest.fixture
+    def create_orch_client_factory(
+        self, temp_logs_dir: Path
+    ) -> Generator[Any, None, None]:
+        """Provide a factory for creating TestClients for create endpoint tests.
+
+        Sets up the orchestrations directory and passes config to create_test_app,
+        eliminating the repeated setup pattern across create tests (DS-955).
+
+        Yields:
+            A callable that accepts an optional list of OrchestrationInfo and
+            returns a context manager yielding a tuple of (TestClient, Path) where
+            the Path is the orchestrations directory.
+        """
+
+        @contextlib.contextmanager
+        def _make_client(
+            orchestrations: list[OrchestrationInfo] | None = None,
+        ) -> Generator[tuple[TestClient, Path], None, None]:
+            orch_dir = temp_logs_dir / "orchestrations"
+            orch_dir.mkdir(exist_ok=True)
+            config = Config(
+                execution=ExecutionConfig(
+                    agent_logs_dir=temp_logs_dir,
+                    orchestrations_dir=orch_dir,
+                ),
+            )
+            sentinel = MockSentinelWithOrchestrations(config, [])
+            accessor = MockStateAccessorWithOrchestrations(
+                sentinel, orchestrations or []
+            )
+            app = create_test_app(accessor, config=config)
+            with TestClient(app) as client:
+                yield client, orch_dir
+
+        yield _make_client
+
+    def test_create_orchestration_success(self, create_orch_client_factory: Any) -> None:
         """Test successful creation of a new orchestration."""
-        # Create orchestrations directory
-        orch_dir = temp_logs_dir / "orchestrations"
-        orch_dir.mkdir()
-
-        config = Config(
-            execution=ExecutionConfig(
-                agent_logs_dir=temp_logs_dir,
-                orchestrations_dir=orch_dir,
-            ),
-        )
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor, config=config)
-
-        with TestClient(app) as client:
+        with create_orch_client_factory() as (client, orch_dir):
             # Get CSRF token first (DS-736)
             csrf_token = get_csrf_token(client)
 
@@ -2297,18 +2327,9 @@ class TestCreateOrchestrationEndpoint:
             content = created_file.read_text()
             assert "new-orch" in content
 
-    def test_create_orchestration_duplicate_name(self, temp_logs_dir: Path) -> None:
+    def test_create_orchestration_duplicate_name(self, temp_logs_dir: Path, create_orch_client_factory: Any) -> None:
         """Test 422 when orchestration name already exists."""
         orch_dir = temp_logs_dir / "orchestrations"
-        orch_dir.mkdir()
-
-        config = Config(
-            execution=ExecutionConfig(
-                agent_logs_dir=temp_logs_dir,
-                orchestrations_dir=orch_dir,
-            ),
-        )
-        sentinel = MockSentinelWithOrchestrations(config, [])
 
         # Create existing orchestration
         orch_info = OrchestrationInfo(
@@ -2322,10 +2343,7 @@ class TestCreateOrchestrationEndpoint:
             source_file=str(orch_dir / "existing.yaml"),
         )
 
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [orch_info])
-        app = create_test_app(accessor, config=config)
-
-        with TestClient(app) as client:
+        with create_orch_client_factory([orch_info]) as (client, orch_dir):
             # Get CSRF token first (DS-736)
             csrf_token = get_csrf_token(client)
 
@@ -2343,22 +2361,9 @@ class TestCreateOrchestrationEndpoint:
             assert response.status_code == 422
             assert "already exists" in response.json()["detail"]
 
-    def test_create_orchestration_path_traversal(self, temp_logs_dir: Path) -> None:
+    def test_create_orchestration_path_traversal(self, create_orch_client_factory: Any) -> None:
         """Test 422 when target file is outside orchestrations directory."""
-        orch_dir = temp_logs_dir / "orchestrations"
-        orch_dir.mkdir()
-
-        config = Config(
-            execution=ExecutionConfig(
-                agent_logs_dir=temp_logs_dir,
-                orchestrations_dir=orch_dir,
-            ),
-        )
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor, config=config)
-
-        with TestClient(app) as client:
+        with create_orch_client_factory() as (client, orch_dir):
             # Get CSRF token first (DS-736)
             csrf_token = get_csrf_token(client)
 
@@ -2376,14 +2381,12 @@ class TestCreateOrchestrationEndpoint:
             assert response.status_code == 422
             assert "not within" in response.json()["detail"]
 
-    def test_create_orchestration_appends_to_existing_file(self, temp_logs_dir: Path) -> None:
+    def test_create_orchestration_appends_to_existing_file(self, create_orch_client_factory: Any) -> None:
         """Test that creation appends to an existing YAML file."""
-        orch_dir = temp_logs_dir / "orchestrations"
-        orch_dir.mkdir()
-
-        # Create an existing YAML file with an orchestration
-        existing_file = orch_dir / "existing.yaml"
-        existing_file.write_text("""
+        with create_orch_client_factory() as (client, orch_dir):
+            # Create an existing YAML file with an orchestration
+            existing_file = orch_dir / "existing.yaml"
+            existing_file.write_text("""
 orchestrations:
   - name: "first-orch"
     enabled: true
@@ -2393,18 +2396,6 @@ orchestrations:
     agent:
       prompt: "First"
 """)
-
-        config = Config(
-            execution=ExecutionConfig(
-                agent_logs_dir=temp_logs_dir,
-                orchestrations_dir=orch_dir,
-            ),
-        )
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor, config=config)
-
-        with TestClient(app) as client:
             # Get CSRF token first (DS-736)
             csrf_token = get_csrf_token(client)
 
@@ -2428,23 +2419,11 @@ orchestrations:
             assert "first-orch" in content
             assert "second-orch" in content
 
-    def test_create_endpoint_exists(self, temp_logs_dir: Path) -> None:
+    def test_create_endpoint_exists(self, create_orch_client_factory: Any) -> None:
         """Test that the create endpoint exists at the correct path."""
-        orch_dir = temp_logs_dir / "orchestrations"
-        orch_dir.mkdir()
-
-        config = Config(
-            execution=ExecutionConfig(
-                agent_logs_dir=temp_logs_dir,
-                orchestrations_dir=orch_dir,
-            ),
-        )
-        sentinel = MockSentinelWithOrchestrations(config, [])
-        accessor = MockStateAccessorWithOrchestrations(sentinel, [])
-        app = create_test_app(accessor, config=config)
-
-        route_paths = [route.path for route in app.routes]
-        assert "/api/orchestrations" in route_paths
+        with create_orch_client_factory() as (client, orch_dir):
+            route_paths = [route.path for route in client.app.routes]
+            assert "/api/orchestrations" in route_paths
 
 
 class TestOrchestrationFilesEndpoint:
@@ -2675,58 +2654,55 @@ class TestCsrfProtection:
 class TestCsrfTokenRateLimiting:
     """Tests for CSRF token endpoint rate limiting (DS-737)."""
 
-    def test_csrf_token_returns_token(self, temp_logs_dir: Path) -> None:
+    @pytest.fixture
+    def rate_limit_client(
+        self, temp_logs_dir: Path
+    ) -> Generator[TestClient, None, None]:
+        """Provide a TestClient with rate limiting configured for CSRF tests.
+
+        Sets up the MockSentinel/SentinelStateAccessor/create_test_app pipeline
+        with config passed to enable rate limiting (DS-955).
+
+        Yields:
+            A TestClient connected to a test app with rate limiting enabled.
+        """
+        config = Config(
+            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
+        )
+        sentinel = MockSentinel(config)
+        accessor = SentinelStateAccessor(sentinel)  # type: ignore[arg-type]
+        app = create_test_app(accessor, config=config)
+        with TestClient(app) as client:
+            yield client
+
+    def test_csrf_token_returns_token(self, rate_limit_client: TestClient) -> None:
         """Test that the CSRF token endpoint returns a token."""
-        config = Config(
-            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
-        )
-        sentinel = MockSentinel(config)
-        accessor = SentinelStateAccessor(sentinel)
-        app = create_test_app(accessor, config=config)
+        response = rate_limit_client.get("/api/csrf-token")
 
-        with TestClient(app) as client:
-            response = client.get("/api/csrf-token")
+        assert response.status_code == 200
+        data = response.json()
+        assert "csrf_token" in data
+        assert len(data["csrf_token"]) > 0
 
-            assert response.status_code == 200
-            data = response.json()
-            assert "csrf_token" in data
-            assert len(data["csrf_token"]) > 0
-
-    def test_csrf_token_rate_limited_after_30_requests(self, temp_logs_dir: Path) -> None:
+    def test_csrf_token_rate_limited_after_30_requests(self, rate_limit_client: TestClient) -> None:
         """Test that CSRF token endpoint returns 429 after 30 requests per minute."""
-        config = Config(
-            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
-        )
-        sentinel = MockSentinel(config)
-        accessor = SentinelStateAccessor(sentinel)
-        app = create_test_app(accessor, config=config)
+        # Make 30 requests - should all succeed
+        for i in range(30):
+            response = rate_limit_client.get("/api/csrf-token")
+            assert response.status_code == 200, f"Request {i+1} should succeed"
 
-        with TestClient(app) as client:
-            # Make 30 requests - should all succeed
-            for i in range(30):
-                response = client.get("/api/csrf-token")
-                assert response.status_code == 200, f"Request {i+1} should succeed"
+        # 31st request should be rate limited
+        response = rate_limit_client.get("/api/csrf-token")
+        assert response.status_code == 429
+        assert "rate limit" in response.json()["detail"].lower()
 
-            # 31st request should be rate limited
-            response = client.get("/api/csrf-token")
-            assert response.status_code == 429
-            assert "rate limit" in response.json()["detail"].lower()
-
-    def test_csrf_token_rate_limit_per_client_host(self, temp_logs_dir: Path) -> None:
+    def test_csrf_token_rate_limit_per_client_host(self, rate_limit_client: TestClient) -> None:
         """Test that CSRF rate limiting is per-client host."""
-        config = Config(
-            execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
-        )
-        sentinel = MockSentinel(config)
-        accessor = SentinelStateAccessor(sentinel)
-        app = create_test_app(accessor, config=config)
+        # A single TestClient IP can make 30 requests
+        for _ in range(30):
+            response = rate_limit_client.get("/api/csrf-token")
+            assert response.status_code == 200
 
-        with TestClient(app) as client:
-            # A single TestClient IP can make 30 requests
-            for _ in range(30):
-                response = client.get("/api/csrf-token")
-                assert response.status_code == 200
-
-            # Verify the 31st is blocked
-            response = client.get("/api/csrf-token")
-            assert response.status_code == 429
+        # Verify the 31st is blocked
+        response = rate_limit_client.get("/api/csrf-token")
+        assert response.status_code == 429
