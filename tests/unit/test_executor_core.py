@@ -864,7 +864,7 @@ class TestAgentExecutorPreRetryCheck:
 def _make_tracking_log(
     executor: AgentExecutor,
     logged_calls: list[datetime],
-) -> Callable[[str, str, str, str, ExecutionStatus, int, datetime, int], None]:
+) -> Callable[[str, str, str, str, ExecutionStatus, int, datetime], None]:
     """Create a tracking wrapper around executor._log_execution.
 
     Returns a replacement for ``executor._log_execution`` that appends
@@ -880,13 +880,12 @@ def _make_tracking_log(
         prompt: str,
         response: str,
         status: ExecutionStatus,
-        attempts: int,
+        attempt: int,
         start_time: datetime,
-        attempt: int = 1,
     ) -> None:
         logged_calls.append(start_time)
         original_log(
-            issue_key, orchestration_name, prompt, response, status, attempts, start_time, attempt=attempt
+            issue_key, orchestration_name, prompt, response, status, attempt, start_time
         )
 
     return tracking_log

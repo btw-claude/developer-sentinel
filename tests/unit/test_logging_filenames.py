@@ -655,6 +655,104 @@ class TestLogFileNamePartsStr:
         assert str(parts) == "20240115-103045_a1"
 
 
+class TestLogFileNamePartsRepr:
+    """Tests for LogFilenameParts.__repr__ debugging convenience (DS-994)."""
+
+    def test_repr_with_issue_key(self) -> None:
+        """__repr__ should show all fields with type-clear formatting."""
+        parts = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+        assert parts is not None
+        assert repr(parts) == (
+            "LogFilenameParts(issue_key='DS-123', "
+            "timestamp='20240115-103045', attempt=1)"
+        )
+
+    def test_repr_without_issue_key(self) -> None:
+        """__repr__ should show None for missing issue_key."""
+        parts = parse_log_filename_parts("20240115-103045_a2.log")
+        assert parts is not None
+        assert repr(parts) == (
+            "LogFilenameParts(issue_key=None, "
+            "timestamp='20240115-103045', attempt=2)"
+        )
+
+    def test_repr_with_underscore_issue_key(self) -> None:
+        """__repr__ should preserve underscore-containing issue keys."""
+        parts = parse_log_filename_parts("MY_PROJ-123_20240115-103045_a1.log")
+        assert parts is not None
+        assert repr(parts) == (
+            "LogFilenameParts(issue_key='MY_PROJ-123', "
+            "timestamp='20240115-103045', attempt=1)"
+        )
+
+    def test_repr_direct_construction(self) -> None:
+        """__repr__ should work with directly constructed LogFilenameParts."""
+        parts = LogFilenameParts(issue_key="DS-999", timestamp="20240115-103045", attempt=1)
+        assert repr(parts) == (
+            "LogFilenameParts(issue_key='DS-999', "
+            "timestamp='20240115-103045', attempt=1)"
+        )
+
+    def test_repr_differs_from_str(self) -> None:
+        """__repr__ should differ from __str__ (str reconstructs filename stem)."""
+        parts = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+        assert parts is not None
+        assert repr(parts) != str(parts)
+        # __str__ gives filename stem, __repr__ gives LogFilenameParts(...)
+        assert str(parts) == "DS-123_20240115-103045_a1"
+        assert "LogFilenameParts(" in repr(parts)
+
+
+class TestLogFileNamePartsToDatetimeCache:
+    """Tests for LogFilenameParts.to_datetime caching via _parse_log_timestamp (DS-994)."""
+
+    def test_to_datetime_returns_same_object_on_repeated_calls(self) -> None:
+        """Module-level cached _parse_log_timestamp returns the same object for the same timestamp."""
+        parts = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+        assert parts is not None
+
+        dt1 = parts.to_datetime()
+        dt2 = parts.to_datetime()
+
+        # Should be the same object (cached at module level), not just equal
+        assert dt1 is dt2
+
+    def test_to_datetime_cache_returns_correct_value(self) -> None:
+        """Cached to_datetime should still return the correct datetime value."""
+        parts = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+        assert parts is not None
+
+        dt = parts.to_datetime()
+        assert dt == datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+
+    def test_same_timestamp_different_instances_share_cache(self) -> None:
+        """Different LogFilenameParts with the same timestamp share the module-level cache."""
+        parts1 = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+        parts2 = parse_log_filename_parts("DS-456_20240115-103045_a2.log")
+        assert parts1 is not None
+        assert parts2 is not None
+
+        dt1 = parts1.to_datetime()
+        dt2 = parts2.to_datetime()
+
+        # Same timestamp string -> same cached object
+        assert dt1 is dt2
+
+    def test_different_timestamps_have_different_results(self) -> None:
+        """Different timestamp strings produce different datetime results."""
+        parts1 = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+        parts2 = parse_log_filename_parts("DS-456_20250601-120000_a2.log")
+        assert parts1 is not None
+        assert parts2 is not None
+
+        dt1 = parts1.to_datetime()
+        dt2 = parts2.to_datetime()
+
+        assert dt1 != dt2
+        assert dt1 == datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+        assert dt2 == datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
+
+
 class TestFormatLogDisplayName:
     """Tests for _format_log_display_name method."""
 
