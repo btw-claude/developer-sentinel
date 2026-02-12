@@ -180,13 +180,13 @@ def _execute_with_retry[T](
     raise error_class("Retry failed with no exception")
 
 
+type JiraAuth = tuple[str, str] | httpx.BasicAuth
 """Type alias for authentication credentials used by Jira HTTP clients.
 
 Supports basic auth (email, token) tuples and httpx.BasicAuth for extensibility.
 Token-based or custom auth schemes can be added to this union in the future
 without changing the BaseJiraHttpClient interface or its subclasses.
 """
-JiraAuth = tuple[str, str] | httpx.BasicAuth
 
 
 class BaseJiraHttpClient:
