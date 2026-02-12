@@ -161,13 +161,21 @@ AGENT OUTPUT (streaming)
     def finalize(
         self,
         status: str,
-        attempts: int = 1,
+        attempt: int = 1,
     ) -> None:
         """Write the final metadata to the log file.
 
+        .. note:: Consolidated ``attempt`` parameter (DS-1007)
+
+            Previously named ``attempts`` (total count).  Renamed to
+            ``attempt`` for consistency with :meth:`AgentLogger.log_execution`
+            and :meth:`AgentExecutor._log_execution`, where a single
+            ``attempt`` parameter serves both the log body and filename
+            suffix.
+
         Args:
             status: The execution status (e.g., "SUCCESS", "FAILURE", "ERROR").
-            attempts: Number of attempts made.
+            attempt: The 1-based attempt number.
         """
         if self._file is None:
             return
@@ -182,7 +190,7 @@ EXECUTION SUMMARY
 {separator}
 
 Status:         {status}
-Attempts:       {attempts}
+Attempts:       {attempt}
 End Time:       {end_time.isoformat()}
 Duration:       {duration:.2f}s
 
@@ -245,12 +253,22 @@ class AgentLogger:
         prompt: str,
         response: str,
         status: ExecutionStatus,
-        attempts: int,
+        attempt: int,
         start_time: datetime,
         end_time: datetime,
-        attempt: int = 1,
     ) -> Path:
         """Write an agent execution log.
+
+        .. note:: Consolidated ``attempt`` parameter (DS-1007)
+
+            Previously this method accepted both ``attempts`` (total count
+            for the log body) and ``attempt`` (1-based try number for the
+            ``_a{N}`` filename suffix).  The sole call site in
+            :meth:`AgentExecutor._log_execution` always passed identical
+            values for both — the current attempt number *is* the total
+            count at the point of logging.  A single ``attempt`` parameter
+            now serves both purposes, matching the consolidation already
+            applied to :meth:`AgentExecutor._log_execution` in DS-994.
 
         Args:
             issue_key: The Jira issue key.
@@ -258,11 +276,11 @@ class AgentLogger:
             prompt: The prompt sent to the agent.
             response: The agent's response.
             status: The execution status.
-            attempts: Total number of attempts made (displayed in log body).
+            attempt: The 1-based attempt number.  Used both for the
+                ``_a{N}`` filename suffix and the ``"Attempts: N"``
+                line in the log body.
             start_time: When execution started.
             end_time: When execution ended.
-            attempt: The specific attempt number for filename uniqueness (1-based).
-                Defaults to 1 for backward compatibility.
 
         Returns:
             Path to the written log file.
@@ -280,7 +298,7 @@ AGENT EXECUTION LOG
 Issue Key:      {issue_key}
 Orchestration:  {orchestration_name}
 Status:         {status.value.upper()}
-Attempts:       {attempts}
+Attempts:       {attempt}
 Start Time:     {start_time.isoformat()}
 End Time:       {end_time.isoformat()}
 Duration:       {duration:.2f}s
