@@ -300,6 +300,10 @@ class StateTracker:
         timestamps, which is useful for testing TTL-based cleanup logic without
         waiting for real time to pass.
 
+        Note:
+            If an entry already exists for the same ``(issue_key, orchestration_name)``
+            pair, it will be overwritten with the new count and timestamp values.
+
         Args:
             issue_key: The key of the issue.
             orchestration_name: The name of the orchestration.
