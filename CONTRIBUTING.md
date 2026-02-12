@@ -434,6 +434,89 @@ extensions = ["sentinel.sphinx_jira_role"]
 jira_base_url = "https://your-domain.atlassian.net"
 ```
 
+### GitHub Actions Composite Action Documentation (DS-1050)
+
+**When adding new composite actions under `.github/actions/`, document where GitHub Actions
+expression engine evaluation occurs vs bash evaluation.**
+
+GitHub Actions uses two distinct evaluation contexts that can be confusing to contributors:
+
+1. **GHA expression engine** — evaluates expressions inside `${{ }}` delimiters at workflow
+   parse/run time (before bash ever sees the value).
+2. **Bash** — evaluates shell syntax inside `run:` blocks after GHA has already substituted
+   expression values.
+
+Failing to document which engine handles which operator leads to subtle bugs and
+misunderstandings.  The existing `branch-strictness` action
+(`.github/actions/branch-strictness/action.yml`) is the reference implementation of this
+pattern.
+
+#### Checklist for New Composite Actions
+
+When creating or reviewing a composite action, ensure the following:
+
+1. **Add YAML-level comments (not `run:` block comments) documenting GHA expression
+   evaluation** — When an `inputs:` default, an `outputs:` value mapping, or any other
+   YAML-level field uses `${{ }}` expressions, add a YAML comment (`#`) above or beside the
+   field explaining how the expression engine evaluates it.
+
+   ```yaml
+   # The output value mappings below use ${{ }} expressions evaluated by the
+   # GitHub Actions expression engine (not by bash).  Each expression simply
+   # forwards a step output to a composite-action-level output so that
+   # calling workflows can reference the values via the action's output
+   # interface (e.g. steps.<id>.outputs.is-strict).
+   outputs:
+     is-strict:
+       description: "'true' when failures must block the build."
+       value: ${{ steps.determine.outputs.is-strict }}
+   ```
+
+2. **Document the purpose of output value mappings that use `${{ }}` expressions** — Explain
+   *why* the mapping exists and how downstream consumers are expected to reference it (e.g.,
+   via `needs.<job>.outputs.<name>` or `steps.<id>.outputs.<name>`).
+
+3. **Do NOT use literal `${{ }}` expressions inside `run:` block comments** — The GitHub
+   Actions expression engine evaluates *all* `${{ }}` occurrences in a `run:` block, including
+   those inside shell comments (`#`).  This means a comment like
+   `# This uses ${{ inputs.ref }}` will be evaluated and substituted, which can cause
+   unexpected behavior or leak values.  Instead, describe the expression in plain English or
+   use the phrase "double-curly-brace expression delimiters" when referring to the syntax.
+
+   ```yaml
+   # GOOD — plain English description in a run: block comment
+   run: |
+     # Note: The || operator here is evaluated by the GitHub Actions
+     # expression engine (inside double-curly-brace expression delimiters),
+     # not by bash.
+
+   # BAD — literal expression syntax in a run: block comment (GHA will evaluate it!)
+   run: |
+     # This uses ${{ inputs.ref || github.ref }} as a fallback
+   ```
+
+4. **Document falsy-empty-string conventions for optional inputs** — When an input uses
+   `default: ""` to leverage the GHA expression engine's falsy-empty-string behavior
+   (allowing `||` fallbacks in expressions), document this convention so future contributors
+   understand the design intent.
+
+   ```yaml
+   inputs:
+     ref:
+       description: "The full git ref. Defaults to github.ref."
+       required: false
+       # GitHub Actions expressions (evaluated inside ${{ }} delimiters, not
+       # by bash) treat empty strings as falsy, so an omitted or explicitly-empty
+       # input will cause the || fallback in the run step to resolve to the
+       # github.* context default.
+       default: ""
+   ```
+
+#### Reference Implementation
+
+See `.github/actions/branch-strictness/action.yml` for a complete example of this
+documentation pattern applied to a real composite action.
+
 ### Other Conventions
 
 - Follow PEP 8 style guidelines
@@ -464,5 +547,8 @@ mypy src
 
 1. Ensure all tests pass locally
 2. Update documentation if needed
-3. Add appropriate labels to your PR
-4. Request review from maintainers
+3. If your PR adds or modifies composite actions under `.github/actions/`, verify that GHA
+   expression context documentation follows the pattern described in
+   [GitHub Actions Composite Action Documentation](#github-actions-composite-action-documentation-ds-1050)
+4. Add appropriate labels to your PR
+5. Request review from maintainers
