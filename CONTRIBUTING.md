@@ -517,6 +517,81 @@ When creating or reviewing a composite action, ensure the following:
 See `.github/actions/branch-strictness/action.yml` for a complete example of this
 documentation pattern applied to a real composite action.
 
+### DS-Reference Tag Style Convention (DS-1042)
+
+**Use inline parenthetical format for DS-reference tags in docstrings and code comments.**
+
+DS-reference tags trace code decisions back to Jira issues.  A consistent tagging style keeps
+comments scannable and ``grep``-friendly across the codebase.
+
+#### Rules
+
+1. **Inline parenthetical format** — Place the DS tag in parentheses at the end of the phrase it
+   annotates:
+
+   ```python
+   # Regex for parsing log filenames (DS-966).
+   ```
+
+2. **Trailing period** — Every DS-tagged comment or docstring sentence must end with a period:
+
+   ```python
+   # Both paths share _strip_log_extension() for extension removal (DS-1010).
+   ```
+
+3. **No split key phrases** — When a comment spans multiple lines, avoid breaking a key phrase
+   (such as the DS tag and the concept it annotates) across lines.  Reflow the text so the tag
+   and its surrounding phrase remain on the same line:
+
+   ```python
+   # GOOD — tag and phrase stay together
+   # Provides a single source of truth for extension removal (DS-1010),
+   # so bare stems pass through unchanged.
+
+   # BAD — tag is orphaned on the next line
+   # Provides a single source of truth for extension removal
+   # (DS-1010), so bare stems pass through unchanged.
+   ```
+
+#### Examples
+
+**Single-line code comment:**
+
+```python
+# Explicit async return type alias for executor methods (DS-533).
+```
+
+**Multi-line docstring reference:**
+
+```python
+def _strip_log_extension(filename: str) -> str:
+    """Strip the log extension from a filename.
+
+    Provides a single source of truth for extension removal (DS-1010),
+    so bare stems (e.g., ``"DS-123_20240115-103045_a1"``) pass through
+    unchanged.
+    """
+```
+
+**Inline within a docstring sentence:**
+
+```python
+"""Bundled logging-context parameters (DS-838)."""
+```
+
+**Multiple tags in a single comment:**
+
+```python
+# pattern (DS-1001, DS-998).  Uses _strip_log_extension() shared helper
+# for extension removal (DS-1010).
+```
+
+#### Related Issues
+
+This convention was established in DS-1032 (and its predecessor DS-1030) while standardising
+annotations in ``src/sentinel/logging.py``.  See also DS-1017 and DS-1000 for earlier
+discussion.
+
 ### Other Conventions
 
 - Follow PEP 8 style guidelines
