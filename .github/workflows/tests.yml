@@ -18,6 +18,10 @@ jobs:
   branch-context:
     name: Branch Context
     runs-on: ubuntu-latest
+    # These output mappings use ${{ }} expressions evaluated by the GitHub
+    # Actions expression engine (not by bash).  They simply forward the
+    # composite-action step outputs to job-level outputs so that downstream
+    # jobs (e.g. integration-tests) can reference them via the `needs` context.
     outputs:
       is-strict: ${{ steps.strictness.outputs.is-strict }}
       continue-on-error: ${{ steps.strictness.outputs.continue-on-error }}
@@ -74,6 +78,12 @@ jobs:
     # The continue-on-error value is now supplied by the branch-context job
     # via the branch-strictness composite action, providing a single source
     # of truth for per-branch CI behavior.
+    #
+    # Note: The == operator below is evaluated by the GitHub Actions
+    # expression engine (inside ${{ }} delimiters), not by bash.  The
+    # expression compares the string output from branch-context against the
+    # literal 'true' and yields a boolean that the `continue-on-error` key
+    # consumes directly.
     continue-on-error: ${{ needs.branch-context.outputs.continue-on-error == 'true' }}
 
     steps:
