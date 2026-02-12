@@ -47,6 +47,7 @@ See Also:
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -55,9 +56,13 @@ from docutils import nodes
 from docutils.parsers.rst import roles
 from docutils.parsers.rst.states import Inliner
 
-# Jira issue key pattern: 1-10 uppercase letters followed by a hyphen and 1+ digits.
-# Matches standard Jira project key conventions.
-_JIRA_ISSUE_KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9]{0,9}-\d+$")
+logger = logging.getLogger(__name__)
+
+# Jira issue key pattern: 1-10 uppercase alpha letters followed by a hyphen and 1+ digits.
+# Real Jira project keys are all-alpha uppercase (e.g., DS, PROJ, MYPROJECT).
+# Tightened from [A-Z][A-Z0-9]{0,9} to [A-Z]{1,10} per DS-1019 code review feedback
+# to reject alphanumeric project keys (e.g., A1B2C3-1) that are not valid Jira keys.
+_JIRA_ISSUE_KEY_PATTERN = re.compile(r"^[A-Z]{1,10}-\d+$")
 
 # Default Jira base URL (overridden via conf.py ``jira_base_url``).
 _DEFAULT_JIRA_BASE_URL = "https://jira.example.com"
@@ -167,6 +172,28 @@ def jira_role(
     return _jira_role_impl(name, rawtext, text, lineno, inliner, options, content)
 
 
+def _check_jira_base_url(app: Any, config: Any) -> None:
+    """Emit a Sphinx warning if jira_base_url is still the default placeholder.
+
+    This ``config-inited`` callback helps catch forgotten configuration by
+    warning during ``sphinx-build`` when ``jira_base_url`` has not been
+    overridden from its ``example.com`` default.
+
+    Added in DS-1019 per code review feedback on DS-1016 / PR #1026.
+
+    Args:
+        app: The Sphinx application object.
+        config: The Sphinx configuration object.
+    """
+    base_url: str = getattr(config, "jira_base_url", _DEFAULT_JIRA_BASE_URL)
+    if "example.com" in base_url:
+        logger.warning(
+            "jira_base_url is still set to the default placeholder (%s). "
+            "Set jira_base_url in conf.py to your Jira instance URL.",
+            base_url,
+        )
+
+
 def setup(app: Any) -> dict[str, Any]:
     """Register the ``:jira:`` role and its configuration with Sphinx.
 
@@ -182,6 +209,9 @@ def setup(app: Any) -> dict[str, Any]:
     """
     # Register the configuration value for the Jira base URL.
     app.add_config_value("jira_base_url", _DEFAULT_JIRA_BASE_URL, "env")
+
+    # Warn at build time if jira_base_url is still the default placeholder (DS-1019).
+    app.connect("config-inited", _check_jira_base_url)
 
     # Register the :jira: role.
     # The types-docutils stubs declare an overly narrow return type
