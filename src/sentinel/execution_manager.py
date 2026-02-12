@@ -221,7 +221,17 @@ class ExecutionManager:
         with self._futures_lock:
             # Count active futures without removing them
             active_count = sum(1 for tf in self._active_futures if not tf.future.done())
-            return self._max_concurrent_executions - active_count
+            total_tracked = len(self._active_futures)
+            available = self._max_concurrent_executions - active_count
+            logger.debug(
+                "get_available_slots(): tracked=%s, active=%s, "
+                "max=%s, available=%s (DS-963)",
+                total_tracked,
+                active_count,
+                self._max_concurrent_executions,
+                available,
+            )
+            return available
 
     def get_active_count(self) -> int:
         """Get the count of currently active executions.
@@ -357,6 +367,12 @@ class ExecutionManager:
         results: list[ExecutionResult] = []
         with self._futures_lock:
             completed = [tf for tf in self._active_futures if tf.future.done()]
+            logger.debug(
+                "collect_completed_results(): total_tracked=%s, "
+                "completed=%s (DS-963)",
+                len(self._active_futures),
+                len(completed),
+            )
             for tracked in completed:
                 try:
                     result = tracked.future.result()
@@ -395,7 +411,14 @@ class ExecutionManager:
                 )
 
             # Remove completed futures
+            before_cleanup = len(self._active_futures)
             self._active_futures = [tf for tf in self._active_futures if not tf.future.done()]
+            logger.debug(
+                "collect_completed_results(): removed %s completed "
+                "futures, %s remaining (DS-963)",
+                before_cleanup - len(self._active_futures),
+                len(self._active_futures),
+            )
 
         return results
 
@@ -482,7 +505,13 @@ class ExecutionManager:
             List of futures that haven't completed yet.
         """
         with self._futures_lock:
-            return [tf.future for tf in self._active_futures if not tf.future.done()]
+            pending = [tf.future for tf in self._active_futures if not tf.future.done()]
+            logger.debug(
+                "get_pending_futures(): tracked=%s, pending=%s (DS-963)",
+                len(self._active_futures),
+                len(pending),
+            )
+            return pending
 
     def wait_for_completion(
         self,
