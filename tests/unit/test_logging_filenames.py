@@ -7,7 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from sentinel.dashboard.state import SentinelStateAccessor
+from sentinel.config import Config as SentinelConfig
+from sentinel.dashboard.state import SentinelStateAccessor, SentinelStateProvider
 from sentinel.logging import (
     LogFilenameParts,
     generate_log_filename,
@@ -339,12 +340,14 @@ class TestFormatLogDisplayName:
     def accessor(self) -> SentinelStateAccessor:
         """Create a minimal SentinelStateAccessor for testing.
 
-        Uses MagicMock(spec=...) for resilient mocking -- if
-        SentinelStateAccessor.__init__ changes its expectations,
-        the mock will adapt without breaking.
+        Uses ``MagicMock(spec=...)`` for resilient mocking — if
+        ``SentinelStateProvider`` or ``SentinelConfig`` signatures
+        change, the mock will raise ``AttributeError`` for any
+        newly-accessed attribute that doesn't exist on the spec,
+        surfacing breakage immediately instead of silently passing.
         """
-        mock_sentinel = MagicMock()
-        mock_sentinel.config = MagicMock()
+        mock_sentinel = MagicMock(spec=SentinelStateProvider)
+        mock_sentinel.config = MagicMock(spec=SentinelConfig)
         return SentinelStateAccessor(sentinel=mock_sentinel)
 
     def test_formats_new_format_with_issue_key(self, accessor: SentinelStateAccessor) -> None:
