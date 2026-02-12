@@ -686,6 +686,33 @@ class TestLogFileNamePartsStr:
         parts = LogFilenameParts(issue_key=None, timestamp="20240115-103045", attempt=1)
         assert str(parts) == "20240115-103045_a1"
 
+    def test_str_explicit_none_check_empty_string_issue_key(self) -> None:
+        """__str__ should include empty-string issue_key prefix since it is not None.
+
+        DS-1006: verifies that the explicit ``is not None`` check in
+        ``__str__`` distinguishes between ``None`` (omit prefix) and an
+        empty string (include prefix).  While ``parse_log_filename_parts``
+        never produces an empty-string ``issue_key``, directly constructed
+        instances could carry one — the ``is not None`` guard preserves
+        the value rather than silently dropping it via truthiness.
+        """
+        parts = LogFilenameParts(issue_key="", timestamp="20240115-103045", attempt=1)
+        assert str(parts) == "_20240115-103045_a1"
+
+    def test_str_single_underscore_issue_key_display_name_pattern(self) -> None:
+        """__str__ reconstructs single-underscore issue key stem per DS-989 requirement.
+
+        DS-1006 item #2: verifies the exact pattern originally requested by
+        DS-989 ticket item #1 — ``MY_PROJ-123_20240115-103045_a1`` — is
+        correctly reconstructed by ``__str__``.  This complements the
+        ``TestFormatLogDisplayName.test_formats_underscore_issue_key`` test
+        (DS-1002) that validates the same pattern at the display formatting
+        layer.
+        """
+        parts = parse_log_filename_parts("MY_PROJ-123_20240115-103045_a1.log")
+        assert parts is not None
+        assert str(parts) == "MY_PROJ-123_20240115-103045_a1"
+
 
 class TestLogFileNamePartsRepr:
     """Tests for LogFilenameParts.__repr__ debugging convenience (DS-994)."""
