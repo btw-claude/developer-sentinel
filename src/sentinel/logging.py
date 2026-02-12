@@ -269,7 +269,7 @@ class LogFilenameParts(NamedTuple):
 
         Returns:
             A string in the format ``{issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}``
-            or ``{YYYYMMDD-HHMMSS}_a{attempt}`` when ``issue_key is None``.
+            or ``{YYYYMMDD-HHMMSS}_a{attempt}`` when ``issue_key`` is ``None``.
         """
         if self.issue_key is not None:
             return f"{self.issue_key}_{self.timestamp}_a{self.attempt}"
