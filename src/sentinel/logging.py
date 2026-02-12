@@ -65,7 +65,8 @@ def parse_log_filename(filename: str) -> datetime | None:
     and legacy format (YYYYMMDD_HHMMSS.log).
 
     Delegates to :func:`parse_log_filename_parts` for new-format parsing,
-    avoiding redundant ``.removesuffix()`` and regex evaluation.
+    keeping a single source of truth for the ``.removesuffix()`` /
+    regex-match / ``strptime`` pipeline.
 
     See Also:
         :func:`parse_log_filename_parts` — returns all components (issue key,
@@ -77,17 +78,17 @@ def parse_log_filename(filename: str) -> datetime | None:
     Returns:
         Parsed datetime, or None if the filename doesn't match any expected format.
     """
-    try:
-        # Try new format via parse_log_filename_parts to avoid duplicating
-        # the .removesuffix() call and _LOG_FILENAME_REGEX match.
-        parts = parse_log_filename_parts(filename)
-        if parts is not None:
-            return parts.to_datetime()
+    # Delegate to parse_log_filename_parts for the new format, keeping a
+    # single source of truth for .removesuffix() and regex parsing (DS-987).
+    parts = parse_log_filename_parts(filename)
+    if parts is not None:
+        return parts.to_datetime()
 
-        # Try legacy format: YYYYMMDD_HHMMSS
+    # Fall back to legacy format: YYYYMMDD_HHMMSS
+    try:
         name = filename.removesuffix(LOG_FILENAME_EXTENSION)
         return datetime.strptime(name, _LEGACY_LOG_FILENAME_FORMAT).replace(tzinfo=UTC)
-    except (ValueError, IndexError):
+    except ValueError:
         return None
 
 
