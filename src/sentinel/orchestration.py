@@ -1231,9 +1231,9 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     # early as possible.
     if agent_teams and timeout is not None and timeout < AGENT_TEAMS_MIN_TIMEOUT_SECONDS:
         logger.warning(
-            "agent_teams is enabled but timeout_seconds=%g is below the "
+            "agent_teams is enabled but timeout_seconds=%.3f is below the "
             "recommended minimum of %d seconds for Agent Teams orchestrations. "
-            "The effective timeout will be %g seconds (timeout_seconds * %d). "
+            "The effective timeout will be %.3f seconds (timeout_seconds * %d). "
             "Consider setting timeout_seconds >= %d to avoid premature timeouts.",
             timeout,
             AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
