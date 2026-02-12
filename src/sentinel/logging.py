@@ -24,7 +24,7 @@ LOG_FILENAME_EXTENSION = ".log"
 # Legacy format for backward compatibility: YYYYMMDD_HHMMSS.log
 _LEGACY_LOG_FILENAME_FORMAT = "%Y%m%d_%H%M%S"
 
-# Regex for parsing log filenames (DS-966)
+# Regex for parsing log filenames (DS-966).
 # Captures: (issue_key)?, timestamp, attempt_number
 # Pattern: {issue_key}_{YYYYMMDD-HHMMSS}_a{N} or {YYYYMMDD-HHMMSS}_a{N}
 # Note: The greedy (.+) for issue_key is safe because backtracking is anchored
@@ -137,8 +137,8 @@ def parse_log_filename(filename: str) -> datetime | None:
 
     # Fall back to legacy format: YYYYMMDD_HHMMSS
     # Delegates to _parse_log_timestamp to centralise the strptime/replace
-    # pattern (DS-1001, DS-998).  Uses _strip_log_extension() shared
-    # helper for extension removal (DS-1010).
+    # pattern (DS-1001, DS-998).  Uses _strip_log_extension() shared helper
+    # for extension removal (DS-1010).
     try:
         name = _strip_log_extension(filename)
         return _parse_log_timestamp(name, _LEGACY_LOG_FILENAME_FORMAT)
