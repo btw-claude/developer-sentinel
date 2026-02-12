@@ -26,6 +26,8 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from sentinel.executor import ExecutionResult, ExecutionStatus
 from sentinel.github_poller import GitHubIssue
 from sentinel.main import Sentinel
@@ -1132,8 +1134,6 @@ class TestPollService:
 
     def test_poll_service_unknown_service_name_raises_value_error(self) -> None:
         """_poll_service should raise ValueError for an unrecognised service_name (DS-940)."""
-        import pytest
-
         sentinel = _make_sentinel()
         mock_poll_fn = self._make_poll_fn(issues_found=0, error_count=0)
 
