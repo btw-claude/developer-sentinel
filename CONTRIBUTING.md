@@ -522,6 +522,15 @@ correctly for contributors opening new pull requests. If the anchor is not prese
 link will land on the CONTRIBUTING.md page but will not scroll to the expected GHA documentation
 section, leaving contributors without the relevant context.
 
+To verify the anchor exists on `main` before opening a PR, run:
+
+```bash
+git show main:CONTRIBUTING.md | grep -q "github-actions-composite-action-documentation-ds-1050" && echo "Anchor found" || echo "Anchor missing on main"
+```
+
+If the anchor is missing, coordinate with maintainers to merge the documentation changes to
+`main` before relying on the PR template link (DS-1058).
+
 #### Reference Implementation
 
 See `.github/actions/branch-strictness/action.yml` for a complete example of this
