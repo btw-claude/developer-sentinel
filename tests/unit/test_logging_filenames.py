@@ -772,6 +772,86 @@ class TestLogFileNamePartsToDatetimeCache:
         assert dt2 == datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
 
 
+class TestLogFileNamePartsParsedDatetimeProperty:
+    """Tests for LogFilenameParts.parsed_datetime property (DS-998)."""
+
+    def test_parsed_datetime_returns_correct_utc_datetime(self) -> None:
+        """parsed_datetime property should return the correct UTC datetime."""
+        result = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+
+        assert result is not None
+        dt = result.parsed_datetime
+        assert dt == datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+
+    def test_parsed_datetime_matches_to_datetime(self) -> None:
+        """parsed_datetime property should return the same result as to_datetime()."""
+        result = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+
+        assert result is not None
+        assert result.parsed_datetime == result.to_datetime()
+        # Should be the same cached object
+        assert result.parsed_datetime is result.to_datetime()
+
+    def test_parsed_datetime_without_issue_key(self) -> None:
+        """parsed_datetime should work for filenames without issue key."""
+        result = parse_log_filename_parts("20240115-103045_a2.log")
+
+        assert result is not None
+        assert result.parsed_datetime == datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+
+    def test_parsed_datetime_raises_value_error_for_invalid_timestamp(self) -> None:
+        """parsed_datetime should raise ValueError for malformed timestamp.
+
+        Mirrors the to_datetime() error test: directly-constructed
+        LogFilenameParts with an invalid timestamp should propagate the
+        error from strptime.
+        """
+        bad_parts = LogFilenameParts(issue_key="DS-999", timestamp="not-a-date", attempt=1)
+        with pytest.raises(ValueError):
+            _ = bad_parts.parsed_datetime
+
+    def test_parsed_datetime_direct_construction(self) -> None:
+        """parsed_datetime should work with directly constructed LogFilenameParts."""
+        parts = LogFilenameParts(
+            issue_key="DS-999", timestamp="20240115-103045", attempt=1,
+        )
+        assert parts.parsed_datetime == datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+
+
+class TestLegacyFormatUsesCache:
+    """Tests verifying parse_log_filename legacy fallback delegates to _parse_log_timestamp (DS-998)."""
+
+    def test_legacy_format_returns_correct_datetime(self) -> None:
+        """Legacy format should still parse correctly after refactor."""
+        filename = "20240115_103045.log"
+        parsed = parse_log_filename(filename)
+
+        assert parsed is not None
+        assert parsed == datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+
+    def test_legacy_format_delegates_to_cache(self) -> None:
+        """Legacy fallback in parse_log_filename should use _parse_log_timestamp.
+
+        DS-998: verify the legacy strptime call is now centralised through
+        the same _parse_log_timestamp helper used by to_datetime().
+        """
+        from unittest.mock import patch
+
+        with patch(
+            "sentinel.logging._parse_log_timestamp",
+            wraps=__import__("sentinel.logging", fromlist=["_parse_log_timestamp"])._parse_log_timestamp,
+        ) as mock_cache:
+            result = parse_log_filename("20240115_103045.log")
+            assert result is not None
+            assert result == datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+            # _parse_log_timestamp should have been called for the legacy path
+            mock_cache.assert_called_once()
+
+    def test_legacy_format_invalid_returns_none(self) -> None:
+        """Invalid legacy format should still return None."""
+        assert parse_log_filename("not_valid.log") is None
+
+
 class TestFormatLogDisplayName:
     """Tests for _format_log_display_name method."""
 
