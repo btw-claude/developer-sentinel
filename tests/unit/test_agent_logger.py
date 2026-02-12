@@ -27,6 +27,7 @@ class TestAgentLogger:
             attempts=1,
             start_time=datetime(2024, 1, 15, 10, 30, 0),
             end_time=datetime(2024, 1, 15, 10, 31, 0),
+            attempt=1,
         )
 
         orch_dir = tmp_path / "code-review"
@@ -47,6 +48,7 @@ class TestAgentLogger:
             attempts=1,
             start_time=start_time,
             end_time=datetime(2024, 1, 15, 10, 31, 0),
+            attempt=1,
         )
 
         assert log_path.name == "DS-123_20240115-103045_a1.log"
@@ -67,6 +69,7 @@ class TestAgentLogger:
             attempts=3,
             start_time=start_time,
             end_time=end_time,
+            attempt=3,
         )
 
         content = log_path.read_text()
@@ -90,6 +93,7 @@ class TestAgentLogger:
             attempts=1,
             start_time=datetime.now(),
             end_time=datetime.now(),
+            attempt=1,
         )
 
         content = log_path.read_text()
@@ -110,6 +114,7 @@ class TestAgentLogger:
             attempts=1,
             start_time=datetime.now(),
             end_time=datetime.now(),
+            attempt=1,
         )
 
         content = log_path.read_text()
@@ -129,6 +134,7 @@ class TestAgentLogger:
             attempts=1,
             start_time=datetime.now(),
             end_time=datetime.now(),
+            attempt=1,
         )
 
         assert log_path.exists()
@@ -147,6 +153,7 @@ class TestAgentLogger:
             attempts=1,
             start_time=datetime(2024, 1, 15, 10, 0, 0),
             end_time=datetime(2024, 1, 15, 10, 1, 0),
+            attempt=1,
         )
 
         log2 = logger.log_execution(
@@ -158,6 +165,7 @@ class TestAgentLogger:
             attempts=2,
             start_time=datetime(2024, 1, 15, 11, 0, 0),
             end_time=datetime(2024, 1, 15, 11, 2, 0),
+            attempt=2,
         )
 
         assert log1.parent == log2.parent
@@ -177,6 +185,7 @@ class TestAgentLogger:
             attempts=1,
             start_time=datetime.now(),
             end_time=datetime.now(),
+            attempt=1,
         )
 
         assert isinstance(log_path, Path)
@@ -196,6 +205,7 @@ class TestAgentLogger:
             attempts=3,
             start_time=datetime.now(),
             end_time=datetime.now(),
+            attempt=3,
         )
 
         content = log_path.read_text()

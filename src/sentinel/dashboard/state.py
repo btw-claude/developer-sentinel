@@ -19,7 +19,7 @@ from cachetools import TTLCache, cachedmethod
 from cachetools.keys import hashkey
 
 from sentinel.config import DEFAULT_GREEN_THRESHOLD, DEFAULT_YELLOW_THRESHOLD
-from sentinel.logging import generate_log_filename, parse_log_filename_parts
+from sentinel.logging import generate_log_filename, parse_log_filename, parse_log_filename_parts
 from sentinel.types import TriggerSource
 
 if TYPE_CHECKING:
@@ -1156,16 +1156,23 @@ class SentinelStateAccessor:
         Returns:
             Human-readable display name.
         """
-        parsed = parse_log_filename_parts(filename)
-        if parsed is not None:
-            issue_key, dt, attempt = parsed
-            formatted_ts = dt.strftime("%Y-%m-%d %H:%M:%S")
-            # Legacy filenames have no _a{N} suffix — show timestamp only
-            if "_a" not in filename:
-                return formatted_ts
-            if issue_key is not None:
-                return f"{issue_key} {formatted_ts} (attempt {attempt})"
-            return f"{formatted_ts} (attempt {attempt})"
+        # Try new format first via parse_log_filename_parts to avoid redundant
+        # regex evaluation (both parse_log_filename and parse_log_filename_parts
+        # match against the same _LOG_FILENAME_REGEX).
+        parts = parse_log_filename_parts(filename)
+        if parts is not None:
+            # Use named attributes from LogFilenameParts for readability.
+            # to_datetime() centralises the strptime/replace(tzinfo=UTC)
+            # pattern so it isn't duplicated across call sites.
+            formatted_time = parts.to_datetime().strftime("%Y-%m-%d %H:%M:%S")
+            if parts.issue_key:
+                return f"{parts.issue_key} {formatted_time} (attempt {parts.attempt})"
+            return f"{formatted_time} (attempt {parts.attempt})"
+
+        # Fall back to legacy format via parse_log_filename
+        legacy_dt = parse_log_filename(filename)
+        if legacy_dt is not None:
+            return legacy_dt.strftime("%Y-%m-%d %H:%M:%S")
         return filename
 
     def get_log_file_path(self, step: str, filename: str) -> Path | None:

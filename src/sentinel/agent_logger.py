@@ -248,6 +248,7 @@ class AgentLogger:
         attempts: int,
         start_time: datetime,
         end_time: datetime,
+        attempt: int = 1,
     ) -> Path:
         """Write an agent execution log.
 
@@ -257,15 +258,17 @@ class AgentLogger:
             prompt: The prompt sent to the agent.
             response: The agent's response.
             status: The execution status.
-            attempts: Number of attempts made.
+            attempts: Total number of attempts made (displayed in log body).
             start_time: When execution started.
             end_time: When execution ended.
+            attempt: The specific attempt number for filename uniqueness (1-based).
+                Defaults to 1 for backward compatibility.
 
         Returns:
             Path to the written log file.
         """
         log_path = self._get_log_path(
-            orchestration_name, start_time, issue_key=issue_key, attempt=attempts,
+            orchestration_name, start_time, issue_key=issue_key, attempt=attempt,
         )
         duration = (end_time - start_time).total_seconds()
         separator = "=" * 80

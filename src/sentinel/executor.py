@@ -724,6 +724,7 @@ class AgentExecutor:
         status: ExecutionStatus,
         attempts: int,
         start_time: datetime,
+        attempt: int = 1,
     ) -> None:
         """Log the agent execution if a logger is configured.
 
@@ -733,8 +734,9 @@ class AgentExecutor:
             prompt: The prompt sent to the agent.
             response: The agent's response.
             status: The execution status.
-            attempts: Number of attempts made.
+            attempts: Total number of attempts made.
             start_time: When execution started.
+            attempt: The specific attempt number for filename uniqueness (1-based).
         """
         if self.agent_logger is None:
             return
@@ -749,6 +751,7 @@ class AgentExecutor:
                 attempts=attempts,
                 start_time=start_time,
                 end_time=datetime.now(tz=UTC),
+                attempt=attempt,
             )
         except OSError as e:
             # Log but don't fail the execution due to file I/O errors
@@ -1037,6 +1040,11 @@ class AgentExecutor:
                         output_tokens=last_output_tokens,
                         total_cost_usd=last_total_cost_usd,
                     )
+                    # Both `attempts` and `attempt` receive the same value because
+                    # on the successful try the current attempt number *is* the total
+                    # number of attempts made.  `attempts` is displayed in the log body
+                    # ("Attempts: N") while `attempt` drives the _a{N} filename suffix.
+                    # `attempt` is the 1-based current try number.
                     self._log_execution(
                         issue.key,
                         orchestration.name,
@@ -1045,6 +1053,7 @@ class AgentExecutor:
                         status,
                         attempts=attempt,
                         start_time=start_time,
+                        attempt=attempt,  # 1-based current try number for _a{N} suffix
                     )
                     # Cleanup only the successful attempt's workdir if enabled (DS-961).
                     # Prior failed attempt workdirs (with unique _a{N} names) persist
@@ -1147,6 +1156,10 @@ class AgentExecutor:
             output_tokens=last_output_tokens,
             total_cost_usd=last_total_cost_usd,
         )
+        # Both `attempts` and `attempt` receive the same value because after
+        # all retries are exhausted the last attempt number equals the total count.
+        # `attempts` is displayed in the log body; `attempt` drives the _a{N}
+        # filename suffix.  `last_attempt` is the 1-based current try number.
         self._log_execution(
             issue.key,
             orchestration.name,
@@ -1155,5 +1168,6 @@ class AgentExecutor:
             last_status,
             attempts=last_attempt,
             start_time=start_time,
+            attempt=last_attempt,  # 1-based current try number for _a{N} suffix
         )
         return result
