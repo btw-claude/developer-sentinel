@@ -669,37 +669,45 @@ class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
         )
 
 
+@pytest.fixture
+def orch_client_factory(
+    temp_logs_dir: Path,
+) -> Generator[Any, None, None]:
+    """Provide a factory for creating TestClients with orchestration data.
+
+    Shared fixture that eliminates the repeated Config/MockSentinel/
+    MockStateAccessor/create_test_app setup pattern across orchestration
+    endpoint tests (DS-955, DS-959).
+
+    Yields:
+        A callable that accepts an optional list of OrchestrationInfo and
+        an optional pass_config flag, returning a context manager yielding
+        a TestClient.
+    """
+
+    @contextlib.contextmanager
+    def _make_client(
+        orchestrations: list[OrchestrationInfo] | None = None,
+        *,
+        pass_config: bool = False,
+    ) -> Generator[TestClient, None, None]:
+        config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
+        sentinel = MockSentinelWithOrchestrations(config, [])
+        accessor = MockStateAccessorWithOrchestrations(
+            sentinel, orchestrations or []
+        )
+        kwargs: dict[str, Any] = {}
+        if pass_config:
+            kwargs["config"] = config
+        app = create_test_app(accessor, **kwargs)
+        with TestClient(app) as client:
+            yield client
+
+    yield _make_client
+
+
 class TestToggleOrchestrationEndpoint:
     """Tests for POST /api/orchestrations/{name}/toggle endpoint."""
-
-    @pytest.fixture
-    def orch_client_factory(
-        self, temp_logs_dir: Path
-    ) -> Generator[Any, None, None]:
-        """Provide a factory for creating TestClients with orchestration data.
-
-        Eliminates the repeated Config/MockSentinel/MockStateAccessor/create_test_app
-        setup pattern across toggle endpoint tests (DS-955).
-
-        Yields:
-            A callable that accepts an optional list of OrchestrationInfo and
-            returns a context manager yielding a TestClient.
-        """
-
-        @contextlib.contextmanager
-        def _make_client(
-            orchestrations: list[OrchestrationInfo] | None = None,
-        ) -> Generator[TestClient, None, None]:
-            config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(
-                sentinel, orchestrations or []
-            )
-            app = create_test_app(accessor)
-            with TestClient(app) as client:
-                yield client
-
-        yield _make_client
 
     def test_toggle_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test successful toggle of a single orchestration."""
@@ -843,35 +851,6 @@ orchestrations:
 
 class TestBulkToggleOrchestrationEndpoint:
     """Tests for POST /api/orchestrations/bulk-toggle endpoint."""
-
-    @pytest.fixture
-    def orch_client_factory(
-        self, temp_logs_dir: Path
-    ) -> Generator[Any, None, None]:
-        """Provide a factory for creating TestClients with orchestration data.
-
-        Eliminates the repeated Config/MockSentinel/MockStateAccessor/create_test_app
-        setup pattern across bulk toggle endpoint tests (DS-955).
-
-        Yields:
-            A callable that accepts an optional list of OrchestrationInfo and
-            returns a context manager yielding a TestClient.
-        """
-
-        @contextlib.contextmanager
-        def _make_client(
-            orchestrations: list[OrchestrationInfo] | None = None,
-        ) -> Generator[TestClient, None, None]:
-            config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(
-                sentinel, orchestrations or []
-            )
-            app = create_test_app(accessor)
-            with TestClient(app) as client:
-                yield client
-
-        yield _make_client
 
     def test_bulk_toggle_jira_orchestrations_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test bulk toggling Jira orchestrations by project."""
@@ -1059,41 +1038,6 @@ orchestrations:
 
 class TestDeleteOrchestrationEndpoint:
     """Tests for DELETE /api/orchestrations/{name} endpoint."""
-
-    @pytest.fixture
-    def orch_client_factory(
-        self, temp_logs_dir: Path
-    ) -> Generator[Any, None, None]:
-        """Provide a factory for creating TestClients with orchestration data.
-
-        Eliminates the repeated Config/MockSentinel/MockStateAccessor/create_test_app
-        setup pattern across delete endpoint tests (DS-955).
-
-        Yields:
-            A callable that accepts an optional list of OrchestrationInfo and
-            an optional pass_config flag, returning a context manager yielding
-            a TestClient.
-        """
-
-        @contextlib.contextmanager
-        def _make_client(
-            orchestrations: list[OrchestrationInfo] | None = None,
-            *,
-            pass_config: bool = False,
-        ) -> Generator[TestClient, None, None]:
-            config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(
-                sentinel, orchestrations or []
-            )
-            kwargs: dict[str, Any] = {}
-            if pass_config:
-                kwargs["config"] = config
-            app = create_test_app(accessor, **kwargs)
-            with TestClient(app) as client:
-                yield client
-
-        yield _make_client
 
     def test_delete_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test successful deletion of an orchestration."""
@@ -1403,35 +1347,6 @@ orchestrations:
 
 class TestEditOrchestrationEndpoint:
     """Tests for PUT /api/orchestrations/{name} endpoint (DS-727)."""
-
-    @pytest.fixture
-    def orch_client_factory(
-        self, temp_logs_dir: Path
-    ) -> Generator[Any, None, None]:
-        """Provide a factory for creating TestClients with orchestration data.
-
-        Eliminates the repeated Config/MockSentinel/MockStateAccessor/create_test_app
-        setup pattern across edit endpoint tests (DS-955).
-
-        Yields:
-            A callable that accepts an optional list of OrchestrationInfo and
-            returns a context manager yielding a TestClient.
-        """
-
-        @contextlib.contextmanager
-        def _make_client(
-            orchestrations: list[OrchestrationInfo] | None = None,
-        ) -> Generator[TestClient, None, None]:
-            config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
-            sentinel = MockSentinelWithOrchestrations(config, [])
-            accessor = MockStateAccessorWithOrchestrations(
-                sentinel, orchestrations or []
-            )
-            app = create_test_app(accessor)
-            with TestClient(app) as client:
-                yield client
-
-        yield _make_client
 
     def test_edit_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
         """Test successful edit of an orchestration field via PUT."""
