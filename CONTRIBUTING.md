@@ -522,7 +522,14 @@ correctly for contributors opening new pull requests. If the anchor is not prese
 link will land on the CONTRIBUTING.md page but will not scroll to the expected GHA documentation
 section, leaving contributors without the relevant context.
 
-To verify the anchor exists on `main` before opening a PR, run:
+To verify the anchor exists on `main` before opening a PR, first ensure your local copy of
+`main` is up to date by fetching the latest remote state:
+
+```bash
+git fetch origin main
+```
+
+Then run the verification command:
 
 ```bash
 git show main:CONTRIBUTING.md | grep -q "github-actions-composite-action-documentation-ds-1050" && echo "Anchor found" || echo "Anchor missing on main"
