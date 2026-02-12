@@ -155,6 +155,31 @@ class TestParseLogFilename:
 
         assert parsed is None
 
+    def test_missing_attempt_suffix_parts_none_and_no_legacy_fallback(self) -> None:
+        """Verify parse_log_filename_parts returns None while parse_log_filename also returns None.
+
+        DS-985 follow-up: when a filename has a valid new-format timestamp
+        (dash-separated) but is missing the ``_a{N}`` suffix,
+        ``parse_log_filename_parts`` returns ``None`` and
+        ``parse_log_filename`` falls through to legacy parsing.  Because
+        the dash-separated timestamp (``20240115-103045``) does not match
+        the legacy ``YYYYMMDD_HHMMSS`` format (underscore-separated),
+        ``parse_log_filename`` also returns ``None``.
+
+        This test makes the interplay between both functions explicit for
+        a filename **without** an issue key prefix.
+        """
+        filename = "20240115-103045.log"
+
+        # parse_log_filename_parts should not match (no _a{N} suffix)
+        parts = parse_log_filename_parts(filename)
+        assert parts is None
+
+        # parse_log_filename should also return None: the dash-separated
+        # timestamp does not match the legacy underscore-separated format
+        parsed_dt = parse_log_filename(filename)
+        assert parsed_dt is None
+
 
 class TestParseLogFilenameParts:
     """Tests for parse_log_filename_parts function.
@@ -265,6 +290,19 @@ class TestParseLogFilenameParts:
         suffix is absent, even though the timestamp portion looks valid.
         """
         result = parse_log_filename_parts("DS-123_20240115-103045.log")
+
+        assert result is None
+
+    def test_returns_none_for_bare_timestamp_without_attempt_suffix(self) -> None:
+        """Bare timestamp without issue key or _a{N} suffix returns None.
+
+        DS-985 follow-up edge case: a filename containing only a valid
+        new-format timestamp (dash-separated ``YYYYMMDD-HHMMSS``) but
+        lacking the ``_a{N}`` attempt suffix should return ``None``.
+        This complements ``test_returns_none_for_missing_attempt_suffix``
+        which tests the same scenario *with* an issue key prefix.
+        """
+        result = parse_log_filename_parts("20240115-103045.log")
 
         assert result is None
 

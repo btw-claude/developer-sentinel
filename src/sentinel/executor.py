@@ -728,15 +728,28 @@ class AgentExecutor:
     ) -> None:
         """Log the agent execution if a logger is configured.
 
+        .. note:: ``attempts`` vs ``attempt`` naming (DS-985)
+
+            These two similarly-named parameters serve different purposes:
+
+            * ``attempts`` — the **total** number of attempts made; displayed
+              in the log body (e.g. ``"Attempts: 3"``).
+            * ``attempt`` — the **current** 1-based try number; used to
+              generate the ``_a{N}`` filename suffix for uniqueness.
+
+            At both call sites in :meth:`execute`, the two values are equal
+            because the method is called after the final attempt in both the
+            success and exhaustion paths.
+
         Args:
             issue_key: The Jira issue key.
             orchestration_name: Name of the orchestration.
             prompt: The prompt sent to the agent.
             response: The agent's response.
             status: The execution status.
-            attempts: Total number of attempts made.
+            attempts: Total number of attempts made (displayed in the log body).
             start_time: When execution started.
-            attempt: The specific attempt number for filename uniqueness (1-based).
+            attempt: The 1-based current try number for ``_a{N}`` filename suffix.
         """
         if self.agent_logger is None:
             return
