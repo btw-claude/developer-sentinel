@@ -49,6 +49,11 @@ def _make_manager(
 
     Centralizes manager creation to reduce boilerplate across test classes.
     Uses a high TTL by default to avoid stale-cleanup interference.
+
+    Note: Callers needing TTL-sensitive behavior (e.g., stale-future cleanup
+    or enforce-limit tests) should pass an explicit ``future_ttl_seconds``
+    value rather than relying on the default, which is intentionally set
+    high (9999 s) to prevent accidental stale-cleanup interference.
     """
     return ExecutionManager(
         max_concurrent_executions=max_concurrent_executions,

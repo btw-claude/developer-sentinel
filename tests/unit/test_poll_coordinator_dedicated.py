@@ -116,35 +116,10 @@ class TestGitHubIssueWithRepo:
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.key == "org/repo#123"
 
-    def test_number_forwarded(self) -> None:
-        """The number property should forward to the wrapped issue."""
-        issue = make_github_issue(number=42)
-        wrapper = GitHubIssueWithRepo(issue, "org/repo")
-        assert wrapper.number == 42
-
-    def test_title_forwarded(self) -> None:
-        """The title property should forward to the wrapped issue."""
-        issue = make_github_issue(title="My title")
-        wrapper = GitHubIssueWithRepo(issue, "org/repo")
-        assert wrapper.title == "My title"
-
-    def test_body_forwarded(self) -> None:
-        """The body property should forward to the wrapped issue."""
-        issue = make_github_issue(body="Issue body text")
-        wrapper = GitHubIssueWithRepo(issue, "org/repo")
-        assert wrapper.body == "Issue body text"
-
-    def test_state_forwarded(self) -> None:
-        """The state property should forward to the wrapped issue."""
-        issue = make_github_issue(state="closed")
-        wrapper = GitHubIssueWithRepo(issue, "org/repo")
-        assert wrapper.state == "closed"
-
-    def test_author_forwarded(self) -> None:
-        """The author property should forward to the wrapped issue."""
-        issue = make_github_issue(author="alice")
-        wrapper = GitHubIssueWithRepo(issue, "org/repo")
-        assert wrapper.author == "alice"
+    # NOTE: Individual forwarding tests for number, title, body, state,
+    # author, is_pull_request, head_ref, base_ref, and draft have been
+    # removed because the parametrized test_property_forwarded (below)
+    # already covers all of these properties.  See DS-948.
 
     def test_assignees_forwarded(self) -> None:
         """The assignees property should forward to the wrapped issue."""
@@ -157,30 +132,6 @@ class TestGitHubIssueWithRepo:
         issue = make_github_issue(labels=["bug", "critical"])
         wrapper = GitHubIssueWithRepo(issue, "org/repo")
         assert wrapper.labels == ["bug", "critical"]
-
-    def test_is_pull_request_forwarded(self) -> None:
-        """The is_pull_request property should forward to the wrapped issue."""
-        issue = make_github_issue(is_pull_request=True)
-        wrapper = GitHubIssueWithRepo(issue, "org/repo")
-        assert wrapper.is_pull_request is True
-
-    def test_head_ref_forwarded(self) -> None:
-        """The head_ref property should forward to the wrapped issue."""
-        issue = make_github_issue(head_ref="feature-branch")
-        wrapper = GitHubIssueWithRepo(issue, "org/repo")
-        assert wrapper.head_ref == "feature-branch"
-
-    def test_base_ref_forwarded(self) -> None:
-        """The base_ref property should forward to the wrapped issue."""
-        issue = make_github_issue(base_ref="main")
-        wrapper = GitHubIssueWithRepo(issue, "org/repo")
-        assert wrapper.base_ref == "main"
-
-    def test_draft_forwarded(self) -> None:
-        """The draft property should forward to the wrapped issue."""
-        issue = make_github_issue(draft=True)
-        wrapper = GitHubIssueWithRepo(issue, "org/repo")
-        assert wrapper.draft is True
 
     def test_repo_url_forwarded(self) -> None:
         """The repo_url property should forward to the wrapped issue."""
