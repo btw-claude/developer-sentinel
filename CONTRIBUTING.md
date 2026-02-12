@@ -512,6 +512,14 @@ When creating or reviewing a composite action, ensure the following:
        default: ""
    ```
 
+#### PR Template Link Dependency (DS-1056)
+
+The pull request template (`.github/pull_request_template.md`) links to this section using the
+repository's `blob/HEAD/` URL, which resolves to the default branch (`main`). When contributing
+documentation changes to this section, ensure that `develop` is merged to `main` promptly so
+that the PR template anchor (`#github-actions-composite-action-documentation-ds-1050`) resolves
+correctly for contributors opening new pull requests.
+
 #### Reference Implementation
 
 See `.github/actions/branch-strictness/action.yml` for a complete example of this
