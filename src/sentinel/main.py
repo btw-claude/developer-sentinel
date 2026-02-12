@@ -796,7 +796,6 @@ class Sentinel:
 
     def _collect_completed_results(self) -> list[ExecutionResult]:
         """Collect results from completed futures and record completed executions."""
-        logger.debug("_collect_completed_results() starting (DS-963)")
         # First, collect results from completed futures
         results = self._execution_manager.collect_completed_results()
 
@@ -924,7 +923,10 @@ class Sentinel:
 
     def run_once(self) -> tuple[list[ExecutionResult], int]:
         """Run a single polling cycle."""
-        logger.debug("run_once() called — starting polling cycle (DS-963)")
+        logger.debug(
+            "run_once() called — starting polling cycle",
+            extra={"diagnostic_tag": "polling"},
+        )
 
         # Clear state for new cycle
         self._state_tracker.clear_issue_queue()
@@ -948,16 +950,18 @@ class Sentinel:
         # Collect completed results
         all_results = self._collect_completed_results()
         logger.debug(
-            "run_once() collected %s completed result(s) (DS-963)",
+            "run_once() collected %s completed result(s)",
             len(all_results),
+            extra={"diagnostic_tag": "polling"},
         )
 
         # Check slot availability
         available_slots = self._get_available_slots()
         logger.debug(
-            "run_once() slot check: %s available of %s max (DS-963)",
+            "run_once() slot check: %s available of %s max",
             available_slots,
             self.config.execution.max_concurrent_executions,
+            extra={"diagnostic_tag": "polling"},
         )
         if available_slots <= 0:
             logger.debug(
@@ -1013,9 +1017,10 @@ class Sentinel:
             logger.info("Submitted %s execution tasks", submitted_count)
 
         logger.debug(
-            "run_once() finished — submitted=%s, results=%s (DS-963)",
+            "run_once() finished — submitted=%s, results=%s",
             submitted_count,
             len(all_results),
+            extra={"diagnostic_tag": "polling"},
         )
         return all_results, submitted_count
 
@@ -1108,11 +1113,6 @@ class Sentinel:
                         extra={"error_type": type(e).__name__},
                     )
                     submitted_count = 0
-                    logger.debug(
-                        "run() error path: submitted_count forced to 0 "
-                        "after %s (DS-963)",
-                        type(e).__name__,
-                    )
                 except RuntimeError as e:
                     logger.error(
                         "Error in polling cycle due to runtime error: %s",
@@ -1120,11 +1120,6 @@ class Sentinel:
                         extra={"error_type": type(e).__name__},
                     )
                     submitted_count = 0
-                    logger.debug(
-                        "run() error path: submitted_count forced to 0 "
-                        "after %s (DS-963)",
-                        type(e).__name__,
-                    )
                 except (KeyError, ValueError) as e:
                     logger.error(
                         "Error in polling cycle due to data error: %s",
@@ -1132,11 +1127,6 @@ class Sentinel:
                         extra={"error_type": type(e).__name__},
                     )
                     submitted_count = 0
-                    logger.debug(
-                        "run() error path: submitted_count forced to 0 "
-                        "after %s (DS-963)",
-                        type(e).__name__,
-                    )
                 except Exception as e:
                     logger.exception(
                         "Unexpected error in polling cycle: %s",
@@ -1144,28 +1134,23 @@ class Sentinel:
                         extra={"error_type": type(e).__name__},
                     )
                     submitted_count = 0
-                    logger.debug(
-                        "run() error path: submitted_count forced to 0 "
-                        "after %s (DS-963)",
-                        type(e).__name__,
-                    )
 
                 # Wait for task completion or timeout
                 if not self._shutdown_requested:
                     pending_futures = self._execution_manager.get_pending_futures()
-                    available_slots = self._execution_manager.get_available_slots()
                     logger.debug(
                         "run() wait decision: pending_futures=%s, "
-                        "submitted_count=%s, available_slots=%s (DS-963)",
+                        "submitted_count=%s",
                         len(pending_futures),
                         submitted_count,
-                        available_slots,
+                        extra={"diagnostic_tag": "polling"},
                     )
 
                     if pending_futures:
                         logger.debug(
                             "Waiting for %s task(s) to complete",
-                            len(pending_futures)
+                            len(pending_futures),
+                            extra={"diagnostic_tag": "polling"},
                         )
                         done, _ = wait(pending_futures, timeout=1.0, return_when=FIRST_COMPLETED)
                         while not done and not self._shutdown_requested:
@@ -1173,7 +1158,8 @@ class Sentinel:
                             if not pending_futures:
                                 logger.debug(
                                     "All futures completed during wait "
-                                    "loop, proceeding to poll (DS-963)",
+                                    "loop, proceeding to poll",
+                                    extra={"diagnostic_tag": "polling"},
                                 )
                                 break
                             done, _ = wait(
@@ -1183,10 +1169,15 @@ class Sentinel:
                         if done:
                             logger.debug(
                                 "%s task(s) completed, polling immediately for more work",
-                                len(done)
+                                len(done),
+                                extra={"diagnostic_tag": "polling"},
                             )
                     elif submitted_count == 0:
-                        logger.debug("Sleeping for %ss", self.config.polling.interval)
+                        logger.debug(
+                            "Sleeping for %ss",
+                            self.config.polling.interval,
+                            extra={"diagnostic_tag": "polling"},
+                        )
                         for _ in range(self.config.polling.interval):
                             if self._shutdown_requested:
                                 break
@@ -1194,7 +1185,8 @@ class Sentinel:
                     else:
                         logger.debug(
                             "Submitted %s task(s) but all completed quickly, polling immediately",
-                            submitted_count
+                            submitted_count,
+                            extra={"diagnostic_tag": "polling"},
                         )
 
             # Wait for active tasks with configurable timeout

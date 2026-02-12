@@ -260,10 +260,17 @@ class LoggingConfig:
     Attributes:
         level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
         json: Whether to output logs in JSON format.
+        diagnostic_tags: Comma-separated list of diagnostic tags to enable.
+            When set, only debug log messages whose ``diagnostic_tag`` extra
+            field matches one of the enabled tags will be emitted.  Messages
+            without a ``diagnostic_tag`` are always emitted.  Set to ``"*"``
+            to enable all tagged diagnostics.  Empty string (default) means
+            no tagged diagnostics are emitted.
     """
 
     level: str = "INFO"
     json: bool = False
+    diagnostic_tags: str = ""
 
 
 @dataclass(frozen=True)
@@ -789,6 +796,9 @@ def load_config(env_file: Path | None = None) -> Config:
     # Parse log JSON format option
     log_json = _parse_bool(os.getenv("SENTINEL_LOG_JSON", ""))
 
+    # Parse diagnostic tags (comma-separated list of tags to enable)
+    diagnostic_tags = os.getenv("SENTINEL_DIAGNOSTIC_TAGS", "")
+
     # Parse workdir cleanup option
     # (SENTINEL_KEEP_WORKDIR=true means cleanup_workdir_on_success=False)
     keep_workdir = _parse_bool(os.getenv("SENTINEL_KEEP_WORKDIR", ""))
@@ -1090,6 +1100,7 @@ def load_config(env_file: Path | None = None) -> Config:
     logging_cfg = LoggingConfig(
         level=log_level,
         json=log_json,
+        diagnostic_tags=diagnostic_tags,
     )
 
     polling_config = PollingConfig(
