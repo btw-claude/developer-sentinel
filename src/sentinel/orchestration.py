@@ -1383,7 +1383,24 @@ def _parse_on_failure(data: dict[str, Any] | None) -> OnFailureConfig:
 
 
 def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
-    """Parse a single orchestration from dict."""
+    """Parse a single orchestration from dict.
+
+    The ``max_concurrent`` validation includes an explicit boolean guard
+    since ``bool`` is a subclass of ``int`` in Python, so
+    ``isinstance(True, int)`` returns ``True``.  Without the guard, YAML
+    values like ``max_concurrent: true`` would be silently accepted as
+    numeric values (``True == 1``, ``False == 0``).
+
+    Args:
+        data: Dictionary containing the orchestration configuration.
+
+    Returns:
+        A parsed :class:`Orchestration` instance.
+
+    Raises:
+        OrchestrationError: If required fields are missing or validation
+            fails.
+    """
     name = data.get("name")
     if not name:
         raise OrchestrationError("Orchestration must have a 'name' field")
