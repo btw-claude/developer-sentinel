@@ -4,32 +4,31 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 import types
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 # Log filename format constants
 # New format: {issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}.log
 # - _ separates issue key from timestamp (issue keys contain - but not _)
 # - - separates date from time within timestamp (disambiguates from _ delimiter)
 # - _a{N} suffix guarantees uniqueness across retries
-#
-# Parsing safety note: The rsplit("_a", 1) approach for extracting parts is safe
-# because the attempt suffix (_a{N}) always appears at the end of the filename
-# (before .log), and the timestamp format (YYYYMMDD-HHMMSS) uses hyphens
-# internally — so rsplit("_", 1) on the base unambiguously separates the
-# issue key prefix from the timestamp portion.
 LOG_TIMESTAMP_FORMAT = "%Y%m%d-%H%M%S"
 LOG_FILENAME_EXTENSION = ".log"
 
 # Legacy format for backward compatibility: YYYYMMDD_HHMMSS.log
 _LEGACY_LOG_FILENAME_FORMAT = "%Y%m%d_%H%M%S"
 
-# Type alias for the parsed parts of a log filename.
-LogFilenameParts = tuple[str | None, datetime, int]
+# Regex for parsing log filenames (DS-966)
+# Captures: (issue_key)?, timestamp, attempt_number
+# Pattern: {issue_key}_{YYYYMMDD-HHMMSS}_a{N} or {YYYYMMDD-HHMMSS}_a{N}
+# Note: The greedy (.+) for issue_key is safe because backtracking is anchored
+# by the strict \d{8}-\d{6} timestamp pattern that follows the underscore delimiter.
+_LOG_FILENAME_REGEX = re.compile(r"^(?:(.+)_)?(\d{8}-\d{6})_a(\d+)$")
 
 
 def generate_log_filename(
@@ -65,11 +64,12 @@ def parse_log_filename(filename: str) -> datetime | None:
     Supports both new format ({issue_key}_{YYYYMMDD-HHMMSS}_a{N}.log)
     and legacy format (YYYYMMDD_HHMMSS.log).
 
-    .. seealso::
+    Delegates to :func:`parse_log_filename_parts` for new-format parsing,
+    avoiding redundant ``.removesuffix()`` and regex evaluation.
 
-        :func:`parse_log_filename_parts` — returns all components
-        (issue_key, timestamp, attempt) rather than just the timestamp.
-        Prefer that function when callers need more than the datetime.
+    See Also:
+        :func:`parse_log_filename_parts` — returns all components (issue key,
+        timestamp string, attempt number) instead of just the datetime.
 
     Args:
         filename: Log filename to parse.
@@ -78,72 +78,92 @@ def parse_log_filename(filename: str) -> datetime | None:
         Parsed datetime, or None if the filename doesn't match any expected format.
     """
     try:
-        # Remove .log extension using explicit suffix removal
-        name = filename.removesuffix(LOG_FILENAME_EXTENSION)
-
-        # Try new format: {issue_key}_{YYYYMMDD-HHMMSS}_a{N} or {YYYYMMDD-HHMMSS}_a{N}
-        # The attempt suffix is _a followed by digits at the end
-        if "_a" in name:
-            # Strip the _a{N} suffix
-            base = name.rsplit("_a", 1)[0]
-            # The timestamp is the last YYYYMMDD-HHMMSS portion
-            # If there's an issue key, timestamp follows the last _ before _a
-            parts = base.rsplit("_", 1)
-            ts_str = parts[-1] if len(parts) > 1 else parts[0]
-            return datetime.strptime(ts_str, LOG_TIMESTAMP_FORMAT).replace(tzinfo=UTC)
+        # Try new format via parse_log_filename_parts to avoid duplicating
+        # the .removesuffix() call and _LOG_FILENAME_REGEX match.
+        parts = parse_log_filename_parts(filename)
+        if parts is not None:
+            return parts.to_datetime()
 
         # Try legacy format: YYYYMMDD_HHMMSS
+        name = filename.removesuffix(LOG_FILENAME_EXTENSION)
         return datetime.strptime(name, _LEGACY_LOG_FILENAME_FORMAT).replace(tzinfo=UTC)
     except (ValueError, IndexError):
         return None
 
 
-def parse_log_filename_parts(filename: str) -> LogFilenameParts | None:
-    """Parse a log filename into its constituent parts.
+class LogFilenameParts(NamedTuple):
+    """Parsed components of a log filename in the new format.
 
-    Returns the issue key, timestamp, and attempt number extracted from a
-    log filename.  This avoids callers having to duplicate the filename
-    parsing logic that already lives in :func:`parse_log_filename`.
+    Provides named attribute access (e.g., ``parts.issue_key``) instead of
+    positional tuple indexing (``parts[0]``), improving readability at call
+    sites like ``_format_log_display_name``.
 
-    Supports:
-      - New format: ``{issue_key}_{YYYYMMDD-HHMMSS}_a{N}.log``
-      - No-issue-key format: ``{YYYYMMDD-HHMMSS}_a{N}.log``
-      - Legacy format: ``YYYYMMDD_HHMMSS.log`` (issue_key=None, attempt=1)
+    .. note::
+
+        ``NamedTuple`` does **not** enforce field types at runtime.  The
+        ``int`` conversion for ``attempt`` is guaranteed by the constructor
+        function :func:`parse_log_filename_parts`, which calls ``int()``
+        on the regex capture group before creating this tuple.
+
+    Attributes:
+        issue_key: The issue key prefix, or None if the filename has no
+            issue key (e.g., ``"DS-123"`` or ``None``).
+        timestamp: The timestamp string in ``YYYYMMDD-HHMMSS`` format
+            (always non-None when a match is found).
+        attempt: The attempt number as an int, converted from the string
+            capture group at construction time for API ergonomics.
+    """
+
+    issue_key: str | None
+    timestamp: str
+    attempt: int
+
+    def to_datetime(self) -> datetime:
+        """Convert the timestamp string to a timezone-aware datetime.
+
+        Convenience method to avoid repeating the ``strptime``/``replace``
+        pattern across call sites (e.g., ``_format_log_display_name`` and
+        ``parse_log_filename``).
+
+        Returns:
+            A UTC-aware ``datetime`` parsed from :attr:`timestamp`.
+        """
+        return datetime.strptime(self.timestamp, LOG_TIMESTAMP_FORMAT).replace(
+            tzinfo=UTC
+        )
+
+
+def parse_log_filename_parts(
+    filename: str,
+) -> LogFilenameParts | None:
+    """Parse a log filename into its component parts.
+
+    Extracts the issue key, timestamp string, and attempt number from a log
+    filename in the new format ({issue_key}_{YYYYMMDD-HHMMSS}_a{N}.log).
+
+    This function exposes the regex match groups as a public API, avoiding
+    the need for external modules to import the private _LOG_FILENAME_REGEX.
 
     Args:
         filename: Log filename to parse.
 
     Returns:
-        A ``(issue_key, timestamp, attempt)`` tuple, or ``None`` if the
-        filename doesn't match any expected format.  *issue_key* is
-        ``None`` when the filename has no issue-key prefix or uses the
-        legacy format.
+        A :class:`LogFilenameParts` named tuple if the filename matches the
+        new format, or None if it doesn't match. ``issue_key`` may be None
+        if the filename has no issue key prefix. ``timestamp`` and
+        ``attempt`` are always non-None when a match is found, since both
+        the timestamp and attempt regex groups are non-optional. The
+        ``attempt`` value is converted to ``int`` at construction time.
     """
-    try:
-        name = filename.removesuffix(LOG_FILENAME_EXTENSION)
-
-        if "_a" in name:
-            # New format: split off the _a{N} attempt suffix
-            base, attempt_str = name.rsplit("_a", 1)
-            attempt = int(attempt_str)
-
-            # Separate issue key from timestamp
-            parts = base.rsplit("_", 1)
-            if len(parts) > 1:
-                issue_key = parts[0]
-                ts_str = parts[1]
-            else:
-                issue_key = None
-                ts_str = parts[0]
-
-            ts = datetime.strptime(ts_str, LOG_TIMESTAMP_FORMAT).replace(tzinfo=UTC)
-            return (issue_key, ts, attempt)
-
-        # Legacy format: YYYYMMDD_HHMMSS (no issue key, attempt defaults to 1)
-        ts = datetime.strptime(name, _LEGACY_LOG_FILENAME_FORMAT).replace(tzinfo=UTC)
-        return (None, ts, 1)
-    except (ValueError, IndexError):
-        return None
+    name = filename.removesuffix(LOG_FILENAME_EXTENSION)
+    match = _LOG_FILENAME_REGEX.match(name)
+    if match:
+        return LogFilenameParts(
+            issue_key=match.group(1),
+            timestamp=match.group(2),
+            attempt=int(match.group(3)),
+        )
+    return None
 
 
 class DiagnosticFilter(logging.Filter):
