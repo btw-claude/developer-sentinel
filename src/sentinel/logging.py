@@ -35,12 +35,12 @@ _LOG_FILENAME_REGEX = re.compile(r"^(?:(.+)_)?(\d{8}-\d{6})_a(\d+)$")
 def _strip_log_extension(filename: str) -> str:
     """Strip the ``.log`` extension from a filename if present.
 
-    Provides a single source of truth for extension removal, used by both
-    :func:`parse_log_filename_parts` (new-format pipeline) and the legacy
-    fallback in :func:`parse_log_filename`.  Delegates to
+    Provides a single source of truth for extension removal (DS-1010),
+    used by both :func:`parse_log_filename_parts` (new-format pipeline)
+    and the legacy fallback in :func:`parse_log_filename`.  Delegates to
     ``str.removesuffix``, which is a no-op when the suffix is absent —
     so bare stems (e.g., ``"DS-123_20240115-103045_a1"``) pass through
-    unchanged (DS-1010).
+    unchanged.
 
     Args:
         filename: Log filename, with or without the ``.log`` extension.
