@@ -272,6 +272,10 @@ class StateTracker:
 
         Also updates the last_access time to support TTL-based cleanup.
 
+        Note:
+            This method is thread-safe. Access to the internal attempt counts
+            dictionary is protected by ``_attempt_counts_lock``.
+
         Args:
             issue_key: The key of the issue being processed.
             orchestration_name: The name of the orchestration being executed.
@@ -301,6 +305,9 @@ class StateTracker:
         waiting for real time to pass.
 
         Note:
+            This method is thread-safe. Access to the internal attempt counts
+            dictionary is protected by ``_attempt_counts_lock``.
+
             If an entry already exists for the same ``(issue_key, orchestration_name)``
             pair, it will be overwritten with the new count and timestamp values.
 
@@ -324,6 +331,10 @@ class StateTracker:
         Removes entries from _attempt_counts that haven't been accessed within
         the configured TTL period. This prevents unbounded memory growth for
         long-running processes.
+
+        Note:
+            This method is thread-safe. Access to the internal attempt counts
+            dictionary is protected by ``_attempt_counts_lock``.
 
         Returns:
             Number of entries cleaned up.
