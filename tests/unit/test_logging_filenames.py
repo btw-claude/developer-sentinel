@@ -487,26 +487,43 @@ class TestParseLogFilenameParts:
     # Consistency: parse_log_filename and parse_log_filename_parts agree
     # ------------------------------------------------------------------
 
-    def test_timestamp_matches_parse_log_filename(self) -> None:
+    @pytest.mark.parametrize(
+        "filename",
+        [
+            pytest.param(
+                "PROJ-123_20250115-103045_a1.log",
+                id="new-format-with-issue-key",
+            ),
+            pytest.param(
+                "20250601-120000_a2.log",
+                id="new-format-without-issue-key",
+            ),
+            pytest.param(
+                "MY_PROJ-42_20260301-090500_a3.log",
+                id="underscore-issue-key",
+            ),
+        ],
+    )
+    def test_timestamp_matches_parse_log_filename(self, filename: str) -> None:
         """Timestamp from parse_log_filename_parts matches parse_log_filename.
 
         Both functions must agree on the extracted datetime for the same
         input, ensuring that callers migrating from the datetime-only API
         see identical results.
+
+        Note: only new-format filenames are tested here because
+        ``parse_log_filename_parts`` returns ``None`` for legacy-format
+        filenames (``YYYYMMDD_HHMMSS.log``), so there is no ``to_datetime()``
+        result to compare.
         """
-        filenames = [
-            "PROJ-123_20250115-103045_a1.log",
-            "20250601-120000_a2.log",
-        ]
-        for fname in filenames:
-            parts_result = parse_log_filename_parts(fname)
-            dt_result = parse_log_filename(fname)
-            assert parts_result is not None, f"parse_log_filename_parts returned None for {fname}"
-            assert dt_result is not None, f"parse_log_filename returned None for {fname}"
-            assert parts_result.to_datetime() == dt_result, (
-                f"Timestamp mismatch for {fname}: "
-                f"parts={parts_result.to_datetime()}, parse={dt_result}"
-            )
+        parts_result = parse_log_filename_parts(filename)
+        dt_result = parse_log_filename(filename)
+        assert parts_result is not None, f"parse_log_filename_parts returned None for {filename}"
+        assert dt_result is not None, f"parse_log_filename returned None for {filename}"
+        assert parts_result.to_datetime() == dt_result, (
+            f"Timestamp mismatch for {filename}: "
+            f"parts={parts_result.to_datetime()}, parse={dt_result}"
+        )
 
     # ------------------------------------------------------------------
     # Edge cases: unusual issue key formats (DS-981)
@@ -646,3 +663,43 @@ class TestFormatLogDisplayName:
             "MY-PROJECT-42_20250601-120000_a3.log",
         )
         assert result == "MY-PROJECT-42 2025-06-01 12:00:00 (attempt 3)"
+
+    def test_prioritises_parse_log_filename_parts_over_parse_log_filename(
+        self, accessor: SentinelStateAccessor
+    ) -> None:
+        """Verify _format_log_display_name calls parse_log_filename_parts first.
+
+        DS-979 consolidation: for new-format filenames the method should
+        resolve via ``parse_log_filename_parts`` without falling through to
+        ``parse_log_filename``, avoiding redundant regex evaluation on the
+        same filename.  ``parse_log_filename`` is still legitimately imported
+        in ``state.py`` for legacy-format fallback, so a module-level import
+        check (via ``dir()`` / ``hasattr()``) is **not** appropriate here.
+
+        Trade-off note: this test uses ``unittest.mock.patch(wraps=...)``
+        to verify call behaviour at runtime.  A simpler ``dir()`` /
+        ``hasattr()`` approach would catch module-level imports but would
+        **not** catch function-local imports — an acceptable limitation
+        when the concern is redundant regex evaluation at the module level.
+        Since ``state.py`` legitimately imports both functions, we instead
+        verify that for new-format filenames ``parse_log_filename_parts``
+        is called and ``parse_log_filename`` is **not**.
+        """
+        from unittest.mock import patch
+
+        with (
+            patch(
+                "sentinel.dashboard.state.parse_log_filename_parts",
+                wraps=parse_log_filename_parts,
+            ) as mock_parts,
+            patch(
+                "sentinel.dashboard.state.parse_log_filename",
+                wraps=parse_log_filename,
+            ) as mock_legacy,
+        ):
+            result = accessor._format_log_display_name(
+                "PROJ-1_20250115-103045_a1.log",
+            )
+            assert result == "PROJ-1 2025-01-15 10:30:45 (attempt 1)"
+            mock_parts.assert_called_once_with("PROJ-1_20250115-103045_a1.log")
+            mock_legacy.assert_not_called()
