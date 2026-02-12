@@ -947,19 +947,17 @@ class TestDiagnosticFilterNotOnOrchestrationFileHandlers:
 
     def test_single_orchestration_handler_has_no_diagnostic_filter(self, tmp_path: Path) -> None:
         """Verify a single orchestration's FileHandler has no DiagnosticFilter."""
-        manager = OrchestrationLogManager(tmp_path)
+        with OrchestrationLogManager(tmp_path) as manager:
+            manager.get_logger("solo-orch")
 
-        manager.get_logger("solo-orch")
-
-        handler = manager._handlers["solo-orch"]
-        assert isinstance(handler, logging.FileHandler)
-        diagnostic_filters = [
-            f for f in handler.filters if isinstance(f, DiagnosticFilter)
-        ]
-        assert diagnostic_filters == [], (
-            "FileHandler for 'solo-orch' should not have a DiagnosticFilter"
-        )
-        manager.close_all()
+            handler = manager._handlers["solo-orch"]
+            assert isinstance(handler, logging.FileHandler)
+            diagnostic_filters = [
+                f for f in handler.filters if isinstance(f, DiagnosticFilter)
+            ]
+            assert diagnostic_filters == [], (
+                "FileHandler for 'solo-orch' should not have a DiagnosticFilter"
+            )
 
     def test_tagged_debug_written_unconditionally_to_orchestration_log(
         self, tmp_path: Path
