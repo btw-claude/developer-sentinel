@@ -266,6 +266,48 @@ class TestParseLogFilenameParts:
 
         assert result is None
 
+    def test_handles_issue_keys_with_multiple_underscores(self) -> None:
+        """Issue keys with multiple underscores are preserved by rsplit('_', 1).
+
+        The greedy rsplit on the last underscore before the timestamp means
+        *all* leading underscores in the issue-key portion are kept intact.
+        This provides regression protection for the greedy capture behavior.
+        """
+        result = parse_log_filename_parts("MY_PROJ_V2-123_20240115-103045_a1.log")
+        assert result is not None
+        assert result.issue_key == "MY_PROJ_V2-123"
+        assert result.timestamp == "20240115-103045"
+        assert result.attempt == 1
+
+    def test_roundtrip_issue_key_with_underscores(self) -> None:
+        """Roundtrip generate -> parse preserves issue keys containing underscores."""
+        original_ts = datetime(2025, 7, 4, 18, 0, 0, tzinfo=UTC)
+        filename = generate_log_filename(
+            original_ts, issue_key="MY_PROJ-123", attempt=2,
+        )
+        result = parse_log_filename_parts(filename)
+        assert result is not None
+        assert result.issue_key == "MY_PROJ-123"
+        assert result.to_datetime() == original_ts
+        assert result.attempt == 2
+
+    def test_roundtrip_issue_key_with_multiple_underscores(self) -> None:
+        """Roundtrip generate -> parse preserves multi-underscore issue keys.
+
+        Addresses PR #993 review comment: extends roundtrip coverage to
+        multi-underscore keys (e.g. MY_PROJ_V2-123) beyond the single-
+        underscore case already covered by test_roundtrip_issue_key_with_underscores.
+        """
+        original_ts = datetime(2026, 3, 15, 9, 0, 0, tzinfo=UTC)
+        filename = generate_log_filename(
+            original_ts, issue_key="MY_PROJ_V2-123", attempt=1,
+        )
+        result = parse_log_filename_parts(filename)
+        assert result is not None
+        assert result.issue_key == "MY_PROJ_V2-123"
+        assert result.to_datetime() == original_ts
+        assert result.attempt == 1
+
     def test_attempt_number_zero(self) -> None:
         """Attempt number 0 should be parsed correctly even though convention is 1-based."""
         result = parse_log_filename_parts("TEST-1_20250115-103045_a0.log")
@@ -331,6 +373,65 @@ class TestParseLogFilenameParts:
                 f"Timestamp mismatch for {fname}: "
                 f"parts={parts_result.to_datetime()}, parse={dt_result}"
             )
+
+    # ------------------------------------------------------------------
+    # Edge cases: unusual issue key formats (DS-981)
+    # ------------------------------------------------------------------
+
+    def test_issue_key_single_underscore_prefix(self) -> None:
+        """Issue key with a leading underscore-separated segment.
+
+        Validates that the greedy rsplit correctly isolates the timestamp
+        even when the issue key itself contains underscores.
+        """
+        result = parse_log_filename_parts("A_B-1_20250601-120000_a1.log")
+        assert result is not None
+        assert result.issue_key == "A_B-1"
+        assert result.to_datetime() == datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
+        assert result.attempt == 1
+
+    def test_issue_key_triple_underscore_segments(self) -> None:
+        """Issue key with three underscore-separated segments.
+
+        Stress-tests that rsplit('_', 1) only splits on the rightmost
+        underscore, preserving the entire multi-underscore prefix.
+        """
+        result = parse_log_filename_parts("FOO_BAR_BAZ-99_20260101-000000_a7.log")
+        assert result is not None
+        assert result.issue_key == "FOO_BAR_BAZ-99"
+        assert result.to_datetime() == datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+        assert result.attempt == 7
+
+    # ------------------------------------------------------------------
+    # Guarantee: non-None timestamp and attempt on successful parse
+    # ------------------------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "filename",
+        [
+            "PROJ-1_20250115-103045_a1.log",
+            "MY_PROJ-42_20250601-120000_a3.log",
+            "MY_PROJ_V2-123_20240115-103045_a1.log",
+            "20260301-090500_a5.log",
+        ],
+    )
+    def test_timestamp_and_attempt_always_non_none(self, filename: str) -> None:
+        """Returned timestamp and attempt are always non-None on a successful parse.
+
+        This explicitly asserts the type-precision guarantee documented in
+        the docstring: only *issue_key* may be None; *timestamp* (str)
+        and *attempt* (int) are always present when the function returns a
+        LogFilenameParts rather than None.  The to_datetime() convenience
+        method always yields a timezone-aware UTC datetime.
+        """
+        result = parse_log_filename_parts(filename)
+        assert result is not None, f"Expected a match for {filename}"
+        assert isinstance(result, LogFilenameParts), f"Expected LogFilenameParts for {filename}"
+        assert isinstance(result.timestamp, str), f"Expected str, got {type(result.timestamp)} for {filename}"
+        assert isinstance(result.attempt, int), f"Expected int, got {type(result.attempt)} for {filename}"
+        dt = result.to_datetime()
+        assert isinstance(dt, datetime), f"Expected datetime from to_datetime(), got {type(dt)} for {filename}"
+        assert dt.tzinfo is not None, f"Expected timezone-aware datetime for {filename}"
 
 
 class TestFormatLogDisplayName:
