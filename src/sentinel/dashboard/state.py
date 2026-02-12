@@ -586,14 +586,26 @@ class SentinelStateAccessor:
         redundant computation under rapid successive requests (e.g., HTMX
         auto-refresh every 2-5 seconds).
 
-        Thread-safety: Access to the underlying TTLCache is protected by a
-        threading.Lock to prevent race conditions when multiple threads call
-        get_state() concurrently. Without the lock, concurrent reads and writes
-        to the TTLCache could lead to inconsistent state or redundant rebuilds.
+        Thread-safety: Uses a double-checked locking pattern to reduce lock
+        contention. The first check reads from the TTLCache without acquiring
+        the lock, providing a fast path for cache hits. If the cache misses,
+        the lock is acquired and the cache is checked again (in case another
+        thread populated it while we were waiting for the lock). This ensures
+        correctness while allowing concurrent readers to proceed without
+        blocking when the cache is populated.
 
         Returns:
             An immutable DashboardState object containing current state.
         """
+        # Fast path: check cache without acquiring the lock.
+        # TTLCache.get() is a single read that returns None on miss/expiry,
+        # so a stale-or-None result here is safe — we just fall through to
+        # the locked path.
+        cached_state = self._state_cache.get("state")
+        if cached_state is not None:
+            return cached_state
+
+        # Slow path: acquire lock and double-check before rebuilding.
         with self._state_cache_lock:
             cached_state = self._state_cache.get("state")
             if cached_state is not None:

@@ -935,7 +935,7 @@ class TestGetStateCacheThreadSafety:
         class TrackingLock:
             """A lock wrapper that tracks whether acquire was called."""
 
-            def __enter__(self) -> None:
+            def __enter__(self) -> bool:
                 nonlocal acquired
                 acquired = True
                 return real_lock.__enter__()
