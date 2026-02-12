@@ -424,7 +424,14 @@ class TestLoadConfig:
         assert config.logging_config.diagnostic_tags == "*"
 
     def test_diagnostic_tags_with_whitespace(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """SENTINEL_DIAGNOSTIC_TAGS preserves raw value including whitespace (DS-972)."""
+        """SENTINEL_DIAGNOSTIC_TAGS preserves raw value including whitespace (DS-972).
+
+        Whitespace is intentionally preserved at the config layer because
+        parsing and stripping are deferred to
+        ``DiagnosticFilter.from_config_string()``, which handles whitespace
+        stripping when the filter is constructed.  The config layer stores the
+        raw environment-variable value without transformation.
+        """
         monkeypatch.setenv("SENTINEL_DIAGNOSTIC_TAGS", " polling , execution ")
 
         config = load_config()
