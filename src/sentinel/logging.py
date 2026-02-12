@@ -314,9 +314,9 @@ def parse_log_filename_parts(
 
     Returns:
         A :class:`LogFilenameParts` named tuple if the filename matches the
-        new format, or None if it doesn't match. ``issue_key`` may be None
+        new format, or ``None`` if it doesn't match. ``issue_key`` may be ``None``
         if the filename has no issue key prefix. ``timestamp`` and
-        ``attempt`` are always non-None when a match is found, since both
+        ``attempt`` are always non-``None`` when a match is found, since both
         the timestamp and attempt regex groups are non-optional. The
         ``attempt`` value is converted to ``int`` at construction time.
     """
