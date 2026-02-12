@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from threading import Barrier, Lock, Thread
 from typing import Any
 
+import pytest
 from cachetools import TTLCache
 
 from sentinel.config import Config, ExecutionConfig
@@ -378,6 +379,7 @@ class TestCachedMethodLockContentionBenchmark:
     for the dashboard's use case (HTMX auto-refresh every 2-5 seconds).
     """
 
+    @pytest.mark.benchmark
     def test_single_thread_lock_overhead(self) -> None:
         """Measure lock overhead with a single thread (no contention).
 
@@ -409,11 +411,12 @@ class TestCachedMethodLockContentionBenchmark:
         assert cm_result.total_calls == calls
         assert manual_result.total_calls == calls
 
-        # The overhead should be small - @cachedmethod may be slightly slower
-        # due to lock acquisition on every call, but should be within 50x
-        # for single-threaded case (lock acquisition is very fast when uncontended)
+        # Guard-rail threshold: 50x (intentionally generous to avoid CI flakiness).
+        # Expected range: 1-5x overhead for single-threaded uncontended lock acquisition.
+        # Values consistently above 5x may indicate a regression worth investigating.
         assert comparison.mean_latency_overhead_ratio < 50.0
 
+    @pytest.mark.benchmark
     def test_moderate_concurrency_lock_contention(self) -> None:
         """Measure lock contention with 4 concurrent threads.
 
@@ -448,11 +451,14 @@ class TestCachedMethodLockContentionBenchmark:
         assert cm_result.total_calls == num_threads * calls_per_thread
         assert manual_result.total_calls == num_threads * calls_per_thread
 
-        # Under moderate contention, the overhead ratio should remain bounded.
-        # The lock is very fast (Python GIL limits true parallelism anyway),
-        # so we use a generous bound to avoid flaky tests.
+        # Guard-rail threshold: 100x (intentionally generous to avoid CI flakiness
+        # in environments with variable CPU availability).
+        # Expected range: 1-10x overhead under moderate contention (4 threads).
+        # The Python GIL limits true parallelism, so lock contention impact is
+        # bounded by GIL scheduling. Values consistently above 10x may signal regression.
         assert comparison.mean_latency_overhead_ratio < 100.0
 
+    @pytest.mark.benchmark
     def test_high_concurrency_lock_contention(self) -> None:
         """Measure lock contention with 16 concurrent threads.
 
@@ -487,11 +493,15 @@ class TestCachedMethodLockContentionBenchmark:
         assert cm_result.total_calls == num_threads * calls_per_thread
         assert manual_result.total_calls == num_threads * calls_per_thread
 
-        # Even under high contention, the overhead should be bounded.
+        # Guard-rail threshold: 100x (intentionally generous to avoid CI flakiness
+        # in environments with variable CPU availability).
+        # Expected range: 1-10x overhead under high contention (16 threads).
         # Python's GIL means threads are effectively serialized for CPU-bound
         # work, so lock contention impact is bounded by GIL scheduling.
+        # Values consistently above 10x may signal regression.
         assert comparison.mean_latency_overhead_ratio < 100.0
 
+    @pytest.mark.benchmark
     def test_p99_latency_acceptable_under_contention(self) -> None:
         """Verify that p99 tail latency remains acceptable under contention.
 
@@ -516,6 +526,7 @@ class TestCachedMethodLockContentionBenchmark:
             f"p99 latency {result.p99_latency_us:.1f}us exceeds 10ms threshold"
         )
 
+    @pytest.mark.benchmark
     def test_throughput_under_contention(self) -> None:
         """Verify that @cachedmethod achieves acceptable throughput.
 

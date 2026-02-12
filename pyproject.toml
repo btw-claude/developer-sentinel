@@ -149,6 +149,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: marks tests as integration tests requiring external services (deselect with '-m \"not integration\"')",
+    "benchmark: marks tests as benchmarks measuring timing/performance (deselect with '-m \"not benchmark\"')",
 ]
 # Test type addopts examples (uncomment as needed):
 # Run only unit tests: pytest tests/unit
