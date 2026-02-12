@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import pytest
+from docutils import nodes as _nodes
 
 from sentinel.sphinx_jira_role import (
     _DEFAULT_JIRA_BASE_URL,
@@ -153,11 +154,64 @@ class TestDefaultConfiguration:
         assert _DEFAULT_JIRA_BASE_URL.startswith("https://")
 
 
-def _make_inliner(base_url: str = "https://test.atlassian.net") -> object:
+class _MockConfig:
+    """Minimal stand-in for a Sphinx ``Config`` object."""
+
+    def __init__(self, url: str) -> None:
+        self.jira_base_url = url
+
+
+class _MockEnv:
+    """Minimal stand-in for a Sphinx ``BuildEnvironment``."""
+
+    def __init__(self, url: str) -> None:
+        self.config = _MockConfig(url)
+
+
+class _MockSettings:
+    """Minimal stand-in for ``docutils.frontend.OptionParser`` settings."""
+
+    def __init__(self, url: str) -> None:
+        self.env = _MockEnv(url)
+
+
+class _MockMessage:
+    """Minimal stand-in for a docutils system message node."""
+
+
+class _MockReporter:
+    """Minimal stand-in for a docutils reporter."""
+
+    def warning(self, message: str, line: int = 0) -> object:
+        return _MockMessage()
+
+
+class _MockDocument:
+    """Minimal stand-in for a docutils ``document`` node."""
+
+    def __init__(self, url: str) -> None:
+        self.settings = _MockSettings(url)
+
+
+class _MockInliner:
+    """Minimal stand-in for a docutils ``Inliner``."""
+
+    def __init__(self, url: str) -> None:
+        self.document = _MockDocument(url)
+        self.reporter = _MockReporter()
+
+    def problematic(
+        self, rawtext: str, text: str, msg: object
+    ) -> object:
+        return _nodes.problematic(rawtext, text)
+
+
+def _make_inliner(base_url: str = "https://test.atlassian.net") -> _MockInliner:
     """Create a minimal mock Inliner with the required attributes.
 
     Shared helper for test classes that exercise ``_jira_role_impl`` and
     ``jira_role``.  Extracted from per-class duplicates per DS-1020.
+    Mock classes hoisted to module level per DS-1022.
 
     Args:
         base_url: The Jira base URL to configure.
@@ -165,42 +219,7 @@ def _make_inliner(base_url: str = "https://test.atlassian.net") -> object:
     Returns:
         A mock inliner object suitable for passing to ``jira_role()``.
     """
-
-    class MockConfig:
-        def __init__(self, url: str) -> None:
-            self.jira_base_url = url
-
-    class MockEnv:
-        def __init__(self, url: str) -> None:
-            self.config = MockConfig(url)
-
-    class MockSettings:
-        def __init__(self, url: str) -> None:
-            self.env = MockEnv(url)
-
-    class MockReporter:
-        def warning(self, message: str, line: int = 0) -> object:
-            class MockMessage:
-                pass
-            return MockMessage()
-
-    class MockDocument:
-        def __init__(self, url: str) -> None:
-            self.settings = MockSettings(url)
-
-    class MockInliner:
-        def __init__(self, url: str) -> None:
-            self.document = MockDocument(url)
-            self.reporter = MockReporter()
-
-        def problematic(
-            self, rawtext: str, text: str, msg: object
-        ) -> object:
-            from docutils import nodes as n
-
-            return n.problematic(rawtext, text)
-
-    return MockInliner(base_url)
+    return _MockInliner(base_url)
 
 
 class TestSphinxExtensionSetup:
