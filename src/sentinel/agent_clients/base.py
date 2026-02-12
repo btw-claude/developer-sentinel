@@ -216,7 +216,7 @@ class AgentClient(ABC):
             sanitized_items.append(f"- {safe_key}: {safe_val}\n")
         return prompt + "\n\nContext:\n" + "".join(sanitized_items)
 
-    def _create_workdir(self, issue_key: str) -> Path:
+    def _create_workdir(self, issue_key: str, attempt: int = 1) -> Path:
         """Create a unique working directory for an agent run.
 
         This shared implementation is used by all agent clients (Claude SDK,
@@ -224,8 +224,13 @@ class AgentClient(ABC):
         executions. Extracted to the base class to eliminate duplication
         across concrete implementations (DS-666).
 
-        The directory name format is ``{issue_key}_{YYYYMMDD_HHMMSS}``, created
-        under the ``base_workdir`` directory.
+        The directory name format is ``{issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}``,
+        created under the ``base_workdir`` directory.
+
+        Format details (DS-960):
+        - ``_`` separates issue key from timestamp (issue keys contain ``-`` but not ``_``)
+        - ``-`` separates date from time within timestamp (disambiguates from ``_`` delimiter)
+        - ``_a{N}`` suffix guarantees uniqueness across retries
 
         Note:
             The timestamp in the directory name uses UTC (not local time).
@@ -235,6 +240,7 @@ class AgentClient(ABC):
 
         Args:
             issue_key: The issue key to include in the directory name.
+            attempt: Attempt number (1-based) for uniqueness across retries.
 
         Returns:
             Path to the created working directory.
@@ -247,8 +253,8 @@ class AgentClient(ABC):
 
         self.base_workdir.mkdir(parents=True, exist_ok=True)
         # UTC timestamp for directory naming (see docs/UTC_TIMESTAMPS.md)
-        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
-        workdir = self.base_workdir / f"{issue_key}_{timestamp}"
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+        workdir = self.base_workdir / f"{issue_key}_{timestamp}_a{attempt}"
         workdir.mkdir(parents=True, exist_ok=True)
         logger.info("Created agent working directory: %s", workdir)
         return workdir
@@ -419,6 +425,7 @@ class AgentClient(ABC):
         create_branch: bool = False,
         base_branch: str = "main",
         agent_teams: bool = False,
+        attempt: int = 1,
     ) -> AgentRunResult:
         """Run an agent with the given prompt.
 
@@ -442,6 +449,8 @@ class AgentClient(ABC):
             create_branch: If True and branch doesn't exist, create it from base_branch.
             base_branch: Base branch to create new branches from. Defaults to "main".
             agent_teams: Whether to enable Claude Code's experimental Agent Teams feature.
+            attempt: Attempt number (1-based) from the executor retry loop.
+                Used for unique log filenames and workdir names across retries (DS-960).
 
         Returns:
             AgentRunResult containing the agent's response text and optional working directory path.

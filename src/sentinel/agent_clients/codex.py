@@ -196,6 +196,7 @@ class CodexAgentClient(AgentClient):
         create_branch: bool = False,
         base_branch: str = "main",
         agent_teams: bool = False,
+        attempt: int = 1,
     ) -> AgentRunResult:
         """Run a Codex agent with the given prompt.
 
@@ -222,6 +223,8 @@ class CodexAgentClient(AgentClient):
             base_branch: Base branch to create new branches from. Defaults to "main".
             agent_teams: Whether to enable Claude Code's experimental Agent Teams feature
                 (ignored for Codex client).
+            attempt: Attempt number (1-based) from the executor retry loop.
+                Used for unique log filenames and workdir names across retries (DS-960).
 
         Returns:
             AgentRunResult containing the agent's response text and optional working
@@ -242,7 +245,7 @@ class CodexAgentClient(AgentClient):
 
         workdir = None
         if self.base_workdir is not None and issue_key is not None:
-            workdir = self._create_workdir(issue_key)
+            workdir = self._create_workdir(issue_key, attempt=attempt)
 
         # Setup branch if specified and workdir exists
         if branch and workdir:
@@ -275,6 +278,7 @@ class CodexAgentClient(AgentClient):
                 model,
                 issue_key=issue_key,
                 orch_name=orchestration_name,
+                attempt=attempt,
             )
         else:
             response = await self._run_simple(
@@ -391,6 +395,7 @@ class CodexAgentClient(AgentClient):
         model: str | None,
         issue_key: str,
         orch_name: str,
+        attempt: int = 1,
     ) -> str:
         """Run agent via async subprocess with streaming stderr to a log file.
 
@@ -407,6 +412,7 @@ class CodexAgentClient(AgentClient):
             model: Optional model identifier.
             issue_key: The issue key for organizing logs.
             orch_name: The orchestration name for organizing logs.
+            attempt: Attempt number (1-based) for unique log filenames (DS-960).
 
         Returns:
             The agent response text.
@@ -425,7 +431,7 @@ class CodexAgentClient(AgentClient):
         start_time = datetime.now(tz=UTC)
         log_dir = self.log_base_dir / orch_name
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / generate_log_filename(start_time)
+        log_path = log_dir / generate_log_filename(start_time, issue_key=issue_key, attempt=attempt)
 
         sep = "=" * 80
         log_header = (

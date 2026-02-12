@@ -686,7 +686,11 @@ class SentinelStateAccessor:
                 attempt_number=step.attempt_number,
                 started_at=step.started_at,
                 elapsed_seconds=(now - step.started_at).total_seconds(),
-                log_filename=generate_log_filename(step.started_at),
+                log_filename=generate_log_filename(
+                    step.started_at,
+                    issue_key=step.issue_key,
+                    attempt=step.attempt_number,
+                ),
                 issue_url=step.issue_url,  # Pass through issue URL
             )
             for step in running_steps_raw
@@ -1152,7 +1156,10 @@ class SentinelStateAccessor:
     def _format_log_display_name(self, filename: str) -> str:
         """Format a log filename for display.
 
-        Converts YYYYMMDD_HHMMSS.log to a human-readable format.
+        Supports both new format ({issue_key}_{YYYYMMDD-HHMMSS}_a{N}.log) and
+        legacy format (YYYYMMDD_HHMMSS.log). Extracts the timestamp and formats
+        it as a human-readable string, preserving issue key and attempt info
+        when present.
 
         Args:
             filename: The log filename.
@@ -1162,6 +1169,20 @@ class SentinelStateAccessor:
         """
         dt = parse_log_filename(filename)
         if dt is not None:
+            # Extract issue key and attempt from new format if present
+            name = filename.removesuffix(".log")
+            if "_a" in name:
+                # New format: extract parts for display
+                base = name.rsplit("_a", 1)[0]
+                attempt_str = name.rsplit("_a", 1)[1]
+                parts = base.rsplit("_", 1)
+                if len(parts) > 1:
+                    issue_key = parts[0]
+                    return (
+                        f"{issue_key} {dt.strftime('%Y-%m-%d %H:%M:%S')}"
+                        f" (attempt {attempt_str})"
+                    )
+                return f"{dt.strftime('%Y-%m-%d %H:%M:%S')} (attempt {attempt_str})"
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         return filename
 

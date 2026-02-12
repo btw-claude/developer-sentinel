@@ -14,11 +14,18 @@ Timestamps visible in the following locations are **UTC, not local time**:
 
 | Location | Format | Example |
 |----------|--------|---------|
-| Agent working directory names | `{ISSUE_KEY}_{YYYYMMDD_HHMMSS}` | `DS-123_20260210_030000` |
+| Agent working directory names | `{ISSUE_KEY}_{YYYYMMDD-HHMMSS}_a{N}` | `DS-123_20260210-030000_a1` |
 | Streaming log line prefixes | `[HH:MM:SS.mmm]` | `[03:00:00.123]` |
 | Log file header/footer timestamps | ISO 8601 | `2026-02-10T03:00:00+00:00` |
-| Log filenames | `YYYYMMDD_HHMMSS.log` | `20260210_030000.log` |
+| Log filenames | `{ISSUE_KEY}_{YYYYMMDD-HHMMSS}_a{N}.log` | `DS-123_20260210-030000_a1.log` |
 | Dashboard state timestamps | ISO 8601 | `2026-02-10T03:00:00+00:00` |
+
+### Naming format details (DS-960)
+
+The naming format `{issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}` uses:
+- `_` to separate issue key from timestamp (issue keys contain `-` but not `_`)
+- `-` to separate date from time within timestamp (disambiguates from `_` delimiter)
+- `_a{N}` suffix to guarantee uniqueness across retry attempts
 
 If you are reviewing logs or directory names and the times appear offset from your local clock, this is expected. To convert to local time, apply your timezone offset (e.g., UTC-8 for PST, UTC-5 for EST).
 
@@ -74,3 +81,4 @@ The following source modules use `datetime.now(tz=UTC)`:
 - **DS-879:** Audited and replaced all naive `datetime.now()` calls with `datetime.now(tz=UTC)` across 7 source modules and 2 test files.
 - **DS-880:** Documented the UTC convention (this file) and added clarifying code comments to `base.py` and `agent_logger.py`.
 - **DS-886:** Added CI validation test (`tests/unit/test_utc_modules_list.py`) to automatically detect when the affected modules list drifts from the actual source tree.
+- **DS-960:** Added issue key and attempt number to log filenames and workdir names. Changed naming from `YYYYMMDD_HHMMSS` to `{issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}` to fix collision bugs and add issue context.

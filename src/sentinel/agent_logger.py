@@ -48,6 +48,7 @@ class StreamingLogWriter:
         orchestration_name: str,
         issue_key: str,
         prompt: str,
+        attempt: int = 1,
     ) -> None:
         """Initialize the streaming log writer.
 
@@ -56,11 +57,13 @@ class StreamingLogWriter:
             orchestration_name: Name of the orchestration.
             issue_key: The Jira issue key.
             prompt: The prompt sent to the agent.
+            attempt: Attempt number (1-based) for unique log filenames (DS-960).
         """
         self.base_dir = base_dir
         self.orchestration_name = orchestration_name
         self.issue_key = issue_key
         self.prompt = prompt
+        self.attempt = attempt
         self.start_time = datetime.now(tz=UTC)
         self._file: IO[str] | None = None
         self._log_path: Path | None = None
@@ -75,7 +78,9 @@ class StreamingLogWriter:
         """Get the log file path for this execution."""
         orch_dir = self.base_dir / self.orchestration_name
         orch_dir.mkdir(parents=True, exist_ok=True)
-        filename = generate_log_filename(self.start_time)
+        filename = generate_log_filename(
+            self.start_time, issue_key=self.issue_key, attempt=self.attempt,
+        )
         return orch_dir / filename
 
     def __enter__(self) -> StreamingLogWriter:
@@ -207,12 +212,20 @@ class AgentLogger:
         """
         self.base_dir = base_dir
 
-    def _get_log_path(self, orchestration_name: str, timestamp: datetime) -> Path:
+    def _get_log_path(
+        self,
+        orchestration_name: str,
+        timestamp: datetime,
+        issue_key: str | None = None,
+        attempt: int = 1,
+    ) -> Path:
         """Get the log file path for an execution.
 
         Args:
             orchestration_name: Name of the orchestration.
             timestamp: Execution timestamp.
+            issue_key: Optional issue key for the log filename (DS-960).
+            attempt: Attempt number (1-based) for unique log filenames (DS-960).
 
         Returns:
             Path to the log file.
@@ -222,7 +235,7 @@ class AgentLogger:
         orch_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename using centralized format
-        filename = generate_log_filename(timestamp)
+        filename = generate_log_filename(timestamp, issue_key=issue_key, attempt=attempt)
         return orch_dir / filename
 
     def log_execution(
@@ -251,7 +264,9 @@ class AgentLogger:
         Returns:
             Path to the written log file.
         """
-        log_path = self._get_log_path(orchestration_name, start_time)
+        log_path = self._get_log_path(
+            orchestration_name, start_time, issue_key=issue_key, attempt=attempts,
+        )
         duration = (end_time - start_time).total_seconds()
         separator = "=" * 80
 
