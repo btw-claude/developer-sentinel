@@ -676,7 +676,7 @@ sentinel_circuit_breaker_state_transitions_total{service="jira", from="closed", 
 
 | Metric | Description | Log Pattern |
 |--------|-------------|-------------|
-| Execution attempts | Attempts per issue/orchestration | `INFO executor: Attempt 2/3 for PROJ-123 (orch: code-review)` |
+| Execution attempts | Attempt count per issue/orchestration | `INFO executor: Agent execution SUCCESS for PROJ-123 (attempt 2/3)` |
 | Failure patterns matched | Which patterns triggered retry | `INFO executor: Matched failure pattern 'ERROR:' - retrying` |
 | Final execution status | SUCCESS, FAILURE, ERROR | `INFO executor: Execution completed with status: SUCCESS` |
 
