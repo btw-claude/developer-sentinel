@@ -11,6 +11,7 @@ from sentinel.config import Config as SentinelConfig
 from sentinel.dashboard.state import SentinelStateAccessor, SentinelStateProvider
 from sentinel.logging import (
     LogFilenameParts,
+    _parse_log_timestamp,
     generate_log_filename,
     parse_log_filename,
     parse_log_filename_parts,
@@ -877,7 +878,7 @@ class TestLegacyFormatUsesCache:
         """
         with patch(
             "sentinel.logging._parse_log_timestamp",
-            wraps=__import__("sentinel.logging", fromlist=["_parse_log_timestamp"])._parse_log_timestamp,
+            wraps=_parse_log_timestamp,
         ) as mock_cache:
             result = parse_log_filename("20240115_103045.log")
             assert result is not None
