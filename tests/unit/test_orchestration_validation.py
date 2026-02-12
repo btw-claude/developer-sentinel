@@ -3,8 +3,10 @@
 This module contains tests for:
 - Orchestration enabled/disabled functionality
 - max_concurrent field validation
+- timeout_seconds field validation (int, float, NaN, inf, bool edge cases)
 """
 
+import math
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,8 @@ from sentinel.orchestration import (
     AgentConfig,
     OrchestrationError,
     TriggerConfig,
+    _validate_timeout_seconds,
+    get_effective_timeout,
     load_orchestration_file,
 )
 
@@ -528,3 +532,215 @@ orchestrations:
         assert orch.on_start.add_tag == "processing"
         assert orch.on_complete.remove_tag == "review"
         assert orch.on_failure.add_tag == "review-failed"
+
+
+class TestTimeoutSecondsValidation:
+    """Tests for timeout_seconds validation with float support.
+
+    These tests verify that _validate_timeout_seconds correctly handles:
+    - Positive integers (valid)
+    - Positive floats / fractional seconds (valid)
+    - None (valid, no timeout)
+    - NaN and infinity (invalid, must be rejected)
+    - Boolean values (invalid, bool is subclass of int in Python)
+    - Negative values, zero, and non-numeric types (invalid)
+    """
+
+    # --- Valid values ---
+
+    def test_validate_none_is_valid(self) -> None:
+        """None should be accepted (no timeout configured)."""
+        assert _validate_timeout_seconds(None) is None
+
+    def test_validate_positive_integer(self) -> None:
+        """Positive integer should be accepted."""
+        assert _validate_timeout_seconds(300) is None
+
+    def test_validate_positive_float(self) -> None:
+        """Positive float should be accepted for fractional seconds."""
+        assert _validate_timeout_seconds(30.5) is None
+
+    def test_validate_small_positive_float(self) -> None:
+        """Small positive float (sub-second) should be accepted."""
+        assert _validate_timeout_seconds(0.5) is None
+
+    def test_validate_large_positive_float(self) -> None:
+        """Large positive float should be accepted."""
+        assert _validate_timeout_seconds(3600.75) is None
+
+    # --- Invalid: NaN and infinity ---
+
+    def test_validate_nan_rejected(self) -> None:
+        """float('nan') must be rejected (IEEE 754 NaN causes undefined behavior)."""
+        result = _validate_timeout_seconds(float("nan"))
+        assert result is not None
+        assert "must be a positive number" in result
+
+    def test_validate_positive_inf_rejected(self) -> None:
+        """float('inf') must be rejected."""
+        result = _validate_timeout_seconds(float("inf"))
+        assert result is not None
+        assert "must be a positive number" in result
+
+    def test_validate_negative_inf_rejected(self) -> None:
+        """float('-inf') must be rejected."""
+        result = _validate_timeout_seconds(float("-inf"))
+        assert result is not None
+        assert "must be a positive number" in result
+
+    def test_validate_math_nan_rejected(self) -> None:
+        """math.nan must be rejected."""
+        result = _validate_timeout_seconds(math.nan)
+        assert result is not None
+        assert "must be a positive number" in result
+
+    def test_validate_math_inf_rejected(self) -> None:
+        """math.inf must be rejected."""
+        result = _validate_timeout_seconds(math.inf)
+        assert result is not None
+        assert "must be a positive number" in result
+
+    # --- Invalid: boolean values ---
+
+    def test_validate_true_rejected(self) -> None:
+        """True must be rejected (bool is subclass of int, True == 1)."""
+        result = _validate_timeout_seconds(True)
+        assert result is not None
+        assert "must be a positive number" in result
+
+    def test_validate_false_rejected(self) -> None:
+        """False must be rejected."""
+        result = _validate_timeout_seconds(False)
+        assert result is not None
+        assert "must be a positive number" in result
+
+    # --- Invalid: negative, zero, non-numeric ---
+
+    def test_validate_zero_rejected(self) -> None:
+        """Zero should be rejected (timeout must be positive)."""
+        result = _validate_timeout_seconds(0)
+        assert result is not None
+        assert "must be a positive number" in result
+
+    def test_validate_negative_integer_rejected(self) -> None:
+        """Negative integer should be rejected."""
+        result = _validate_timeout_seconds(-5)
+        assert result is not None
+        assert "must be a positive number" in result
+
+    def test_validate_negative_float_rejected(self) -> None:
+        """Negative float should be rejected."""
+        result = _validate_timeout_seconds(-0.5)
+        assert result is not None
+        assert "must be a positive number" in result
+
+    def test_validate_string_rejected(self) -> None:
+        """String should be rejected."""
+        result = _validate_timeout_seconds("300")
+        assert result is not None
+        assert "must be a positive number" in result
+
+    def test_validate_zero_float_rejected(self) -> None:
+        """Zero as float should be rejected."""
+        result = _validate_timeout_seconds(0.0)
+        assert result is not None
+        assert "must be a positive number" in result
+
+    # --- YAML parsing integration tests ---
+
+    def test_yaml_float_timeout_accepted(self, tmp_path: Path) -> None:
+        """Fractional timeout_seconds from YAML should be accepted."""
+        yaml_content = """
+orchestrations:
+  - name: "float-timeout"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      timeout_seconds: 30.5
+"""
+        file_path = tmp_path / "float_timeout.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.timeout_seconds == 30.5
+
+    def test_yaml_integer_timeout_accepted(self, tmp_path: Path) -> None:
+        """Integer timeout_seconds from YAML should still be accepted."""
+        yaml_content = """
+orchestrations:
+  - name: "int-timeout"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      timeout_seconds: 600
+"""
+        file_path = tmp_path / "int_timeout.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.timeout_seconds == 600
+
+    def test_yaml_boolean_timeout_rejected(self, tmp_path: Path) -> None:
+        """Boolean timeout_seconds from YAML should be rejected."""
+        yaml_content = """
+orchestrations:
+  - name: "bool-timeout"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      timeout_seconds: true
+"""
+        file_path = tmp_path / "bool_timeout.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="timeout_seconds"):
+            load_orchestration_file(file_path)
+
+    def test_yaml_negative_timeout_rejected(self, tmp_path: Path) -> None:
+        """Negative timeout_seconds from YAML should be rejected."""
+        yaml_content = """
+orchestrations:
+  - name: "negative-timeout"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      timeout_seconds: -5
+"""
+        file_path = tmp_path / "negative_timeout.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="timeout_seconds"):
+            load_orchestration_file(file_path)
+
+    # --- get_effective_timeout with float input ---
+
+    def test_effective_timeout_float_without_agent_teams(self) -> None:
+        """get_effective_timeout should return float unchanged without agent_teams."""
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=100.5,
+            agent_teams=False,
+        )
+        result = get_effective_timeout(config)
+        assert result == 100.5
+
+    def test_effective_timeout_float_with_agent_teams(self) -> None:
+        """get_effective_timeout should apply multiplier to float with agent_teams."""
+        config = AgentConfig(
+            prompt="Test",
+            timeout_seconds=600.5,
+            agent_teams=True,
+        )
+        result = get_effective_timeout(config)
+        # AGENT_TEAMS_TIMEOUT_MULTIPLIER is 3; 600.5 * 3 = 1801.5 > 900 min
+        assert result == 600.5 * 3

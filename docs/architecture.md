@@ -695,7 +695,7 @@ All retry-related log rows above (except the agent log file footer) include stru
 | `attempt` | `int` | All | The 1-based attempt number |
 | `status` | `str` | Execution result | Execution status: `"SUCCESS"`, `"FAILURE"`, `"ERROR"`, or `"TIMEOUT"` |
 | `response_summary` | `str` | Execution result | Truncated response text (max 200 chars, newlines replaced with spaces) |
-| `timeout_seconds` | `int` | Timeout retry | The configured timeout value in seconds that was exceeded |
+| `timeout_seconds` | `int \| float` | Timeout retry | The configured timeout value in seconds that was exceeded |
 
 #### Failure Rate Tracking
 
