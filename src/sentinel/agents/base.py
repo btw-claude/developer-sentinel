@@ -236,7 +236,12 @@ class Tool(ABC):
                         f"Parameter '{param.name}' must be a string",
                         error_code="INVALID_TYPE",
                     )
-                if param.type == ParameterType.INTEGER and not isinstance(value, int):
+                # Boolean guard: bool is a subclass of int in Python, so
+                # isinstance(True, int) returns True. Check bool first to
+                # reject booleans passed where integers are expected.
+                if param.type == ParameterType.INTEGER and (
+                    isinstance(value, bool) or not isinstance(value, int)
+                ):
                     return ToolResult.fail(
                         f"Parameter '{param.name}' must be an integer",
                         error_code="INVALID_TYPE",

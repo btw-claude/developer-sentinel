@@ -311,6 +311,58 @@ class TestHandleToolExceptionsDecorator:
         assert result.success is False
         assert "#42" in result.error  # PR number should be prefixed with #
 
+    def test_boolean_rejected_for_integer_parameter(self) -> None:
+        """Test that boolean values are rejected for INTEGER parameters (DS-1031).
+
+        In Python, bool is a subclass of int, so isinstance(True, int)
+        returns True. The boolean guard ensures that boolean values passed
+        for INTEGER parameters are properly rejected.
+        """
+        from sentinel.agents.base import ParameterType
+
+        class IntTool(Tool):
+            def __init__(self) -> None:
+                self._schema = ToolSchema(
+                    name="int_tool",
+                    description="Tool with integer param",
+                    category="test",
+                    parameters=[
+                        ToolParameter(
+                            name="count",
+                            description="Count value",
+                            type=ParameterType.INTEGER,
+                            required=True,
+                        ),
+                    ],
+                )
+
+            @property
+            def schema(self) -> ToolSchema:
+                return self._schema
+
+            @handle_tool_exceptions(
+                error_code="TEST_ERROR",
+                error_message_template="Failed: {error}",
+            )
+            def execute(self, **kwargs: Any) -> ToolResult:
+                return ToolResult.ok({"count": kwargs["count"]})
+
+        tool = IntTool()
+
+        # Boolean True should be rejected even though isinstance(True, int) is True
+        result = tool.execute(count=True)
+        assert result.success is False
+        assert result.error_code == "INVALID_TYPE"
+
+        # Boolean False should also be rejected
+        result = tool.execute(count=False)
+        assert result.success is False
+        assert result.error_code == "INVALID_TYPE"
+
+        # Actual integers should still work
+        result = tool.execute(count=42)
+        assert result.success is True
+
     def test_preserves_function_metadata(self) -> None:
         """Test that the decorator preserves function metadata."""
 

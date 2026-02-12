@@ -639,7 +639,8 @@ def _validate_project_number(project_number: Any) -> str | None:
     """Validate project_number for GitHub triggers.
 
     Checks that *project_number* is present (not ``None``) and is a positive
-    integer.
+    integer.  Includes an explicit boolean guard since ``bool`` is a subclass
+    of ``int`` in Python, so ``isinstance(True, int)`` returns ``True``.
 
     Args:
         project_number: The project_number value to validate.
@@ -653,7 +654,11 @@ def _validate_project_number(project_number: Any) -> str | None:
             "Please configure project_number, project_scope, and project_owner "
             "for GitHub Project-based polling."
         )
-    if not isinstance(project_number, int) or project_number <= 0:
+    if (
+        isinstance(project_number, bool)
+        or not isinstance(project_number, int)
+        or project_number <= 0
+    ):
         return f"Invalid project_number '{project_number}': must be a positive integer"
     return None
 
@@ -693,6 +698,11 @@ def _validate_project_owner(project_owner: str) -> str | None:
 
 def _validate_timeout_seconds(timeout: Any) -> str | None:
     """Validate timeout_seconds for agent configuration.
+
+    Includes an explicit boolean guard since ``bool`` is a subclass of
+    ``int`` in Python, so ``isinstance(True, int)`` returns ``True``.
+    Without the guard, YAML values like ``timeout_seconds: true`` would be
+    silently accepted as numeric values (``True == 1``).
 
     Args:
         timeout: The timeout_seconds value to validate.
@@ -1394,9 +1404,12 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
         )
 
     # Parse max_concurrent field (defaults to None for no per-orchestration limit)
+    # Includes explicit boolean guard since bool is a subclass of int in Python
     max_concurrent = data.get("max_concurrent")
     if max_concurrent is not None and (
-        not isinstance(max_concurrent, int) or max_concurrent <= 0
+        isinstance(max_concurrent, bool)
+        or not isinstance(max_concurrent, int)
+        or max_concurrent <= 0
     ):
         raise OrchestrationError(
             f"Orchestration '{name}' has invalid 'max_concurrent' value: "
