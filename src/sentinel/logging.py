@@ -144,6 +144,15 @@ def parse_log_filename_parts(
     This function exposes the regex match groups as a public API, avoiding
     the need for external modules to import the private _LOG_FILENAME_REGEX.
 
+    On a successful match the returned tuple always contains a valid
+    :class:`~datetime.datetime` (UTC) and an ``int`` attempt number;
+    only *issue_key* may be ``None``.  The greedy ``rsplit("_", 1)``
+    used internally to separate the issue key from the timestamp is safe
+    because the anchored ``YYYYMMDD-HHMMSS`` timestamp pattern uses
+    hyphens — not underscores — internally, so even issue keys that
+    themselves contain underscores (e.g. ``MY_PROJ-123``) are correctly
+    preserved.
+
     Args:
         filename: Log filename to parse.
 
