@@ -938,6 +938,10 @@ class AgentExecutor:
         last_response = ""
         last_status = ExecutionStatus.ERROR
         last_matched_outcome: str | None = None
+        # Only the last attempt's workdir is tracked (DS-961). Previous failed
+        # attempt workdirs persist on disk with unique _a{N} names for debugging.
+        # On success with cleanup_workdir_on_success=True, only the successful
+        # attempt's workdir is cleaned up; prior failed attempts are preserved.
         last_workdir: Path | None = None
         last_input_tokens = 0
         last_output_tokens = 0
@@ -1036,7 +1040,9 @@ class AgentExecutor:
                         attempt,
                         start_time,
                     )
-                    # Cleanup workdir on success if enabled
+                    # Cleanup only the successful attempt's workdir if enabled (DS-961).
+                    # Prior failed attempt workdirs (with unique _a{N} names) persist
+                    # on disk for debugging — they are not tracked or cleaned up here.
                     if self.cleanup_workdir_on_success and last_workdir:
                         logger.debug(
                             "Cleaning up workdir after successful execution: %s", last_workdir
