@@ -361,6 +361,14 @@ class TestParseLogFilenameParts:
         ``removesuffix`` is a no-op when the suffix is absent, so the regex
         still matches the bare stem.  This verifies that the function does not
         require the ``.log`` extension to produce a result.
+
+        DS-989 follow-up: this is confirmed as desired behaviour.
+        ``parse_log_filename_parts`` intentionally does *not* validate the
+        file extension — it focuses solely on the stem format.  Extension
+        validation is the caller's responsibility (e.g. ``get_log_files``
+        uses ``step_dir.glob("*.log")`` to pre-filter).  Adding extension
+        enforcement here would break callers that strip the extension before
+        calling this function.
         """
         result = parse_log_filename_parts("DS-123_20240115-103045_a1")
 
@@ -585,6 +593,68 @@ class TestParseLogFilenameParts:
         assert dt.tzinfo is not None, f"Expected timezone-aware datetime for {filename}"
 
 
+class TestLogFileNamePartsStr:
+    """Tests for LogFilenameParts.__str__ convenience method (DS-989)."""
+
+    def test_str_with_issue_key(self) -> None:
+        """__str__ should reconstruct filename stem with issue key."""
+        parts = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
+        assert parts is not None
+        assert str(parts) == "DS-123_20240115-103045_a1"
+
+    def test_str_without_issue_key(self) -> None:
+        """__str__ should reconstruct filename stem without issue key."""
+        parts = parse_log_filename_parts("20240115-103045_a2.log")
+        assert parts is not None
+        assert str(parts) == "20240115-103045_a2"
+
+    def test_str_with_underscore_issue_key(self) -> None:
+        """__str__ should preserve underscore-containing issue keys."""
+        parts = parse_log_filename_parts("MY_PROJ-123_20240115-103045_a1.log")
+        assert parts is not None
+        assert str(parts) == "MY_PROJ-123_20240115-103045_a1"
+
+    def test_str_with_multi_underscore_issue_key(self) -> None:
+        """__str__ should preserve multi-underscore issue keys."""
+        parts = parse_log_filename_parts("MY_PROJ_V2-123_20240115-103045_a1.log")
+        assert parts is not None
+        assert str(parts) == "MY_PROJ_V2-123_20240115-103045_a1"
+
+    def test_str_with_multi_digit_attempt(self) -> None:
+        """__str__ should correctly represent multi-digit attempt numbers."""
+        parts = parse_log_filename_parts("DS-456_20240115-103045_a100.log")
+        assert parts is not None
+        assert str(parts) == "DS-456_20240115-103045_a100"
+
+    def test_str_roundtrip_with_generate(self) -> None:
+        """__str__ output plus .log extension should match generate_log_filename."""
+        timestamp = datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+        filename = generate_log_filename(timestamp, issue_key="PROJ-789", attempt=3)
+        parts = parse_log_filename_parts(filename)
+
+        assert parts is not None
+        assert str(parts) + ".log" == filename
+
+    def test_str_roundtrip_without_issue_key(self) -> None:
+        """__str__ output plus .log extension should match generate for no-issue-key case."""
+        timestamp = datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
+        filename = generate_log_filename(timestamp, issue_key=None, attempt=1)
+        parts = parse_log_filename_parts(filename)
+
+        assert parts is not None
+        assert str(parts) + ".log" == filename
+
+    def test_str_direct_construction(self) -> None:
+        """__str__ should work with directly constructed LogFilenameParts."""
+        parts = LogFilenameParts(issue_key="DS-999", timestamp="20240115-103045", attempt=1)
+        assert str(parts) == "DS-999_20240115-103045_a1"
+
+    def test_str_direct_construction_no_issue_key(self) -> None:
+        """__str__ should work with directly constructed LogFilenameParts without issue key."""
+        parts = LogFilenameParts(issue_key=None, timestamp="20240115-103045", attempt=1)
+        assert str(parts) == "20240115-103045_a1"
+
+
 class TestFormatLogDisplayName:
     """Tests for _format_log_display_name method."""
 
@@ -657,6 +727,21 @@ class TestFormatLogDisplayName:
         result = accessor._format_log_display_name(filename)
 
         assert result == "MY_PROJ-123 2024-01-15 10:30:45 (attempt 1)"
+
+    def test_formats_multi_underscore_issue_key(
+        self, accessor: SentinelStateAccessor
+    ) -> None:
+        """Should format display name for issue keys with multiple underscores.
+
+        DS-989 follow-up: extends ``test_formats_underscore_issue_key`` to verify
+        that multi-underscore issue keys (e.g., MY_PROJ_V2-123) are correctly
+        handled end-to-end through the display formatting layer, ensuring the
+        greedy regex captures all underscore segments.
+        """
+        filename = "MY_PROJ_V2-123_20240115-103045_a1.log"
+        result = accessor._format_log_display_name(filename)
+
+        assert result == "MY_PROJ_V2-123 2024-01-15 10:30:45 (attempt 1)"
 
     def test_multi_hyphen_issue_key(self, accessor: SentinelStateAccessor) -> None:
         result = accessor._format_log_display_name(
