@@ -153,6 +153,56 @@ class TestDefaultConfiguration:
         assert _DEFAULT_JIRA_BASE_URL.startswith("https://")
 
 
+def _make_inliner(base_url: str = "https://test.atlassian.net") -> object:
+    """Create a minimal mock Inliner with the required attributes.
+
+    Shared helper for test classes that exercise ``_jira_role_impl`` and
+    ``jira_role``.  Extracted from per-class duplicates per DS-1020.
+
+    Args:
+        base_url: The Jira base URL to configure.
+
+    Returns:
+        A mock inliner object suitable for passing to ``jira_role()``.
+    """
+
+    class MockConfig:
+        def __init__(self, url: str) -> None:
+            self.jira_base_url = url
+
+    class MockEnv:
+        def __init__(self, url: str) -> None:
+            self.config = MockConfig(url)
+
+    class MockSettings:
+        def __init__(self, url: str) -> None:
+            self.env = MockEnv(url)
+
+    class MockReporter:
+        def warning(self, message: str, line: int = 0) -> object:
+            class MockMessage:
+                pass
+            return MockMessage()
+
+    class MockDocument:
+        def __init__(self, url: str) -> None:
+            self.settings = MockSettings(url)
+
+    class MockInliner:
+        def __init__(self, url: str) -> None:
+            self.document = MockDocument(url)
+            self.reporter = MockReporter()
+
+        def problematic(
+            self, rawtext: str, text: str, msg: object
+        ) -> object:
+            from docutils import nodes as n
+
+            return n.problematic(rawtext, text)
+
+    return MockInliner(base_url)
+
+
 class TestSphinxExtensionSetup:
     """Tests for the Sphinx extension setup function."""
 
@@ -238,61 +288,14 @@ class TestJiraRoleNodeGeneration:
 
     These tests verify the role function produces correct docutils nodes
     by using lightweight mocks of the Sphinx/docutils infrastructure.
+    Uses the module-level ``_make_inliner`` helper (extracted per DS-1020).
     """
-
-    def _make_inliner(
-        self, base_url: str = "https://test.atlassian.net"
-    ) -> object:
-        """Create a minimal mock Inliner with the required attributes.
-
-        Args:
-            base_url: The Jira base URL to configure.
-
-        Returns:
-            A mock inliner object suitable for passing to ``jira_role()``.
-        """
-
-        class MockConfig:
-            def __init__(self, url: str) -> None:
-                self.jira_base_url = url
-
-        class MockEnv:
-            def __init__(self, url: str) -> None:
-                self.config = MockConfig(url)
-
-        class MockSettings:
-            def __init__(self, url: str) -> None:
-                self.env = MockEnv(url)
-
-        class MockReporter:
-            def warning(self, message: str, line: int = 0) -> object:
-                class MockMessage:
-                    pass
-                return MockMessage()
-
-        class MockDocument:
-            def __init__(self, url: str) -> None:
-                self.settings = MockSettings(url)
-
-        class MockInliner:
-            def __init__(self, url: str) -> None:
-                self.document = MockDocument(url)
-                self.reporter = MockReporter()
-
-            def problematic(
-                self, rawtext: str, text: str, msg: object
-            ) -> object:
-                from docutils import nodes as n
-
-                return n.problematic(rawtext, text)
-
-        return MockInliner(base_url)
 
     def test_generates_reference_node_for_valid_key(self) -> None:
         """Verify a valid issue key produces a single reference node."""
         from sentinel.sphinx_jira_role import _jira_role_impl
 
-        inliner = self._make_inliner()
+        inliner = _make_inliner()
         node_list, messages = _jira_role_impl(
             "jira", ":jira:`DS-1016`", "DS-1016", 1, inliner,
         )
@@ -306,7 +309,7 @@ class TestJiraRoleNodeGeneration:
 
         from sentinel.sphinx_jira_role import _jira_role_impl
 
-        inliner = self._make_inliner("https://myteam.atlassian.net")
+        inliner = _make_inliner("https://myteam.atlassian.net")
         node_list, _ = _jira_role_impl(
             "jira", ":jira:`DS-1016`", "DS-1016", 1, inliner,
         )
@@ -321,7 +324,7 @@ class TestJiraRoleNodeGeneration:
 
         from sentinel.sphinx_jira_role import _jira_role_impl
 
-        inliner = self._make_inliner()
+        inliner = _make_inliner()
         node_list, _ = _jira_role_impl(
             "jira", ":jira:`DS-1016`", "DS-1016", 1, inliner,
         )
@@ -336,7 +339,7 @@ class TestJiraRoleNodeGeneration:
 
         from sentinel.sphinx_jira_role import _jira_role_impl
 
-        inliner = self._make_inliner("https://test.atlassian.net/")
+        inliner = _make_inliner("https://test.atlassian.net/")
         node_list, _ = _jira_role_impl(
             "jira", ":jira:`DS-123`", "DS-123", 1, inliner,
         )
@@ -349,7 +352,7 @@ class TestJiraRoleNodeGeneration:
         """Verify an invalid issue key produces a warning message."""
         from sentinel.sphinx_jira_role import _jira_role_impl
 
-        inliner = self._make_inliner()
+        inliner = _make_inliner()
         node_list, messages = _jira_role_impl(
             "jira", ":jira:`bad-key`", "bad-key", 1, inliner,
         )
@@ -362,7 +365,7 @@ class TestJiraRoleNodeGeneration:
 
         from sentinel.sphinx_jira_role import _jira_role_impl
 
-        inliner = self._make_inliner()
+        inliner = _make_inliner()
         node_list, messages = _jira_role_impl(
             "jira", ":jira:` DS-1016 `", " DS-1016 ", 1, inliner,
         )
@@ -379,7 +382,7 @@ class TestJiraRoleNodeGeneration:
 
         from sentinel.sphinx_jira_role import _jira_role_impl
 
-        inliner = self._make_inliner("https://company.atlassian.net")
+        inliner = _make_inliner("https://company.atlassian.net")
         node_list, _ = _jira_role_impl(
             "jira", ":jira:`PROJ-42`", "PROJ-42", 1, inliner,
         )
@@ -396,55 +399,8 @@ class TestJiraRolePublicAdapter:
     These tests exercise the public ``jira_role()`` adapter directly,
     not just the internal ``_jira_role_impl``, to ensure complete
     coverage of the public API surface.
+    Uses the module-level ``_make_inliner`` helper (extracted per DS-1020).
     """
-
-    def _make_inliner(
-        self, base_url: str = "https://test.atlassian.net"
-    ) -> object:
-        """Create a minimal mock Inliner with the required attributes.
-
-        Args:
-            base_url: The Jira base URL to configure.
-
-        Returns:
-            A mock inliner object suitable for passing to ``jira_role()``.
-        """
-
-        class MockConfig:
-            def __init__(self, url: str) -> None:
-                self.jira_base_url = url
-
-        class MockEnv:
-            def __init__(self, url: str) -> None:
-                self.config = MockConfig(url)
-
-        class MockSettings:
-            def __init__(self, url: str) -> None:
-                self.env = MockEnv(url)
-
-        class MockReporter:
-            def warning(self, message: str, line: int = 0) -> object:
-                class MockMessage:
-                    pass
-                return MockMessage()
-
-        class MockDocument:
-            def __init__(self, url: str) -> None:
-                self.settings = MockSettings(url)
-
-        class MockInliner:
-            def __init__(self, url: str) -> None:
-                self.document = MockDocument(url)
-                self.reporter = MockReporter()
-
-            def problematic(
-                self, rawtext: str, text: str, msg: object
-            ) -> object:
-                from docutils import nodes as n
-
-                return n.problematic(rawtext, text)
-
-        return MockInliner(base_url)
 
     def test_adapter_produces_reference_node(self) -> None:
         """Verify the public adapter produces a reference node for a valid key."""
@@ -452,7 +408,7 @@ class TestJiraRolePublicAdapter:
 
         from sentinel.sphinx_jira_role import jira_role
 
-        inliner = self._make_inliner("https://myteam.atlassian.net")
+        inliner = _make_inliner("https://myteam.atlassian.net")
         node_list, messages = jira_role(
             "jira", ":jira:`DS-1016`", "DS-1016", 1, inliner, {}, [],
         )
@@ -468,7 +424,7 @@ class TestJiraRolePublicAdapter:
         """Verify the public adapter returns a warning for an invalid key."""
         from sentinel.sphinx_jira_role import jira_role
 
-        inliner = self._make_inliner()
+        inliner = _make_inliner()
         node_list, messages = jira_role(
             "jira", ":jira:`bad-key`", "bad-key", 1, inliner, {}, [],
         )
@@ -481,7 +437,7 @@ class TestJiraRolePublicAdapter:
 
         from sentinel.sphinx_jira_role import jira_role
 
-        inliner = self._make_inliner()
+        inliner = _make_inliner()
         options = {"class": "custom-class"}
         content = ["some content"]
         node_list, messages = jira_role(
@@ -499,18 +455,19 @@ class TestJiraRolePublicAdapter:
 class TestCheckJiraBaseUrl:
     """Tests for the _check_jira_base_url configuration warning (DS-1019).
 
-    Verifies that the Sphinx build-time warning is emitted when the
-    jira_base_url config value is still the default placeholder.
+    Verifies that the Sphinx build-time warning is emitted only when the
+    jira_base_url config value exactly matches the default placeholder.
+    Updated in DS-1020 to use exact match instead of substring check.
     """
 
     def test_warns_on_default_placeholder_url(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Verify a warning is logged when jira_base_url contains example.com."""
+        """Verify a warning is logged when jira_base_url is the default placeholder."""
         import logging
 
-        from sentinel.sphinx_jira_role import _check_jira_base_url
+        from sentinel.sphinx_jira_role import _DEFAULT_JIRA_BASE_URL, _check_jira_base_url
 
         class MockConfig:
-            jira_base_url = "https://jira.example.com"
+            jira_base_url = _DEFAULT_JIRA_BASE_URL
 
         with caplog.at_level(logging.WARNING, logger="sentinel.sphinx_jira_role"):
             _check_jira_base_url(None, MockConfig())
@@ -533,10 +490,15 @@ class TestCheckJiraBaseUrl:
 
         assert len(caplog.records) == 0
 
-    def test_warns_on_custom_example_dot_com_url(
+    def test_no_warning_on_legitimate_example_dot_com_domain(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Verify a warning is emitted for any URL containing example.com."""
+        """Verify no false positive for legitimate domains containing 'example.com'.
+
+        The previous substring check (``"example.com" in base_url``) would
+        false-positive on domains like ``custom.example.com``.  The exact
+        match against ``_DEFAULT_JIRA_BASE_URL`` (DS-1020) prevents this.
+        """
         import logging
 
         from sentinel.sphinx_jira_role import _check_jira_base_url
@@ -547,14 +509,14 @@ class TestCheckJiraBaseUrl:
         with caplog.at_level(logging.WARNING, logger="sentinel.sphinx_jira_role"):
             _check_jira_base_url(None, MockConfig())
 
-        assert len(caplog.records) == 1
+        assert len(caplog.records) == 0
 
     def test_warns_when_config_missing_attribute(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Verify a warning is emitted when config has no jira_base_url attribute.
 
-        Falls back to the default placeholder which contains example.com.
+        Falls back to the default placeholder which triggers the exact match.
         """
         import logging
 

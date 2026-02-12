@@ -177,7 +177,9 @@ def _check_jira_base_url(app: Any, config: Any) -> None:
 
     This ``config-inited`` callback helps catch forgotten configuration by
     warning during ``sphinx-build`` when ``jira_base_url`` has not been
-    overridden from its ``example.com`` default.
+    overridden from its ``example.com`` default.  Uses exact match against
+    ``_DEFAULT_JIRA_BASE_URL`` (DS-1020) to avoid false positives on
+    legitimate domains that happen to contain "example.com".
 
     Added in DS-1019 per code review feedback on DS-1016 / PR #1026.
 
@@ -186,7 +188,7 @@ def _check_jira_base_url(app: Any, config: Any) -> None:
         config: The Sphinx configuration object.
     """
     base_url: str = getattr(config, "jira_base_url", _DEFAULT_JIRA_BASE_URL)
-    if "example.com" in base_url:
+    if base_url == _DEFAULT_JIRA_BASE_URL:
         logger.warning(
             "jira_base_url is still set to the default placeholder (%s). "
             "Set jira_base_url in conf.py to your Jira instance URL.",
