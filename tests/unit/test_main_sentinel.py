@@ -1186,8 +1186,13 @@ class TestRun:
                     thread.join(timeout=5)
                     assert not thread.is_alive()
                     assert call_count >= 2
-                    # Verify error was logged
-                    mock_logger.error.assert_called()
+                    # Verify the specific I/O error message was logged
+                    error_calls = [
+                        c for c in mock_logger.error.call_args_list
+                        if "I/O or timeout" in c.args[0]
+                    ]
+                    assert len(error_calls) == 1
+                    assert "network down" in str(error_calls[0].args[1])
 
     def test_run_runtime_error_in_cycle(self) -> None:
         """RuntimeError in run_once should be caught and the loop should continue."""
@@ -1208,8 +1213,13 @@ class TestRun:
                     thread = self._run_sentinel_in_thread(sentinel)
                     thread.join(timeout=5)
                     assert not thread.is_alive()
-                    # Verify error was logged
-                    mock_logger.error.assert_called()
+                    # Verify the specific runtime error message was logged
+                    error_calls = [
+                        c for c in mock_logger.error.call_args_list
+                        if "runtime error" in c.args[0]
+                    ]
+                    assert len(error_calls) == 1
+                    assert "bad state" in str(error_calls[0].args[1])
 
     def test_run_key_value_error_in_cycle(self) -> None:
         """KeyError/ValueError in run_once should be caught and the loop should continue."""
@@ -1230,8 +1240,13 @@ class TestRun:
                     thread = self._run_sentinel_in_thread(sentinel)
                     thread.join(timeout=5)
                     assert not thread.is_alive()
-                    # Verify error was logged
-                    mock_logger.error.assert_called()
+                    # Verify the specific data error message was logged
+                    error_calls = [
+                        c for c in mock_logger.error.call_args_list
+                        if "data error" in c.args[0]
+                    ]
+                    assert len(error_calls) == 1
+                    assert "missing" in str(error_calls[0].args[1])
 
     def test_run_generic_exception_in_cycle(self) -> None:
         """Generic Exception in run_once should be caught and the loop should continue."""
@@ -1252,8 +1267,13 @@ class TestRun:
                     thread = self._run_sentinel_in_thread(sentinel)
                     thread.join(timeout=5)
                     assert not thread.is_alive()
-                    # Verify error was logged (generic exceptions use logger.exception)
-                    mock_logger.exception.assert_called()
+                    # Verify the specific unexpected-error message was logged
+                    exception_calls = [
+                        c for c in mock_logger.exception.call_args_list
+                        if "Unexpected error" in c.args[0]
+                    ]
+                    assert len(exception_calls) == 1
+                    assert "unexpected" in str(exception_calls[0].args[1])
 
     def test_run_shutdown_after_idle_cycle(self) -> None:
         """run() should sleep poll_interval seconds when idle (submitted_count=0)."""
