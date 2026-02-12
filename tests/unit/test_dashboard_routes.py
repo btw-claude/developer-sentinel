@@ -10,7 +10,8 @@ from __future__ import annotations
 import contextlib
 import json
 import tempfile
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -672,7 +673,7 @@ class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
 @pytest.fixture
 def orch_client_factory(
     temp_logs_dir: Path,
-) -> Generator[Any, None, None]:
+) -> Generator[Callable[..., AbstractContextManager[TestClient]], None, None]:
     """Provide a factory for creating TestClients with orchestration data.
 
     Shared fixture that eliminates the repeated Config/MockSentinel/
@@ -709,7 +710,7 @@ def orch_client_factory(
 @pytest.fixture
 def orch_app_factory(
     temp_logs_dir: Path,
-) -> Generator[Any, None, None]:
+) -> Generator[Callable[..., tuple[FastAPI, Config]], None, None]:
     """Provide a factory for creating FastAPI apps with orchestration data.
 
     Shared fixture for tests that need the raw FastAPI app object rather than
@@ -748,7 +749,7 @@ def orch_app_factory(
 @pytest.fixture
 def base_client_factory(
     temp_logs_dir: Path,
-) -> Generator[Any, None, None]:
+) -> Generator[Callable[..., AbstractContextManager[TestClient]], None, None]:
     """Provide a factory for creating TestClients with base Sentinel mocks.
 
     Unlike :func:`orch_client_factory`, this fixture uses the plain
@@ -2231,7 +2232,9 @@ class TestCreateOrchestrationEndpoint:
     @pytest.fixture
     def create_orch_client_factory(
         self, temp_logs_dir: Path
-    ) -> Generator[Any, None, None]:
+    ) -> Generator[
+        Callable[..., AbstractContextManager[tuple[TestClient, Path]]], None, None
+    ]:
         """Provide a factory for creating TestClients for create endpoint tests.
 
         Sets up the orchestrations directory and passes config to create_test_app,
