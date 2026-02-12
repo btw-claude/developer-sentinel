@@ -1,0 +1,181 @@
+# Advanced Options
+# ================
+#
+# Demonstrates miscellaneous configuration options:
+#   - enabled: false           Disable at file or step level
+#   - max_concurrent: N        Limit concurrent slots per step
+#   - strict_template_variables: true   Error on unknown variables
+#   - default_status: failure  Treat unmatched responses as failures
+#   - File-level trigger       Shared trigger fields inherited by all steps
+#
+# File-level trigger inheritance:
+#   The top-level "trigger:" block provides defaults for all steps.
+#   Step-level trigger fields override file-level fields.
+#   File-level fields: source, project, project_number, project_scope, project_owner
+#   Step-level fields: tags, labels, jql_filter, project_filter
+
+# File-level enabled flag. When false, ALL steps in this file are skipped
+# regardless of their individual enabled settings.
+enabled: false
+
+# File-level trigger: these fields are inherited by all steps below.
+# Steps can override any of these fields in their own trigger block.
+trigger:
+  source: jira
+  project: "PROJ"
+
+steps:
+  # Example 1: Concurrency limits
+  - name: "limited-concurrency"
+
+    # max_concurrent limits how many instances of this step can run at once.
+    # Useful for rate-limited APIs or resource-intensive operations.
+    # null (or omitted) means no per-step limit -- uses global limit only.
+    max_concurrent: 2
+
+    trigger:
+      tags:
+        - "needs-processing"
+
+    agent:
+      prompt: |
+        Process {jira_issue_key}. This step is limited to 2 concurrent runs.
+
+        {jira_description}
+
+        End with SUCCESS when done.
+
+      timeout_seconds: 300
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "processing"
+
+    on_complete:
+      add_tag: "processed"
+
+  # Example 2: Strict template variables
+  - name: "strict-templates"
+
+    trigger:
+      tags:
+        - "needs-strict-review"
+
+    agent:
+      # When true, unknown template variables raise an error instead of
+      # logging a warning and leaving them as-is.
+      # Useful for catching typos in prompts during development.
+      strict_template_variables: true
+
+      prompt: |
+        Review {jira_issue_key}: {jira_summary}
+
+        {jira_description}
+
+        End with SUCCESS when done.
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "reviewing"
+
+    on_complete:
+      add_tag: "reviewed"
+
+  # Example 3: Disabled step (kept for reference)
+  - name: "disabled-step"
+
+    # This step is individually disabled. It will be skipped during loading.
+    # Useful for temporarily disabling a step without removing the config.
+    enabled: false
+
+    trigger:
+      tags:
+        - "experimental"
+
+    agent:
+      prompt: |
+        This step is disabled and will never run.
+
+    retry:
+      max_attempts: 1
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+  # Example 4: Conservative retry with default_status
+  - name: "conservative-processing"
+
+    trigger:
+      tags:
+        - "needs-careful-processing"
+
+    agent:
+      prompt: |
+        Process {jira_issue_key} carefully.
+
+        {jira_description}
+
+        You MUST explicitly end with "SUCCESS" to confirm completion.
+
+    retry:
+      max_attempts: 3
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "ERROR:"
+      # When no success_patterns or failure_patterns match, treat as failure.
+      # This forces the agent to explicitly signal success.
+      # Default is "success" (unmatched responses are treated as success).
+      default_status: failure
+
+    on_start:
+      add_tag: "careful-processing"
+
+    on_complete:
+      add_tag: "carefully-processed"
+
+    on_failure:
+      add_tag: "processing-uncertain"
+
+  # Example 5: Step overriding file-level trigger
+  - name: "different-project"
+
+    trigger:
+      # Overrides the file-level project: "PROJ" with a different project.
+      project: "OTHER"
+      tags:
+        - "cross-project-task"
+
+    agent:
+      prompt: |
+        Process {jira_issue_key} from the OTHER project.
+
+        {jira_description}
+
+        End with SUCCESS when done.
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "cross-project"
+
+    on_complete:
+      add_tag: "cross-project-done"

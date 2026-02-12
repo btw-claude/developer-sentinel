@@ -1,0 +1,247 @@
+# Agent Types
+# ===========
+#
+# Demonstrates the three agent types and their specific options.
+#
+# Agent types:
+#   claude   Claude Code CLI (default). Supports agent_teams.
+#   cursor   Cursor IDE CLI. Supports cursor_mode.
+#   codex    OpenAI Codex CLI.
+#
+# Key fields:
+#   agent_type: "claude"|"cursor"|"codex"    Which CLI to use
+#   model: "model-id"                        Model to use (optional)
+#   cursor_mode: "agent"|"plan"|"ask"        Cursor-only mode
+#   agent_teams: true|false                  Claude-only multi-agent mode
+#   timeout_seconds: 600                     Execution timeout
+#
+# Agent Teams timeout behavior (when agent_teams: true):
+#   - timeout_seconds is multiplied by AGENT_TEAMS_TIMEOUT_MULTIPLIER (default 3x)
+#   - Effective timeout is at least AGENT_TEAMS_MIN_TIMEOUT_SECONDS (default 900s)
+#   - A warning is logged if timeout_seconds < 900 before multiplication
+
+enabled: false
+
+trigger:
+  source: jira
+  project: "PROJ"
+
+steps:
+  # Example 1: Claude with explicit model
+  - name: "claude-code-review"
+
+    trigger:
+      tags:
+        - "claude-review"
+
+    agent:
+      agent_type: claude                    # Explicit (also the default)
+      model: "sonnet"                       # Shorthand for latest sonnet
+
+      prompt: |
+        Review the code changes for {jira_issue_key}.
+
+        {jira_description}
+
+        End with SUCCESS when review is complete.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+      timeout_seconds: 600
+
+    retry:
+      max_attempts: 3
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "claude-reviewing"
+
+    on_complete:
+      add_tag: "claude-reviewed"
+
+    on_failure:
+      add_tag: "claude-review-failed"
+
+  # Example 2: Claude with Agent Teams
+  - name: "claude-agent-teams"
+
+    trigger:
+      tags:
+        - "needs-team-dev"
+
+    agent:
+      agent_type: claude
+      agent_teams: true                     # Enable multi-agent coordination
+
+      prompt: |
+        You are a team lead. Implement {jira_issue_key}: {jira_summary}
+
+        {jira_description}
+
+        Coordinate with your team to implement, test, and review.
+
+        End with SUCCESS when the feature is complete.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: main
+
+      # Agent Teams timeout:
+      #   timeout_seconds: 900  -> effective = max(900 * 3, 900) = 2700s (45 min)
+      # Set to at least 900 to avoid parse-time warnings.
+      timeout_seconds: 900
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "team-developing"
+
+    on_complete:
+      add_tag: "team-completed"
+
+    on_failure:
+      add_tag: "team-failed"
+
+  # Example 3: Cursor in agent mode
+  - name: "cursor-agent-review"
+
+    trigger:
+      tags:
+        - "cursor-review"
+
+    agent:
+      agent_type: cursor
+      cursor_mode: agent                    # Full autonomous mode (default)
+
+      prompt: |
+        Review the code for {jira_issue_key} using Cursor's code understanding.
+
+        {jira_description}
+
+        End with SUCCESS when review is complete.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+      timeout_seconds: 600
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "cursor-reviewing"
+
+    on_complete:
+      add_tag: "cursor-reviewed"
+
+    on_failure:
+      add_tag: "cursor-failed"
+
+  # Example 4: Cursor in plan mode
+  - name: "cursor-refactor-plan"
+
+    trigger:
+      tags:
+        - "needs-refactor-plan"
+
+    agent:
+      agent_type: cursor
+      cursor_mode: plan                     # Creates plans without executing
+
+      prompt: |
+        Create a refactoring plan for {jira_issue_key}: {jira_summary}
+
+        {jira_description}
+
+        Analyze the codebase and produce a detailed plan:
+        1. Files to modify
+        2. Specific changes per file
+        3. Risks and mitigations
+        4. Suggested order of operations
+
+        Post the plan as a Jira comment. End with SUCCESS.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "planning"
+
+    on_complete:
+      add_tag: "plan-ready"
+
+    on_failure:
+      add_tag: "planning-failed"
+
+  # Example 5: Codex agent
+  - name: "codex-implementation"
+
+    trigger:
+      tags:
+        - "codex-dev"
+
+    agent:
+      agent_type: codex
+
+      prompt: |
+        Implement the feature for {jira_issue_key}: {jira_summary}
+
+        {jira_description}
+
+        End with SUCCESS when implementation is complete.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: main
+
+      timeout_seconds: 600
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "codex-developing"
+
+    on_complete:
+      add_tag: "codex-completed"
+
+    on_failure:
+      add_tag: "codex-failed"

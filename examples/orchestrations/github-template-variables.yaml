@@ -1,0 +1,107 @@
+# GitHub Template Variables
+# =========================
+#
+# Demonstrates ALL available GitHub template variables in a prompt.
+# Use {variable_name} syntax in prompts and branch patterns.
+#
+# When the trigger source is GitHub, these variables are populated from
+# the issue/PR data. Jira-specific variables will be empty strings.
+#
+# GitHub Variables (14 total):
+#   {github_issue_number}        Issue or PR number (e.g., "42")
+#   {github_issue_title}         Issue or PR title
+#   {github_issue_title_slug}    Branch-safe slugified title (e.g., "fix-login-bug")
+#   {github_issue_body}          Issue or PR body/description
+#   {github_issue_state}         State ("open" or "closed")
+#   {github_issue_author}        Author username
+#   {github_issue_url}           Full URL to issue or PR
+#   {github_is_pr}               "true" if PR, "false" if issue
+#   {github_pr_head}             PR head branch (empty if not a PR)
+#   {github_pr_base}             PR base branch (empty if not a PR)
+#   {github_pr_draft}            "true" if draft PR, "false" otherwise
+#   {github_parent_issue_number} Parent issue number if linked, else empty
+#   {github_issue_assignees}     Comma-separated assignee usernames
+#   {github_issue_labels}        Comma-separated label names
+#
+# Common Variables (always available regardless of trigger source):
+#   {base_branch}                Base branch from github.base_branch (default: "main")
+#   {github_host}                GitHub host from agent config
+#   {github_org}                 GitHub org from agent config
+#   {github_repo}                GitHub repo from agent config
+
+enabled: false
+
+trigger:
+  source: github
+  project_number: 42
+  project_owner: "your-org"
+  project_scope: "org"
+
+steps:
+  - name: "github-all-variables"
+
+    trigger:
+      project_filter: 'Status = "Ready"'
+
+    agent:
+      prompt: |
+        You are processing a GitHub item. Here is the complete context.
+
+        ## Issue/PR Identification
+        **Number:** {github_issue_number}
+        **Title:** {github_issue_title}
+        **Title (branch-safe):** {github_issue_title_slug}
+        **URL:** {github_issue_url}
+        **Is Pull Request:** {github_is_pr}
+
+        ## Status and Authorship
+        **State:** {github_issue_state}
+        **Author:** {github_issue_author}
+        **Assignees:** {github_issue_assignees}
+
+        ## Labels
+        {github_issue_labels}
+
+        ## Description/Body
+        {github_issue_body}
+
+        ## Pull Request Details (empty if this is an issue, not a PR)
+        **Head Branch:** {github_pr_head}
+        **Base Branch:** {github_pr_base}
+        **Draft:** {github_pr_draft}
+
+        ## Relationships
+        **Parent Issue:** {github_parent_issue_number}
+
+        ## Repository Context (from agent config)
+        **Host:** {github_host}
+        **Repository:** {github_org}/{github_repo}
+        **Base Branch:** {base_branch}
+
+        ## Your Task
+        Process this item using all available context above.
+        If it is a PR ({github_is_pr} = "true"), review the code changes.
+        If it is an issue, analyze and triage it.
+
+        End with SUCCESS when complete.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        # Branch pattern using GitHub template variables:
+        # branch: "issue-{github_issue_number}-{github_issue_title_slug}"
+        base_branch: main
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "sentinel-processing"
+
+    on_complete:
+      add_tag: "processed"

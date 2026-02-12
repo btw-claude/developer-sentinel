@@ -1,0 +1,173 @@
+# Outcome-Based Tagging
+# =====================
+#
+# Demonstrates how to use outcomes for different success types. Instead of
+# a single on_complete tag, outcomes let you apply different tags depending
+# on the agent's response (e.g., "approved" vs "changes-requested").
+#
+# Key concepts:
+#   outcomes:
+#     - name: "outcome-name"       Unique identifier
+#       patterns: [...]            Strings or "regex:..." patterns to match
+#       add_tag: "label"           Tag to add when this outcome matches
+#
+#   retry.default_outcome          Outcome to use when no patterns match
+#   retry.default_status           Status when no patterns match ("success"|"failure")
+#   retry.failure_patterns         Patterns that trigger retries (actual errors)
+#
+# Pattern matching order:
+#   1. failure_patterns checked first -> triggers retry
+#   2. Each outcome's patterns checked in order -> first match wins
+#   3. No match -> default_outcome (if set) or default_status
+#
+# When outcomes are configured, on_complete is ignored for tagging.
+
+enabled: false
+
+trigger:
+  source: jira
+  project: "PROJ"
+
+steps:
+  # Example 1: Two outcomes with substring patterns
+  - name: "code-review-outcomes"
+
+    trigger:
+      tags:
+        - "needs-code-review"
+
+    agent:
+      prompt: |
+        Review the code changes for {jira_issue_key}: {jira_summary}
+
+        {jira_description}
+
+        After reviewing, end your response with one of:
+        - "APPROVED: [brief summary]"
+        - "CHANGES REQUESTED: [what needs to change]"
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+      timeout_seconds: 600
+
+    retry:
+      max_attempts: 3
+      # failure_patterns trigger retries for actual errors (API failures, etc.).
+      # These are checked BEFORE outcome patterns.
+      failure_patterns:
+        - "ERROR:"
+        - "API_ERROR"
+        - "COULD_NOT_COMPLETE:"
+
+    outcomes:
+      - name: approved
+        patterns:
+          - "APPROVED"
+          - "LGTM"
+          - "looks good"
+        add_tag: "code-reviewed"
+
+      - name: changes-requested
+        patterns:
+          - "CHANGES REQUESTED"
+          - "REQUEST CHANGES"
+          - "needs changes"
+        add_tag: "changes-requested"
+
+    on_start:
+      add_tag: "sentinel-reviewing"
+
+    on_failure:
+      add_tag: "review-failed"
+
+  # Example 2: Regex patterns and default_outcome
+  - name: "severity-classification"
+
+    trigger:
+      tags:
+        - "needs-classification"
+
+    agent:
+      prompt: |
+        Classify the severity of {jira_issue_key}: {jira_summary}
+
+        {jira_description}
+
+        End your response with exactly one of:
+        - "SEVERITY: CRITICAL"
+        - "SEVERITY: HIGH"
+        - "SEVERITY: MEDIUM"
+        - "SEVERITY: LOW"
+
+    retry:
+      max_attempts: 2
+      failure_patterns:
+        - "ERROR:"
+      # When no outcome patterns match, use this outcome instead of retrying.
+      default_outcome: "medium"
+
+    outcomes:
+      - name: critical
+        patterns:
+          # "regex:" prefix enables regex matching.
+          - "regex:SEVERITY:\\s*CRITICAL"
+        add_tag: "severity-critical"
+
+      - name: high
+        patterns:
+          - "regex:SEVERITY:\\s*HIGH"
+        add_tag: "severity-high"
+
+      - name: medium
+        patterns:
+          - "regex:SEVERITY:\\s*(MEDIUM|MODERATE)"
+        add_tag: "severity-medium"
+
+      - name: low
+        patterns:
+          - "regex:SEVERITY:\\s*LOW"
+        add_tag: "severity-low"
+
+    on_start:
+      add_tag: "classifying"
+
+    on_failure:
+      add_tag: "classification-failed"
+
+  # Example 3: default_status with no outcomes
+  - name: "conservative-review"
+
+    trigger:
+      tags:
+        - "needs-careful-review"
+
+    agent:
+      prompt: |
+        Carefully review {jira_issue_key}. Only report SUCCESS if you are
+        100% confident the code is correct.
+
+        {jira_description}
+
+        End with SUCCESS only if fully verified.
+
+    retry:
+      max_attempts: 3
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "ERROR:"
+      # When no success or failure patterns match, treat as failure and retry.
+      # Default is "success", meaning unmatched responses are treated as success.
+      default_status: failure
+
+    on_start:
+      add_tag: "careful-review-in-progress"
+
+    on_complete:
+      add_tag: "carefully-reviewed"
+
+    on_failure:
+      add_tag: "review-inconclusive"

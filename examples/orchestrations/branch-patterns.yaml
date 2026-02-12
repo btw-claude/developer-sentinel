@@ -1,0 +1,239 @@
+# Branch Patterns
+# ===============
+#
+# Demonstrates how to configure feature branches with template variables,
+# automatic branch creation, and custom base branches.
+#
+# Key concepts:
+#   - github.branch: "pattern/{var}"   Branch name pattern with template variables
+#   - github.create_branch: true       Auto-create branch if it doesn't exist
+#   - github.base_branch: "develop"    Base branch to create from (default: "main")
+#
+# Branch checkout happens BEFORE the agent runs, so the agent always
+# starts on the correct branch.
+#
+# Common template variables for branch names:
+#   {jira_issue_key}          -> "PROJ-123"        (safe for branches)
+#   {jira_summary_slug}       -> "add-login-button" (slugified, branch-safe)
+#   {github_issue_number}     -> "42"
+#   {github_issue_title_slug} -> "fix-login-bug"   (slugified, branch-safe)
+#
+# Branch name validation:
+#   After variable expansion, the branch name is validated against git rules.
+#   Invalid names (consecutive slashes, trailing .lock, etc.) are rejected.
+
+enabled: false
+
+trigger:
+  source: jira
+  project: "PROJ"
+
+steps:
+  # Example 1: Simple issue-key branch from main
+  - name: "feature-by-key"
+
+    trigger:
+      tags:
+        - "ready-for-dev"
+
+    agent:
+      prompt: |
+        Implement the feature for {jira_issue_key} on branch feature/{jira_issue_key}.
+
+        **Summary:** {jira_summary}
+        **Description:**
+        {jira_description}
+
+        End with SUCCESS when the feature is implemented.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "feature/{jira_issue_key}"   # e.g., feature/PROJ-123
+        create_branch: true                   # Create if it doesn't exist
+        base_branch: main                     # Create from main (the default)
+
+      timeout_seconds: 900
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "sentinel-developing"
+
+    on_complete:
+      add_tag: "feature-implemented"
+
+    on_failure:
+      add_tag: "implementation-failed"
+
+  # Example 2: Descriptive branch from develop
+  - name: "feature-by-summary"
+
+    trigger:
+      tags:
+        - "ready-for-dev-v2"
+
+    agent:
+      prompt: |
+        Implement {jira_issue_key}: {jira_summary}
+
+        Working on branch: feature/{jira_issue_key}-{jira_summary_slug}
+        Base: develop
+
+        {jira_description}
+
+        End with SUCCESS when done.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        # Combines issue key with slugified summary for readable branch names.
+        # e.g., feature/PROJ-123-add-login-button
+        branch: "feature/{jira_issue_key}-{jira_summary_slug}"
+        create_branch: true
+        base_branch: develop              # Create from develop instead of main
+
+      timeout_seconds: 900
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "sentinel-developing"
+
+    on_complete:
+      add_tag: "feature-ready"
+
+    on_failure:
+      add_tag: "dev-failed"
+
+  # Example 3: Bugfix branch with release base
+  - name: "bugfix-branch"
+
+    trigger:
+      tags:
+        - "hotfix-needed"
+
+    agent:
+      prompt: |
+        Fix the bug described in {jira_issue_key}.
+
+        {jira_description}
+
+        End with SUCCESS when the fix is committed.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "bugfix/{jira_issue_key}"    # e.g., bugfix/PROJ-456
+        create_branch: true
+        base_branch: release/1.0             # Branch from a release branch
+
+      timeout_seconds: 600
+
+    retry:
+      max_attempts: 3
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "fixing"
+
+    on_complete:
+      add_tag: "fix-ready"
+
+    on_failure:
+      add_tag: "fix-failed"
+
+  # Example 4: Existing branch checkout (no creation)
+  - name: "work-on-existing-branch"
+
+    trigger:
+      tags:
+        - "continue-work"
+
+    agent:
+      prompt: |
+        Continue work on the existing branch for {jira_issue_key}.
+
+        {jira_description}
+
+        End with SUCCESS when done.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "feature/{jira_issue_key}"
+        create_branch: false                  # Fail if branch doesn't exist (default)
+        # base_branch is ignored when create_branch is false
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "sentinel-continuing"
+
+    on_complete:
+      add_tag: "work-complete"
+
+  # Example 5: Fork workflow
+  - name: "fork-development"
+
+    trigger:
+      tags:
+        - "fork-dev"
+
+    agent:
+      prompt: |
+        Implement {jira_issue_key} on your fork.
+
+        {jira_description}
+
+        Working on fork: {github_org}/{github_repo}, branch: feature/{jira_issue_key}
+        The branch can later be used to create a PR to the upstream repo.
+
+        End with SUCCESS when complete.
+
+      # Point org to your fork (personal account), not the upstream org.
+      github:
+        host: "github.com"
+        org: "my-username"               # Fork owner (your GitHub username)
+        repo: "project-name"             # Same repo name as upstream
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: main
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "fork-processing"
+
+    on_complete:
+      add_tag: "fork-ready-for-pr"
+
+    on_failure:
+      add_tag: "fork-failed"

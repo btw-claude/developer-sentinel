@@ -1,0 +1,177 @@
+# Chained Pipeline
+# ================
+#
+# Demonstrates a multi-step pipeline where each step's outcome tag
+# triggers the next step. This creates a stateless, tag-driven workflow
+# that progresses issues through a series of automated stages.
+#
+# Pipeline flow in this example:
+#
+#   [ready-for-dev] -> Development -> [needs-code-review]
+#                                          |
+#                    +---------------------+
+#                    |
+#                    v
+#              Code Review
+#               /       \
+#   [approved] /         \ [changes-requested]
+#             v           v
+#         Complete    Address Comments -> [needs-code-review]
+#                                          (loops back)
+#
+# Each step picks up issues by their tag, processes them, and applies
+# an outcome tag that the next step watches for.
+
+enabled: false
+
+trigger:
+  source: jira
+  project: "PROJ"
+
+steps:
+  # Step 1: Development
+  # Triggered by: "ready-for-dev" tag (applied manually or by another system)
+  # Produces:     "needs-code-review" tag on success
+  - name: "development"
+
+    trigger:
+      tags:
+        - "ready-for-dev"
+
+    agent:
+      prompt: |
+        Implement the feature described in {jira_issue_key}: {jira_summary}
+
+        {jira_description}
+
+        Implement the feature, write tests, and commit your changes.
+
+        End with "DEVELOPMENT COMPLETE" when finished.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "feature/{jira_issue_key}"
+        create_branch: true
+        base_branch: main
+
+      timeout_seconds: 900
+
+    retry:
+      max_attempts: 2
+      failure_patterns:
+        - "ERROR:"
+        - "BLOCKED:"
+
+    outcomes:
+      - name: completed
+        patterns:
+          - "DEVELOPMENT COMPLETE"
+        add_tag: "needs-code-review"     # Triggers step 2
+
+    on_start:
+      add_tag: "sentinel-developing"
+
+    on_failure:
+      add_tag: "development-failed"
+
+  # Step 2: Code Review
+  # Triggered by: "needs-code-review" tag (from step 1 or step 3)
+  # Produces:     "approved" or "changes-requested" tag
+  - name: "code-review"
+
+    trigger:
+      tags:
+        - "needs-code-review"
+
+    agent:
+      prompt: |
+        Review the code changes for {jira_issue_key}: {jira_summary}
+
+        {jira_description}
+
+        Review the code on branch feature/{jira_issue_key} and post feedback.
+
+        End with:
+        - "APPROVED" if the code is ready to merge
+        - "CHANGES REQUESTED" if revisions are needed
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "feature/{jira_issue_key}"
+        create_branch: false
+
+      timeout_seconds: 600
+
+    retry:
+      max_attempts: 3
+      failure_patterns:
+        - "ERROR:"
+
+    outcomes:
+      - name: approved
+        patterns:
+          - "APPROVED"
+          - "LGTM"
+        add_tag: "code-approved"         # Pipeline complete
+
+      - name: changes-requested
+        patterns:
+          - "CHANGES REQUESTED"
+        add_tag: "changes-requested"     # Triggers step 3
+
+    on_start:
+      add_tag: "sentinel-reviewing"
+
+    on_failure:
+      add_tag: "review-failed"
+
+  # Step 3: Address Review Comments
+  # Triggered by: "changes-requested" tag (from step 2)
+  # Produces:     "needs-code-review" tag (loops back to step 2)
+  - name: "address-comments"
+
+    trigger:
+      tags:
+        - "changes-requested"
+
+    agent:
+      prompt: |
+        Address the review comments for {jira_issue_key}: {jira_summary}
+
+        The code review requested changes. Read the review comments and
+        make the necessary fixes on branch feature/{jira_issue_key}.
+
+        Recent comments:
+        {jira_comments}
+
+        End with "CHANGES ADDRESSED" when all comments are resolved.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        branch: "feature/{jira_issue_key}"
+        create_branch: false
+
+      timeout_seconds: 600
+
+    retry:
+      max_attempts: 2
+      failure_patterns:
+        - "ERROR:"
+
+    outcomes:
+      - name: addressed
+        patterns:
+          - "CHANGES ADDRESSED"
+        add_tag: "needs-code-review"     # Loop back to step 2
+
+    on_start:
+      add_tag: "sentinel-fixing"
+
+    on_failure:
+      add_tag: "fix-failed"
