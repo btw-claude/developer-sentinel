@@ -4,6 +4,103 @@
 
 {% block title %}Orchestrations - Developer Sentinel{% endblock %}
 
+{% block extra_head %}
+<script>
+    /**
+     * Preserve nested accordion expanded state across HTMX auto-refresh.
+     *
+     * The Jira and GitHub orchestration sections auto-refresh every 10s via HTMX,
+     * replacing innerHTML. This destroys any expanded state on nested accordion items
+     * and orchestration detail rows. These event listeners capture which items are
+     * expanded before the swap and re-apply the expanded state after the new content
+     * settles.
+     *
+     * Scoped to orchestrations page only (loaded via extra_head block).
+     * Uses data-identifier attributes on .nested-accordion-item elements (added in DS-1062)
+     * and IDs on .orchestration-detail-row elements for reliable matching across DOM rebuilds.
+     */
+    (function() {
+        'use strict';
+
+        /** @type {Set<string>} Expanded nested accordion item data-identifier values */
+        let expandedAccordionItems = new Set();
+        /** @type {Set<string>} Expanded orchestration detail row IDs */
+        let expandedDetailRows = new Set();
+
+        /**
+         * Before HTMX swaps new content, capture the currently expanded state.
+         * Records data-identifier values of expanded .nested-accordion-item elements
+         * and IDs of expanded .orchestration-detail-row elements.
+         */
+        document.body.addEventListener('htmx:beforeSwap', function(event) {
+            const target = event.detail.target;
+            if (!target) {
+                return;
+            }
+
+            // Capture expanded nested accordion items by data-identifier
+            const expandedItems = target.querySelectorAll('.nested-accordion-item.expanded');
+            if (expandedItems.length > 0) {
+                expandedAccordionItems = new Set();
+                expandedItems.forEach(function(item) {
+                    const identifier = item.getAttribute('data-identifier');
+                    if (identifier) {
+                        expandedAccordionItems.add(identifier);
+                    }
+                });
+            }
+
+            // Capture expanded orchestration detail rows by ID
+            const expandedRows = target.querySelectorAll('.orchestration-detail-row.expanded');
+            if (expandedRows.length > 0) {
+                expandedDetailRows = new Set();
+                expandedRows.forEach(function(row) {
+                    if (row.id) {
+                        expandedDetailRows.add(row.id);
+                    }
+                });
+            }
+        });
+
+        /**
+         * After HTMX settles new content, re-apply the expanded state.
+         * Restores expanded class on matching .nested-accordion-item elements
+         * and expanded class + aria-expanded on matching .orchestration-detail-row elements.
+         */
+        document.body.addEventListener('htmx:afterSettle', function(event) {
+            const target = event.detail.target;
+            if (!target) {
+                return;
+            }
+
+            // Restore expanded nested accordion items
+            if (expandedAccordionItems.size > 0) {
+                target.querySelectorAll('.nested-accordion-item').forEach(function(item) {
+                    var identifier = item.getAttribute('data-identifier');
+                    if (identifier && expandedAccordionItems.has(identifier)) {
+                        item.classList.add('expanded');
+                    }
+                });
+            }
+
+            // Restore expanded orchestration detail rows
+            if (expandedDetailRows.size > 0) {
+                target.querySelectorAll('.orchestration-detail-row').forEach(function(row) {
+                    if (row.id && expandedDetailRows.has(row.id)) {
+                        row.classList.add('expanded');
+                        // Also restore aria-expanded on the corresponding clickable row
+                        var clickableRow = row.previousElementSibling;
+                        if (clickableRow && clickableRow.classList.contains('clickable-row')) {
+                            clickableRow.setAttribute('aria-expanded', 'true');
+                        }
+                    }
+                });
+            }
+        });
+    })();
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center;">
