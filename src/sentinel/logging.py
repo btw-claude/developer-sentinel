@@ -98,12 +98,22 @@ class LogFilenameParts(NamedTuple):
     positional tuple indexing (``parts[0]``), improving readability at call
     sites like ``_format_log_display_name``.
 
-    .. note::
+    .. warning:: Direct construction safety (DS-986)
 
         ``NamedTuple`` does **not** enforce field types at runtime.  The
-        ``int`` conversion for ``attempt`` is guaranteed by the constructor
+        ``int`` conversion for ``attempt`` is guaranteed by the factory
         function :func:`parse_log_filename_parts`, which calls ``int()``
-        on the regex capture group before creating this tuple.
+        on the regex capture group before creating this tuple.  Callers
+        constructing ``LogFilenameParts`` directly — rather than via
+        :func:`parse_log_filename_parts` — **must** ensure that:
+
+        * ``attempt`` is passed as an ``int`` (not a raw ``str``).
+        * ``timestamp`` conforms to the ``YYYYMMDD-HHMMSS`` format
+          expected by :meth:`to_datetime`; otherwise ``to_datetime``
+          will raise :class:`ValueError`.
+
+        Prefer using :func:`parse_log_filename_parts` to obtain instances
+        whenever possible, as it enforces these invariants automatically.
 
     Attributes:
         issue_key: The issue key prefix, or None if the filename has no
@@ -127,6 +137,13 @@ class LogFilenameParts(NamedTuple):
 
         Returns:
             A UTC-aware ``datetime`` parsed from :attr:`timestamp`.
+
+        Raises:
+            ValueError: If :attr:`timestamp` does not conform to the
+                ``YYYYMMDD-HHMMSS`` format.  This can happen when a
+                ``LogFilenameParts`` is constructed directly with a
+                malformed timestamp string rather than via
+                :func:`parse_log_filename_parts`.
         """
         return datetime.strptime(self.timestamp, LOG_TIMESTAMP_FORMAT).replace(
             tzinfo=UTC

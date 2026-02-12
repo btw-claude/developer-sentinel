@@ -345,11 +345,27 @@ class TestParseLogFilenameParts:
         Since NamedTuple does not enforce field types at runtime, a
         LogFilenameParts constructed directly (not via parse_log_filename_parts)
         could contain a malformed timestamp string. Verify that the error
-        propagates cleanly.
+        propagates cleanly.  (DS-986: defensive edge case.)
         """
         bad_parts = LogFilenameParts(issue_key="DS-999", timestamp="not-a-date", attempt=1)
         with pytest.raises(ValueError):
             bad_parts.to_datetime()
+
+    def test_direct_construction_does_not_enforce_attempt_type(self) -> None:
+        """NamedTuple does not enforce ``attempt`` as int at construction time.
+
+        Callers constructing LogFilenameParts directly (bypassing
+        parse_log_filename_parts) can accidentally pass a ``str``
+        for ``attempt``.  This test documents the lack of runtime
+        type enforcement and validates that the contract documented
+        in the class docstring (DS-986) accurately describes the
+        behaviour.
+        """
+        # Deliberately pass a str where int is annotated — NamedTuple allows it
+        parts = LogFilenameParts(issue_key="DS-999", timestamp="20240115-103045", attempt="3")  # type: ignore[arg-type]
+        # The field stores whatever was passed, without int conversion
+        assert parts.attempt == "3"  # type: ignore[comparison-overlap]
+        assert not isinstance(parts.attempt, int)
 
     # ------------------------------------------------------------------
     # Consistency: parse_log_filename and parse_log_filename_parts agree
