@@ -44,7 +44,7 @@ from tests.helpers import assert_call_args_length, get_csrf_token
 
 
 @pytest.fixture(autouse=True)
-def reset_sse_app_status() -> Generator[None, None, None]:
+def reset_sse_app_status() -> Generator[None]:
     """Reset sse_starlette AppStatus to avoid event loop pollution between tests.
 
     The sse_starlette library uses a singleton AppStatus with an asyncio.Event
@@ -63,7 +63,7 @@ def reset_sse_app_status() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def temp_logs_dir() -> Generator[Path, None, None]:
+def temp_logs_dir() -> Generator[Path]:
     """Fixture that provides a temporary directory for logs.
 
     This fixture creates a temporary directory that is automatically
@@ -673,7 +673,7 @@ class MockStateAccessorWithOrchestrations(SentinelStateAccessor):
 @pytest.fixture
 def orch_client_factory(
     temp_logs_dir: Path,
-) -> Generator[Callable[..., AbstractContextManager[TestClient]], None, None]:
+) -> Generator[Callable[..., AbstractContextManager[TestClient]]]:
     """Provide a factory for creating TestClients with orchestration data.
 
     Shared fixture that eliminates the repeated Config/MockSentinel/
@@ -691,7 +691,7 @@ def orch_client_factory(
         orchestrations: list[OrchestrationInfo] | None = None,
         *,
         pass_config: bool = False,
-    ) -> Generator[TestClient, None, None]:
+    ) -> Generator[TestClient]:
         config = Config(execution=ExecutionConfig(agent_logs_dir=temp_logs_dir))
         sentinel = MockSentinelWithOrchestrations(config, [])
         accessor = MockStateAccessorWithOrchestrations(
@@ -710,7 +710,7 @@ def orch_client_factory(
 @pytest.fixture
 def orch_app_factory(
     temp_logs_dir: Path,
-) -> Generator[Callable[..., tuple[FastAPI, Config]], None, None]:
+) -> Generator[Callable[..., tuple[FastAPI, Config]]]:
     """Provide a factory for creating FastAPI apps with orchestration data.
 
     Shared fixture for tests that need the raw FastAPI app object rather than
@@ -749,7 +749,7 @@ def orch_app_factory(
 @pytest.fixture
 def base_client_factory(
     temp_logs_dir: Path,
-) -> Generator[Callable[..., AbstractContextManager[TestClient]], None, None]:
+) -> Generator[Callable[..., AbstractContextManager[TestClient]]]:
     """Provide a factory for creating TestClients with base Sentinel mocks.
 
     Unlike :func:`orch_client_factory`, this fixture uses the plain
@@ -766,7 +766,7 @@ def base_client_factory(
     def _make_client(
         *,
         pass_config: bool = False,
-    ) -> Generator[TestClient, None, None]:
+    ) -> Generator[TestClient]:
         config = Config(
             execution=ExecutionConfig(agent_logs_dir=temp_logs_dir),
         )
@@ -2232,9 +2232,7 @@ class TestCreateOrchestrationEndpoint:
     @pytest.fixture
     def create_orch_client_factory(
         self, temp_logs_dir: Path
-    ) -> Generator[
-        Callable[..., AbstractContextManager[tuple[TestClient, Path]]], None, None
-    ]:
+    ) -> Generator[Callable[..., AbstractContextManager[tuple[TestClient, Path]]]]:
         """Provide a factory for creating TestClients for create endpoint tests.
 
         Sets up the orchestrations directory and passes config to create_test_app,
@@ -2249,7 +2247,7 @@ class TestCreateOrchestrationEndpoint:
         @contextlib.contextmanager
         def _make_client(
             orchestrations: list[OrchestrationInfo] | None = None,
-        ) -> Generator[tuple[TestClient, Path], None, None]:
+        ) -> Generator[tuple[TestClient, Path]]:
             orch_dir = temp_logs_dir / "orchestrations"
             orch_dir.mkdir(exist_ok=True)
             config = Config(
@@ -2468,7 +2466,7 @@ class TestCsrfProtection:
     """Tests for CSRF protection on state-changing endpoints (DS-935)."""
 
     @pytest.fixture
-    def csrf_client(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> Generator[TestClient, None, None]:
+    def csrf_client(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> Generator[TestClient]:
         """Provide a TestClient with CSRF-protected routes for testing.
 
         Delegates to the module-level :func:`orch_client_factory` fixture with
@@ -2598,7 +2596,7 @@ class TestCsrfTokenRateLimiting:
     @pytest.fixture
     def rate_limit_client(
         self, base_client_factory: Callable[..., AbstractContextManager[TestClient]]
-    ) -> Generator[TestClient, None, None]:
+    ) -> Generator[TestClient]:
         """Provide a TestClient with rate limiting configured for CSRF tests.
 
         Delegates to the module-level :func:`base_client_factory` fixture with

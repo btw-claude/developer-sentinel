@@ -702,7 +702,7 @@ def create_routes(
             EventSourceResponse streaming log content.
         """
 
-        async def event_generator() -> AsyncGenerator[dict[str, Any], None]:
+        async def event_generator() -> AsyncGenerator[dict[str, Any]]:
             """Generate SSE events for log file content."""
             log_path = state_accessor.get_log_file_path(orchestration, filename)
 

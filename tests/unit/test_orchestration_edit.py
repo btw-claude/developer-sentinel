@@ -1036,7 +1036,7 @@ class TestOrchestrationCreateModels:
 
 
 @pytest.fixture
-def temp_logs_dir() -> Generator[Path, None, None]:
+def temp_logs_dir() -> Generator[Path]:
     """Fixture that provides a temporary directory for logs."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)

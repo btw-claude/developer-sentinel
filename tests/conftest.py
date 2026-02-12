@@ -127,7 +127,7 @@ def mock_tag_client() -> MockTagClient:
 
 
 @pytest.fixture
-def temp_orchestrations_dir() -> Generator[Path, None, None]:
+def temp_orchestrations_dir() -> Generator[Path]:
     """Provide a temporary directory for orchestration files.
 
     Yields the Path to the temporary directory and cleans it up after the test.
