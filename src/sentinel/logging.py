@@ -16,11 +16,20 @@ from typing import Any
 # - _ separates issue key from timestamp (issue keys contain - but not _)
 # - - separates date from time within timestamp (disambiguates from _ delimiter)
 # - _a{N} suffix guarantees uniqueness across retries
+#
+# Parsing safety note: The rsplit("_a", 1) approach for extracting parts is safe
+# because the attempt suffix (_a{N}) always appears at the end of the filename
+# (before .log), and the timestamp format (YYYYMMDD-HHMMSS) uses hyphens
+# internally — so rsplit("_", 1) on the base unambiguously separates the
+# issue key prefix from the timestamp portion.
 LOG_TIMESTAMP_FORMAT = "%Y%m%d-%H%M%S"
 LOG_FILENAME_EXTENSION = ".log"
 
 # Legacy format for backward compatibility: YYYYMMDD_HHMMSS.log
 _LEGACY_LOG_FILENAME_FORMAT = "%Y%m%d_%H%M%S"
+
+# Type alias for the parsed parts of a log filename.
+LogFilenameParts = tuple[str | None, datetime, int]
 
 
 def generate_log_filename(
@@ -79,6 +88,54 @@ def parse_log_filename(filename: str) -> datetime | None:
 
         # Try legacy format: YYYYMMDD_HHMMSS
         return datetime.strptime(name, _LEGACY_LOG_FILENAME_FORMAT).replace(tzinfo=UTC)
+    except (ValueError, IndexError):
+        return None
+
+
+def parse_log_filename_parts(filename: str) -> LogFilenameParts | None:
+    """Parse a log filename into its constituent parts.
+
+    Returns the issue key, timestamp, and attempt number extracted from a
+    log filename.  This avoids callers having to duplicate the filename
+    parsing logic that already lives in :func:`parse_log_filename`.
+
+    Supports:
+      - New format: ``{issue_key}_{YYYYMMDD-HHMMSS}_a{N}.log``
+      - No-issue-key format: ``{YYYYMMDD-HHMMSS}_a{N}.log``
+      - Legacy format: ``YYYYMMDD_HHMMSS.log`` (issue_key=None, attempt=1)
+
+    Args:
+        filename: Log filename to parse.
+
+    Returns:
+        A ``(issue_key, timestamp, attempt)`` tuple, or ``None`` if the
+        filename doesn't match any expected format.  *issue_key* is
+        ``None`` when the filename has no issue-key prefix or uses the
+        legacy format.
+    """
+    try:
+        name = filename.removesuffix(LOG_FILENAME_EXTENSION)
+
+        if "_a" in name:
+            # New format: split off the _a{N} attempt suffix
+            base, attempt_str = name.rsplit("_a", 1)
+            attempt = int(attempt_str)
+
+            # Separate issue key from timestamp
+            parts = base.rsplit("_", 1)
+            if len(parts) > 1:
+                issue_key = parts[0]
+                ts_str = parts[1]
+            else:
+                issue_key = None
+                ts_str = parts[0]
+
+            ts = datetime.strptime(ts_str, LOG_TIMESTAMP_FORMAT).replace(tzinfo=UTC)
+            return (issue_key, ts, attempt)
+
+        # Legacy format: YYYYMMDD_HHMMSS (no issue key, attempt defaults to 1)
+        ts = datetime.strptime(name, _LEGACY_LOG_FILENAME_FORMAT).replace(tzinfo=UTC)
+        return (None, ts, 1)
     except (ValueError, IndexError):
         return None
 

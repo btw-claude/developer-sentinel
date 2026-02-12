@@ -1043,8 +1043,8 @@ class AgentExecutor:
                         prompt,
                         response,
                         status,
-                        attempt,
-                        start_time,
+                        attempts=attempt,
+                        start_time=start_time,
                     )
                     # Cleanup only the successful attempt's workdir if enabled (DS-961).
                     # Prior failed attempt workdirs (with unique _a{N} names) persist
@@ -1153,7 +1153,7 @@ class AgentExecutor:
             prompt,
             last_response,
             last_status,
-            last_attempt,
-            start_time,
+            attempts=last_attempt,
+            start_time=start_time,
         )
         return result
