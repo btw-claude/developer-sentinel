@@ -785,7 +785,7 @@ def base_client_factory(
 class TestToggleOrchestrationEndpoint:
     """Tests for POST /api/orchestrations/{name}/toggle endpoint."""
 
-    def test_toggle_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
+    def test_toggle_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test successful toggle of a single orchestration."""
         # Create an orchestration YAML file
         orch_file = temp_logs_dir / "test-orch.yaml"
@@ -832,7 +832,7 @@ orchestrations:
             updated_content = orch_file.read_text()
             assert "enabled: false" in updated_content
 
-    def test_toggle_orchestration_enable(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
+    def test_toggle_orchestration_enable(self, temp_logs_dir: Path, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test enabling a disabled orchestration."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -875,7 +875,7 @@ orchestrations:
             updated_content = orch_file.read_text()
             assert "enabled: true" in updated_content
 
-    def test_toggle_orchestration_not_found(self, orch_client_factory: Any) -> None:
+    def test_toggle_orchestration_not_found(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test 404 when orchestration doesn't exist."""
         # No orchestrations configured
         with orch_client_factory() as client:
@@ -891,7 +891,7 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_toggle_orchestration_file_not_found(self, orch_client_factory: Any) -> None:
+    def test_toggle_orchestration_file_not_found(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test 404 when orchestration file doesn't exist."""
         # Orchestration info pointing to non-existent file
         orch_info = OrchestrationInfo(
@@ -918,7 +918,7 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_toggle_endpoint_exists(self, orch_client_factory: Any) -> None:
+    def test_toggle_endpoint_exists(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test that the toggle endpoint exists at the correct path."""
         with orch_client_factory() as client:
             route_paths = [route.path for route in client.app.routes]
@@ -928,7 +928,7 @@ orchestrations:
 class TestBulkToggleOrchestrationEndpoint:
     """Tests for POST /api/orchestrations/bulk-toggle endpoint."""
 
-    def test_bulk_toggle_jira_orchestrations_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
+    def test_bulk_toggle_jira_orchestrations_success(self, temp_logs_dir: Path, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test bulk toggling Jira orchestrations by project."""
         # Create an orchestration YAML file with multiple orchestrations
         orch_file = temp_logs_dir / "jira-orchestrations.yaml"
@@ -1013,7 +1013,7 @@ orchestrations:
             # OTHER project should still be enabled
             assert "enabled: true" in updated_content
 
-    def test_bulk_toggle_github_orchestrations_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
+    def test_bulk_toggle_github_orchestrations_success(self, temp_logs_dir: Path, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test bulk toggling GitHub orchestrations by project owner."""
         orch_file = temp_logs_dir / "github-orchestrations.yaml"
         orch_file.write_text("""
@@ -1074,7 +1074,7 @@ orchestrations:
             assert data["success"] is True
             assert data["toggled_count"] == 2
 
-    def test_bulk_toggle_no_matching_orchestrations(self, orch_client_factory: Any) -> None:
+    def test_bulk_toggle_no_matching_orchestrations(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test 404 when no orchestrations match the identifier."""
         # No matching orchestrations
         with orch_client_factory() as client:
@@ -1090,13 +1090,13 @@ orchestrations:
             assert response.status_code == 404
             assert "No orchestrations found" in response.json()["detail"]
 
-    def test_bulk_toggle_endpoint_exists(self, orch_client_factory: Any) -> None:
+    def test_bulk_toggle_endpoint_exists(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test that the bulk toggle endpoint exists at the correct path."""
         with orch_client_factory() as client:
             route_paths = [route.path for route in client.app.routes]
             assert "/api/orchestrations/bulk-toggle" in route_paths
 
-    def test_bulk_toggle_invalid_source(self, orch_client_factory: Any) -> None:
+    def test_bulk_toggle_invalid_source(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test validation error for invalid source type."""
         with orch_client_factory() as client:
             # Get CSRF token (DS-926)
@@ -1115,7 +1115,7 @@ orchestrations:
 class TestDeleteOrchestrationEndpoint:
     """Tests for DELETE /api/orchestrations/{name} endpoint."""
 
-    def test_delete_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
+    def test_delete_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test successful deletion of an orchestration."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -1163,7 +1163,7 @@ orchestrations:
             assert "test-orch" not in updated_content
             assert "other-orch" in updated_content
 
-    def test_delete_orchestration_not_found(self, orch_client_factory: Any) -> None:
+    def test_delete_orchestration_not_found(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test 404 when orchestration doesn't exist."""
         with orch_client_factory() as client:
             # Get CSRF token (DS-926)
@@ -1174,7 +1174,7 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_delete_orchestration_file_not_found(self, orch_client_factory: Any) -> None:
+    def test_delete_orchestration_file_not_found(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test 404 when orchestration file doesn't exist."""
         orch_info = OrchestrationInfo(
             name="test-orch",
@@ -1196,13 +1196,13 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_delete_endpoint_exists(self, orch_client_factory: Any) -> None:
+    def test_delete_endpoint_exists(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test that the delete endpoint exists at the correct path."""
         with orch_client_factory() as client:
             route_paths = [route.path for route in client.app.routes]
             assert "/api/orchestrations/{name}" in route_paths
 
-    def test_delete_orchestration_rate_limited(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
+    def test_delete_orchestration_rate_limited(self, temp_logs_dir: Path, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test that rapid deletes are rate limited."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -1272,7 +1272,7 @@ class TestDeleteOrchestrationDebugLogging:
     """
 
     def test_delete_orchestration_debug_log_contains_request_metadata(
-        self, temp_logs_dir: Path, orch_app_factory: Any
+        self, temp_logs_dir: Path, orch_app_factory: Callable[..., tuple[FastAPI, Config]]
     ) -> None:
         """Test that delete_orchestration logs enriched debug with request context."""
         orch_file = temp_logs_dir / "test-orch.yaml"
@@ -1328,7 +1328,7 @@ orchestrations:
             assert delete_debug_call[0][1] == "test-orch"
 
     def test_delete_orchestration_debug_log_method_is_delete(
-        self, temp_logs_dir: Path, orch_app_factory: Any
+        self, temp_logs_dir: Path, orch_app_factory: Callable[..., tuple[FastAPI, Config]]
     ) -> None:
         """Test that the debug log captures DELETE as the HTTP method."""
         orch_file = temp_logs_dir / "test-orch.yaml"
@@ -1377,7 +1377,7 @@ orchestrations:
             assert "method=DELETE" in rendered
 
     def test_delete_orchestration_debug_log_not_found_still_logs(
-        self, temp_logs_dir: Path, orch_app_factory: Any
+        self, temp_logs_dir: Path, orch_app_factory: Callable[..., tuple[FastAPI, Config]]
     ) -> None:
         """Test that debug log is NOT emitted when orchestration is not found.
 
@@ -1412,7 +1412,7 @@ orchestrations:
 class TestEditOrchestrationEndpoint:
     """Tests for PUT /api/orchestrations/{name} endpoint (DS-727)."""
 
-    def test_edit_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
+    def test_edit_orchestration_success(self, temp_logs_dir: Path, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test successful edit of an orchestration field via PUT."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -1456,7 +1456,7 @@ orchestrations:
             updated_content = orch_file.read_text()
             assert "Updated prompt" in updated_content
 
-    def test_edit_orchestration_not_found(self, orch_client_factory: Any) -> None:
+    def test_edit_orchestration_not_found(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test 404 when orchestration doesn't exist."""
         with orch_client_factory() as client:
             # Get CSRF token (DS-926)
@@ -1471,7 +1471,7 @@ orchestrations:
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
 
-    def test_edit_orchestration_validation_error(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
+    def test_edit_orchestration_validation_error(self, temp_logs_dir: Path, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test 422 when edit produces invalid configuration."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         orch_file.write_text("""
@@ -1509,7 +1509,7 @@ orchestrations:
 
             assert response.status_code == 422
 
-    def test_edit_orchestration_empty_update(self, temp_logs_dir: Path, orch_client_factory: Any) -> None:
+    def test_edit_orchestration_empty_update(self, temp_logs_dir: Path, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test that empty update returns success without file modification."""
         orch_file = temp_logs_dir / "test-orch.yaml"
         original_content = """
@@ -1551,13 +1551,13 @@ orchestrations:
             assert data["success"] is True
             assert data["name"] == "test-orch"
 
-    def test_edit_endpoint_exists(self, orch_client_factory: Any) -> None:
+    def test_edit_endpoint_exists(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test that the edit endpoint exists at the correct path."""
         with orch_client_factory() as client:
             route_paths = [route.path for route in client.app.routes]
             assert "/api/orchestrations/{name}" in route_paths
 
-    def test_edit_orchestration_file_not_found(self, orch_client_factory: Any) -> None:
+    def test_edit_orchestration_file_not_found(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> None:
         """Test 404 when orchestration file doesn't exist."""
         orch_info = OrchestrationInfo(
             name="test-orch",
@@ -1859,7 +1859,7 @@ class TestToggleRateLimitConfiguration:
 class TestToggleOpenApiDocs:
     """Tests for OpenAPI documentation on toggle endpoints."""
 
-    def test_toggle_endpoint_has_openapi_summary(self, orch_app_factory: Any) -> None:
+    def test_toggle_endpoint_has_openapi_summary(self, orch_app_factory: Callable[..., tuple[FastAPI, Config]]) -> None:
         """Test that single toggle endpoint has OpenAPI summary."""
         app, _config = orch_app_factory()
 
@@ -1871,7 +1871,7 @@ class TestToggleOpenApiDocs:
         assert "summary" in toggle_path["post"]
         assert toggle_path["post"]["summary"] == "Toggle orchestration enabled status"
 
-    def test_toggle_endpoint_has_openapi_description(self, orch_app_factory: Any) -> None:
+    def test_toggle_endpoint_has_openapi_description(self, orch_app_factory: Callable[..., tuple[FastAPI, Config]]) -> None:
         """Test that single toggle endpoint has OpenAPI description."""
         app, _config = orch_app_factory()
 
@@ -1882,7 +1882,7 @@ class TestToggleOpenApiDocs:
         assert "description" in toggle_path["post"]
         assert "rate limited" in toggle_path["post"]["description"].lower()
 
-    def test_bulk_toggle_endpoint_has_openapi_summary(self, orch_app_factory: Any) -> None:
+    def test_bulk_toggle_endpoint_has_openapi_summary(self, orch_app_factory: Callable[..., tuple[FastAPI, Config]]) -> None:
         """Test that bulk toggle endpoint has OpenAPI summary."""
         app, _config = orch_app_factory()
 
@@ -1894,7 +1894,7 @@ class TestToggleOpenApiDocs:
         assert "summary" in bulk_toggle_path["post"]
         assert bulk_toggle_path["post"]["summary"] == "Bulk toggle orchestrations by source"
 
-    def test_bulk_toggle_endpoint_has_openapi_description(self, orch_app_factory: Any) -> None:
+    def test_bulk_toggle_endpoint_has_openapi_description(self, orch_app_factory: Callable[..., tuple[FastAPI, Config]]) -> None:
         """Test that bulk toggle endpoint has OpenAPI description."""
         app, _config = orch_app_factory()
 
@@ -2268,7 +2268,7 @@ class TestCreateOrchestrationEndpoint:
 
         yield _make_client
 
-    def test_create_orchestration_success(self, create_orch_client_factory: Any) -> None:
+    def test_create_orchestration_success(self, create_orch_client_factory: Callable[..., AbstractContextManager[tuple[TestClient, Path]]]) -> None:
         """Test successful creation of a new orchestration."""
         with create_orch_client_factory() as (client, orch_dir):
             # Get CSRF token first (DS-736)
@@ -2296,7 +2296,7 @@ class TestCreateOrchestrationEndpoint:
             content = created_file.read_text()
             assert "new-orch" in content
 
-    def test_create_orchestration_duplicate_name(self, temp_logs_dir: Path, create_orch_client_factory: Any) -> None:
+    def test_create_orchestration_duplicate_name(self, temp_logs_dir: Path, create_orch_client_factory: Callable[..., AbstractContextManager[tuple[TestClient, Path]]]) -> None:
         """Test 422 when orchestration name already exists."""
         orch_dir = temp_logs_dir / "orchestrations"
 
@@ -2330,7 +2330,7 @@ class TestCreateOrchestrationEndpoint:
             assert response.status_code == 422
             assert "already exists" in response.json()["detail"]
 
-    def test_create_orchestration_path_traversal(self, create_orch_client_factory: Any) -> None:
+    def test_create_orchestration_path_traversal(self, create_orch_client_factory: Callable[..., AbstractContextManager[tuple[TestClient, Path]]]) -> None:
         """Test 422 when target file is outside orchestrations directory."""
         with create_orch_client_factory() as (client, orch_dir):
             # Get CSRF token first (DS-736)
@@ -2350,7 +2350,7 @@ class TestCreateOrchestrationEndpoint:
             assert response.status_code == 422
             assert "not within" in response.json()["detail"]
 
-    def test_create_orchestration_appends_to_existing_file(self, create_orch_client_factory: Any) -> None:
+    def test_create_orchestration_appends_to_existing_file(self, create_orch_client_factory: Callable[..., AbstractContextManager[tuple[TestClient, Path]]]) -> None:
         """Test that creation appends to an existing YAML file."""
         with create_orch_client_factory() as (client, orch_dir):
             # Create an existing YAML file with an orchestration
@@ -2388,7 +2388,7 @@ orchestrations:
             assert "first-orch" in content
             assert "second-orch" in content
 
-    def test_create_endpoint_exists(self, create_orch_client_factory: Any) -> None:
+    def test_create_endpoint_exists(self, create_orch_client_factory: Callable[..., AbstractContextManager[tuple[TestClient, Path]]]) -> None:
         """Test that the create endpoint exists at the correct path."""
         with create_orch_client_factory() as (client, orch_dir):
             route_paths = [route.path for route in client.app.routes]
@@ -2398,7 +2398,7 @@ orchestrations:
 class TestOrchestrationFilesEndpoint:
     """Tests for GET /api/orchestrations/files endpoint (DS-729)."""
 
-    def test_returns_yaml_files(self, temp_logs_dir: Path, orch_app_factory: Any) -> None:
+    def test_returns_yaml_files(self, temp_logs_dir: Path, orch_app_factory: Callable[..., tuple[FastAPI, Config]]) -> None:
         """Test that endpoint returns list of YAML files."""
         orch_dir = temp_logs_dir / "orchestrations"
         orch_dir.mkdir()
@@ -2417,7 +2417,7 @@ class TestOrchestrationFilesEndpoint:
             assert "file1.yaml" in files
             assert "file2.yml" in files
 
-    def test_returns_empty_when_no_files(self, temp_logs_dir: Path, orch_app_factory: Any) -> None:
+    def test_returns_empty_when_no_files(self, temp_logs_dir: Path, orch_app_factory: Callable[..., tuple[FastAPI, Config]]) -> None:
         """Test that endpoint returns empty list when no YAML files exist."""
         orch_dir = temp_logs_dir / "orchestrations"
         orch_dir.mkdir()
@@ -2432,7 +2432,7 @@ class TestOrchestrationFilesEndpoint:
             assert response.status_code == 200
             assert response.json() == []
 
-    def test_returns_sorted_files(self, temp_logs_dir: Path, orch_app_factory: Any) -> None:
+    def test_returns_sorted_files(self, temp_logs_dir: Path, orch_app_factory: Callable[..., tuple[FastAPI, Config]]) -> None:
         """Test that files are returned in sorted order."""
         orch_dir = temp_logs_dir / "orchestrations"
         orch_dir.mkdir()
@@ -2451,7 +2451,7 @@ class TestOrchestrationFilesEndpoint:
             files = response.json()
             assert files == ["a-file.yaml", "b-file.yaml", "c-file.yaml"]
 
-    def test_files_endpoint_exists(self, temp_logs_dir: Path, orch_app_factory: Any) -> None:
+    def test_files_endpoint_exists(self, temp_logs_dir: Path, orch_app_factory: Callable[..., tuple[FastAPI, Config]]) -> None:
         """Test that the files endpoint exists at the correct path."""
         orch_dir = temp_logs_dir / "orchestrations"
         orch_dir.mkdir()
@@ -2468,7 +2468,7 @@ class TestCsrfProtection:
     """Tests for CSRF protection on state-changing endpoints (DS-935)."""
 
     @pytest.fixture
-    def csrf_client(self, orch_client_factory: Any) -> Generator[TestClient, None, None]:
+    def csrf_client(self, orch_client_factory: Callable[..., AbstractContextManager[TestClient]]) -> Generator[TestClient, None, None]:
         """Provide a TestClient with CSRF-protected routes for testing.
 
         Delegates to the module-level :func:`orch_client_factory` fixture with
@@ -2597,7 +2597,7 @@ class TestCsrfTokenRateLimiting:
 
     @pytest.fixture
     def rate_limit_client(
-        self, base_client_factory: Any
+        self, base_client_factory: Callable[..., AbstractContextManager[TestClient]]
     ) -> Generator[TestClient, None, None]:
         """Provide a TestClient with rate limiting configured for CSRF tests.
 
