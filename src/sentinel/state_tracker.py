@@ -287,6 +287,33 @@ class StateTracker:
             self._attempt_counts[key] = AttemptCountEntry(count=new_count, last_access=current_time)
             return new_count
 
+    def seed_attempt_count(
+        self,
+        issue_key: str,
+        orchestration_name: str,
+        count: int,
+        last_access: float | None = None,
+    ) -> None:
+        """Seed an attempt count entry with a specific count and optional timestamp.
+
+        This method allows inserting attempt count entries with controlled
+        timestamps, which is useful for testing TTL-based cleanup logic without
+        waiting for real time to pass.
+
+        Args:
+            issue_key: The key of the issue.
+            orchestration_name: The name of the orchestration.
+            count: The attempt count to set.
+            last_access: The ``time.monotonic()`` timestamp for last access.
+                Defaults to the current ``time.monotonic()`` value if not provided.
+        """
+        key = (issue_key, orchestration_name)
+        effective_last_access = last_access if last_access is not None else time.monotonic()
+        with self._attempt_counts_lock:
+            self._attempt_counts[key] = AttemptCountEntry(
+                count=count, last_access=effective_last_access
+            )
+
     def cleanup_stale_attempt_counts(self) -> int:
         """Clean up stale attempt count entries based on TTL.
 

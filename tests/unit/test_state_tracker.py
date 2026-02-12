@@ -18,7 +18,7 @@ import time
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
-from sentinel.state_tracker import AttemptCountEntry, StateTracker
+from sentinel.state_tracker import StateTracker
 from tests.helpers import make_completed_execution_info, make_orchestration
 
 
@@ -133,15 +133,10 @@ class TestAttemptCountManagement:
     def test_cleanup_stale_attempt_counts_removes_old_entries(self) -> None:
         tracker = StateTracker(attempt_counts_ttl=1.0)
 
-        # Inject entries with controlled timestamps via private access (test setup only)
+        # Seed entries with controlled timestamps via public API
         current_time = time.monotonic()
-        with tracker._attempt_counts_lock:
-            tracker._attempt_counts[("OLD-1", "orch")] = AttemptCountEntry(
-                count=5, last_access=current_time - 100
-            )
-            tracker._attempt_counts[("RECENT-1", "orch")] = AttemptCountEntry(
-                count=3, last_access=current_time - 0.5
-            )
+        tracker.seed_attempt_count("OLD-1", "orch", count=5, last_access=current_time - 100)
+        tracker.seed_attempt_count("RECENT-1", "orch", count=3, last_access=current_time - 0.5)
 
         cleaned = tracker.cleanup_stale_attempt_counts()
 
