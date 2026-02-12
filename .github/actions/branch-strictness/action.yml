@@ -42,6 +42,11 @@ inputs:
     # Same falsy-empty-string convention as above; see the ref input comment.
     default: ""
 
+# The output value mappings below use ${{ }} expressions evaluated by the
+# GitHub Actions expression engine (not by bash).  Each expression simply
+# forwards a step output to a composite-action-level output so that
+# calling workflows can reference the values via the action's output
+# interface (e.g. steps.<id>.outputs.is-strict).
 outputs:
   is-strict:
     description: "'true' when failures must block the build, 'false' when they are informational."
