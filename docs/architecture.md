@@ -690,12 +690,12 @@ All retry-related log rows above (except the agent log file footer) include stru
 
 | Field | Type | Present In | Description |
 |-------|------|-----------|-------------|
-| `issue_key` | `str` | All log events | The issue key being processed (e.g., `"PROJ-123"`) |
-| `orchestration` | `str` | All log events | Name of the orchestration being executed |
-| `attempt` | `int` | All log events | The 1-based attempt number |
-| `status` | `str` | Execution result only | Execution status: `"SUCCESS"`, `"FAILURE"`, `"ERROR"`, or `"TIMEOUT"` |
-| `response_summary` | `str` | Execution result only | Truncated response text (max 200 chars, newlines replaced with spaces) |
-| `timeout_seconds` | `int` | Timeout retry only | The configured timeout value in seconds that was exceeded |
+| `issue_key` | `str` | All | The issue key being processed (e.g., `"PROJ-123"`) |
+| `orchestration` | `str` | All | Name of the orchestration being executed |
+| `attempt` | `int` | All | The 1-based attempt number |
+| `status` | `str` | Execution result | Execution status: `"SUCCESS"`, `"FAILURE"`, `"ERROR"`, or `"TIMEOUT"` |
+| `response_summary` | `str` | Execution result | Truncated response text (max 200 chars, newlines replaced with spaces) |
+| `timeout_seconds` | `int` | Timeout retry | The configured timeout value in seconds that was exceeded |
 
 #### Failure Rate Tracking
 
