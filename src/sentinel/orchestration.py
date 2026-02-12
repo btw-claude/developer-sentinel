@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import threading
 import uuid
@@ -700,7 +701,12 @@ def _validate_timeout_seconds(timeout: Any) -> str | None:
         An error message if *timeout* is not ``None`` and is not a positive
         number (int or float), or ``None`` if valid.
     """
-    if timeout is not None and (not isinstance(timeout, (int, float)) or timeout <= 0):
+    if timeout is not None and (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
         return f"Invalid timeout_seconds '{timeout}': must be a positive number"
     return None
 
@@ -1225,9 +1231,9 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     # early as possible.
     if agent_teams and timeout is not None and timeout < AGENT_TEAMS_MIN_TIMEOUT_SECONDS:
         logger.warning(
-            "agent_teams is enabled but timeout_seconds=%s is below the "
+            "agent_teams is enabled but timeout_seconds=%g is below the "
             "recommended minimum of %d seconds for Agent Teams orchestrations. "
-            "The effective timeout will be %s seconds (timeout_seconds * %d). "
+            "The effective timeout will be %g seconds (timeout_seconds * %d). "
             "Consider setting timeout_seconds >= %d to avoid premature timeouts.",
             timeout,
             AGENT_TEAMS_MIN_TIMEOUT_SECONDS,
