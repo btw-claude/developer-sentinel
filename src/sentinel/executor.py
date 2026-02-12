@@ -738,9 +738,8 @@ class AgentExecutor:
               generate the ``_a{N}`` filename suffix for uniqueness.
 
             At both call sites in :meth:`execute`, the two values are equal
-            because the method is called once per attempt (on success the
-            current attempt *is* the total; after exhaustion ``last_attempt``
-            serves both roles).
+            because the method is called after the final attempt in both the
+            success and exhaustion paths.
 
         Args:
             issue_key: The Jira issue key.
