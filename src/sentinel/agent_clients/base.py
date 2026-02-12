@@ -232,11 +232,12 @@ class AgentClient(ABC):
         - ``-`` separates date from time within timestamp (disambiguates from ``_`` delimiter)
         - ``_a{N}`` suffix guarantees uniqueness across retries
 
-        Failed attempt workdirs persist by design (DS-961):
-            The ``_a{N}`` attempt suffix ensures each retry creates a distinct
-            directory. Failed attempt workdirs are not tracked or cleaned up —
-            they remain on disk for debugging. Only the last attempt's workdir
-            is reported in the execution result. On success with
+        Note:
+            Failed attempt workdirs persist by design (DS-961). The ``_a{N}``
+            attempt suffix ensures each retry creates a distinct directory.
+            Failed attempt workdirs are not tracked or cleaned up — they remain
+            on disk for debugging. Only the last attempt's workdir is reported
+            in the execution result. On success with
             ``cleanup_workdir_on_success=True``, only the successful attempt's
             workdir is cleaned up; prior failed attempts persist.
 
