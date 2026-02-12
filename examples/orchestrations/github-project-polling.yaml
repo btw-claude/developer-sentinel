@@ -1,0 +1,210 @@
+# GitHub Project (v2) Polling
+# ===========================
+#
+# Demonstrates how to poll a GitHub Project board for issues and PRs.
+# GitHub Projects (v2) can span multiple repositories within an org.
+#
+# Key concepts:
+#   - source: github               Use GitHub as the trigger source
+#   - project_number: 42           Project number from the URL
+#   - project_owner: "org-name"    Org or user that owns the project
+#   - project_scope: "org"|"user"  Whether the project is org or personal
+#   - project_filter: "..."        Filter expression for project fields
+#   - labels: [...]                GitHub labels to filter by (AND logic)
+#
+# Finding your project_number:
+#   Organization: https://github.com/orgs/your-org/projects/42  -> 42
+#   Personal:     https://github.com/users/username/projects/5  -> 5
+
+enabled: false
+
+trigger:
+  source: github
+  project_number: 42             # From your GitHub Project URL
+  project_owner: "your-org"      # Organization or username
+  project_scope: "org"           # "org" for organization, "user" for personal
+
+steps:
+  # Example 1: Filter by project field status
+  - name: "triage-ready-items"
+
+    trigger:
+      # project_filter uses a JQL-like syntax against project custom fields.
+      # Supports: =, !=, AND, OR, parentheses.
+      # Field names must match the project's fields exactly (case-sensitive).
+      project_filter: 'Status = "Needs Triage"'
+
+    agent:
+      prompt: |
+        You are a triage assistant. Categorize this issue and set its priority.
+
+        End with SUCCESS when triage is complete.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+      timeout_seconds: 180
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+
+    on_start:
+      add_tag: "sentinel-triaging"
+
+    on_complete:
+      add_tag: "triaged"
+
+    on_failure:
+      add_tag: "triage-failed"
+
+  # Example 2: Filter by GitHub labels
+  - name: "review-labeled-bugs"
+
+    trigger:
+      # Issues must have ALL listed labels to match (AND logic).
+      # Label matching is case-insensitive ("Bug" matches "bug", "BUG").
+      labels:
+        - "bug"
+        - "needs-review"
+
+    agent:
+      prompt: |
+        You are a bug review specialist. Verify and prioritize this bug report.
+
+        End with SUCCESS when review is complete.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+
+    on_start:
+      add_tag: "sentinel-reviewing"
+
+    on_complete:
+      add_tag: "bug-reviewed"
+
+    on_failure:
+      add_tag: "review-failed"
+
+  # Example 3: Combine project_filter with labels
+  - name: "high-priority-ready-bugs"
+
+    trigger:
+      # Both conditions must be true:
+      #   1. Issue has "bug" AND "priority-high" labels
+      #   2. AND the project board status is "Ready"
+      labels:
+        - "bug"
+        - "priority-high"
+      project_filter: 'Status = "Ready"'
+
+    agent:
+      prompt: |
+        You are a senior engineer. Fix this high-priority bug immediately.
+
+        End with SUCCESS when the fix is committed.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+      timeout_seconds: 900
+
+    retry:
+      max_attempts: 3
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+
+    on_start:
+      add_tag: "sentinel-fixing"
+
+    on_complete:
+      add_tag: "fix-ready"
+
+    on_failure:
+      add_tag: "fix-failed"
+
+  # Example 4: Complex project_filter with AND/OR
+  - name: "multi-status-review"
+
+    trigger:
+      # Parentheses group conditions; AND/OR combine them.
+      project_filter: '(Status = "Ready for Review" OR Status = "In Progress") AND Priority = "High"'
+
+    agent:
+      prompt: |
+        You are a reviewer. Check the status of this high-priority item.
+
+        End with SUCCESS after posting your assessment.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "sentinel-checking"
+
+    on_complete:
+      add_tag: "reviewed"
+
+  # Example 5: Personal (user) project
+  - name: "personal-project-triage"
+
+    trigger:
+      # Override file-level trigger for a personal project.
+      project_number: 5
+      project_owner: "my-username"
+      project_scope: "user"          # Personal project
+      project_filter: 'Status = "Todo"'
+
+    agent:
+      prompt: |
+        Help me organize this personal project item.
+
+        End with SUCCESS when done.
+
+      github:
+        host: "github.com"
+        org: "my-username"
+        repo: "my-project"
+
+    retry:
+      max_attempts: 1
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "organizing"
+
+    on_complete:
+      add_tag: "organized"

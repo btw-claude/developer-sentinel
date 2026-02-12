@@ -2,13 +2,29 @@
 
 This directory contains working examples to help you get started with Developer Sentinel quickly.
 
-## Examples Overview
+## Deployment Examples
 
 | Example | Description | Best For |
 |---------|-------------|----------|
 | [basic-setup](./basic-setup/) | Minimal working configuration | First-time users, quick start |
 | [multi-orchestration](./multi-orchestration/) | Multiple triggers and workflows | Complex automation scenarios |
 | [docker](./docker/) | Docker and docker-compose deployment | Production deployments |
+
+## Orchestration Reference Examples
+
+The [`orchestrations/`](./orchestrations/) directory contains focused examples for each orchestration feature. Each file demonstrates one capability and is safe to drop into a live setup (`enabled: false` by default).
+
+| Example | Feature | Key Fields |
+|---------|---------|------------|
+| [jira-polling.yaml](./orchestrations/jira-polling.yaml) | Jira project polling | `source`, `project`, `tags`, `jql_filter`, lifecycle hooks |
+| [github-project-polling.yaml](./orchestrations/github-project-polling.yaml) | GitHub Project (v2) polling | `project_number`, `project_owner`, `project_scope`, `project_filter`, `labels` |
+| [branch-patterns.yaml](./orchestrations/branch-patterns.yaml) | Feature branches and base branches | `github.branch`, `create_branch`, `base_branch`, fork workflows |
+| [jira-template-variables.yaml](./orchestrations/jira-template-variables.yaml) | All Jira template variables | All 11 `{jira_*}` variables in a prompt |
+| [github-template-variables.yaml](./orchestrations/github-template-variables.yaml) | All GitHub template variables | All 14 `{github_*}` variables + common variables |
+| [outcomes.yaml](./orchestrations/outcomes.yaml) | Outcome-based tagging | `outcomes`, `patterns`, `regex:` prefix, `default_outcome`, `default_status` |
+| [chained-pipeline.yaml](./orchestrations/chained-pipeline.yaml) | Multi-step tag-driven pipeline | Outcome tags triggering next steps, review loops |
+| [agent-types.yaml](./orchestrations/agent-types.yaml) | Agent type options | `agent_type`, `cursor_mode`, `agent_teams`, `model` |
+| [advanced-options.yaml](./orchestrations/advanced-options.yaml) | Miscellaneous options | `max_concurrent`, `strict_template_variables`, `enabled`, `default_status`, file-level trigger inheritance |
 
 ## Quick Start
 

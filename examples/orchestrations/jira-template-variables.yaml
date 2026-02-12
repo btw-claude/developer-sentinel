@@ -1,0 +1,96 @@
+# Jira Template Variables
+# =======================
+#
+# Demonstrates ALL available Jira template variables in a prompt.
+# Use {variable_name} syntax in prompts and branch patterns.
+#
+# When the trigger source is Jira, these variables are populated from the
+# issue data. GitHub-specific variables will be empty strings.
+#
+# Jira Variables (11 total):
+#   {jira_issue_key}     Issue key (e.g., "PROJ-123")
+#   {jira_summary}       Issue title/summary text
+#   {jira_summary_slug}  Branch-safe slugified summary (e.g., "add-login-button")
+#   {jira_description}   Full issue description
+#   {jira_status}        Current status name (e.g., "In Progress")
+#   {jira_assignee}      Assignee display name
+#   {jira_epic_key}      Parent epic key if linked (e.g., "EPIC-100"), else empty
+#   {jira_parent_key}    Parent issue key for subtasks (e.g., "PROJ-400"), else empty
+#   {jira_labels}        Comma-separated labels (e.g., "bug, urgent")
+#   {jira_comments}      Last 3 comments, numbered, each truncated to 500 chars
+#   {jira_links}         Comma-separated linked issue keys (e.g., "DS-100, DS-200")
+#
+# Common Variables (always available regardless of trigger source):
+#   {base_branch}        Base branch from github.base_branch (default: "main")
+#   {github_host}        GitHub host from agent config (e.g., "github.com")
+#   {github_org}         GitHub org from agent config
+#   {github_repo}        GitHub repo from agent config
+
+enabled: false
+
+trigger:
+  source: jira
+  project: "PROJ"
+
+steps:
+  - name: "jira-all-variables"
+
+    trigger:
+      tags:
+        - "needs-processing"
+
+    agent:
+      prompt: |
+        You are processing a Jira issue. Here is the complete context.
+
+        ## Issue Identification
+        **Key:** {jira_issue_key}
+        **Summary:** {jira_summary}
+        **Summary (branch-safe):** {jira_summary_slug}
+
+        ## Status and Assignment
+        **Status:** {jira_status}
+        **Assignee:** {jira_assignee}
+
+        ## Description
+        {jira_description}
+
+        ## Hierarchy
+        **Epic:** {jira_epic_key}
+        **Parent Issue:** {jira_parent_key}
+
+        ## Metadata
+        **Labels:** {jira_labels}
+        **Linked Issues:** {jira_links}
+
+        ## Discussion
+        **Recent Comments:**
+        {jira_comments}
+
+        ## Repository Context (from agent config, not the issue)
+        **Repository:** {github_org}/{github_repo} on {github_host}
+        **Base Branch:** {base_branch}
+
+        ## Your Task
+        Process this issue using all available context above.
+
+        End with SUCCESS when complete.
+
+      github:
+        host: "github.com"
+        org: "your-org"
+        repo: "your-repo"
+        base_branch: main
+
+    retry:
+      max_attempts: 2
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+
+    on_start:
+      add_tag: "sentinel-processing"
+
+    on_complete:
+      add_tag: "processed"

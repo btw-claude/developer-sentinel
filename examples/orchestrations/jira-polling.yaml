@@ -1,0 +1,71 @@
+# Jira Polling
+# ============
+#
+# Demonstrates how to poll a Jira project for issues matching specific
+# tags and an optional JQL filter. This is the most common trigger type.
+#
+# Key concepts:
+#   - source: jira          Polls Jira for matching issues
+#   - project: "KEY"        Jira project key to watch
+#   - tags: [...]           Labels the issue must have (AND logic -- all required)
+#   - jql_filter: "..."     Optional JQL fragment for advanced filtering
+#
+# Tag-based workflow:
+#   1. Issue has trigger tag  ->  picked up for processing
+#   2. on_start.add_tag       ->  marks issue as in-progress (prevents duplicates)
+#   3. on_complete.add_tag    ->  marks success; on_complete.remove_tag cleans up
+#   4. on_failure.add_tag     ->  marks failure after all retries exhausted
+
+enabled: false  # Safe to drop into a live setup -- enable when ready
+
+trigger:
+  source: jira
+  project: "PROJ"              # Change to your Jira project key
+
+steps:
+  - name: "jira-code-review"
+
+    trigger:
+      # Issues must have ALL listed tags to be picked up (AND logic).
+      tags:
+        - "needs-code-review"
+
+      # Optional JQL fragment appended to the base query.
+      # Security note: only trusted admins should configure jql_filter.
+      # Basic validation is applied (balanced quotes/parens, no null bytes,
+      # length limits), but the content is passed to the Jira API.
+      jql_filter: 'status != "Closed" AND priority in ("High", "Critical")'
+
+    agent:
+      prompt: |
+        You are a code review assistant. Review Jira issue {jira_issue_key}.
+
+        **Summary:** {jira_summary}
+        **Status:** {jira_status}
+
+        **Description:**
+        {jira_description}
+
+        Review the code changes and post your findings as a Jira comment.
+        End your response with SUCCESS or FAILURE.
+
+      timeout_seconds: 600
+
+    retry:
+      max_attempts: 3
+      success_patterns:
+        - "SUCCESS"
+      failure_patterns:
+        - "FAILURE"
+        - "ERROR:"
+
+    # Lifecycle hooks for tag management
+    on_start:
+      add_tag: "sentinel-processing"    # Added immediately when picked up
+
+    on_complete:
+      remove_tag: "sentinel-processing" # Clean up in-progress tag
+      add_tag: "code-reviewed"          # Mark as done
+
+    on_failure:
+      add_tag: "review-failed"          # Flag for human investigation
