@@ -44,7 +44,11 @@ jobs:
     # Integration tests are optional and run separately
     # They require external services (Jira, GitHub APIs)
     # Tests will be skipped if credentials are not available
-    continue-on-error: true
+    #
+    # Per-branch behavior (DS-1036):
+    # - On main: integration test failures are strictly enforced
+    # - On develop / PRs: integration tests remain informational
+    continue-on-error: ${{ github.ref != 'refs/heads/main' && (github.event_name != 'pull_request' || github.base_ref != 'main') }}
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
