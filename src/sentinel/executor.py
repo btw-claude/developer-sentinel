@@ -946,6 +946,9 @@ class AgentExecutor:
         last_input_tokens = 0
         last_output_tokens = 0
         last_total_cost_usd = 0.0
+        # Per-attempt start_time captured inside the loop (DS-962).
+        # Ensures the summary log filename correlates with the last
+        # attempt's streaming log, not the pre-loop timestamp.
         start_time = datetime.now(tz=UTC)
         last_attempt = 0
 
@@ -960,6 +963,9 @@ class AgentExecutor:
 
         for attempt in range(1, max_attempts + 1):
             last_attempt = attempt
+            # Capture per-attempt start time so the summary log filename
+            # correlates with the last attempt's streaming log (DS-962).
+            start_time = datetime.now(tz=UTC)
             logger.info(
                 "Executing agent for %s with orchestration "
                 "'%s' (attempt %s/%s)",
