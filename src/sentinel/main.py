@@ -966,7 +966,8 @@ class Sentinel:
         if available_slots <= 0:
             logger.debug(
                 "All %s execution slots busy, skipping polling this cycle",
-                self.config.execution.max_concurrent_executions
+                self.config.execution.max_concurrent_executions,
+                extra={"diagnostic_tag": "polling"},
             )
             return all_results, 0
 

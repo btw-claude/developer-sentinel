@@ -179,6 +179,7 @@ class TestSubConfigs:
         logging_cfg = LoggingConfig()
         assert logging_cfg.level == "INFO"
         assert logging_cfg.json is False
+        assert logging_cfg.diagnostic_tags == ""
 
     def test_polling_config_defaults(self) -> None:
         polling = PollingConfig()
@@ -389,6 +390,46 @@ class TestLoadConfig:
         config = load_config()
 
         assert config.logging_config.json is False
+
+    def test_diagnostic_tags_default_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SENTINEL_DIAGNOSTIC_TAGS defaults to empty string (DS-972)."""
+        monkeypatch.delenv("SENTINEL_DIAGNOSTIC_TAGS", raising=False)
+
+        config = load_config()
+
+        assert config.logging_config.diagnostic_tags == ""
+
+    def test_diagnostic_tags_single_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SENTINEL_DIAGNOSTIC_TAGS with a single tag is parsed correctly (DS-972)."""
+        monkeypatch.setenv("SENTINEL_DIAGNOSTIC_TAGS", "polling")
+
+        config = load_config()
+
+        assert config.logging_config.diagnostic_tags == "polling"
+
+    def test_diagnostic_tags_multiple_tags(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SENTINEL_DIAGNOSTIC_TAGS with multiple tags is parsed correctly (DS-972)."""
+        monkeypatch.setenv("SENTINEL_DIAGNOSTIC_TAGS", "polling,execution")
+
+        config = load_config()
+
+        assert config.logging_config.diagnostic_tags == "polling,execution"
+
+    def test_diagnostic_tags_wildcard(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SENTINEL_DIAGNOSTIC_TAGS with wildcard '*' is parsed correctly (DS-972)."""
+        monkeypatch.setenv("SENTINEL_DIAGNOSTIC_TAGS", "*")
+
+        config = load_config()
+
+        assert config.logging_config.diagnostic_tags == "*"
+
+    def test_diagnostic_tags_with_whitespace(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SENTINEL_DIAGNOSTIC_TAGS preserves raw value including whitespace (DS-972)."""
+        monkeypatch.setenv("SENTINEL_DIAGNOSTIC_TAGS", " polling , execution ")
+
+        config = load_config()
+
+        assert config.logging_config.diagnostic_tags == " polling , execution "
 
 
 class TestParseNonNegativeFloat:
