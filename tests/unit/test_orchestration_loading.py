@@ -219,6 +219,52 @@ orchestrations:
         with pytest.raises(OrchestrationError, match="Invalid timeout_seconds"):
             load_orchestration_file(file_path)
 
+    def test_boolean_timeout_seconds_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for boolean timeout_seconds (DS-1031).
+
+        In Python, bool is a subclass of int, so isinstance(True, int)
+        returns True. The boolean guard ensures that YAML values like
+        ``timeout_seconds: true`` are rejected instead of being silently
+        accepted as numeric values (True == 1, False == 0).
+        """
+        yaml_content = """
+orchestrations:
+  - name: "bool-timeout"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      timeout_seconds: true
+"""
+        file_path = tmp_path / "bool_timeout.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid timeout_seconds"):
+            load_orchestration_file(file_path)
+
+    def test_boolean_false_timeout_seconds_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error for boolean False timeout_seconds (DS-1031).
+
+        Symmetric with test_boolean_timeout_seconds_raises_error. Since
+        ``bool`` is a subclass of ``int`` in Python, ``False`` (== 0) must
+        also be rejected by the explicit boolean guard rather than falling
+        through to the numeric validation.
+        """
+        yaml_content = """
+orchestrations:
+  - name: "bool-false-timeout"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+      timeout_seconds: false
+"""
+        file_path = tmp_path / "bool_false_timeout.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid timeout_seconds"):
+            load_orchestration_file(file_path)
+
     def test_load_file_with_model(self, tmp_path: Path) -> None:
         """Should load orchestration with model specified."""
         yaml_content = """

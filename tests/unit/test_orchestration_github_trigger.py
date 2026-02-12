@@ -284,6 +284,53 @@ orchestrations:
         assert len(orchestrations) == 1
         assert orchestrations[0].trigger.project_number == 1
 
+    def test_github_trigger_project_number_boolean_true_rejected(self, tmp_path: Path) -> None:
+        """Should reject boolean True for project_number (DS-1031).
+
+        In Python, bool is a subclass of int, so isinstance(True, int)
+        returns True. The boolean guard ensures that YAML values like
+        ``project_number: true`` are rejected instead of being silently
+        accepted as numeric values (True == 1).
+        """
+        yaml_content = """
+orchestrations:
+  - name: "bool-project-number"
+    trigger:
+      source: github
+      project_number: true
+      project_owner: "my-org"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "bool_project_number.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid project_number"):
+            load_orchestration_file(file_path)
+
+    def test_github_trigger_project_number_boolean_false_rejected(self, tmp_path: Path) -> None:
+        """Should reject boolean False for project_number (DS-1031).
+
+        In Python, bool is a subclass of int, so isinstance(False, int)
+        returns True. The boolean guard ensures that YAML values like
+        ``project_number: false`` are rejected.
+        """
+        yaml_content = """
+orchestrations:
+  - name: "bool-false-project-number"
+    trigger:
+      source: github
+      project_number: false
+      project_owner: "my-org"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "bool_false_project_number.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid project_number"):
+            load_orchestration_file(file_path)
+
     def test_github_trigger_labels_field_parsed(self, tmp_path: Path) -> None:
         """Should load GitHub trigger with labels field."""
         yaml_content = """

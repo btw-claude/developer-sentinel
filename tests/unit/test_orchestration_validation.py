@@ -411,6 +411,50 @@ orchestrations:
         with pytest.raises(OrchestrationError, match="invalid 'max_concurrent' value"):
             load_orchestration_file(file_path)
 
+    def test_invalid_max_concurrent_boolean_true_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when max_concurrent is boolean True (DS-1031).
+
+        In Python, bool is a subclass of int, so isinstance(True, int)
+        returns True. The boolean guard ensures that YAML values like
+        ``max_concurrent: true`` are rejected.
+        """
+        yaml_content = """
+orchestrations:
+  - name: "bool-true-limit"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+    max_concurrent: true
+"""
+        file_path = tmp_path / "bool_true_max_concurrent.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="invalid 'max_concurrent' value"):
+            load_orchestration_file(file_path)
+
+    def test_invalid_max_concurrent_boolean_false_raises_error(self, tmp_path: Path) -> None:
+        """Should raise error when max_concurrent is boolean False (DS-1031).
+
+        In Python, bool is a subclass of int, so isinstance(False, int)
+        returns True. The boolean guard ensures that YAML values like
+        ``max_concurrent: false`` are rejected.
+        """
+        yaml_content = """
+orchestrations:
+  - name: "bool-false-limit"
+    trigger:
+      source: jira
+    agent:
+      prompt: "Test"
+    max_concurrent: false
+"""
+        file_path = tmp_path / "bool_false_max_concurrent.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="invalid 'max_concurrent' value"):
+            load_orchestration_file(file_path)
+
     def test_max_concurrent_with_value_one(self, tmp_path: Path) -> None:
         """Should allow max_concurrent of 1 (minimum valid value)."""
         yaml_content = """
