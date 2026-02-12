@@ -204,7 +204,7 @@ class HealthCheckContext:
         return (time.perf_counter() - self.start_time) * 1000
 
     @contextmanager
-    def handle_exceptions(self) -> Generator[None, None, None]:
+    def handle_exceptions(self) -> Generator[None]:
         """Context manager that handles common health check exceptions.
 
         This method catches and handles:

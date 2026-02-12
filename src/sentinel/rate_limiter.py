@@ -662,7 +662,7 @@ class ClaudeRateLimiter:
             self._metrics = RateLimiterMetrics()
 
     @contextmanager
-    def pause_metrics(self) -> Generator[None, None, None]:
+    def pause_metrics(self) -> Generator[None]:
         """Context manager that pauses metrics recording during the reset operation.
 
         This provides a safer API for resetting metrics by ensuring no new metrics

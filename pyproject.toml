@@ -7,7 +7,7 @@ name = "developer-sentinel"
 version = "0.1.0"
 description = "Python orchestration app that polls Jira for tagged issues and routes them to Claude-based agents"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 license = {text = "MIT"}
 authors = [
     {name = "Brent Walker"}
@@ -18,7 +18,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
 
@@ -88,7 +87,7 @@ Issues = "https://github.com/btw-claude/developer-sentinel/issues"
 where = ["src"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 100
 # preview = true was removed in DS-591 to avoid enabling ALL preview rules.
 # UP042 (replace-str-enum), which was the original reason for preview mode (DS-582),
@@ -137,7 +136,7 @@ select = ["D103", "E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "G"]
 "tests/**/*.py" = ["D103", "E501", "SIM117"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true

@@ -92,7 +92,7 @@ def github_token() -> str:
 
 
 @pytest.fixture
-def github_client(github_token: str) -> Generator[GitHubRestClient, None, None]:
+def github_client(github_token: str) -> Generator[GitHubRestClient]:
     """Create a GitHubRestClient instance with environment credentials."""
     # Use a fresh circuit breaker for each test
     circuit_breaker = CircuitBreaker(
@@ -113,7 +113,7 @@ def github_client(github_token: str) -> Generator[GitHubRestClient, None, None]:
 
 
 @pytest.fixture
-def github_tag_client(github_token: str) -> Generator[GitHubRestTagClient, None, None]:
+def github_tag_client(github_token: str) -> Generator[GitHubRestTagClient]:
     """Create a GitHubRestTagClient instance with environment credentials."""
     circuit_breaker = CircuitBreaker(
         service_name="github_tag_test",
