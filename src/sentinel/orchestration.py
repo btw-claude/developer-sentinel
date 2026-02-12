@@ -1385,6 +1385,14 @@ def _parse_on_failure(data: dict[str, Any] | None) -> OnFailureConfig:
 def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
     """Parse a single orchestration from dict.
 
+    The ``enabled`` validation includes an explicit type check to reject
+    non-boolean values.  YAML is loosely typed, so values like
+    ``enabled: yes``, ``enabled: 1``, or ``enabled: on`` are parsed as
+    ``True`` by PyYAML (which is fine), but arbitrary strings or numbers
+    such as ``enabled: "sure"`` or ``enabled: 2`` must be caught.  The
+    ``not isinstance(enabled, bool)`` guard ensures only real booleans
+    are accepted.
+
     The ``max_concurrent`` validation includes an explicit boolean guard
     since ``bool`` is a subclass of ``int`` in Python, so
     ``isinstance(True, int)`` returns ``True``.  Without the guard, YAML
@@ -1413,7 +1421,8 @@ def _parse_orchestration(data: dict[str, Any]) -> Orchestration:
     if not agent_data:
         raise OrchestrationError(f"Orchestration '{name}' must have an 'agent' field")
 
-    # Parse enabled field (defaults to True for backwards compatibility)
+    # Parse enabled field (defaults to True for backwards compatibility).
+    # See docstring for boolean guard rationale.
     enabled = data.get("enabled", True)
     if not isinstance(enabled, bool):
         raise OrchestrationError(
@@ -1459,6 +1468,14 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
     - File-level takes precedence over orchestration-level
     - Both default to True for backwards compatibility
 
+    The ``file_enabled`` validation includes an explicit type check to reject
+    non-boolean values.  YAML is loosely typed, so values like
+    ``enabled: yes``, ``enabled: 1``, or ``enabled: on`` are parsed as
+    ``True`` by PyYAML (which is fine), but arbitrary strings or numbers
+    such as ``enabled: "sure"`` or ``enabled: 2`` must be caught.  The
+    ``not isinstance(file_enabled, bool)`` guard ensures only real booleans
+    are accepted.
+
     Args:
         file_path: Path to the YAML file.
 
@@ -1481,7 +1498,8 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
     if not data:
         return [], 0
 
-    # Check file-level enabled flag (defaults to True for backwards compatibility)
+    # Check file-level enabled flag (defaults to True for backwards compatibility).
+    # See docstring for boolean guard rationale.
     file_enabled = data.get("enabled", True)
     if not isinstance(file_enabled, bool):
         raise OrchestrationError(f"File-level 'enabled' must be a boolean in {file_path}")
