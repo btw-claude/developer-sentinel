@@ -150,6 +150,22 @@ class LogFilenameParts(NamedTuple):
             tzinfo=UTC
         )
 
+    def __str__(self) -> str:
+        """Reconstruct the original filename pattern for debugging/logging.
+
+        Returns the canonical filename (without ``.log`` extension) that
+        ``generate_log_filename`` would produce for the same components.
+        This is useful in debugging and logging contexts where a human-readable
+        representation of the parsed parts is needed.
+
+        Returns:
+            A string in the format ``{issue_key}_{YYYYMMDD-HHMMSS}_a{attempt}``
+            or ``{YYYYMMDD-HHMMSS}_a{attempt}`` if ``issue_key`` is ``None``.
+        """
+        if self.issue_key:
+            return f"{self.issue_key}_{self.timestamp}_a{self.attempt}"
+        return f"{self.timestamp}_a{self.attempt}"
+
 
 def parse_log_filename_parts(
     filename: str,
