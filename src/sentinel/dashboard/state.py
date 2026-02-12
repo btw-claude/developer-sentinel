@@ -1162,7 +1162,7 @@ class SentinelStateAccessor:
         parts = parse_log_filename_parts(filename)
         if parts is not None:
             # Use the parsed_datetime property for attribute-style access
-            # (DS-998).  Delegates to to_datetime() which centralises the
+            # (DS-1001).  Delegates to to_datetime() which centralises the
             # strptime/replace(tzinfo=UTC) pattern via _parse_log_timestamp.
             formatted_time = parts.parsed_datetime.strftime("%Y-%m-%d %H:%M:%S")
             if parts.issue_key:

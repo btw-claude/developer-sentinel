@@ -41,7 +41,7 @@ def _parse_log_timestamp(timestamp: str, fmt: str = LOG_TIMESTAMP_FORMAT) -> dat
     ``parse_log_filename`` and ``_format_log_display_name``).
 
     Centralises the ``strptime`` / ``replace(tzinfo=UTC)`` pattern so
-    that no call site needs to inline it (DS-998).
+    that no call site needs to inline it (DS-1001, DS-998).
 
     Args:
         timestamp: Timestamp string (e.g., ``"20240115-103045"``).
@@ -118,7 +118,7 @@ def parse_log_filename(filename: str) -> datetime | None:
 
     # Fall back to legacy format: YYYYMMDD_HHMMSS
     # Delegates to _parse_log_timestamp to centralise the strptime/replace
-    # pattern (DS-998).
+    # pattern (DS-1001, DS-998).
     try:
         name = filename.removesuffix(LOG_FILENAME_EXTENSION)
         return _parse_log_timestamp(name, _LEGACY_LOG_FILENAME_FORMAT)
@@ -177,7 +177,7 @@ class LogFilenameParts(NamedTuple):
 
         Convenience method to avoid repeating the ``strptime``/``replace``
         pattern across call sites (e.g., ``_format_log_display_name`` and
-        ``parse_log_filename``).
+        ``parse_log_filename``) (DS-1001).
 
         Delegates to the module-level :func:`_parse_log_timestamp` cache
         so that repeated calls with the same timestamp string (e.g., from
@@ -209,8 +209,9 @@ class LogFilenameParts(NamedTuple):
         Convenience property alias for :meth:`to_datetime`, providing
         attribute-style access (``parts.parsed_datetime``) as an
         alternative to the method-call style (``parts.to_datetime()``).
-        Suggested by DS-998 to improve ergonomics at call sites where
-        the result is used inline (e.g., formatting or comparisons).
+        Suggested by DS-1001 (originally tracked as DS-998) to improve
+        ergonomics at call sites where the result is used inline
+        (e.g., formatting or comparisons).
 
         Delegates to :meth:`to_datetime`; see that method for caching
         behaviour, error semantics, and implementation details.
