@@ -494,6 +494,19 @@ class TestParseLogFilenameParts:
         with pytest.raises(ValueError):
             bad_parts.to_datetime()
 
+    def test_to_datetime_raises_type_error_for_none_timestamp(self) -> None:
+        """LogFilenameParts.to_datetime() should raise TypeError for a None timestamp.
+
+        Since NamedTuple does not enforce field types at runtime, a
+        LogFilenameParts constructed directly (not via parse_log_filename_parts)
+        could carry None as the timestamp.  Passing None to strptime raises
+        TypeError rather than ValueError.  (DS-999: complement to the existing
+        ValueError test for malformed timestamp strings.)
+        """
+        none_parts = LogFilenameParts(issue_key="DS-999", timestamp=None, attempt=1)  # type: ignore[arg-type]
+        with pytest.raises(TypeError):
+            none_parts.to_datetime()
+
     def test_direct_construction_does_not_enforce_attempt_type(self) -> None:
         """NamedTuple does not enforce ``attempt`` as int at construction time.
 
