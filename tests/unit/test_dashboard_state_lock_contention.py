@@ -529,7 +529,7 @@ class TestCachedMethodLockContentionBenchmark:
         # CI flakiness in environments with variable CPU availability or scheduling jitter).
         # Expected range: p99 typically < 100us for cached reads under moderate contention.
         # Values consistently above 500us may indicate a regression in lock acquisition
-        # latency or cache lookup performance worth investigating.
+        # overhead or cache decorator performance worth investigating.
         assert result.p99_latency_us < 10000.0, (
             f"p99 latency {result.p99_latency_us:.1f}us exceeds 10ms threshold"
         )
@@ -556,7 +556,7 @@ class TestCachedMethodLockContentionBenchmark:
         # CI flakiness; provides 1000x headroom over the dashboard's ~10 req/s need).
         # Expected range: typically 100,000-1,000,000+ calls/s for cached reads with 4 threads.
         # Values consistently below 50,000 calls/s may indicate a regression in lock
-        # throughput or cache access performance worth investigating.
+        # acquisition overhead or cache decorator performance worth investigating.
         assert result.throughput_calls_per_second > 10_000, (
             f"Throughput {result.throughput_calls_per_second:.0f} calls/s "
             f"is below 10,000 calls/s minimum"
