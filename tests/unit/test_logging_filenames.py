@@ -331,6 +331,84 @@ class TestParseLogFilenameParts:
         assert result.timestamp == "20240115-103045"
         assert result.attempt == 1
 
+    @pytest.mark.parametrize(
+        ("filename", "expected_issue_key", "expected_timestamp", "expected_attempt"),
+        [
+            pytest.param(
+                "DS-123_20240115-103045_a1",
+                "DS-123",
+                "20240115-103045",
+                1,
+                id="with-issue-key",
+            ),
+            pytest.param(
+                "20240115-103045_a2",
+                None,
+                "20240115-103045",
+                2,
+                id="without-issue-key",
+            ),
+            pytest.param(
+                "MY_PROJ-99_20260101-000000_a5",
+                "MY_PROJ-99",
+                "20260101-000000",
+                5,
+                id="underscore-issue-key",
+            ),
+            pytest.param(
+                "FOO_BAR_BAZ-7_20250601-120000_a10",
+                "FOO_BAR_BAZ-7",
+                "20250601-120000",
+                10,
+                id="multi-underscore-issue-key",
+            ),
+        ],
+    )
+    def test_parses_filename_without_log_extension_parametrized(
+        self,
+        filename: str,
+        expected_issue_key: str | None,
+        expected_timestamp: str,
+        expected_attempt: int,
+    ) -> None:
+        """Filenames without .log extension should still match via removesuffix no-op.
+
+        Extends the single-case test above to cover multiple filename shapes —
+        with issue key, without issue key, and with underscore-containing issue
+        keys — verifying that ``removesuffix`` being a no-op does not break
+        any of the regex capture groups.  (DS-988)
+        """
+        result = parse_log_filename_parts(filename)
+
+        assert result is not None
+        assert result.issue_key == expected_issue_key
+        assert result.timestamp == expected_timestamp
+        assert result.attempt == expected_attempt
+
+    @pytest.mark.parametrize(
+        "stem",
+        [
+            pytest.param("DS-123_20240115-103045_a1", id="with-issue-key"),
+            pytest.param("20240115-103045_a2", id="without-issue-key"),
+            pytest.param("MY_PROJ-99_20260101-000000_a5", id="underscore-issue-key"),
+        ],
+    )
+    def test_no_log_extension_matches_with_extension(self, stem: str) -> None:
+        """Parsing with and without .log extension should yield identical results.
+
+        This ensures that ``removesuffix('.log')`` is the *only* difference
+        between the two code paths, and that the resulting ``LogFilenameParts``
+        are field-for-field identical.  (DS-988)
+        """
+        with_ext = parse_log_filename_parts(f"{stem}.log")
+        without_ext = parse_log_filename_parts(stem)
+
+        assert with_ext is not None, f"Expected match for {stem}.log"
+        assert without_ext is not None, f"Expected match for {stem}"
+        assert with_ext == without_ext, (
+            f"Results differ for '{stem}': with_ext={with_ext}, without_ext={without_ext}"
+        )
+
     def test_to_datetime_returns_correct_utc_datetime(self) -> None:
         """LogFilenameParts.to_datetime() should return the correct UTC datetime."""
         result = parse_log_filename_parts("DS-123_20240115-103045_a1.log")
