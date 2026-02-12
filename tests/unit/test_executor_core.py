@@ -886,7 +886,7 @@ def _make_tracking_log(
     ) -> None:
         logged_calls.append(start_time)
         original_log(
-            issue_key, orchestration_name, prompt, response, status, attempts, start_time, attempt
+            issue_key, orchestration_name, prompt, response, status, attempts, start_time, attempt=attempt
         )
 
     return tracking_log
