@@ -806,9 +806,8 @@ class Sentinel:
             key = (result.issue_key, result.orchestration_name)
             result_map[key] = result
 
-        # Then, clean up running step metadata for any remaining completed futures
-        # Note: collect_completed_results already removes completed futures from _active_futures
-        # but we need to handle the metadata cleanup and record completed executions
+        # Clean up completed futures, recording each completed execution via the
+        # callback so that the dashboard's "Recent Executions" section is populated.
         def on_future_done(future: Future[Any]) -> None:
             running_step = self._state_tracker.remove_running_step(id(future))
             if running_step is not None:

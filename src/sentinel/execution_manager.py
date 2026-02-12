@@ -357,10 +357,13 @@ class ExecutionManager:
     def collect_completed_results(self) -> list[ExecutionResult]:
         """Collect results from completed futures and clean up stale ones.
 
-        This method also performs TTL-based cleanup:
-        - Removes completed futures after collecting their results
-        - Logs and removes stale futures that have exceeded the TTL
-        - Logs warnings for long-running futures
+        This method harvests results but does **not** remove completed futures
+        from ``_active_futures``.  Callers that need removal should follow up
+        with :meth:`cleanup_completed_futures`, which also supports an optional
+        per-future callback (used by :pymethod:`Sentinel._collect_completed_results`
+        to record completed executions for the dashboard).
+
+        TTL-based cleanup of stale futures is still performed here.
 
         Returns:
             List of execution results from completed futures.
@@ -411,17 +414,6 @@ class ExecutionManager:
                     stale_count,
                     self._future_ttl_seconds,
                 )
-
-            # Remove completed futures
-            before_cleanup = len(self._active_futures)
-            self._active_futures = [tf for tf in self._active_futures if not tf.future.done()]
-            logger.debug(
-                "collect_completed_results(): removed %s completed "
-                "futures, %s remaining",
-                before_cleanup - len(self._active_futures),
-                len(self._active_futures),
-                extra={"diagnostic_tag": "execution"},
-            )
 
         return results
 
@@ -569,8 +561,9 @@ class ExecutionManager:
 
             time.sleep(poll_interval)
 
-        # Collect final results
+        # Collect final results and remove completed futures
         all_results.extend(self.collect_completed_results())
+        self.cleanup_completed_futures()
         return all_results
 
     def execute_synchronously(
