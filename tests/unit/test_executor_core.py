@@ -854,3 +854,209 @@ class TestAgentExecutorPreRetryCheck:
         assert result.attempts == 1
         assert client.call_count == 1
         assert len(check_calls) == 0
+
+
+class TestExecutorStartTimePerAttempt:
+    """Tests for per-attempt start_time in executor retry loop (DS-962).
+
+    Verifies that _log_execution receives the start_time captured at the
+    beginning of each retry attempt, not the stale pre-loop timestamp.
+    This ensures the summary log filename correlates with the last
+    attempt's streaming log.
+    """
+
+    @pytest.mark.asyncio
+    async def test_success_on_first_attempt_uses_attempt_start_time(self) -> None:
+        """On first-attempt success, _log_execution receives a per-attempt start_time."""
+        from datetime import UTC, datetime
+
+        client = MockAgentClient(responses=["SUCCESS"])
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-962-A")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=1,
+            success_patterns=["SUCCESS"],
+        )
+
+        logged_calls: list[datetime] = []
+        original_log = executor._log_execution
+
+        def tracking_log(
+            issue_key: str,
+            orchestration_name: str,
+            prompt: str,
+            response: str,
+            status: ExecutionStatus,
+            attempts: int,
+            start_time: datetime,
+        ) -> None:
+            logged_calls.append(start_time)
+            original_log(issue_key, orchestration_name, prompt, response, status, attempts, start_time)
+
+        executor._log_execution = tracking_log  # type: ignore[assignment]
+
+        before = datetime.now(tz=UTC)
+        result = await executor.execute(issue, orch)
+        after = datetime.now(tz=UTC)
+
+        assert result.succeeded is True
+        assert len(logged_calls) == 1
+        # The start_time should be between before and after (captured during the attempt)
+        assert before <= logged_calls[0] <= after
+
+    @pytest.mark.asyncio
+    async def test_retry_uses_last_attempt_start_time(self) -> None:
+        """After retries, _log_execution should use the last attempt's start_time.
+
+        Verifies the DS-962 fix: start_time is captured inside the retry loop,
+        so the summary log correlates with the last attempt's streaming log.
+        """
+        from datetime import UTC, datetime
+
+        client = MockAgentClient(responses=["failed", "failed", "SUCCESS"])
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-962-B")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=3,
+            success_patterns=["SUCCESS"],
+            failure_patterns=["failed"],
+        )
+
+        logged_calls: list[datetime] = []
+        original_log = executor._log_execution
+
+        def tracking_log(
+            issue_key: str,
+            orchestration_name: str,
+            prompt: str,
+            response: str,
+            status: ExecutionStatus,
+            attempts: int,
+            start_time: datetime,
+        ) -> None:
+            logged_calls.append(start_time)
+            original_log(issue_key, orchestration_name, prompt, response, status, attempts, start_time)
+
+        executor._log_execution = tracking_log  # type: ignore[assignment]
+
+        before_execution = datetime.now(tz=UTC)
+        result = await executor.execute(issue, orch)
+
+        assert result.succeeded is True
+        assert result.attempts == 3
+        assert len(logged_calls) == 1
+        # The start_time must be after execution began (it was captured during attempt 3)
+        assert logged_calls[0] >= before_execution
+
+    @pytest.mark.asyncio
+    async def test_all_attempts_exhausted_uses_last_attempt_start_time(self) -> None:
+        """When all attempts fail, _log_execution uses the last attempt's start_time."""
+        from datetime import UTC, datetime
+
+        client = MockAgentClient(responses=["failed", "failed", "failed"])
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-962-C")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=3,
+            success_patterns=["SUCCESS"],
+            failure_patterns=["failed"],
+        )
+
+        logged_calls: list[datetime] = []
+        original_log = executor._log_execution
+
+        def tracking_log(
+            issue_key: str,
+            orchestration_name: str,
+            prompt: str,
+            response: str,
+            status: ExecutionStatus,
+            attempts: int,
+            start_time: datetime,
+        ) -> None:
+            logged_calls.append(start_time)
+            original_log(issue_key, orchestration_name, prompt, response, status, attempts, start_time)
+
+        executor._log_execution = tracking_log  # type: ignore[assignment]
+
+        before_execution = datetime.now(tz=UTC)
+        result = await executor.execute(issue, orch)
+
+        assert result.succeeded is False
+        assert result.attempts == 3
+        assert len(logged_calls) == 1
+        # The start_time must be after execution began (captured during attempt 3)
+        assert logged_calls[0] >= before_execution
+
+    @pytest.mark.asyncio
+    async def test_start_time_advances_with_each_attempt(self) -> None:
+        """Each retry attempt should capture a fresh start_time (DS-962).
+
+        Uses mock datetime to verify start_time is recaptured per attempt,
+        not reused from before the loop.
+        """
+        from datetime import datetime
+        from unittest.mock import patch
+
+        # Simulate three attempts: fail, fail, succeed
+        client = MockAgentClient(responses=["failed", "failed", "SUCCESS"])
+        executor = AgentExecutor(client)
+        issue = make_issue(key="DS-962-D")
+        orch = make_orchestration(
+            name="test",
+            prompt="Do something",
+            max_attempts=3,
+            success_patterns=["SUCCESS"],
+            failure_patterns=["failed"],
+        )
+
+        # Track all datetime.now(tz=UTC) calls to verify per-attempt capture
+        now_calls: list[datetime] = []
+        real_datetime = datetime
+
+        class MockDatetime(datetime):
+            """Mock datetime that tracks now() calls."""
+
+            @classmethod
+            def now(cls, tz: object = None) -> datetime:
+                result = real_datetime.now(tz=tz)  # type: ignore[arg-type]
+                now_calls.append(result)
+                return result
+
+        logged_start_times: list[datetime] = []
+        original_log = executor._log_execution
+
+        def tracking_log(
+            issue_key: str,
+            orchestration_name: str,
+            prompt: str,
+            response: str,
+            status: ExecutionStatus,
+            attempts: int,
+            start_time: datetime,
+        ) -> None:
+            logged_start_times.append(start_time)
+            original_log(issue_key, orchestration_name, prompt, response, status, attempts, start_time)
+
+        executor._log_execution = tracking_log  # type: ignore[assignment]
+
+        with patch("sentinel.executor.datetime", MockDatetime):
+            result = await executor.execute(issue, orch)
+
+        assert result.succeeded is True
+        assert result.attempts == 3
+        assert len(logged_start_times) == 1
+        # The logged start_time should NOT be the first datetime.now() call
+        # (which is the pre-loop initialization). It should be from attempt 3.
+        # now_calls[0] = pre-loop init, now_calls[1] = attempt 1, etc.
+        # With 3 attempts and 1 pre-loop call, we have at least 4 now() calls
+        # (pre-loop + 3 attempts, plus _log_execution's end_time call).
+        assert len(now_calls) >= 4
+        # The logged start_time should be the one from attempt 3 (index 3)
+        assert logged_start_times[0] == now_calls[3]
