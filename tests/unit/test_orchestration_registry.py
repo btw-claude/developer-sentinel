@@ -422,9 +422,11 @@ class TestOrchestrationRegistryReload:
             assert len(registry.orchestrations) == 1
             assert registry.orchestrations[0].name == "original-name"
 
-            # Modify the file (update mtime and content)
-            set_mtime_in_future(file_path)
+            # Modify the file (update content, then set mtime to future to
+            # guarantee mtime difference detection on filesystems with low
+            # mtime resolution such as ext4 with 1-second granularity)
             write_orchestration_yaml(file_path, "modified-name")
+            set_mtime_in_future(file_path)
 
             new_count, modified_count = registry.detect_and_load_orchestration_changes()
 
@@ -454,9 +456,10 @@ class TestOrchestrationRegistryReload:
             # Simulate active execution
             old_version.increment_executions()
 
-            # Modify the file
-            set_mtime_in_future(file_path)
+            # Modify the file (write content first, then set future mtime to
+            # guarantee detection on low-resolution filesystems like ext4)
             write_orchestration_yaml(file_path, "test-orch-v2")
+            set_mtime_in_future(file_path)
 
             registry.detect_and_load_orchestration_changes()
 
@@ -487,9 +490,10 @@ class TestOrchestrationRegistryReload:
 
             # Don't increment executions
 
-            # Modify the file
-            set_mtime_in_future(file_path)
+            # Modify the file (write content first, then set future mtime to
+            # guarantee detection on low-resolution filesystems like ext4)
             write_orchestration_yaml(file_path, "test-orch-v2")
+            set_mtime_in_future(file_path)
 
             registry.detect_and_load_orchestration_changes()
 
@@ -513,9 +517,10 @@ class TestOrchestrationRegistryReload:
 
             old_router = registry.router
 
-            # Modify the file
-            set_mtime_in_future(file_path)
+            # Modify the file (write content first, then set future mtime to
+            # guarantee detection on low-resolution filesystems like ext4)
             write_orchestration_yaml(file_path, "test-orch-v2")
+            set_mtime_in_future(file_path)
 
             registry.detect_and_load_orchestration_changes()
 
@@ -540,9 +545,10 @@ class TestOrchestrationRegistryReload:
             metrics = registry.get_hot_reload_metrics()
             assert metrics["orchestrations_reloaded_total"] == 0
 
-            # Modify the file
-            set_mtime_in_future(file_path)
+            # Modify the file (write content first, then set future mtime to
+            # guarantee detection on low-resolution filesystems like ext4)
             write_orchestration_yaml(file_path, "test-orch-v2")
+            set_mtime_in_future(file_path)
 
             registry.detect_and_load_orchestration_changes()
 
@@ -574,9 +580,10 @@ class TestOrchestrationRegistryPendingRemovalCleanup:
             # Simulate active execution
             old_version.increment_executions()
 
-            # Modify the file to trigger reload
-            set_mtime_in_future(file_path)
+            # Modify the file to trigger reload (write content first, then set
+            # future mtime to guarantee detection on low-resolution filesystems)
             write_orchestration_yaml(file_path, "test-orch-v2")
+            set_mtime_in_future(file_path)
             registry.detect_and_load_orchestration_changes()
 
             # Old version should be in pending_removal
@@ -614,9 +621,10 @@ class TestOrchestrationRegistryPendingRemovalCleanup:
             # Simulate active execution
             old_version.increment_executions()
 
-            # Modify the file to trigger reload
-            set_mtime_in_future(file_path)
+            # Modify the file to trigger reload (write content first, then set
+            # future mtime to guarantee detection on low-resolution filesystems)
             write_orchestration_yaml(file_path, "test-orch-v2")
+            set_mtime_in_future(file_path)
             registry.detect_and_load_orchestration_changes()
 
             # Old version should be in pending_removal
@@ -656,11 +664,12 @@ class TestOrchestrationRegistryPendingRemovalCleanup:
             old_version1.increment_executions()
             old_version2.increment_executions()
 
-            # Modify both files
-            set_mtime_in_future(file1)
-            set_mtime_in_future(file2)
+            # Modify both files (write content first, then set future mtime to
+            # guarantee detection on low-resolution filesystems like ext4)
             write_orchestration_yaml(file1, "orch1-v2")
             write_orchestration_yaml(file2, "orch2-v2")
+            set_mtime_in_future(file1)
+            set_mtime_in_future(file2)
             registry.detect_and_load_orchestration_changes()
 
             # Both old versions should be in pending_removal
@@ -764,9 +773,10 @@ class TestOrchestrationRegistryHotReloadMetrics:
             assert metrics["orchestrations_unloaded_total"] == 0
             assert metrics["orchestrations_reloaded_total"] == 0
 
-            # Reload the file
-            set_mtime_in_future(file_path)
+            # Reload the file (write content first, then set future mtime to
+            # guarantee detection on low-resolution filesystems like ext4)
             write_orchestration_yaml(file_path, "test-orch-v2")
+            set_mtime_in_future(file_path)
             registry.detect_and_load_orchestration_changes()
 
             metrics = registry.get_hot_reload_metrics()
@@ -808,9 +818,10 @@ class TestOrchestrationRegistryPendingRemovalVersionLookup:
             # Simulate active execution
             old_version.increment_executions()
 
-            # Modify the file to trigger reload
-            set_mtime_in_future(file_path)
+            # Modify the file to trigger reload (write content first, then set
+            # future mtime to guarantee detection on low-resolution filesystems)
             write_orchestration_yaml(file_path, "test-orch-v2")
+            set_mtime_in_future(file_path)
             registry.detect_and_load_orchestration_changes()
 
             # Old orchestration should still be findable in pending_removal

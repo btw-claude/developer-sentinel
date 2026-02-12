@@ -913,7 +913,10 @@ class TestGetStateCacheThreadSafety:
         accessor = _create_accessor()
 
         assert hasattr(accessor, "_state_cache_lock")
-        assert isinstance(accessor._state_cache_lock, Lock)
+        # Use type(Lock()) instead of Lock directly because in Python <3.13,
+        # threading.Lock is a factory function, not a type, and cannot be
+        # used as the second argument to isinstance().
+        assert isinstance(accessor._state_cache_lock, type(Lock()))
 
     def test_get_state_acquires_lock(self) -> None:
         """Test that get_state() acquires the cache lock during execution.
