@@ -32,6 +32,26 @@ _LEGACY_LOG_FILENAME_FORMAT = "%Y%m%d_%H%M%S"
 _LOG_FILENAME_REGEX = re.compile(r"^(?:(.+)_)?(\d{8}-\d{6})_a(\d+)$")
 
 
+def _strip_log_extension(filename: str) -> str:
+    """Strip the ``.log`` extension from a filename if present.
+
+    Provides a single source of truth for extension removal, used by both
+    :func:`parse_log_filename_parts` (new-format pipeline) and the legacy
+    fallback in :func:`parse_log_filename`.  Delegates to
+    ``str.removesuffix``, which is a no-op when the suffix is absent —
+    so bare stems (e.g., ``"DS-123_20240115-103045_a1"``) pass through
+    unchanged (DS-1010).
+
+    Args:
+        filename: Log filename, with or without the ``.log`` extension.
+
+    Returns:
+        The filename stem with the ``.log`` extension removed (if it
+        was present), or the original string unchanged.
+    """
+    return filename.removesuffix(LOG_FILENAME_EXTENSION)
+
+
 @lru_cache(maxsize=128)
 def _parse_log_timestamp(timestamp: str, fmt: str = LOG_TIMESTAMP_FORMAT) -> datetime:
     """Parse a log timestamp string to a UTC-aware datetime (cached).
@@ -93,10 +113,10 @@ def parse_log_filename(filename: str) -> datetime | None:
 
     Delegates to :func:`parse_log_filename_parts` for new-format parsing,
     keeping a single source of truth for the new-format
-    ``.removesuffix()`` / regex-match / ``strptime`` pipeline.  The
-    legacy fallback (``YYYYMMDD_HHMMSS``) retains its own independent
-    ``.removesuffix()`` call because it does not share the regex-based
-    parsing path.
+    regex-match / ``strptime`` pipeline.  Both the new-format path and
+    the legacy fallback share the :func:`_strip_log_extension` helper
+    for ``.removesuffix()`` (DS-1010), ensuring a single source of truth
+    for extension removal across all code paths.
 
     See Also:
         :func:`parse_log_filename_parts` — returns all components (issue key,
@@ -109,18 +129,18 @@ def parse_log_filename(filename: str) -> datetime | None:
         Parsed datetime, or None if the filename doesn't match any expected format.
     """
     # Delegate to parse_log_filename_parts for the new format, keeping a
-    # single source of truth for new-format .removesuffix() and regex
-    # parsing (DS-987).  The legacy path below has its own .removesuffix()
-    # call since it bypasses the regex pipeline entirely (DS-1000).
+    # single source of truth for new-format regex parsing (DS-987).
+    # Both paths share _strip_log_extension() for extension removal (DS-1010).
     parts = parse_log_filename_parts(filename)
     if parts is not None:
         return parts.to_datetime()
 
     # Fall back to legacy format: YYYYMMDD_HHMMSS
     # Delegates to _parse_log_timestamp to centralise the strptime/replace
-    # pattern (DS-1001, DS-998).
+    # pattern (DS-1001, DS-998).  Uses _strip_log_extension() shared
+    # helper for extension removal (DS-1010).
     try:
-        name = filename.removesuffix(LOG_FILENAME_EXTENSION)
+        name = _strip_log_extension(filename)
         return _parse_log_timestamp(name, _LEGACY_LOG_FILENAME_FORMAT)
     except ValueError:
         return None
@@ -279,12 +299,13 @@ def parse_log_filename_parts(
     .. note:: Extensionless filenames (intentional API behavior)
 
         The ``.log`` extension is **not** required.  Internally,
-        ``str.removesuffix`` strips ``LOG_FILENAME_EXTENSION`` when present
-        and is a no-op when the suffix is absent, so bare stems such as
-        ``"DS-123_20240115-103045_a1"`` are matched identically to their
-        ``.log``-suffixed counterparts.  This is intentional — it allows
-        callers that have already stripped the extension (or that operate on
-        stems directly) to use this function without re-appending it.  See
+        :func:`_strip_log_extension` strips ``LOG_FILENAME_EXTENSION``
+        when present and is a no-op when the suffix is absent, so bare
+        stems such as ``"DS-123_20240115-103045_a1"`` are matched
+        identically to their ``.log``-suffixed counterparts.  This is
+        intentional — it allows callers that have already stripped the
+        extension (or that operate on stems directly) to use this
+        function without re-appending it.  See
         ``test_parses_filename_without_log_extension`` for coverage.
 
     Args:
@@ -299,7 +320,7 @@ def parse_log_filename_parts(
         the timestamp and attempt regex groups are non-optional. The
         ``attempt`` value is converted to ``int`` at construction time.
     """
-    name = filename.removesuffix(LOG_FILENAME_EXTENSION)
+    name = _strip_log_extension(filename)
     match = _LOG_FILENAME_REGEX.match(name)
     if match:
         return LogFilenameParts(
