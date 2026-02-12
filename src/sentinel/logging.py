@@ -83,6 +83,93 @@ def parse_log_filename(filename: str) -> datetime | None:
         return None
 
 
+class DiagnosticFilter(logging.Filter):
+    """Filter that gates debug log messages based on diagnostic tags.
+
+    When installed on a handler, this filter examines each DEBUG-level log
+    record for a ``diagnostic_tag`` attribute (set via the ``extra`` dict).
+    Records whose tag is **not** in the set of enabled tags are suppressed.
+    Records at levels above DEBUG, or without a ``diagnostic_tag``, always
+    pass through.
+
+    This allows developers to add tagged diagnostic log lines that are
+    silent by default but can be enabled at runtime via the
+    ``SENTINEL_DIAGNOSTIC_TAGS`` environment variable (e.g.
+    ``SENTINEL_DIAGNOSTIC_TAGS=polling,execution``).  Setting the value
+    to ``"*"`` enables all tagged diagnostics.
+
+    Usage in application code::
+
+        logger.debug(
+            "Slot availability: %s", available,
+            extra={"diagnostic_tag": "polling"},
+        )
+
+    Configuration::
+
+        SENTINEL_DIAGNOSTIC_TAGS=polling,execution  # enable specific tags
+        SENTINEL_DIAGNOSTIC_TAGS=*                   # enable all tags
+
+    Attributes:
+        enabled_tags: Frozenset of tag strings that are allowed through.
+        allow_all: If ``True``, all tagged diagnostics are emitted.
+    """
+
+    def __init__(self, enabled_tags: frozenset[str] | None = None) -> None:
+        """Initialize the diagnostic filter.
+
+        Args:
+            enabled_tags: Set of tag strings to allow.  Pass ``None`` or an
+                empty frozenset to suppress all tagged diagnostics.  A
+                frozenset containing ``"*"`` enables all tags.
+        """
+        super().__init__()
+        self.enabled_tags: frozenset[str] = enabled_tags or frozenset()
+        self.allow_all: bool = "*" in self.enabled_tags
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Decide whether the log record should be emitted.
+
+        Args:
+            record: The log record to evaluate.
+
+        Returns:
+            ``True`` if the record should be emitted, ``False`` otherwise.
+        """
+        # Non-DEBUG records always pass through.
+        if record.levelno != logging.DEBUG:
+            return True
+
+        tag: str | None = getattr(record, "diagnostic_tag", None)
+
+        # Records without a diagnostic tag always pass through.
+        if tag is None:
+            return True
+
+        # If all tags are enabled, pass through.
+        if self.allow_all:
+            return True
+
+        return tag in self.enabled_tags
+
+    @classmethod
+    def from_config_string(cls, tags_csv: str) -> DiagnosticFilter:
+        """Create a filter from a comma-separated configuration string.
+
+        Args:
+            tags_csv: Comma-separated list of tags (e.g. ``"polling,execution"``).
+                Whitespace around tags is stripped.  ``"*"`` enables all tags.
+                An empty string means no tagged diagnostics are emitted.
+
+        Returns:
+            A configured ``DiagnosticFilter`` instance.
+        """
+        if not tags_csv.strip():
+            return cls(frozenset())
+        tags = frozenset(t.strip() for t in tags_csv.split(",") if t.strip())
+        return cls(tags)
+
+
 class StructuredFormatter(logging.Formatter):
     """Formatter that outputs structured log messages.
 
@@ -229,6 +316,7 @@ def setup_logging(
     level: str = "INFO",
     json_format: bool = False,
     replace_handlers: bool = True,
+    diagnostic_tags: str = "",
 ) -> None:
     """Configure logging for the application.
 
@@ -237,6 +325,12 @@ def setup_logging(
         json_format: If True, output JSON-formatted logs.
         replace_handlers: If True, remove existing handlers before adding new ones.
             Set to False to preserve existing handlers (e.g., from third-party libraries).
+        diagnostic_tags: Comma-separated list of diagnostic tags to enable.
+            When set, only debug log messages whose ``diagnostic_tag`` extra
+            field matches one of the enabled tags will be emitted.  Messages
+            without a ``diagnostic_tag`` are always emitted.  Set to ``"*"``
+            to enable all tagged diagnostics.  Empty string (default) means
+            no tagged diagnostics are emitted.
     """
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
@@ -258,6 +352,10 @@ def setup_logging(
         handler.setFormatter(JSONFormatter())
     else:
         handler.setFormatter(StructuredFormatter())
+
+    # Install diagnostic filter for tagged debug messages (DS-965).
+    diagnostic_filter = DiagnosticFilter.from_config_string(diagnostic_tags)
+    handler.addFilter(diagnostic_filter)
 
     root_logger.addHandler(handler)
 

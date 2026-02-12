@@ -225,11 +225,12 @@ class ExecutionManager:
             available = self._max_concurrent_executions - active_count
             logger.debug(
                 "get_available_slots(): tracked=%s, active=%s, "
-                "max=%s, available=%s (DS-963)",
+                "max=%s, available=%s",
                 total_tracked,
                 active_count,
                 self._max_concurrent_executions,
                 available,
+                extra={"diagnostic_tag": "execution"},
             )
             return available
 
@@ -369,9 +370,10 @@ class ExecutionManager:
             completed = [tf for tf in self._active_futures if tf.future.done()]
             logger.debug(
                 "collect_completed_results(): total_tracked=%s, "
-                "completed=%s (DS-963)",
+                "completed=%s",
                 len(self._active_futures),
                 len(completed),
+                extra={"diagnostic_tag": "execution"},
             )
             for tracked in completed:
                 try:
@@ -415,9 +417,10 @@ class ExecutionManager:
             self._active_futures = [tf for tf in self._active_futures if not tf.future.done()]
             logger.debug(
                 "collect_completed_results(): removed %s completed "
-                "futures, %s remaining (DS-963)",
+                "futures, %s remaining",
                 before_cleanup - len(self._active_futures),
                 len(self._active_futures),
+                extra={"diagnostic_tag": "execution"},
             )
 
         return results
@@ -507,9 +510,10 @@ class ExecutionManager:
         with self._futures_lock:
             pending = [tf.future for tf in self._active_futures if not tf.future.done()]
             logger.debug(
-                "get_pending_futures(): tracked=%s, pending=%s (DS-963)",
+                "get_pending_futures(): tracked=%s, pending=%s",
                 len(self._active_futures),
                 len(pending),
+                extra={"diagnostic_tag": "execution"},
             )
             return pending
 

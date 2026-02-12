@@ -241,7 +241,11 @@ def bootstrap(parsed: argparse.Namespace) -> BootstrapContext | None:
     config = apply_cli_overrides(config, parsed)
 
     # Setup logging
-    setup_logging(config.logging_config.level, json_format=config.logging_config.json)
+    setup_logging(
+        config.logging_config.level,
+        json_format=config.logging_config.json,
+        diagnostic_tags=config.logging_config.diagnostic_tags,
+    )
 
     # Load orchestrations
     logger.info("Loading orchestrations from %s", config.execution.orchestrations_dir)
