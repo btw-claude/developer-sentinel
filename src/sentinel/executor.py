@@ -946,9 +946,9 @@ class AgentExecutor:
         last_input_tokens = 0
         last_output_tokens = 0
         last_total_cost_usd = 0.0
-        # Per-attempt start_time captured inside the loop (DS-962).
-        # Ensures the summary log filename correlates with the last
-        # attempt's streaming log, not the pre-loop timestamp.
+        # Fallback initialization of start_time before the retry loop (DS-962).
+        # Overwritten on each attempt inside the loop so the summary log
+        # filename correlates with the last attempt's streaming log.
         start_time = datetime.now(tz=UTC)
         last_attempt = 0
 
