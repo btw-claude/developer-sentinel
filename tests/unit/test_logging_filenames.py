@@ -930,8 +930,12 @@ class TestFormatLogDisplayName:
     ) -> None:
         """Should format display name for issue keys containing underscores.
 
-        Validates that the greedy regex correctly captures underscore-containing
-        issue keys (e.g., MY_PROJ-123) end-to-end through the display formatting.
+        DS-1002: validates that the display formatting layer correctly handles
+        underscore-containing issue keys end-to-end.  The underlying parsing
+        (``TestParseLogFilenameParts.test_handles_issue_keys_with_underscores``)
+        already covered ``MY_PROJ-123`` at the ``LogFilenameParts`` level, but
+        this test closes the coverage gap at the ``_format_log_display_name``
+        layer identified during code review of DS-989 PR #1001.
         """
         filename = "MY_PROJ-123_20240115-103045_a1.log"
         result = accessor._format_log_display_name(filename)
