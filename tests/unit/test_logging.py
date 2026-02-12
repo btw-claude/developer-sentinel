@@ -11,6 +11,7 @@ import pytest
 
 from sentinel.logging import (
     ContextAdapter,
+    DiagnosticFilter,
     JSONFormatter,
     OrchestrationLogManager,
     SentinelLogger,
@@ -674,3 +675,248 @@ class TestOrchestrationLogManager:
         file_b = tmp_path / "orch-b.log"
         assert "Message A" in file_a.read_text()
         assert "Message B" in file_b.read_text()
+
+
+class TestDiagnosticFilter:
+    """Tests for DiagnosticFilter (DS-972)."""
+
+    def _make_record(
+        self,
+        level: int = logging.DEBUG,
+        diagnostic_tag: str | None = None,
+    ) -> logging.LogRecord:
+        """Create a LogRecord with an optional diagnostic_tag extra field."""
+        record = logging.LogRecord(
+            name="sentinel.test",
+            level=level,
+            pathname="test.py",
+            lineno=1,
+            msg="Test message",
+            args=(),
+            exc_info=None,
+        )
+        if diagnostic_tag is not None:
+            record.diagnostic_tag = diagnostic_tag  # type: ignore[attr-defined]
+        return record
+
+    # ------------------------------------------------------------------
+    # 1. DiagnosticFilter with no enabled tags
+    # ------------------------------------------------------------------
+
+    def test_no_enabled_tags_suppresses_tagged_debug(self) -> None:
+        """Tagged DEBUG records are suppressed when no tags are enabled."""
+        f = DiagnosticFilter()
+        record = self._make_record(level=logging.DEBUG, diagnostic_tag="polling")
+        assert f.filter(record) is False
+
+    def test_no_enabled_tags_passes_untagged_debug(self) -> None:
+        """Untagged DEBUG records always pass through."""
+        f = DiagnosticFilter()
+        record = self._make_record(level=logging.DEBUG)
+        assert f.filter(record) is True
+
+    def test_no_enabled_tags_passes_non_debug(self) -> None:
+        """Non-DEBUG records always pass regardless of tags."""
+        f = DiagnosticFilter()
+        for level in (logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
+            record = self._make_record(level=level, diagnostic_tag="polling")
+            assert f.filter(record) is True, f"Level {level} should always pass"
+
+    def test_no_enabled_tags_passes_non_debug_without_tag(self) -> None:
+        """Non-DEBUG records without a tag pass through."""
+        f = DiagnosticFilter()
+        record = self._make_record(level=logging.INFO)
+        assert f.filter(record) is True
+
+    # ------------------------------------------------------------------
+    # 2. DiagnosticFilter with specific tags
+    # ------------------------------------------------------------------
+
+    def test_specific_tags_matching_tag_passes(self) -> None:
+        """DEBUG records with a matching tag pass through."""
+        f = DiagnosticFilter(frozenset({"polling"}))
+        record = self._make_record(level=logging.DEBUG, diagnostic_tag="polling")
+        assert f.filter(record) is True
+
+    def test_specific_tags_non_matching_tag_suppressed(self) -> None:
+        """DEBUG records with a non-matching tag are suppressed."""
+        f = DiagnosticFilter(frozenset({"polling"}))
+        record = self._make_record(level=logging.DEBUG, diagnostic_tag="execution")
+        assert f.filter(record) is False
+
+    def test_specific_tags_multiple_enabled(self) -> None:
+        """Multiple enabled tags: matching tags pass, others are suppressed."""
+        f = DiagnosticFilter(frozenset({"polling", "execution"}))
+        assert f.filter(self._make_record(level=logging.DEBUG, diagnostic_tag="polling")) is True
+        assert f.filter(self._make_record(level=logging.DEBUG, diagnostic_tag="execution")) is True
+        assert f.filter(self._make_record(level=logging.DEBUG, diagnostic_tag="other")) is False
+
+    def test_specific_tags_untagged_debug_passes(self) -> None:
+        """Untagged DEBUG records pass even when specific tags are configured."""
+        f = DiagnosticFilter(frozenset({"polling"}))
+        record = self._make_record(level=logging.DEBUG)
+        assert f.filter(record) is True
+
+    # ------------------------------------------------------------------
+    # 3. DiagnosticFilter with wildcard "*"
+    # ------------------------------------------------------------------
+
+    def test_wildcard_passes_all_tagged_debug(self) -> None:
+        """Wildcard '*' enables all tagged DEBUG records."""
+        f = DiagnosticFilter(frozenset({"*"}))
+        assert f.allow_all is True
+        assert f.filter(self._make_record(level=logging.DEBUG, diagnostic_tag="polling")) is True
+        assert f.filter(self._make_record(level=logging.DEBUG, diagnostic_tag="execution")) is True
+        assert f.filter(self._make_record(level=logging.DEBUG, diagnostic_tag="unknown")) is True
+
+    def test_wildcard_passes_untagged_debug(self) -> None:
+        """Wildcard mode still passes untagged DEBUG records."""
+        f = DiagnosticFilter(frozenset({"*"}))
+        record = self._make_record(level=logging.DEBUG)
+        assert f.filter(record) is True
+
+    def test_wildcard_passes_non_debug(self) -> None:
+        """Wildcard mode passes non-DEBUG records."""
+        f = DiagnosticFilter(frozenset({"*"}))
+        record = self._make_record(level=logging.INFO, diagnostic_tag="polling")
+        assert f.filter(record) is True
+
+    # ------------------------------------------------------------------
+    # 4. from_config_string() edge cases
+    # ------------------------------------------------------------------
+
+    def test_from_config_string_empty_string(self) -> None:
+        """Empty string produces a filter with no enabled tags."""
+        f = DiagnosticFilter.from_config_string("")
+        assert f.enabled_tags == frozenset()
+        assert f.allow_all is False
+
+    def test_from_config_string_single_tag(self) -> None:
+        """Single tag is parsed correctly."""
+        f = DiagnosticFilter.from_config_string("polling")
+        assert f.enabled_tags == frozenset({"polling"})
+
+    def test_from_config_string_multiple_tags(self) -> None:
+        """Multiple comma-separated tags are parsed correctly."""
+        f = DiagnosticFilter.from_config_string("polling,execution")
+        assert f.enabled_tags == frozenset({"polling", "execution"})
+
+    def test_from_config_string_whitespace_handling(self) -> None:
+        """Whitespace around tags is stripped."""
+        f = DiagnosticFilter.from_config_string("  polling , execution  , routing  ")
+        assert f.enabled_tags == frozenset({"polling", "execution", "routing"})
+
+    def test_from_config_string_wildcard(self) -> None:
+        """Wildcard '*' sets allow_all flag."""
+        f = DiagnosticFilter.from_config_string("*")
+        assert f.allow_all is True
+        assert "*" in f.enabled_tags
+
+    def test_from_config_string_only_whitespace(self) -> None:
+        """Whitespace-only string is treated as empty."""
+        f = DiagnosticFilter.from_config_string("   ")
+        assert f.enabled_tags == frozenset()
+
+    def test_from_config_string_empty_tokens_stripped(self) -> None:
+        """Consecutive commas and empty tokens are ignored."""
+        f = DiagnosticFilter.from_config_string("polling,,execution,")
+        assert f.enabled_tags == frozenset({"polling", "execution"})
+
+    def test_from_config_string_whitespace_only_tokens_stripped(self) -> None:
+        """Tokens that are only whitespace are ignored."""
+        f = DiagnosticFilter.from_config_string("polling,  , execution")
+        assert f.enabled_tags == frozenset({"polling", "execution"})
+
+    # ------------------------------------------------------------------
+    # 5. Constructor edge cases
+    # ------------------------------------------------------------------
+
+    def test_none_enabled_tags_defaults_to_empty(self) -> None:
+        """Passing None for enabled_tags defaults to empty frozenset."""
+        f = DiagnosticFilter(None)
+        assert f.enabled_tags == frozenset()
+        assert f.allow_all is False
+
+
+class TestDiagnosticFilterSetupLoggingIntegration:
+    """Integration tests for DiagnosticFilter with setup_logging (DS-972)."""
+
+    def test_setup_logging_installs_diagnostic_filter_on_handler(self) -> None:
+        """Verify DiagnosticFilter is installed on handler when diagnostic_tags is passed."""
+        setup_logging(level="DEBUG", diagnostic_tags="polling,execution")
+
+        root = logging.getLogger()
+        assert len(root.handlers) > 0
+
+        handler = root.handlers[0]
+        diagnostic_filters = [f for f in handler.filters if isinstance(f, DiagnosticFilter)]
+        assert len(diagnostic_filters) == 1
+
+        df = diagnostic_filters[0]
+        assert df.enabled_tags == frozenset({"polling", "execution"})
+
+    def test_setup_logging_installs_diagnostic_filter_empty_tags(self) -> None:
+        """Verify DiagnosticFilter is installed even with empty diagnostic_tags."""
+        setup_logging(level="DEBUG", diagnostic_tags="")
+
+        root = logging.getLogger()
+        handler = root.handlers[0]
+        diagnostic_filters = [f for f in handler.filters if isinstance(f, DiagnosticFilter)]
+        assert len(diagnostic_filters) == 1
+
+        df = diagnostic_filters[0]
+        assert df.enabled_tags == frozenset()
+
+    def test_setup_logging_diagnostic_filter_suppresses_tagged_debug(self) -> None:
+        """End-to-end: tagged DEBUG messages are suppressed when tag not enabled."""
+        setup_logging(level="DEBUG", diagnostic_tags="")
+
+        test_logger = get_logger("sentinel.diagnostic_integration_test")
+
+        # Capture output on the root handler
+        stream = StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(StructuredFormatter())
+        # Install a DiagnosticFilter on our test handler too
+        handler.addFilter(DiagnosticFilter.from_config_string(""))
+        test_logger.addHandler(handler)
+
+        try:
+            # Tagged DEBUG should be suppressed
+            test_logger.debug(
+                "This should be suppressed",
+                extra={"diagnostic_tag": "polling"},
+            )
+            # Untagged DEBUG should pass
+            test_logger.debug("This should pass through")
+
+            output = stream.getvalue()
+            assert "This should be suppressed" not in output
+            assert "This should pass through" in output
+        finally:
+            test_logger.removeHandler(handler)
+
+    def test_setup_logging_diagnostic_filter_passes_enabled_tagged_debug(self) -> None:
+        """End-to-end: tagged DEBUG messages pass when tag is enabled."""
+        setup_logging(level="DEBUG", diagnostic_tags="polling")
+
+        test_logger = get_logger("sentinel.diagnostic_enabled_test")
+
+        stream = StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(StructuredFormatter())
+        handler.addFilter(DiagnosticFilter.from_config_string("polling"))
+        test_logger.addHandler(handler)
+
+        try:
+            test_logger.debug(
+                "Polling diagnostic message",
+                extra={"diagnostic_tag": "polling"},
+            )
+
+            output = stream.getvalue()
+            assert "Polling diagnostic message" in output
+        finally:
+            test_logger.removeHandler(handler)
