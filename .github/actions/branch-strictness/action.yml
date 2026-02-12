@@ -24,11 +24,12 @@ inputs:
   ref:
     description: "The full git ref (e.g. refs/heads/main). Defaults to github.ref."
     required: false
-    # GitHub Actions expressions treat empty strings as falsy, so an omitted
-    # or explicitly-empty input will cause the || fallback in the run step
-    # (e.g. `inputs.ref || github.ref`) to resolve to the github.* context
-    # default.  This is intentional — callers only need to supply an input
-    # when they want to override the ambient context value.
+    # GitHub Actions expressions (evaluated inside ${{ }} delimiters, not
+    # by bash) treat empty strings as falsy, so an omitted or explicitly-empty
+    # input will cause the || fallback in the run step (e.g.
+    # `inputs.ref || github.ref`) to resolve to the github.* context default.
+    # This is intentional — callers only need to supply an input when they
+    # want to override the ambient context value.
     default: ""
   event-name:
     description: "The GitHub event name (push, pull_request, …). Defaults to github.event_name."
@@ -60,9 +61,11 @@ runs:
       shell: bash
       run: |
         # Resolve inputs, falling back to the GitHub context defaults.
-        # The || operator uses GitHub Actions expression semantics where
-        # empty strings are falsy, so omitted or empty inputs (default: "")
-        # will correctly fall through to the github.* context values.
+        # Note: The || operator here is evaluated by the GitHub Actions
+        # expression engine (inside double-curly-brace expression delimiters), not by bash.
+        # In GitHub Actions expression semantics, empty strings are falsy,
+        # so omitted or empty inputs (default: "") will correctly fall
+        # through to the github.* context values.
         REF="${{ inputs.ref || github.ref }}"
         EVENT="${{ inputs.event-name || github.event_name }}"
         BASE="${{ inputs.base-ref || github.base_ref }}"
