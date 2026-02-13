@@ -21,6 +21,12 @@
  * CSRF token pre-fetch, header injection, 403 retry logic, and standard
  * error handling (422, 429) used by all form submission functions.
  *
+ * Defensive Hardening (DS-1092):
+ * Added Content-Type check before parsing responses as JSON (handles
+ * non-JSON 403 pages from reverse proxies), inline documentation for
+ * the DOM hidden-input fallback, and a console.warn when both the API
+ * refresh and DOM csrf_token element are unavailable.
+ *
  * @module orchestration-forms
  */
 
@@ -97,6 +103,16 @@ function fetchWithCsrfRetry(url, fetchOptions, messageConfig) {
         };
 
         fetch(url, options).then(function(response) {
+            // Defensive Content-Type check: some reverse proxies or WAFs return
+            // non-JSON 403 pages (e.g., HTML error pages).  Attempting to parse
+            // these with response.json() would throw a SyntaxError that falls
+            // through to the catch handler, masking the real 403 cause.  By
+            // checking the Content-Type header first, we can surface a clear
+            // CSRF / permission error toast instead (DS-1092).
+            var contentType = response.headers.get('Content-Type') || '';
+            if (contentType.indexOf('application/json') === -1) {
+                return { status: response.status, data: {} };
+            }
             return response.json().then(function(data) {
                 return { status: response.status, data: data };
             });
@@ -129,7 +145,19 @@ function fetchWithCsrfRetry(url, fetchOptions, messageConfig) {
 
     // Fetch a fresh CSRF token first, then submit
     refreshCsrfToken().then(function(freshToken) {
-        doFetch(freshToken || (csrfToken ? csrfToken.value : ''), false);
+        // DOM fallback: when refreshCsrfToken() returns null (e.g., the CSRF
+        // endpoint is unreachable or returns a non-OK status), fall back to the
+        // value of the hidden <input id="csrf_token"> rendered by the server
+        // template.  This token may be stale after a page refresh, but the 403
+        // retry logic above will auto-refresh it on failure (DS-1092).
+        var token = freshToken || (csrfToken ? csrfToken.value : '');
+        if (!freshToken && (!csrfToken || !csrfToken.value)) {
+            // Both the API refresh and the DOM hidden input are unavailable.
+            // This typically indicates a template rendering issue where the
+            // server did not inject the csrf_token hidden input (DS-1092).
+            console.warn('fetchWithCsrfRetry: CSRF token unavailable from both API refresh and DOM hidden input. Requests will likely fail with 403.');
+        }
+        doFetch(token, false);
     });
 }
 
