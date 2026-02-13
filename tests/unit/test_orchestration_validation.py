@@ -4,7 +4,7 @@ This module contains tests for:
 - Orchestration enabled/disabled functionality
 - max_concurrent field validation
 - timeout_seconds field validation (int, float, NaN, inf, bool edge cases)
-- File-level github error collection (DS-1074)
+- File-level github error collection (DS-1074, DS-1078)
 """
 
 import math
@@ -17,6 +17,12 @@ from sentinel.orchestration import (
     OrchestrationError,
     TriggerConfig,
     _collect_file_github_errors,
+    _validate_github_base_branch,
+    _validate_github_branch,
+    _validate_github_create_branch,
+    _validate_github_host,
+    _validate_github_org,
+    _validate_github_repo,
     _validate_timeout_seconds,
     get_effective_timeout,
     load_orchestration_file,
@@ -792,12 +798,157 @@ orchestrations:
         assert result == 600.5 * 3
 
 
-class TestCollectFileGithubErrors:
-    """Tests for _collect_file_github_errors() (DS-1074).
+class TestValidateGithubHelpers:
+    """Tests for individual _validate_github_* helpers (DS-1078).
 
-    Verifies that the error-collecting variant of _parse_github_context correctly
-    collects all validation errors from file-level github configuration and
-    prefixes them with 'File-level github:' for clarity.
+    Verifies that each helper correctly validates its field and returns
+    ``str | None`` following the shared validation helper convention.
+    """
+
+    # --- _validate_github_branch ---
+
+    def test_branch_valid_pattern(self) -> None:
+        """Valid branch pattern should return None."""
+        assert _validate_github_branch("feature/{jira_issue_key}") is None
+
+    def test_branch_empty_is_valid(self) -> None:
+        """Empty branch should return None (not configured)."""
+        assert _validate_github_branch("") is None
+
+    def test_branch_whitespace_only_is_valid(self) -> None:
+        """Whitespace-only branch should return None (treated as empty)."""
+        assert _validate_github_branch("   ") is None
+
+    def test_branch_invalid_returns_error(self) -> None:
+        """Invalid branch pattern should return an error message."""
+        result = _validate_github_branch("invalid branch!@#")
+        assert result is not None
+        assert "Invalid branch pattern" in result
+
+    # --- _validate_github_base_branch ---
+
+    def test_base_branch_valid(self) -> None:
+        """Valid base_branch should return None."""
+        assert _validate_github_base_branch("main") is None
+
+    def test_base_branch_empty_is_valid(self) -> None:
+        """Empty base_branch should return None."""
+        assert _validate_github_base_branch("") is None
+
+    def test_base_branch_invalid_returns_error(self) -> None:
+        """Invalid base_branch should return an error message."""
+        result = _validate_github_base_branch("invalid branch!@#")
+        assert result is not None
+        assert "Invalid base_branch" in result
+
+    # --- _validate_github_create_branch ---
+
+    def test_create_branch_false_no_branch_is_valid(self) -> None:
+        """create_branch=False with no branch is valid."""
+        assert _validate_github_create_branch(False, "") is None
+
+    def test_create_branch_true_with_branch_is_valid(self) -> None:
+        """create_branch=True with a branch pattern is valid."""
+        assert _validate_github_create_branch(True, "feature/{jira_issue_key}") is None
+
+    def test_create_branch_true_no_branch_returns_error(self) -> None:
+        """create_branch=True without branch pattern should return error."""
+        result = _validate_github_create_branch(True, "")
+        assert result is not None
+        assert "create_branch is True" in result
+
+    # --- _validate_github_host ---
+
+    def test_host_valid(self) -> None:
+        """Valid host should return None."""
+        assert _validate_github_host("github.com") is None
+
+    def test_host_none_is_valid(self) -> None:
+        """None host should return None (falls back to default)."""
+        assert _validate_github_host(None) is None
+
+    def test_host_non_string_returns_error(self) -> None:
+        """Non-string host should return an error message."""
+        result = _validate_github_host(123)
+        assert result is not None
+        assert "github.host" in result
+
+    def test_host_empty_string_returns_error(self) -> None:
+        """Empty string host should return an error message."""
+        result = _validate_github_host("")
+        assert result is not None
+        assert "github.host" in result
+
+    def test_host_whitespace_only_returns_error(self) -> None:
+        """Whitespace-only host should return an error message."""
+        result = _validate_github_host("   ")
+        assert result is not None
+        assert "github.host" in result
+
+    # --- _validate_github_org ---
+
+    def test_org_valid(self) -> None:
+        """Valid org should return None."""
+        assert _validate_github_org("my-org") is None
+
+    def test_org_none_is_valid(self) -> None:
+        """None org should return None (falls back to default)."""
+        assert _validate_github_org(None) is None
+
+    def test_org_empty_string_is_valid(self) -> None:
+        """Empty string org should return None (allowed)."""
+        assert _validate_github_org("") is None
+
+    def test_org_non_string_returns_error(self) -> None:
+        """Non-string org should return an error message."""
+        result = _validate_github_org(123)
+        assert result is not None
+        assert "github.org" in result
+
+    def test_org_whitespace_only_returns_error(self) -> None:
+        """Whitespace-only org should return an error message."""
+        result = _validate_github_org("   ")
+        assert result is not None
+        assert "github.org" in result
+
+    # --- _validate_github_repo ---
+
+    def test_repo_valid(self) -> None:
+        """Valid repo should return None."""
+        assert _validate_github_repo("my-repo") is None
+
+    def test_repo_none_is_valid(self) -> None:
+        """None repo should return None (falls back to default)."""
+        assert _validate_github_repo(None) is None
+
+    def test_repo_empty_string_is_valid(self) -> None:
+        """Empty string repo should return None (allowed)."""
+        assert _validate_github_repo("") is None
+
+    def test_repo_non_string_returns_error(self) -> None:
+        """Non-string repo should return an error message."""
+        result = _validate_github_repo(123)
+        assert result is not None
+        assert "github.repo" in result
+
+    def test_repo_whitespace_only_returns_error(self) -> None:
+        """Whitespace-only repo should return an error message."""
+        result = _validate_github_repo("   ")
+        assert result is not None
+        assert "github.repo" in result
+
+
+class TestCollectFileGithubErrors:
+    """Tests for _collect_file_github_errors() (DS-1074, DS-1078).
+
+    Verifies that the error-collecting variant individually validates each
+    field (branch, base_branch, create_branch, host, org, repo) and collects
+    all errors at once, prefixed with 'File-level github:'.
+
+    DS-1078 refactored this function to validate each field independently
+    (matching _collect_file_trigger_errors) instead of wrapping
+    _parse_github_context() in a single try/except that only caught the
+    first error.
     """
 
     def test_valid_config_returns_empty(self) -> None:
@@ -821,3 +972,166 @@ class TestCollectFileGithubErrors:
         assert len(errors) == 1
         assert "File-level github:" in errors[0]
         assert "create_branch is True" in errors[0]
+
+    def test_invalid_base_branch_returns_error(self) -> None:
+        """Invalid base_branch should produce a prefixed error."""
+        data = {"base_branch": "invalid base!@#"}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 1
+        assert "File-level github:" in errors[0]
+        assert "Invalid base_branch" in errors[0]
+
+    def test_invalid_host_returns_error(self) -> None:
+        """Non-string host should produce a prefixed error."""
+        data = {"host": 123}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 1
+        assert "File-level github:" in errors[0]
+        assert "github.host" in errors[0]
+
+    def test_invalid_org_returns_error(self) -> None:
+        """Non-string org should produce a prefixed error."""
+        data = {"org": 456}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 1
+        assert "File-level github:" in errors[0]
+        assert "github.org" in errors[0]
+
+    def test_invalid_repo_returns_error(self) -> None:
+        """Non-string repo should produce a prefixed error."""
+        data = {"repo": 789}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 1
+        assert "File-level github:" in errors[0]
+        assert "github.repo" in errors[0]
+
+    def test_whitespace_host_returns_error(self) -> None:
+        """Whitespace-only host should produce a prefixed error."""
+        data = {"host": "   "}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 1
+        assert "File-level github:" in errors[0]
+        assert "github.host" in errors[0]
+
+    def test_empty_host_returns_error(self) -> None:
+        """Empty string host should produce a prefixed error."""
+        data = {"host": ""}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 1
+        assert "File-level github:" in errors[0]
+        assert "github.host" in errors[0]
+
+    # --- DS-1078: Multi-error collection tests ---
+
+    def test_multiple_errors_collected_independently(self) -> None:
+        """All field errors should be collected, not just the first (DS-1078).
+
+        This is the key behavioral change: previously, only the first error
+        from _parse_github_context() was captured. Now each field is validated
+        independently.
+        """
+        data = {
+            "branch": "invalid branch!@#",
+            "base_branch": "also invalid!@#",
+            "host": 123,
+            "org": 456,
+            "repo": 789,
+        }
+        errors = _collect_file_github_errors(data)
+        # Should have errors for branch, base_branch, host, org, and repo
+        assert len(errors) >= 5
+        # All should be prefixed
+        for error in errors:
+            assert "File-level github:" in error
+
+    def test_branch_and_host_errors_both_collected(self) -> None:
+        """Both branch and host errors should appear in the result (DS-1078)."""
+        data = {"branch": "bad branch!@#", "host": 42}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 2
+        branch_errors = [e for e in errors if "branch pattern" in e]
+        host_errors = [e for e in errors if "github.host" in e]
+        assert len(branch_errors) == 1
+        assert len(host_errors) == 1
+
+    def test_create_branch_and_host_errors_both_collected(self) -> None:
+        """create_branch and host errors should both appear (DS-1078)."""
+        data = {"create_branch": True, "host": 123}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 2
+        create_errors = [e for e in errors if "create_branch" in e]
+        host_errors = [e for e in errors if "github.host" in e]
+        assert len(create_errors) == 1
+        assert len(host_errors) == 1
+
+    def test_all_six_fields_invalid_collects_all_errors(self) -> None:
+        """When all six fields are invalid, all errors should be collected (DS-1078).
+
+        Note: create_branch triggers when branch is empty/whitespace-only, so we
+        use an empty branch to trigger that error alongside the other field errors.
+        """
+        data = {
+            "branch": "",
+            "base_branch": "bad base!@#",
+            "create_branch": True,  # invalid because branch is empty
+            "host": 123,
+            "org": 456,
+            "repo": 789,
+        }
+        errors = _collect_file_github_errors(data)
+        # base_branch, create_branch, host, org, repo = 5 errors
+        # (empty branch is valid - it means "not configured")
+        assert len(errors) == 5
+        for error in errors:
+            assert "File-level github:" in error
+
+    def test_branch_and_base_branch_and_host_all_invalid(self) -> None:
+        """Three different field errors should all be collected (DS-1078)."""
+        data = {
+            "branch": "bad branch!@#",
+            "base_branch": "bad base!@#",
+            "host": 123,
+        }
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 3
+        branch_errors = [e for e in errors if "branch pattern" in e]
+        base_errors = [e for e in errors if "base_branch" in e]
+        host_errors = [e for e in errors if "github.host" in e]
+        assert len(branch_errors) == 1
+        assert len(base_errors) == 1
+        assert len(host_errors) == 1
+
+    def test_valid_branch_with_invalid_host_collects_only_host_error(self) -> None:
+        """Valid branch but invalid host should only report host error."""
+        data = {"branch": "feature/{jira_issue_key}", "host": 123}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 1
+        assert "github.host" in errors[0]
+
+    def test_invalid_org_and_repo_collects_both(self) -> None:
+        """Invalid org and repo should both be reported (DS-1078)."""
+        data = {"org": True, "repo": False}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 2
+        org_errors = [e for e in errors if "github.org" in e]
+        repo_errors = [e for e in errors if "github.repo" in e]
+        assert len(org_errors) == 1
+        assert len(repo_errors) == 1
+
+    def test_empty_dict_returns_no_errors(self) -> None:
+        """Empty dict (all defaults) should produce no errors."""
+        errors = _collect_file_github_errors({})
+        assert errors == []
+
+    def test_valid_full_config_returns_no_errors(self) -> None:
+        """Fully valid config with all fields should produce no errors."""
+        data = {
+            "host": "github.com",
+            "org": "my-org",
+            "repo": "my-repo",
+            "branch": "feature/{jira_issue_key}",
+            "base_branch": "develop",
+            "create_branch": True,
+        }
+        errors = _collect_file_github_errors(data)
+        assert errors == []
