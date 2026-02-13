@@ -31,6 +31,7 @@
                     <input type="number" id="file_trigger_project_number" name="file_trigger_project_number"
                            value="{{ trigger.project_number if trigger and trigger.project_number else '' }}"
                            placeholder="e.g., 1"
+                           min="1"
                            class="form-input">
                 </div>
                 <div class="detail-row">
@@ -61,9 +62,9 @@
         {# Action Buttons #}
         <div class="d-flex gap-2 justify-end mt-3 pt-2-5">
             <button type="button" class="btn-sm btn-accent"
-                    onclick="submitFileTriggerEdit('{{ file_path }}', this.closest('form'))">Save</button>
+                    onclick="submitFileTriggerEdit({{ file_path|tojson }}, this.closest('form'))">Save</button>
             <button type="button" class="btn-sm btn-sm--secondary"
-                    onclick="cancelFileTriggerEdit('{{ file_path }}')">Cancel</button>
+                    onclick="cancelFileTriggerEdit({{ file_path|tojson }})">Cancel</button>
         </div>
     </form>
 </div>
