@@ -155,6 +155,24 @@
     </div>
 </div>
 
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin-bottom: 0;">Create Orchestration</h2>
+        <button type="button" class="btn-sm btn-accent"
+                hx-get="/partials/orchestration_create"
+                hx-target="#create-form-container"
+                hx-swap="innerHTML"
+                onclick="document.getElementById('create-form-container').style.display = 'block';"
+                style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+            New Step
+        </button>
+    </div>
+</div>
+
+<div id="create-form-container" class="card" style="display: none;">
+    <!-- Creation form will be loaded here via HTMX -->
+</div>
+
 <div class="card collapsible-section">
     <div class="collapsible-header"
          data-collapsible-target="jira-projects-content"
