@@ -1003,6 +1003,7 @@ orchestrations:
 
         assert len(orchestrations) == 1
         orch = orchestrations[0]
+        assert orch.name == "orch-step"
         assert orch.agent.github is not None
         assert orch.agent.github.host == "github.com"
         assert orch.agent.github.org == "my-org"
