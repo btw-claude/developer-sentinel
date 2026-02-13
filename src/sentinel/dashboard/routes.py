@@ -279,27 +279,6 @@ def create_routes(
             ),
         )
 
-    @dashboard_router.get("/orchestrations", response_class=HTMLResponse)
-    async def orchestrations(request: Request) -> HTMLResponse:
-        """Render the orchestrations list page.
-
-        Args:
-            request: The incoming HTTP request.
-
-        Returns:
-            HTML response with the orchestrations list.
-        """
-        state = state_accessor.get_state()
-        templates = request.app.state.templates
-        return cast(
-            HTMLResponse,
-            await templates.TemplateResponse(
-                request=request,
-                name="orchestrations.html",
-                context={"state": state, "csrf_token": _generate_csrf_token()},
-            ),
-        )
-
     @dashboard_router.get("/metrics", response_class=HTMLResponse)
     async def metrics(request: Request) -> HTMLResponse:
         """Render the metrics page.
