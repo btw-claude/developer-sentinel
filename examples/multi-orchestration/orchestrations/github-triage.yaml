@@ -11,6 +11,12 @@ trigger:
   project_owner: "your-org"  # Change to your org/username
   project_scope: "org"       # "org" or "user"
 
+# File-level GitHub context - inherited by all steps
+github:
+  host: "github.com"
+  org: "your-org"            # Change to your GitHub org
+  repo: "your-repo"          # Default repo for operations
+
 steps:
   - name: "github-triage"
 
@@ -45,10 +51,7 @@ steps:
         ## Response Format
         End with SUCCESS after completing triage.
 
-      github:
-        host: "github.com"
-        org: "your-org"          # Change to your GitHub org
-        repo: "your-repo"        # Default repo for operations
+      # GitHub context inherited from file-level github: block.
 
       timeout_seconds: 180       # 3 minutes
 

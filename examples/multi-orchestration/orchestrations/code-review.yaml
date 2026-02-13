@@ -10,6 +10,12 @@ trigger:
   source: jira
   project: "DEMO"           # Change to your Jira project key
 
+# File-level GitHub context - inherited by all steps
+github:
+  host: "github.com"
+  org: "your-org"            # Change to your GitHub org
+  repo: "your-repo"          # Change to your repository
+
 steps:
   - name: "code-review"
 
@@ -48,10 +54,7 @@ steps:
         - "APPROVED: [brief summary]" if the code is ready to merge
         - "CHANGES REQUESTED: [what needs to change]" if revisions are needed
 
-      github:
-        host: "github.com"
-        org: "your-org"          # Change to your GitHub org
-        repo: "your-repo"        # Change to your repository
+      # GitHub context inherited from file-level github: block.
 
       timeout_seconds: 600       # 10 minutes for complex reviews
 
