@@ -239,8 +239,11 @@ function submitOrchestrationEdit(formElement, name) {
  * Submit an orchestration create form via the POST API endpoint.
  *
  * Collects form fields, builds nested JSON matching OrchestrationCreateRequest,
- * and submits via fetch. Shows toast notification on result and hides the
- * creation form on success.
+ * and submits via fetch with a fresh CSRF token. Shows toast notification on
+ * result and hides the creation form on success.
+ *
+ * Uses the same CSRF pre-fetch pattern as submitFileGitHubEdit and
+ * submitFileTriggerEdit for consistency and improved robustness (DS-1089).
  *
  * @param {HTMLFormElement} formElement - The form element to collect data from
  */
@@ -450,7 +453,10 @@ function submitOrchestrationCreate(formElement) {
         });
     }
 
-    doCreate(csrfToken ? csrfToken.value : '', false);
+    // Fetch a fresh CSRF token first, then submit (DS-1089)
+    refreshCsrfToken().then(function(freshToken) {
+        doCreate(freshToken || (csrfToken ? csrfToken.value : ''), false);
+    });
 }
 
 /**
