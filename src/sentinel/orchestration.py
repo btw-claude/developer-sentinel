@@ -983,6 +983,7 @@ def _validate_github_host(host: Any) -> str | None:
 def _validate_github_org(org: Any) -> str | None:
     """Validate the github org field.
 
+    Empty strings are accepted (``reject_empty=False``).
     See :func:`_validate_github_string_field` for details.
     """
     return _validate_github_string_field(org, "github.org", reject_empty=False)
@@ -991,6 +992,7 @@ def _validate_github_org(org: Any) -> str | None:
 def _validate_github_repo(repo: Any) -> str | None:
     """Validate the github repo field.
 
+    Empty strings are accepted (``reject_empty=False``).
     See :func:`_validate_github_string_field` for details.
     """
     return _validate_github_string_field(repo, "github.repo", reject_empty=False)
