@@ -853,7 +853,7 @@ def _validate_strict_template_variables(strict_template_variables: Any) -> str |
 
 
 # ---------------------------------------------------------------------------
-# GitHub context validation helpers (DS-1078)
+# GitHub context validation helpers (DS-1078, DS-1083)
 #
 # Each helper validates a single GitHub context field and returns an error
 # message string when validation fails, or ``None`` when the value is valid.
@@ -863,11 +863,50 @@ def _validate_strict_template_variables(strict_template_variables: Any) -> str |
 #
 # ``_parse_github_context`` also delegates to these helpers so that the
 # validation logic is defined in exactly one place.
+#
+# DS-1083 consolidated two areas of near-identical code:
+#   1. ``_validate_github_branch_field(value, field_name)`` — shared logic
+#      for branch-type fields (branch pattern and base_branch).
+#   2. ``_validate_github_string_field(value, field_name, **kwargs)`` — shared
+#      logic for string-type fields (host, org, repo) that wrap
+#      ``_validate_string_field`` in a try/except.
+#
+# The original per-field functions are retained as thin wrappers for
+# backwards compatibility and call-site readability.
 # ---------------------------------------------------------------------------
+
+
+def _validate_github_branch_field(value: str, field_name: str) -> str | None:
+    """Validate a GitHub branch-type field (branch pattern or base branch).
+
+    Shared helper that consolidates the identical structure previously
+    duplicated in ``_validate_github_branch()`` and
+    ``_validate_github_base_branch()`` (DS-1083).  Both check ``strip()``,
+    call ``_validate_branch_name()``, and format an error message — differing
+    only in the *field_name* used in the error string.
+
+    Args:
+        value: The branch string to validate.
+        field_name: Human-readable field name for error messages
+            (e.g. ``"branch pattern"`` or ``"base_branch"``).
+
+    Returns:
+        An error message if *value* is non-empty and fails git branch name
+        validation, or ``None`` if valid (including empty/whitespace-only).
+    """
+    if not value.strip():
+        return None
+    result = _validate_branch_name(value)
+    if not result.is_valid:
+        return f"Invalid {field_name} '{value}': {result.error_message}"
+    return None
 
 
 def _validate_github_branch(branch: str) -> str | None:
     """Validate a GitHub branch pattern.
+
+    Thin wrapper around :func:`_validate_github_branch_field` for
+    backwards compatibility (DS-1083).
 
     Args:
         branch: The branch pattern string to validate.
@@ -876,16 +915,14 @@ def _validate_github_branch(branch: str) -> str | None:
         An error message if *branch* is non-empty and fails git branch name
         validation, or ``None`` if valid (including empty/whitespace-only).
     """
-    if not branch.strip():
-        return None
-    result = _validate_branch_name(branch)
-    if not result.is_valid:
-        return f"Invalid branch pattern '{branch}': {result.error_message}"
-    return None
+    return _validate_github_branch_field(branch, "branch pattern")
 
 
 def _validate_github_base_branch(base_branch: str) -> str | None:
     """Validate a GitHub base branch name.
+
+    Thin wrapper around :func:`_validate_github_branch_field` for
+    backwards compatibility (DS-1083).
 
     Args:
         base_branch: The base branch string to validate.
@@ -894,12 +931,7 @@ def _validate_github_base_branch(base_branch: str) -> str | None:
         An error message if *base_branch* is non-empty and fails git branch
         name validation, or ``None`` if valid (including empty/whitespace-only).
     """
-    if not base_branch.strip():
-        return None
-    result = _validate_branch_name(base_branch)
-    if not result.is_valid:
-        return f"Invalid base_branch '{base_branch}': {result.error_message}"
-    return None
+    return _validate_github_branch_field(base_branch, "base_branch")
 
 
 def _validate_github_create_branch(create_branch: bool, branch: str) -> str | None:
@@ -924,8 +956,43 @@ def _validate_github_create_branch(create_branch: bool, branch: str) -> str | No
     return None
 
 
+def _validate_github_string_field(
+    value: Any,
+    field_name: str,
+    **kwargs: Any,
+) -> str | None:
+    """Validate a GitHub string-type context field (host, org, or repo).
+
+    Shared helper that consolidates the identical try/except pattern
+    previously duplicated in ``_validate_github_host()``,
+    ``_validate_github_org()``, and ``_validate_github_repo()`` (DS-1083).
+    All three wrap ``_validate_string_field()`` and convert the
+    ``OrchestrationError`` to a plain error string.
+
+    Args:
+        value: The raw value to validate (may be ``None``, a string, or
+            another type).
+        field_name: Dot-qualified field name for error messages
+            (e.g. ``"github.host"``).
+        **kwargs: Extra keyword arguments forwarded to
+            :func:`_validate_string_field` (e.g. ``reject_empty=False``).
+
+    Returns:
+        An error message if *value* is not ``None`` and fails validation,
+        or ``None`` if valid.
+    """
+    try:
+        _validate_string_field(value, field_name, **kwargs)
+    except OrchestrationError as e:
+        return str(e)
+    return None
+
+
 def _validate_github_host(host: Any) -> str | None:
     """Validate the github host field.
+
+    Thin wrapper around :func:`_validate_github_string_field` for
+    backwards compatibility (DS-1083).
 
     ``None`` is always accepted (callers fall back to ``"github.com"``).
     Non-string values and empty/whitespace-only strings are rejected.
@@ -937,15 +1004,14 @@ def _validate_github_host(host: Any) -> str | None:
         An error message if *host* is not ``None`` and fails validation,
         or ``None`` if valid.
     """
-    try:
-        _validate_string_field(host, "github.host")
-    except OrchestrationError as e:
-        return str(e)
-    return None
+    return _validate_github_string_field(host, "github.host")
 
 
 def _validate_github_org(org: Any) -> str | None:
     """Validate the github org field.
+
+    Thin wrapper around :func:`_validate_github_string_field` for
+    backwards compatibility (DS-1083).
 
     ``None`` is always accepted (callers fall back to ``""``).
     Non-string values and whitespace-only strings are rejected; the empty
@@ -958,15 +1024,14 @@ def _validate_github_org(org: Any) -> str | None:
         An error message if *org* is not ``None`` and fails validation,
         or ``None`` if valid.
     """
-    try:
-        _validate_string_field(org, "github.org", reject_empty=False)
-    except OrchestrationError as e:
-        return str(e)
-    return None
+    return _validate_github_string_field(org, "github.org", reject_empty=False)
 
 
 def _validate_github_repo(repo: Any) -> str | None:
     """Validate the github repo field.
+
+    Thin wrapper around :func:`_validate_github_string_field` for
+    backwards compatibility (DS-1083).
 
     ``None`` is always accepted (callers fall back to ``""``).
     Non-string values and whitespace-only strings are rejected; the empty
@@ -979,11 +1044,7 @@ def _validate_github_repo(repo: Any) -> str | None:
         An error message if *repo* is not ``None`` and fails validation,
         or ``None`` if valid.
     """
-    try:
-        _validate_string_field(repo, "github.repo", reject_empty=False)
-    except OrchestrationError as e:
-        return str(e)
-    return None
+    return _validate_github_string_field(repo, "github.repo", reject_empty=False)
 
 
 # File-level trigger fields that get merged into each step (DS-896)
