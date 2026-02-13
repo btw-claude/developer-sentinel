@@ -102,6 +102,11 @@ class FileTriggerEditRequest(BaseModel):
     project_owner: str | None = None
 
 
+# NOTE: The fields in FileGitHubEditRequest intentionally duplicate those in
+# GitHubContextEditRequest.  FileGitHubEditRequest represents file-level
+# defaults that apply to all steps, while GitHubContextEditRequest is used
+# for step-level overrides within agent.github.  The two scopes are edited
+# independently via different API endpoints (DS-1081).
 class FileGitHubEditRequest(BaseModel):
     """Request model for editing file-level GitHub context configuration.
 

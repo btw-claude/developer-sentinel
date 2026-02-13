@@ -18,6 +18,8 @@ from fastapi.testclient import TestClient
 from sentinel.config import Config, DashboardConfig, ExecutionConfig
 from sentinel.dashboard.models import (
     AgentEditRequest,
+    FileGitHubEditRequest,
+    FileTriggerEditRequest,
     GitHubContextEditRequest,
     LifecycleEditRequest,
     OrchestrationEditRequest,
@@ -29,6 +31,9 @@ from sentinel.dashboard.models import (
 from sentinel.dashboard.state import OrchestrationInfo, SentinelStateAccessor
 from sentinel.orchestration_edit import (
     _DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD,
+    _build_file_github_updates,
+    _build_file_level_updates,
+    _build_file_trigger_updates,
     _build_yaml_updates,
     _deep_merge_dicts,
     _extract_error_tokens,
@@ -213,6 +218,66 @@ class TestBuildYamlUpdates:
         request = OrchestrationEditRequest(retry=RetryEditRequest())
         updates = _build_yaml_updates(request)
         assert "retry" not in updates
+
+
+class TestBuildFileLevelUpdates:
+    """Tests for _build_file_level_updates generic helper (DS-1081)."""
+
+    def test_file_trigger_request(self) -> None:
+        """Should serialize FileTriggerEditRequest with non-None fields only."""
+        request = FileTriggerEditRequest(source="jira", project="TEST")
+        result = _build_file_level_updates(request)
+        assert result == {"source": "jira", "project": "TEST"}
+
+    def test_file_github_request(self) -> None:
+        """Should serialize FileGitHubEditRequest with non-None fields only."""
+        request = FileGitHubEditRequest(host="github.com", org="my-org", repo="my-repo")
+        result = _build_file_level_updates(request)
+        assert result == {"host": "github.com", "org": "my-org", "repo": "my-repo"}
+
+    def test_empty_request_returns_empty_dict(self) -> None:
+        """Should return empty dict when all fields are None."""
+        request = FileGitHubEditRequest()
+        result = _build_file_level_updates(request)
+        assert result == {}
+
+    def test_backwards_compatible_trigger_wrapper(self) -> None:
+        """_build_file_trigger_updates should delegate to _build_file_level_updates."""
+        request = FileTriggerEditRequest(source="github", project_owner="my-org")
+        result = _build_file_trigger_updates(request)
+        assert result == {"source": "github", "project_owner": "my-org"}
+
+    def test_backwards_compatible_github_wrapper(self) -> None:
+        """_build_file_github_updates should delegate to _build_file_level_updates."""
+        request = FileGitHubEditRequest(branch="main", create_branch=True)
+        result = _build_file_github_updates(request)
+        assert result == {"branch": "main", "create_branch": True}
+
+    def test_partial_file_github_fields(self) -> None:
+        """Should only include non-None fields for partial updates."""
+        request = FileGitHubEditRequest(org="updated-org")
+        result = _build_file_level_updates(request)
+        assert result == {"org": "updated-org"}
+
+    def test_all_file_github_fields(self) -> None:
+        """Should include all fields when all are set."""
+        request = FileGitHubEditRequest(
+            host="github.com",
+            org="my-org",
+            repo="my-repo",
+            branch="main",
+            create_branch=True,
+            base_branch="develop",
+        )
+        result = _build_file_level_updates(request)
+        assert result == {
+            "host": "github.com",
+            "org": "my-org",
+            "repo": "my-repo",
+            "branch": "main",
+            "create_branch": True,
+            "base_branch": "develop",
+        }
 
 
 class TestDeepMergeDicts:
