@@ -42,9 +42,9 @@
  * Content-Type Guard Conditional Simplification (DS-1097):
  * Consolidated the two separate Content-Type guard if-statements (non-JSON
  * non-2xx early return and non-JSON 2xx diagnostic warning) into a single
- * if/else block.  The outer condition checks for non-JSON Content-Type once,
+ * if/else block. The outer condition checks for non-JSON Content-Type once,
  * and the inner branch distinguishes non-2xx (early return) from 2xx (warn
- * and continue to parse).  No functional change; readability improvement only.
+ * and continue to parse). No functional change; readability improvement only.
  *
  * @module orchestration-forms
  */
@@ -137,14 +137,14 @@ function fetchWithCsrfRetry(url, fetchOptions, messageConfig) {
             if (contentType.indexOf('application/json') === -1) {
                 if (!(response.status >= 200 && response.status < 300)) {
                     // Non-JSON non-2xx response (e.g., HTML 403 from a reverse
-                    // proxy or WAF).  Return early with empty data so the status
+                    // proxy or WAF). Return early with empty data so the status
                     // handling below can surface a clear toast (DS-1092).
                     return { status: response.status, data: {} };
                 }
                 // 2xx response with unexpected Content-Type (e.g., text/html
-                // from a misconfigured proxy).  Log a diagnostic warning to help
+                // from a misconfigured proxy). Log a diagnostic warning to help
                 // developers quickly diagnose proxy/CDN misconfiguration issues
-                // (DS-1094).  The response.json() call below will throw a
+                // (DS-1094). The response.json() call below will throw a
                 // SyntaxError if the body is not valid JSON, which is caught by
                 // the .catch handler (DS-1093).
                 console.warn('fetchWithCsrfRetry: 2xx response with unexpected Content-Type: ' + contentType);
@@ -184,7 +184,7 @@ function fetchWithCsrfRetry(url, fetchOptions, messageConfig) {
         // DOM fallback: when refreshCsrfToken() returns null (e.g., the CSRF
         // endpoint is unreachable or returns a non-OK status), fall back to the
         // value of the hidden <input id="csrf_token"> rendered by the server
-        // template.  This token may be stale after a page refresh, but the 403
+        // template. This token may be stale after a page refresh, but the 403
         // retry logic above will auto-refresh it on failure (DS-1092).
         var token = freshToken || (csrfToken ? csrfToken.value : '');
         if (!freshToken && (!csrfToken || !csrfToken.value)) {
