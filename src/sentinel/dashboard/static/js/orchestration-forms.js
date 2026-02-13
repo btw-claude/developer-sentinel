@@ -27,6 +27,11 @@
  * the DOM hidden-input fallback, and a console.warn when both the API
  * refresh and DOM csrf_token element are unavailable.
  *
+ * Content-Type Guard Narrowing (DS-1093):
+ * Narrowed the Content-Type guard to only apply to non-2xx responses,
+ * preventing successful responses with unexpected Content-Types from
+ * silently resolving with empty data and bypassing the onSuccess callback.
+ *
  * @module orchestration-forms
  */
 
@@ -109,8 +114,14 @@ function fetchWithCsrfRetry(url, fetchOptions, messageConfig) {
             // through to the catch handler, masking the real 403 cause.  By
             // checking the Content-Type header first, we can surface a clear
             // CSRF / permission error toast instead (DS-1092).
+            //
+            // Narrowed to non-2xx responses only (DS-1093): if a successful 2xx
+            // response arrives with a non-JSON Content-Type (e.g., text/html
+            // from a misconfigured proxy), we should still attempt to parse it
+            // rather than silently resolving with empty data and bypassing the
+            // onSuccess callback.
             var contentType = response.headers.get('Content-Type') || '';
-            if (contentType.indexOf('application/json') === -1) {
+            if (contentType.indexOf('application/json') === -1 && !(response.status >= 200 && response.status < 300)) {
                 return { status: response.status, data: {} };
             }
             return response.json().then(function(data) {
