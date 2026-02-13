@@ -32,6 +32,13 @@
  * preventing successful responses with unexpected Content-Types from
  * silently resolving with empty data and bypassing the onSuccess callback.
  *
+ * 2xx Non-JSON Content-Type Diagnostic Warning (DS-1094):
+ * Added a console.warn when a successful 2xx response arrives with a
+ * non-JSON Content-Type (e.g., text/html from a misconfigured proxy).
+ * The response is still parsed via response.json() (which will throw a
+ * SyntaxError caught by the .catch handler), but the warning helps
+ * developers quickly diagnose proxy/CDN misconfiguration issues.
+ *
  * @module orchestration-forms
  */
 
@@ -123,6 +130,14 @@ function fetchWithCsrfRetry(url, fetchOptions, messageConfig) {
             var contentType = response.headers.get('Content-Type') || '';
             if (contentType.indexOf('application/json') === -1 && !(response.status >= 200 && response.status < 300)) {
                 return { status: response.status, data: {} };
+            }
+            // Diagnostic warning for 2xx responses with unexpected Content-Type
+            // (DS-1094): helps developers quickly diagnose proxy/CDN
+            // misconfiguration issues.  The response.json() call below will
+            // throw a SyntaxError if the body is not valid JSON, which is
+            // caught by the .catch handler.
+            if (contentType.indexOf('application/json') === -1 && response.status >= 200 && response.status < 300) {
+                console.warn('fetchWithCsrfRetry: 2xx response with unexpected Content-Type: ' + contentType);
             }
             return response.json().then(function(data) {
                 return { status: response.status, data: data };
