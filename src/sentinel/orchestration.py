@@ -905,15 +905,7 @@ def _validate_github_branch_field(value: str, field_name: str) -> str | None:
 def _validate_github_branch(branch: str) -> str | None:
     """Validate a GitHub branch pattern.
 
-    Thin wrapper around :func:`_validate_github_branch_field` for
-    backwards compatibility (DS-1083).
-
-    Args:
-        branch: The branch pattern string to validate.
-
-    Returns:
-        An error message if *branch* is non-empty and fails git branch name
-        validation, or ``None`` if valid (including empty/whitespace-only).
+    See :func:`_validate_github_branch_field` for details.
     """
     return _validate_github_branch_field(branch, "branch pattern")
 
@@ -921,15 +913,7 @@ def _validate_github_branch(branch: str) -> str | None:
 def _validate_github_base_branch(base_branch: str) -> str | None:
     """Validate a GitHub base branch name.
 
-    Thin wrapper around :func:`_validate_github_branch_field` for
-    backwards compatibility (DS-1083).
-
-    Args:
-        base_branch: The base branch string to validate.
-
-    Returns:
-        An error message if *base_branch* is non-empty and fails git branch
-        name validation, or ``None`` if valid (including empty/whitespace-only).
+    See :func:`_validate_github_branch_field` for details.
     """
     return _validate_github_branch_field(base_branch, "base_branch")
 
@@ -991,18 +975,7 @@ def _validate_github_string_field(
 def _validate_github_host(host: Any) -> str | None:
     """Validate the github host field.
 
-    Thin wrapper around :func:`_validate_github_string_field` for
-    backwards compatibility (DS-1083).
-
-    ``None`` is always accepted (callers fall back to ``"github.com"``).
-    Non-string values and empty/whitespace-only strings are rejected.
-
-    Args:
-        host: The raw host value.
-
-    Returns:
-        An error message if *host* is not ``None`` and fails validation,
-        or ``None`` if valid.
+    See :func:`_validate_github_string_field` for details.
     """
     return _validate_github_string_field(host, "github.host")
 
@@ -1010,19 +983,7 @@ def _validate_github_host(host: Any) -> str | None:
 def _validate_github_org(org: Any) -> str | None:
     """Validate the github org field.
 
-    Thin wrapper around :func:`_validate_github_string_field` for
-    backwards compatibility (DS-1083).
-
-    ``None`` is always accepted (callers fall back to ``""``).
-    Non-string values and whitespace-only strings are rejected; the empty
-    string is allowed.
-
-    Args:
-        org: The raw org value.
-
-    Returns:
-        An error message if *org* is not ``None`` and fails validation,
-        or ``None`` if valid.
+    See :func:`_validate_github_string_field` for details.
     """
     return _validate_github_string_field(org, "github.org", reject_empty=False)
 
@@ -1030,19 +991,7 @@ def _validate_github_org(org: Any) -> str | None:
 def _validate_github_repo(repo: Any) -> str | None:
     """Validate the github repo field.
 
-    Thin wrapper around :func:`_validate_github_string_field` for
-    backwards compatibility (DS-1083).
-
-    ``None`` is always accepted (callers fall back to ``""``).
-    Non-string values and whitespace-only strings are rejected; the empty
-    string is allowed.
-
-    Args:
-        repo: The raw repo value.
-
-    Returns:
-        An error message if *repo* is not ``None`` and fails validation,
-        or ``None`` if valid.
+    See :func:`_validate_github_string_field` for details.
     """
     return _validate_github_string_field(repo, "github.repo", reject_empty=False)
 
