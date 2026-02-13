@@ -16,6 +16,11 @@
  * updates the hidden input, preventing 403 errors on form submission after
  * page refresh.
  *
+ * Shared CSRF Retry Helper (DS-1091):
+ * The fetchWithCsrfRetry() function encapsulates the common pattern of
+ * CSRF token pre-fetch, header injection, 403 retry logic, and standard
+ * error handling (422, 429) used by all form submission functions.
+ *
  * @module orchestration-forms
  */
 
@@ -45,6 +50,87 @@ function refreshCsrfToken() {
         .catch(function() {
             return null;
         });
+}
+
+/**
+ * Perform a fetch request with automatic CSRF token handling and retry.
+ *
+ * Encapsulates the shared pattern used by all state-changing form submissions:
+ * 1. Pre-fetches a fresh CSRF token via refreshCsrfToken()
+ * 2. Makes the fetch request with the X-CSRF-Token header
+ * 3. On 403 + first attempt, refreshes the token and retries once
+ * 4. On 403 + retry, shows a CSRF validation failed toast
+ * 5. Handles 422 (validation), 429 (rate limit), and generic error cases
+ *
+ * Extracted from the identical inner helpers (doCreate, doEdit, doGitHubEdit,
+ * doTriggerEdit) to reduce code duplication (DS-1091).
+ *
+ * @param {string} url - The API endpoint URL
+ * @param {Object} fetchOptions - Options for the fetch call (method, body).
+ *     The Content-Type and X-CSRF-Token headers are added automatically.
+ * @param {Object} messageConfig - Toast message configuration
+ * @param {string} messageConfig.csrfRefreshFailed - Message when CSRF refresh fails
+ * @param {string} messageConfig.csrfValidationFailed - Message when CSRF validation fails after retry
+ * @param {string} messageConfig.genericError - Default error message for non-specific failures
+ * @param {string} messageConfig.networkError - Message for network/fetch errors
+ * @param {string} messageConfig.debugFetchError - Console error prefix for fetch failures
+ * @param {function} messageConfig.onSuccess - Callback invoked with the parsed response data on success
+ */
+function fetchWithCsrfRetry(url, fetchOptions, messageConfig) {
+    // Read CSRF token from hidden input as fallback
+    var csrfToken = document.getElementById('csrf_token');
+
+    /**
+     * Internal helper that performs the actual fetch with CSRF retry logic.
+     *
+     * @param {string} token - CSRF token to include in the request header
+     * @param {boolean} isRetry - Whether this is a retry after token refresh
+     */
+    function doFetch(token, isRetry) {
+        var headers = { 'Content-Type': 'application/json' };
+        headers['X-CSRF-Token'] = token;
+
+        var options = {
+            method: fetchOptions.method,
+            headers: headers,
+            body: fetchOptions.body
+        };
+
+        fetch(url, options).then(function(response) {
+            return response.json().then(function(data) {
+                return { status: response.status, data: data };
+            });
+        }).then(function(result) {
+            if (result.status >= 200 && result.status < 300 && result.data.success) {
+                messageConfig.onSuccess(result.data);
+            } else if (result.status === 403 && !isRetry) {
+                // CSRF token invalid (e.g., page refresh) - auto-refresh and retry
+                return refreshCsrfToken().then(function(newToken) {
+                    if (newToken) {
+                        doFetch(newToken, true);
+                    } else {
+                        showToast('error', messageConfig.csrfRefreshFailed);
+                    }
+                });
+            } else if (result.status === 403) {
+                showToast('error', messageConfig.csrfValidationFailed);
+            } else if (result.status === 422) {
+                showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
+            } else if (result.status === 429) {
+                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
+            } else {
+                showToast('error', result.data.detail || messageConfig.genericError);
+            }
+        }).catch(function(error) {
+            console.error(messageConfig.debugFetchError, error);
+            showToast('error', messageConfig.networkError);
+        });
+    }
+
+    // Fetch a fresh CSRF token first, then submit
+    refreshCsrfToken().then(function(freshToken) {
+        doFetch(freshToken || (csrfToken ? csrfToken.value : ''), false);
+    });
 }
 
 /**
@@ -85,12 +171,8 @@ function splitList(value, separator) {
  * Submit an orchestration edit form via the PUT API endpoint.
  *
  * Collects form fields, builds nested JSON matching OrchestrationEditRequest,
- * and submits via fetch with a fresh CSRF token. Shows toast notification
- * on result and reloads the detail view on success.
- *
- * Uses the same CSRF pre-fetch pattern as submitOrchestrationCreate,
- * submitFileGitHubEdit, and submitFileTriggerEdit for consistency and
- * improved robustness (DS-1090).
+ * and submits via fetchWithCsrfRetry with automatic CSRF token handling.
+ * Shows toast notification on result and reloads the detail view on success.
  *
  * @param {HTMLFormElement} formElement - The form element to collect data from
  * @param {string} name - The orchestration name to update
@@ -206,32 +288,16 @@ function submitOrchestrationEdit(formElement, name) {
     if (outcomes.length > 0) body.outcomes = outcomes;
     if (Object.keys(lifecycle).length > 0) body.lifecycle = lifecycle;
 
-    // Read CSRF token from hidden input
-    var csrfToken = document.getElementById('csrf_token');
-
-    /**
-     * Internal helper to perform the edit PUT request.
-     *
-     * Includes 403 CSRF retry logic for robustness parity with
-     * submitOrchestrationCreate (DS-1090).
-     *
-     * @param {string} token - CSRF token to include in the request header
-     * @param {boolean} isRetry - Whether this is a retry after token refresh
-     */
-    function doEdit(token, isRetry) {
-        fetch('/api/orchestrations/' + encodeURIComponent(name), {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': token
-            },
-            body: JSON.stringify(body)
-        }).then(function(response) {
-            return response.json().then(function(data) {
-                return { status: response.status, data: data };
-            });
-        }).then(function(result) {
-            if (result.status >= 200 && result.status < 300 && result.data.success) {
+    fetchWithCsrfRetry(
+        '/api/orchestrations/' + encodeURIComponent(name),
+        { method: 'PUT', body: JSON.stringify(body) },
+        {
+            csrfRefreshFailed: UI_MESSAGES.TOAST.EDIT_CSRF_REFRESH_FAILED,
+            csrfValidationFailed: UI_MESSAGES.TOAST.EDIT_CSRF_VALIDATION_FAILED,
+            genericError: UI_MESSAGES.TOAST.EDIT_FAILED,
+            networkError: UI_MESSAGES.TOAST.EDIT_NETWORK_ERROR,
+            debugFetchError: UI_MESSAGES.DEBUG.EDIT_FETCH_ERROR,
+            onSuccess: function() {
                 showToast('success', UI_MESSAGES.TOAST.EDIT_SUCCESS(name));
                 // Reload the detail view to show updated values
                 var detailContainer = formElement.closest('.orchestration-detail');
@@ -241,45 +307,17 @@ function submitOrchestrationEdit(formElement, name) {
                         swap: 'outerHTML'
                     });
                 }
-            } else if (result.status === 403 && !isRetry) {
-                // CSRF token invalid (e.g., page refresh) - auto-refresh and retry (DS-1090)
-                return refreshCsrfToken().then(function(newToken) {
-                    if (newToken) {
-                        doEdit(newToken, true);
-                    } else {
-                        showToast('error', UI_MESSAGES.TOAST.EDIT_CSRF_REFRESH_FAILED);
-                    }
-                });
-            } else if (result.status === 403) {
-                showToast('error', UI_MESSAGES.TOAST.EDIT_CSRF_VALIDATION_FAILED);
-            } else if (result.status === 422) {
-                showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
-            } else if (result.status === 429) {
-                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
-            } else {
-                showToast('error', result.data.detail || UI_MESSAGES.TOAST.EDIT_FAILED);
             }
-        }).catch(function(error) {
-            console.error(UI_MESSAGES.DEBUG.EDIT_FETCH_ERROR, error);
-            showToast('error', UI_MESSAGES.TOAST.EDIT_NETWORK_ERROR);
-        });
-    }
-
-    // Fetch a fresh CSRF token first, then submit (DS-1090)
-    refreshCsrfToken().then(function(freshToken) {
-        doEdit(freshToken || (csrfToken ? csrfToken.value : ''), false);
-    });
+        }
+    );
 }
 
 /**
  * Submit an orchestration create form via the POST API endpoint.
  *
  * Collects form fields, builds nested JSON matching OrchestrationCreateRequest,
- * and submits via fetch with a fresh CSRF token. Shows toast notification on
- * result and hides the creation form on success.
- *
- * Uses the same CSRF pre-fetch pattern as submitFileGitHubEdit and
- * submitFileTriggerEdit for consistency and improved robustness (DS-1089).
+ * and submits via fetchWithCsrfRetry with automatic CSRF token handling.
+ * Shows toast notification on result and hides the creation form on success.
  *
  * @param {HTMLFormElement} formElement - The form element to collect data from
  */
@@ -438,70 +476,32 @@ function submitOrchestrationCreate(formElement) {
     if (onFailureAddTag && onFailureAddTag.value.trim()) lifecycle.on_failure_add_tag = onFailureAddTag.value.trim();
     if (Object.keys(lifecycle).length > 0) body.lifecycle = lifecycle;
 
-    // Read CSRF token from hidden input
-    var csrfToken = document.getElementById('csrf_token');
-
-    /**
-     * Internal helper to perform the create POST request.
-     *
-     * @param {string} token - CSRF token to include in the request header
-     * @param {boolean} isRetry - Whether this is a retry after token refresh
-     */
-    function doCreate(token, isRetry) {
-        fetch('/api/orchestrations', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': token
-            },
-            body: JSON.stringify(body)
-        }).then(function(response) {
-            return response.json().then(function(data) {
-                return { status: response.status, data: data };
-            });
-        }).then(function(result) {
-            if (result.status >= 200 && result.status < 300 && result.data.success) {
+    fetchWithCsrfRetry(
+        '/api/orchestrations',
+        { method: 'POST', body: JSON.stringify(body) },
+        {
+            csrfRefreshFailed: UI_MESSAGES.TOAST.CREATE_CSRF_REFRESH_FAILED,
+            csrfValidationFailed: UI_MESSAGES.TOAST.CREATE_CSRF_VALIDATION_FAILED,
+            genericError: UI_MESSAGES.TOAST.CREATE_FAILED,
+            networkError: UI_MESSAGES.TOAST.CREATE_NETWORK_ERROR,
+            debugFetchError: UI_MESSAGES.DEBUG.CREATE_FETCH_ERROR,
+            onSuccess: function() {
                 showToast('success', UI_MESSAGES.TOAST.CREATE_SUCCESS(name));
                 // Hide the creation form
                 document.getElementById('create-form-container').style.display = 'none';
                 // Reload the orchestrations list (HTMX will auto-refresh on next poll)
-            } else if (result.status === 403 && !isRetry) {
-                // CSRF token invalid (e.g., page refresh) - auto-refresh and retry (DS-737)
-                return refreshCsrfToken().then(function(newToken) {
-                    if (newToken) {
-                        doCreate(newToken, true);
-                    } else {
-                        showToast('error', UI_MESSAGES.TOAST.CREATE_CSRF_REFRESH_FAILED);
-                    }
-                });
-            } else if (result.status === 403) {
-                showToast('error', UI_MESSAGES.TOAST.CREATE_CSRF_VALIDATION_FAILED);
-            } else if (result.status === 422) {
-                showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
-            } else if (result.status === 429) {
-                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
-            } else {
-                showToast('error', result.data.detail || UI_MESSAGES.TOAST.CREATE_FAILED);
             }
-        }).catch(function(error) {
-            console.error(UI_MESSAGES.DEBUG.CREATE_FETCH_ERROR, error);
-            showToast('error', UI_MESSAGES.TOAST.CREATE_NETWORK_ERROR);
-        });
-    }
-
-    // Fetch a fresh CSRF token first, then submit (DS-1089)
-    refreshCsrfToken().then(function(freshToken) {
-        doCreate(freshToken || (csrfToken ? csrfToken.value : ''), false);
-    });
+        }
+    );
 }
 
 /**
  * Submit the file-level GitHub context edit form via the PUT API endpoint.
  *
  * Collects form fields from the file-level GitHub edit form, builds a JSON
- * payload matching FileGitHubEditRequest, and submits via fetch with a fresh
- * CSRF token. Shows toast notification on result and reloads the edit form
- * partial on success (DS-1082).
+ * payload matching FileGitHubEditRequest, and submits via fetchWithCsrfRetry
+ * with automatic CSRF token handling. Shows toast notification on result and
+ * reloads the edit form partial on success (DS-1082).
  *
  * @param {string} filePath - The relative file path for the orchestration file
  * @param {HTMLFormElement} formElement - The form element to collect data from
@@ -527,32 +527,16 @@ function submitFileGitHubEdit(filePath, formElement) {
     var baseBranch = formElement.querySelector('#file_github_base_branch');
     if (baseBranch && baseBranch.value.trim()) body.base_branch = baseBranch.value.trim();
 
-    // Read CSRF token from hidden input
-    var csrfToken = document.getElementById('csrf_token');
-
-    /**
-     * Internal helper to perform the GitHub edit PUT request.
-     *
-     * Includes 403 CSRF retry logic for robustness parity with
-     * submitOrchestrationCreate (DS-1088).
-     *
-     * @param {string} token - CSRF token to include in the request header
-     * @param {boolean} isRetry - Whether this is a retry after token refresh
-     */
-    function doGitHubEdit(token, isRetry) {
-        fetch('/api/orchestrations/files/' + encodeFilePath(filePath) + '/github', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': token
-            },
-            body: JSON.stringify(body)
-        }).then(function(response) {
-            return response.json().then(function(data) {
-                return { status: response.status, data: data };
-            });
-        }).then(function(result) {
-            if (result.status >= 200 && result.status < 300 && result.data.success) {
+    fetchWithCsrfRetry(
+        '/api/orchestrations/files/' + encodeFilePath(filePath) + '/github',
+        { method: 'PUT', body: JSON.stringify(body) },
+        {
+            csrfRefreshFailed: UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED,
+            csrfValidationFailed: UI_MESSAGES.TOAST.FILE_EDIT_CSRF_VALIDATION_FAILED,
+            genericError: UI_MESSAGES.TOAST.FILE_GITHUB_EDIT_FAILED,
+            networkError: UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR,
+            debugFetchError: UI_MESSAGES.DEBUG.FILE_GITHUB_EDIT_FETCH_ERROR,
+            onSuccess: function() {
                 showToast('success', UI_MESSAGES.TOAST.FILE_GITHUB_EDIT_SUCCESS);
                 // Reload the edit form to show updated values
                 var detailContainer = formElement.closest('.orchestration-detail');
@@ -562,34 +546,9 @@ function submitFileGitHubEdit(filePath, formElement) {
                         swap: 'outerHTML'
                     });
                 }
-            } else if (result.status === 403 && !isRetry) {
-                // CSRF token invalid - auto-refresh and retry (DS-1088)
-                return refreshCsrfToken().then(function(newToken) {
-                    if (newToken) {
-                        doGitHubEdit(newToken, true);
-                    } else {
-                        showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED);
-                    }
-                });
-            } else if (result.status === 403) {
-                showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_VALIDATION_FAILED);
-            } else if (result.status === 422) {
-                showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
-            } else if (result.status === 429) {
-                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
-            } else {
-                showToast('error', result.data.detail || UI_MESSAGES.TOAST.FILE_GITHUB_EDIT_FAILED);
             }
-        }).catch(function(error) {
-            console.error(UI_MESSAGES.DEBUG.FILE_GITHUB_EDIT_FETCH_ERROR, error);
-            showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR);
-        });
-    }
-
-    // Fetch a fresh CSRF token first, then submit
-    refreshCsrfToken().then(function(freshToken) {
-        doGitHubEdit(freshToken || (csrfToken ? csrfToken.value : ''), false);
-    });
+        }
+    );
 }
 
 /**
@@ -617,9 +576,9 @@ function cancelFileGitHubEdit(filePath) {
  * Submit the file-level trigger edit form via the PUT API endpoint.
  *
  * Collects form fields from the file-level trigger edit form, builds a JSON
- * payload matching FileTriggerEditRequest, and submits via fetch with a fresh
- * CSRF token. Shows toast notification on result and reloads the edit form
- * partial on success (DS-1082).
+ * payload matching FileTriggerEditRequest, and submits via fetchWithCsrfRetry
+ * with automatic CSRF token handling. Shows toast notification on result and
+ * reloads the edit form partial on success (DS-1082).
  *
  * @param {string} filePath - The relative file path for the orchestration file
  * @param {HTMLFormElement} formElement - The form element to collect data from
@@ -643,32 +602,16 @@ function submitFileTriggerEdit(filePath, formElement) {
     var projectOwner = formElement.querySelector('#file_trigger_project_owner');
     if (projectOwner && projectOwner.value.trim()) body.project_owner = projectOwner.value.trim();
 
-    // Read CSRF token from hidden input
-    var csrfToken = document.getElementById('csrf_token');
-
-    /**
-     * Internal helper to perform the trigger edit PUT request.
-     *
-     * Includes 403 CSRF retry logic for robustness parity with
-     * submitOrchestrationCreate (DS-1088).
-     *
-     * @param {string} token - CSRF token to include in the request header
-     * @param {boolean} isRetry - Whether this is a retry after token refresh
-     */
-    function doTriggerEdit(token, isRetry) {
-        fetch('/api/orchestrations/files/' + encodeFilePath(filePath) + '/trigger', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': token
-            },
-            body: JSON.stringify(body)
-        }).then(function(response) {
-            return response.json().then(function(data) {
-                return { status: response.status, data: data };
-            });
-        }).then(function(result) {
-            if (result.status >= 200 && result.status < 300 && result.data.success) {
+    fetchWithCsrfRetry(
+        '/api/orchestrations/files/' + encodeFilePath(filePath) + '/trigger',
+        { method: 'PUT', body: JSON.stringify(body) },
+        {
+            csrfRefreshFailed: UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED,
+            csrfValidationFailed: UI_MESSAGES.TOAST.FILE_EDIT_CSRF_VALIDATION_FAILED,
+            genericError: UI_MESSAGES.TOAST.FILE_TRIGGER_EDIT_FAILED,
+            networkError: UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR,
+            debugFetchError: UI_MESSAGES.DEBUG.FILE_TRIGGER_EDIT_FETCH_ERROR,
+            onSuccess: function() {
                 showToast('success', UI_MESSAGES.TOAST.FILE_TRIGGER_EDIT_SUCCESS);
                 // Reload the edit form to show updated values
                 var detailContainer = formElement.closest('.orchestration-detail');
@@ -678,34 +621,9 @@ function submitFileTriggerEdit(filePath, formElement) {
                         swap: 'outerHTML'
                     });
                 }
-            } else if (result.status === 403 && !isRetry) {
-                // CSRF token invalid - auto-refresh and retry (DS-1088)
-                return refreshCsrfToken().then(function(newToken) {
-                    if (newToken) {
-                        doTriggerEdit(newToken, true);
-                    } else {
-                        showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED);
-                    }
-                });
-            } else if (result.status === 403) {
-                showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_VALIDATION_FAILED);
-            } else if (result.status === 422) {
-                showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
-            } else if (result.status === 429) {
-                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
-            } else {
-                showToast('error', result.data.detail || UI_MESSAGES.TOAST.FILE_TRIGGER_EDIT_FAILED);
             }
-        }).catch(function(error) {
-            console.error(UI_MESSAGES.DEBUG.FILE_TRIGGER_EDIT_FETCH_ERROR, error);
-            showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR);
-        });
-    }
-
-    // Fetch a fresh CSRF token first, then submit
-    refreshCsrfToken().then(function(freshToken) {
-        doTriggerEdit(freshToken || (csrfToken ? csrfToken.value : ''), false);
-    });
+        }
+    );
 }
 
 /**
