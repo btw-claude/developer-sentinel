@@ -39,6 +39,13 @@
  * SyntaxError caught by the .catch handler), but the warning helps
  * developers quickly diagnose proxy/CDN misconfiguration issues.
  *
+ * Content-Type Guard Conditional Simplification (DS-1097):
+ * Consolidated the two separate Content-Type guard if-statements (non-JSON
+ * non-2xx early return and non-JSON 2xx diagnostic warning) into a single
+ * if/else block.  The outer condition checks for non-JSON Content-Type once,
+ * and the inner branch distinguishes non-2xx (early return) from 2xx (warn
+ * and continue to parse).  No functional change; readability improvement only.
+ *
  * @module orchestration-forms
  */
 
@@ -115,28 +122,31 @@ function fetchWithCsrfRetry(url, fetchOptions, messageConfig) {
         };
 
         fetch(url, options).then(function(response) {
-            // Defensive Content-Type check: some reverse proxies or WAFs return
-            // non-JSON 403 pages (e.g., HTML error pages).  Attempting to parse
-            // these with response.json() would throw a SyntaxError that falls
-            // through to the catch handler, masking the real 403 cause.  By
-            // checking the Content-Type header first, we can surface a clear
-            // CSRF / permission error toast instead (DS-1092).
-            //
-            // Narrowed to non-2xx responses only (DS-1093): if a successful 2xx
-            // response arrives with a non-JSON Content-Type (e.g., text/html
-            // from a misconfigured proxy), we should still attempt to parse it
-            // rather than silently resolving with empty data and bypassing the
-            // onSuccess callback.
+            // Defensive Content-Type check (DS-1092, DS-1093, DS-1094, DS-1097):
+            // When the response Content-Type is not application/json, behaviour
+            // depends on the status code:
+            //   - Non-2xx: return early with empty data so the status-handling
+            //     logic below can surface a clear CSRF / permission error toast
+            //     instead of a confusing SyntaxError (DS-1092).
+            //   - 2xx: log a diagnostic warning for proxy/CDN misconfiguration,
+            //     then fall through to response.json() which will throw a
+            //     SyntaxError caught by the .catch handler (DS-1093, DS-1094).
+            // Consolidated from two separate if-statements into a single
+            // if/else block for readability (DS-1097).
             var contentType = response.headers.get('Content-Type') || '';
-            if (contentType.indexOf('application/json') === -1 && !(response.status >= 200 && response.status < 300)) {
-                return { status: response.status, data: {} };
-            }
-            // Diagnostic warning for 2xx responses with unexpected Content-Type
-            // (DS-1094): helps developers quickly diagnose proxy/CDN
-            // misconfiguration issues.  The response.json() call below will
-            // throw a SyntaxError if the body is not valid JSON, which is
-            // caught by the .catch handler.
-            if (contentType.indexOf('application/json') === -1 && response.status >= 200 && response.status < 300) {
+            if (contentType.indexOf('application/json') === -1) {
+                if (!(response.status >= 200 && response.status < 300)) {
+                    // Non-JSON non-2xx response (e.g., HTML 403 from a reverse
+                    // proxy or WAF).  Return early with empty data so the status
+                    // handling below can surface a clear toast (DS-1092).
+                    return { status: response.status, data: {} };
+                }
+                // 2xx response with unexpected Content-Type (e.g., text/html
+                // from a misconfigured proxy).  Log a diagnostic warning to help
+                // developers quickly diagnose proxy/CDN misconfiguration issues
+                // (DS-1094).  The response.json() call below will throw a
+                // SyntaxError if the body is not valid JSON, which is caught by
+                // the .catch handler (DS-1093).
                 console.warn('fetchWithCsrfRetry: 2xx response with unexpected Content-Type: ' + contentType);
             }
             return response.json().then(function(data) {
