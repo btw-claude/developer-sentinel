@@ -8,6 +8,16 @@
 # repository. Production orchestration files (e.g., slack-agent.yaml,
 # developer-sentinel.yaml) are deployment-specific and not checked in.
 #
+# Table of Contents:
+# ------------------
+#   1. Enable/Disable Flags ......... Control orchestration activation
+#   2. Orchestration Structure ...... Fields each orchestration defines
+#   3. Template Variables ........... Jira/GitHub variable substitution
+#   4. Tag-based Workflow ........... Stateless processing lifecycle
+#   5. Enable/Disable Examples ...... YAML snippets for toggling
+#   6. File-level GitHub Context .... Shared repo defaults
+#   7. Outcome-based Tags ........... Multi-outcome success workflows
+#
 # Enable/Disable Flags:
 # ---------------------
 # Orchestrations can be disabled at two levels:
