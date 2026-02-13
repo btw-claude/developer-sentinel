@@ -93,6 +93,17 @@
 # Uncomment to disable ALL orchestrations in this file:
 # enabled: false
 
+# File-level GitHub context (optional)
+# ------------------------------------
+# Define default GitHub context for all orchestrations in this file.
+# Individual orchestrations can override any of these values in their
+# agent.github block. This eliminates duplication when most orchestrations
+# target the same repository.
+github:
+  host: "github.com"
+  org: "your-org"
+  repo: "your-repo"
+
 orchestrations:
   # Code Review Orchestration
   # -------------------------
@@ -169,15 +180,14 @@ orchestrations:
         - jira
         - github
 
-      # GitHub context (required if github tool is enabled)
-      github:
-        host: "github.com"
-        org: "your-org"
-        repo: "your-repo"
-        # Branch pattern support (optional):
-        # branch: "feature/{jira_issue_key}"  # Pattern with template variables
-        # create_branch: true                  # Create branch if it doesn't exist
-        # base_branch: main                    # Base branch for new branches
+      # GitHub context inherited from file-level github: block above.
+      # Override here if this orchestration needs different values:
+      # github:
+      #   org: "different-org"
+      #   repo: "different-repo"
+      #   branch: "feature/{jira_issue_key}"
+      #   create_branch: true
+      #   base_branch: main
 
     # Retry configuration
     # Defines how to handle agent failures
@@ -303,10 +313,7 @@ orchestrations:
         - jira
         - github
 
-      github:
-        host: "github.com"
-        org: "your-org"
-        repo: "your-repo"
+      # GitHub context inherited from file-level github: block.
 
       # Optional timeout in seconds (5 minutes)
       timeout_seconds: 300
@@ -415,10 +422,7 @@ orchestrations:
       tools:
         - github
 
-      github:
-        host: "github.com"
-        org: "your-org"
-        repo: "your-repo"  # Default repo for cloning operations
+      # GitHub context inherited from file-level github: block.
 
       timeout_seconds: 600  # 10 minutes for complex reviews
 
@@ -490,10 +494,7 @@ orchestrations:
       tools:
         - github
 
-      github:
-        host: "github.com"
-        org: "your-org"
-        repo: "your-repo"
+      # GitHub context inherited from file-level github: block.
 
     retry:
       max_attempts: 2
@@ -545,9 +546,10 @@ orchestrations:
       tools:
         - github
 
+      # This step uses the default org from file-level github: but overrides
+      # the repo since cross-repo triage may target multiple repositories.
+      # The actual repo is extracted from each project item's URL at runtime.
       github:
-        host: "github.com"
-        org: "your-org"
         repo: "default-repo"  # Default repo (actual repo extracted from each item)
 
     retry:
@@ -613,10 +615,7 @@ orchestrations:
         - jira
         - github
 
-      github:
-        host: "github.com"
-        org: "your-org"
-        repo: "your-repo"
+      # GitHub context inherited from file-level github: block.
 
       timeout_seconds: 600
 
@@ -679,10 +678,7 @@ orchestrations:
         - jira
         - github
 
-      github:
-        host: "github.com"
-        org: "your-org"
-        repo: "your-repo"
+      # GitHub context inherited from file-level github: block.
 
     retry:
       max_attempts: 2
@@ -743,6 +739,7 @@ orchestrations:
 
       # GitHub context with branch pattern
       # -----------------------------------
+      # host, org, and repo are inherited from file-level github: block.
       # The branch field supports template variables that are expanded at runtime.
       # Available variables:
       #   {jira_issue_key}       - e.g., "DS-290" -> creates "feature/DS-290"
@@ -754,9 +751,6 @@ orchestrations:
       #   - create_branch: false -> Fails if branch doesn't exist (default)
       #   - No branch specified  -> Uses repository's default branch
       github:
-        host: "github.com"
-        org: "your-org"
-        repo: "your-repo"
         branch: "feature/{jira_issue_key}"  # Creates e.g., feature/PROJ-123
         create_branch: true                  # Auto-create if doesn't exist
         base_branch: main                    # Create from main branch
@@ -820,11 +814,11 @@ orchestrations:
         - jira
         - github
 
-      # Fork workflow: org points to your fork (personal account)
+      # Fork workflow: overrides file-level org/repo to point to your fork.
       # The agent will clone and work on your fork, creating branches there.
       # You can then create pull requests from your fork to the upstream repo.
+      # host is inherited from file-level github: block.
       github:
-        host: "github.com"
         org: "my-username"           # Your GitHub username (fork owner)
         repo: "project-name"          # Repository name (same as upstream)
         branch: "feature/{jira_issue_key}"
@@ -903,10 +897,9 @@ orchestrations:
       agent_type: claude
       agent_teams: true  # Enable Agent Teams (multi-agent coordination)
 
+      # host, org, and repo are inherited from file-level github: block.
+      # Only branch-specific settings are defined here.
       github:
-        host: "github.com"
-        org: "your-org"
-        repo: "your-repo"
         branch: "feature/{jira_issue_key}"
         create_branch: true
         base_branch: main
