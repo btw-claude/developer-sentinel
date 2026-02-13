@@ -3,6 +3,7 @@
 Tests for the log file discovery API endpoint.
 Tests for the SSE log streaming endpoint.
 Tests for orchestration toggle API endpoints.
+Tests for navigation link regression (DS-1070).
 """
 
 from __future__ import annotations
@@ -2639,3 +2640,56 @@ class TestCsrfTokenRateLimiting:
         # Verify the 31st is blocked
         response = rate_limit_client.get("/api/csrf-token")
         assert response.status_code == 429
+
+
+class TestBaseTemplateNavigation:
+    """Regression tests for navigation links in base.html (DS-1070).
+
+    After the orchestrations page was removed (DS-1067 deleted the template,
+    DS-1068 removed the route handler), the /orchestrations navigation link
+    was removed from base.html. These tests verify the navigation structure
+    to prevent accidental reintroduction of dead links.
+    """
+
+    @pytest.fixture
+    def base_html_content(self) -> str:
+        """Read the base.html template content."""
+        base_html_path = (
+            Path(__file__).parent.parent.parent
+            / "src"
+            / "sentinel"
+            / "dashboard"
+            / "templates"
+            / "base.html"
+        )
+        return base_html_path.read_text()
+
+    def test_no_orchestrations_nav_link(self, base_html_content: str) -> None:
+        """Test that base.html does not contain an /orchestrations navigation link.
+
+        The standalone orchestrations page was removed in DS-1067/DS-1068.
+        The nav link was removed in DS-1066. This test prevents regression.
+        """
+        assert 'href="/orchestrations"' not in base_html_content
+
+    def test_expected_nav_links_present(self, base_html_content: str) -> None:
+        """Test that the expected navigation links are present in base.html.
+
+        Verifies the dashboard, logs, and metrics nav links remain intact
+        after the orchestrations link removal.
+        """
+        assert 'href="/"' in base_html_content
+        assert 'href="/logs"' in base_html_content
+        assert 'href="/metrics"' in base_html_content
+
+    def test_nav_link_count(self, base_html_content: str) -> None:
+        """Test that exactly three navigation links exist in the nav section.
+
+        Ensures no extra or missing nav links after removing /orchestrations.
+        """
+        # Count nav link anchors within the <nav> section
+        nav_start = base_html_content.find("<nav>")
+        nav_end = base_html_content.find("</nav>")
+        nav_section = base_html_content[nav_start:nav_end]
+        link_count = nav_section.count("<a ")
+        assert link_count == 3, f"Expected 3 nav links, found {link_count}"
