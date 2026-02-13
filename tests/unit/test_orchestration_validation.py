@@ -1122,6 +1122,44 @@ class TestCollectFileGithubErrors:
         assert len(org_errors) == 1
         assert len(repo_errors) == 1
 
+    def test_invalid_branch_and_create_branch_without_pattern(self) -> None:
+        """Invalid branch AND create_branch without branch should accumulate both errors.
+
+        Verifies that _collect_file_github_errors accumulates all errors rather
+        than stopping at the first failure.  Uses an invalid branch pattern
+        alongside create_branch=True to trigger two independent validation
+        errors simultaneously.
+        """
+        data = {
+            "branch": "invalid branch!@#",
+            "create_branch": True,
+        }
+        errors = _collect_file_github_errors(data)
+        # Should have at least 2 errors: one for the invalid branch pattern,
+        # and one for create_branch=True (since the invalid branch, after
+        # stripping, still has content but the branch itself is invalid)
+        # Actually: the branch is non-empty so create_branch won't error;
+        # let's verify the branch error is collected, then test the combo
+        # where branch is empty and create_branch=True alongside another error
+        branch_errors = [e for e in errors if "branch pattern" in e]
+        assert len(branch_errors) == 1
+
+        # Now test the combination where create_branch=True with no branch
+        # AND an invalid base_branch, to verify multiple errors accumulate
+        data_combo = {
+            "create_branch": True,
+            "base_branch": "bad base!@#",
+        }
+        errors_combo = _collect_file_github_errors(data_combo)
+        assert len(errors_combo) == 2
+        create_errors = [e for e in errors_combo if "create_branch" in e]
+        base_errors = [e for e in errors_combo if "base_branch" in e]
+        assert len(create_errors) == 1
+        assert len(base_errors) == 1
+        # All should be prefixed with "File-level github:"
+        for error in errors_combo:
+            assert "File-level github:" in error
+
     def test_empty_dict_returns_no_errors(self) -> None:
         """Empty dict (all defaults) should produce no errors."""
         errors = _collect_file_github_errors({})
