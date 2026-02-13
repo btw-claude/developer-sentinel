@@ -2690,8 +2690,8 @@ class TestBaseTemplateNavigation:
         # Count nav link anchors within the <nav> section
         nav_start = base_html_content.find("<nav>")
         nav_end = base_html_content.find("</nav>")
-        assert nav_start != -1, "<nav> tag not found in base.html"
-        assert nav_end != -1, "</nav> tag not found in base.html"
+        assert nav_start != -1, "<nav> tag not found in base_html_content"
+        assert nav_end != -1, "</nav> tag not found in base_html_content"
         nav_section = base_html_content[nav_start:nav_end]
         link_count = nav_section.count("<a ")
         assert link_count == 3, f"Expected 3 nav links, found {link_count}"
