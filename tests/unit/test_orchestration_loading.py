@@ -774,3 +774,257 @@ trigger:
         orchestrations = load_orchestration_file(file_path)
 
         assert orchestrations == []
+
+
+class TestFileGithubLoading:
+    """Tests for file-level github context loading (DS-1074).
+
+    Verifies that file-level github: blocks in orchestration YAML files are
+    correctly parsed, validated, and merged into each step's agent.github
+    during loading via _load_orchestration_file_with_counts().
+    """
+
+    def test_single_step_merge(self, tmp_path: Path) -> None:
+        """File-level github should be merged into a single step's agent.github."""
+        yaml_content = """
+github:
+  host: "github.com"
+  org: "my-org"
+  repo: "my-repo"
+steps:
+  - name: "test-step"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.github is not None
+        assert orch.agent.github.host == "github.com"
+        assert orch.agent.github.org == "my-org"
+        assert orch.agent.github.repo == "my-repo"
+
+    def test_multi_step_merge(self, tmp_path: Path) -> None:
+        """File-level github should be merged into every step."""
+        yaml_content = """
+github:
+  host: "github.com"
+  org: "my-org"
+  repo: "my-repo"
+steps:
+  - name: "step-one"
+    trigger:
+      source: jira
+      tags: ["tag1"]
+    agent:
+      prompt: "First prompt"
+  - name: "step-two"
+    trigger:
+      source: jira
+      tags: ["tag2"]
+    agent:
+      prompt: "Second prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 2
+        for orch in orchestrations:
+            assert orch.agent.github is not None
+            assert orch.agent.github.host == "github.com"
+            assert orch.agent.github.org == "my-org"
+            assert orch.agent.github.repo == "my-repo"
+
+    def test_step_level_override(self, tmp_path: Path) -> None:
+        """Step-level agent.github fields should override file-level values."""
+        yaml_content = """
+github:
+  host: "github.com"
+  org: "file-org"
+  repo: "file-repo"
+steps:
+  - name: "override-step"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      github:
+        org: "step-org"
+        repo: "step-repo"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.github is not None
+        # Step-level values should take precedence
+        assert orch.agent.github.org == "step-org"
+        assert orch.agent.github.repo == "step-repo"
+        # File-level value should fill in the missing host
+        assert orch.agent.github.host == "github.com"
+
+    def test_partial_override(self, tmp_path: Path) -> None:
+        """Step-level should override only specified fields; others inherit from file."""
+        yaml_content = """
+github:
+  host: "github.com"
+  org: "file-org"
+  repo: "file-repo"
+  branch: "feature/{jira_issue_key}"
+  create_branch: true
+  base_branch: "develop"
+steps:
+  - name: "partial-step"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+      github:
+        org: "step-org"
+        base_branch: "main"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        github = orchestrations[0].agent.github
+        assert github is not None
+        # Step-level overrides
+        assert github.org == "step-org"
+        assert github.base_branch == "main"
+        # File-level defaults inherited
+        assert github.host == "github.com"
+        assert github.repo == "file-repo"
+        assert github.branch == "feature/{jira_issue_key}"
+        assert github.create_branch is True
+
+    def test_backward_compat_without_file_github(self, tmp_path: Path) -> None:
+        """Files without file-level github should work unchanged."""
+        yaml_content = """
+steps:
+  - name: "no-github-step"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        assert orchestrations[0].agent.github is None
+
+    def test_invalid_file_level_github_raises_error(self, tmp_path: Path) -> None:
+        """Invalid file-level github should raise OrchestrationError."""
+        yaml_content = """
+github:
+  branch: "invalid branch!@#"
+steps:
+  - name: "test-step"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        with pytest.raises(OrchestrationError, match="Invalid branch pattern"):
+            load_orchestration_file(file_path)
+
+    def test_both_steps_and_orchestrations_keys(self, tmp_path: Path) -> None:
+        """File-level github should work with both 'steps' and 'orchestrations' keys."""
+        yaml_content = """
+github:
+  host: "github.com"
+  org: "my-org"
+  repo: "my-repo"
+steps: []
+orchestrations:
+  - name: "should-not-load"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        # steps: [] takes priority; orchestrations key is ignored (DS-899)
+        orchestrations = load_orchestration_file(file_path)
+        assert orchestrations == []
+
+    def test_non_dict_file_github_ignored(self, tmp_path: Path) -> None:
+        """Non-dict file-level github values should be silently ignored."""
+        yaml_content = """
+github: "not-a-dict"
+steps:
+  - name: "test-step"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        # github should not be set since file-level was not a dict
+        assert orchestrations[0].agent.github is None
+
+    def test_combined_with_file_level_trigger(self, tmp_path: Path) -> None:
+        """File-level github should work alongside file-level trigger."""
+        yaml_content = """
+trigger:
+  source: jira
+  project: "TEST"
+github:
+  host: "github.com"
+  org: "my-org"
+  repo: "my-repo"
+steps:
+  - name: "combined-step"
+    trigger:
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        # File-level trigger should be merged
+        assert orch.trigger.source == "jira"
+        assert orch.trigger.project == "TEST"
+        # File-level github should be merged
+        assert orch.agent.github is not None
+        assert orch.agent.github.host == "github.com"
+        assert orch.agent.github.org == "my-org"
+        assert orch.agent.github.repo == "my-repo"

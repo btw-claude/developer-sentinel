@@ -4,6 +4,7 @@ This module contains tests for:
 - Orchestration enabled/disabled functionality
 - max_concurrent field validation
 - timeout_seconds field validation (int, float, NaN, inf, bool edge cases)
+- File-level github error collection (DS-1074)
 """
 
 import math
@@ -15,6 +16,7 @@ from sentinel.orchestration import (
     AgentConfig,
     OrchestrationError,
     TriggerConfig,
+    _collect_file_github_errors,
     _validate_timeout_seconds,
     get_effective_timeout,
     load_orchestration_file,
@@ -788,3 +790,34 @@ orchestrations:
         result = get_effective_timeout(config)
         # AGENT_TEAMS_TIMEOUT_MULTIPLIER is 3; 600.5 * 3 = 1801.5 > 900 min
         assert result == 600.5 * 3
+
+
+class TestCollectFileGithubErrors:
+    """Tests for _collect_file_github_errors() (DS-1074).
+
+    Verifies that the error-collecting variant of _parse_github_context correctly
+    collects all validation errors from file-level github configuration and
+    prefixes them with 'File-level github:' for clarity.
+    """
+
+    def test_valid_config_returns_empty(self) -> None:
+        """Valid file-level github config should produce no errors."""
+        data = {"host": "github.com", "org": "my-org", "repo": "my-repo"}
+        errors = _collect_file_github_errors(data)
+        assert errors == []
+
+    def test_invalid_branch_returns_error(self) -> None:
+        """Invalid branch pattern should produce a prefixed error."""
+        data = {"branch": "invalid branch!@#"}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 1
+        assert "File-level github:" in errors[0]
+        assert "Invalid branch pattern" in errors[0]
+
+    def test_create_branch_without_branch_returns_error(self) -> None:
+        """create_branch=True without branch pattern should produce an error."""
+        data = {"create_branch": True}
+        errors = _collect_file_github_errors(data)
+        assert len(errors) == 1
+        assert "File-level github:" in errors[0]
+        assert "create_branch is True" in errors[0]

@@ -22,6 +22,7 @@ from sentinel.orchestration import (
     Outcome,
     RetryConfig,
     TriggerConfig,
+    _merge_file_github_into_step,
     _validate_branch_name,
     _validate_string_field,
     load_orchestration_file,
@@ -1708,3 +1709,129 @@ class TestValidateStringField:
     def test_single_character_string_accepted(self) -> None:
         """A single non-whitespace character should be accepted."""
         _validate_string_field("x", "github.org")  # Should not raise
+
+
+class TestMergeFileGithubIntoStep:
+    """Tests for _merge_file_github_into_step() (DS-1074).
+
+    Verifies that file-level GitHub context fields are correctly merged into
+    each step's agent.github dict, with step-level values taking precedence.
+    Mirrors the behavior of _merge_file_trigger_into_step() (DS-896).
+    """
+
+    def test_step_with_no_agent(self) -> None:
+        """Should create agent.github from file-level github when step has no agent."""
+        file_github = {"host": "github.com", "org": "my-org", "repo": "my-repo"}
+        step_data: dict = {"name": "test-step", "trigger": {"source": "jira"}}
+
+        _merge_file_github_into_step(file_github, step_data)
+
+        assert "agent" in step_data
+        assert step_data["agent"]["github"] == {
+            "host": "github.com",
+            "org": "my-org",
+            "repo": "my-repo",
+        }
+
+    def test_step_with_agent_but_no_github(self) -> None:
+        """Should add full file-level github when step has agent but no github key."""
+        file_github = {"host": "github.com", "org": "my-org", "repo": "my-repo"}
+        step_data: dict = {
+            "name": "test-step",
+            "agent": {"prompt": "Test prompt"},
+        }
+
+        _merge_file_github_into_step(file_github, step_data)
+
+        assert step_data["agent"]["github"] == {
+            "host": "github.com",
+            "org": "my-org",
+            "repo": "my-repo",
+        }
+        # Original agent fields should be preserved
+        assert step_data["agent"]["prompt"] == "Test prompt"
+
+    def test_step_level_override(self) -> None:
+        """Step-level agent.github fields should take precedence over file-level."""
+        file_github = {"host": "github.com", "org": "file-org", "repo": "file-repo"}
+        step_data: dict = {
+            "name": "test-step",
+            "agent": {
+                "prompt": "Test prompt",
+                "github": {"org": "step-org", "repo": "step-repo"},
+            },
+        }
+
+        _merge_file_github_into_step(file_github, step_data)
+
+        # Step-level values should be preserved
+        assert step_data["agent"]["github"]["org"] == "step-org"
+        assert step_data["agent"]["github"]["repo"] == "step-repo"
+        # File-level values should fill in missing fields
+        assert step_data["agent"]["github"]["host"] == "github.com"
+
+    def test_partial_override_merge(self) -> None:
+        """File-level fields should fill gaps in step-level github config."""
+        file_github = {
+            "host": "github.com",
+            "org": "file-org",
+            "repo": "file-repo",
+            "branch": "feature/{jira_issue_key}",
+            "create_branch": True,
+            "base_branch": "develop",
+        }
+        step_data: dict = {
+            "name": "test-step",
+            "agent": {
+                "prompt": "Test prompt",
+                "github": {"org": "step-org", "base_branch": "main"},
+            },
+        }
+
+        _merge_file_github_into_step(file_github, step_data)
+
+        github = step_data["agent"]["github"]
+        # Step-level overrides preserved
+        assert github["org"] == "step-org"
+        assert github["base_branch"] == "main"
+        # File-level defaults filled in
+        assert github["host"] == "github.com"
+        assert github["repo"] == "file-repo"
+        assert github["branch"] == "feature/{jira_issue_key}"
+        assert github["create_branch"] is True
+
+    def test_non_dict_agent_handling(self) -> None:
+        """Non-dict agent value should be replaced with empty dict and github added."""
+        file_github = {"host": "github.com", "org": "my-org", "repo": "my-repo"}
+        step_data: dict = {
+            "name": "test-step",
+            "agent": "not-a-dict",
+        }
+
+        _merge_file_github_into_step(file_github, step_data)
+
+        assert isinstance(step_data["agent"], dict)
+        assert step_data["agent"]["github"] == {
+            "host": "github.com",
+            "org": "my-org",
+            "repo": "my-repo",
+        }
+
+    def test_non_dict_github_handling(self) -> None:
+        """Non-dict github value should be replaced with empty dict and merged."""
+        file_github = {"host": "github.com", "org": "my-org", "repo": "my-repo"}
+        step_data: dict = {
+            "name": "test-step",
+            "agent": {
+                "prompt": "Test prompt",
+                "github": "not-a-dict",
+            },
+        }
+
+        _merge_file_github_into_step(file_github, step_data)
+
+        github = step_data["agent"]["github"]
+        assert isinstance(github, dict)
+        assert github["host"] == "github.com"
+        assert github["org"] == "my-org"
+        assert github["repo"] == "my-repo"
