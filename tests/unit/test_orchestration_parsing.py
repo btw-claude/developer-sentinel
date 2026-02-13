@@ -1732,6 +1732,8 @@ class TestMergeFileGithubIntoStep:
             "org": "my-org",
             "repo": "my-repo",
         }
+        # Verify the agent dict only contains the github key (no unexpected side effects)
+        assert set(step_data["agent"].keys()) == {"github"}
 
     def test_step_with_agent_but_no_github(self) -> None:
         """Should add full file-level github when step has agent but no github key."""

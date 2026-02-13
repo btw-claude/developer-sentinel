@@ -975,6 +975,39 @@ orchestrations:
         orchestrations = load_orchestration_file(file_path)
         assert orchestrations == []
 
+    def test_orchestrations_key_only_with_file_github(self, tmp_path: Path) -> None:
+        """File-level github should merge through the 'orchestrations' loading path.
+
+        Companion to test_both_steps_and_orchestrations_keys which uses 'steps'.
+        Verifies that when only the 'orchestrations' key is present (no 'steps'
+        key), file-level github is still correctly merged into each
+        orchestration's agent.github.
+        """
+        yaml_content = """
+github:
+  host: "github.com"
+  org: "my-org"
+  repo: "my-repo"
+orchestrations:
+  - name: "orch-step"
+    trigger:
+      source: jira
+      tags: ["test"]
+    agent:
+      prompt: "Test prompt"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        orchestrations = load_orchestration_file(file_path)
+
+        assert len(orchestrations) == 1
+        orch = orchestrations[0]
+        assert orch.agent.github is not None
+        assert orch.agent.github.host == "github.com"
+        assert orch.agent.github.org == "my-org"
+        assert orch.agent.github.repo == "my-repo"
+
     def test_non_dict_file_github_ignored(self, tmp_path: Path) -> None:
         """Non-dict file-level github values should be silently ignored."""
         yaml_content = """
