@@ -975,6 +975,7 @@ def _validate_github_string_field(
 def _validate_github_host(host: Any) -> str | None:
     """Validate the github host field.
 
+    Empty strings are rejected (default behavior).
     See :func:`_validate_github_string_field` for details.
     """
     return _validate_github_string_field(host, "github.host")
