@@ -45,6 +45,8 @@ var UI_MESSAGES = Object.freeze({
 
         // Edit operations (orchestration-forms.js)
         EDIT_SUCCESS: function(name) { return 'Step \'' + name + '\' updated successfully'; },
+        EDIT_CSRF_REFRESH_FAILED: 'CSRF token refresh failed. Please reload the page.',
+        EDIT_CSRF_VALIDATION_FAILED: 'CSRF token validation failed. Please reload the page.',
         EDIT_FAILED: 'Failed to update step',
         EDIT_NETWORK_ERROR: 'Network error while updating step',
 
