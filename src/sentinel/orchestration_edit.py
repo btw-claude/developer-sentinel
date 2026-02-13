@@ -45,8 +45,6 @@ import os
 import re
 from typing import Any
 
-from pydantic import BaseModel
-
 from sentinel.dashboard.models import (
     FileGitHubEditRequest,
     FileTriggerEditRequest,
@@ -287,7 +285,9 @@ def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
     return updates
 
 
-def _build_file_level_updates(request: BaseModel) -> dict[str, Any]:
+def _build_file_level_updates(
+    request: FileTriggerEditRequest | FileGitHubEditRequest,
+) -> dict[str, Any]:
     """Convert a file-level Pydantic edit request to a YAML-compatible update dict.
 
     Generic helper for file-level block types (trigger, github, and future
@@ -299,8 +299,8 @@ def _build_file_level_updates(request: BaseModel) -> dict[str, Any]:
     implementation (DS-1081).
 
     Args:
-        request: A Pydantic BaseModel instance (e.g. FileTriggerEditRequest,
-            FileGitHubEditRequest) representing the file-level edit request.
+        request: A FileTriggerEditRequest or FileGitHubEditRequest instance
+            representing the file-level edit request.
 
     Returns:
         A dictionary with only non-None fields for the file-level update.
