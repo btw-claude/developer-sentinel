@@ -4,6 +4,10 @@
 # This file demonstrates the complete orchestration configuration schema.
 # Copy and modify this file to create your own orchestrations.
 #
+# Note: This example file is the only orchestration file tracked in the
+# repository. Production orchestration files (e.g., slack-agent.yaml,
+# developer-sentinel.yaml) are deployment-specific and not checked in.
+#
 # Enable/Disable Flags:
 # ---------------------
 # Orchestrations can be disabled at two levels:
@@ -81,6 +85,15 @@
 #     - name: "disabled-orchestration"
 #       enabled: false  # This orchestration will be skipped
 #       ...
+#
+# File-level GitHub Context:
+# --------------------------
+# You can define a file-level github: block (host, org, repo) at the root
+# of the YAML file to set default GitHub context for all orchestrations.
+# This eliminates duplication when most orchestrations target the same
+# repository. Individual orchestrations can override any of these values
+# in their agent.github block. See the github: block below the header
+# for an example.
 #
 # Outcome-based Tags:
 # -------------------
