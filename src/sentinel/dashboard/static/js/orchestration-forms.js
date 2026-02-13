@@ -85,8 +85,12 @@ function splitList(value, separator) {
  * Submit an orchestration edit form via the PUT API endpoint.
  *
  * Collects form fields, builds nested JSON matching OrchestrationEditRequest,
- * and submits via fetch. Shows toast notification on result and reloads
- * the detail view on success.
+ * and submits via fetch with a fresh CSRF token. Shows toast notification
+ * on result and reloads the detail view on success.
+ *
+ * Uses the same CSRF pre-fetch pattern as submitOrchestrationCreate,
+ * submitFileGitHubEdit, and submitFileTriggerEdit for consistency and
+ * improved robustness (DS-1090).
  *
  * @param {HTMLFormElement} formElement - The form element to collect data from
  * @param {string} name - The orchestration name to update
@@ -202,36 +206,68 @@ function submitOrchestrationEdit(formElement, name) {
     if (outcomes.length > 0) body.outcomes = outcomes;
     if (Object.keys(lifecycle).length > 0) body.lifecycle = lifecycle;
 
-    // Submit via fetch for proper response handling
-    fetch('/api/orchestrations/' + encodeURIComponent(name), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    }).then(function(response) {
-        return response.json().then(function(data) {
-            return { status: response.status, data: data };
-        });
-    }).then(function(result) {
-        if (result.status >= 200 && result.status < 300 && result.data.success) {
-            showToast('success', UI_MESSAGES.TOAST.EDIT_SUCCESS(name));
-            // Reload the detail view to show updated values
-            var detailContainer = formElement.closest('.orchestration-detail');
-            if (detailContainer) {
-                htmx.ajax('GET', '/partials/orchestration_detail/' + encodeURIComponent(name), {
-                    target: detailContainer,
-                    swap: 'outerHTML'
+    // Read CSRF token from hidden input
+    var csrfToken = document.getElementById('csrf_token');
+
+    /**
+     * Internal helper to perform the edit PUT request.
+     *
+     * Includes 403 CSRF retry logic for robustness parity with
+     * submitOrchestrationCreate (DS-1090).
+     *
+     * @param {string} token - CSRF token to include in the request header
+     * @param {boolean} isRetry - Whether this is a retry after token refresh
+     */
+    function doEdit(token, isRetry) {
+        fetch('/api/orchestrations/' + encodeURIComponent(name), {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': token
+            },
+            body: JSON.stringify(body)
+        }).then(function(response) {
+            return response.json().then(function(data) {
+                return { status: response.status, data: data };
+            });
+        }).then(function(result) {
+            if (result.status >= 200 && result.status < 300 && result.data.success) {
+                showToast('success', UI_MESSAGES.TOAST.EDIT_SUCCESS(name));
+                // Reload the detail view to show updated values
+                var detailContainer = formElement.closest('.orchestration-detail');
+                if (detailContainer) {
+                    htmx.ajax('GET', '/partials/orchestration_detail/' + encodeURIComponent(name), {
+                        target: detailContainer,
+                        swap: 'outerHTML'
+                    });
+                }
+            } else if (result.status === 403 && !isRetry) {
+                // CSRF token invalid (e.g., page refresh) - auto-refresh and retry (DS-1090)
+                return refreshCsrfToken().then(function(newToken) {
+                    if (newToken) {
+                        doEdit(newToken, true);
+                    } else {
+                        showToast('error', UI_MESSAGES.TOAST.EDIT_CSRF_REFRESH_FAILED);
+                    }
                 });
+            } else if (result.status === 403) {
+                showToast('error', UI_MESSAGES.TOAST.EDIT_CSRF_VALIDATION_FAILED);
+            } else if (result.status === 422) {
+                showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
+            } else if (result.status === 429) {
+                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
+            } else {
+                showToast('error', result.data.detail || UI_MESSAGES.TOAST.EDIT_FAILED);
             }
-        } else if (result.status === 422) {
-            showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
-        } else if (result.status === 429) {
-            showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
-        } else {
-            showToast('error', result.data.detail || UI_MESSAGES.TOAST.EDIT_FAILED);
-        }
-    }).catch(function(error) {
-        console.error(UI_MESSAGES.DEBUG.EDIT_FETCH_ERROR, error);
-        showToast('error', UI_MESSAGES.TOAST.EDIT_NETWORK_ERROR);
+        }).catch(function(error) {
+            console.error(UI_MESSAGES.DEBUG.EDIT_FETCH_ERROR, error);
+            showToast('error', UI_MESSAGES.TOAST.EDIT_NETWORK_ERROR);
+        });
+    }
+
+    // Fetch a fresh CSRF token first, then submit (DS-1090)
+    refreshCsrfToken().then(function(freshToken) {
+        doEdit(freshToken || (csrfToken ? csrfToken.value : ''), false);
     });
 }
 
