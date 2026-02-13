@@ -2065,7 +2065,7 @@ steps:
 class TestBuildFileGitHubUpdates:
     """Tests for _build_file_github_updates helper (DS-1081)."""
 
-    def test_build_file_github_updates_all_fields(self, tmp_path: Path) -> None:
+    def test_build_file_github_updates_all_fields(self) -> None:
         """Should build update dict with all non-None fields."""
         from sentinel.dashboard.models import FileGitHubEditRequest
         from sentinel.orchestration_edit import _build_file_github_updates
@@ -2088,7 +2088,7 @@ class TestBuildFileGitHubUpdates:
             "base_branch": "develop",
         }
 
-    def test_build_file_github_updates_partial(self, tmp_path: Path) -> None:
+    def test_build_file_github_updates_partial(self) -> None:
         """Should only include non-None fields."""
         from sentinel.dashboard.models import FileGitHubEditRequest
         from sentinel.orchestration_edit import _build_file_github_updates
@@ -2097,7 +2097,7 @@ class TestBuildFileGitHubUpdates:
         result = _build_file_github_updates(request)
         assert result == {"org": "my-org"}
 
-    def test_build_file_github_updates_empty(self, tmp_path: Path) -> None:
+    def test_build_file_github_updates_empty(self) -> None:
         """Should return empty dict for empty request."""
         from sentinel.dashboard.models import FileGitHubEditRequest
         from sentinel.orchestration_edit import _build_file_github_updates
