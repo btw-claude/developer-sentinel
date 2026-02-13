@@ -600,8 +600,8 @@ class OrchestrationYamlWriter:
         """Read a single orchestration's data from a YAML file.
 
         Returns the orchestration data as a plain dict for use in validation.
-        Merges file-level trigger into the result (DS-896).
-        Does not modify the file.
+        Merges file-level trigger (DS-896) and file-level github (DS-1076)
+        into the result.  Does not modify the file.
 
         Note: This method reads outside of a file lock. The write lock in
         update_orchestration() provides the actual safety guarantee. In practice,
@@ -644,6 +644,19 @@ class OrchestrationYamlWriter:
                     for key, value in ft.items():
                         if key not in result["trigger"]:
                             result["trigger"][key] = value
+
+        # Merge file-level github into result (DS-1076)
+        if result is not None:
+            file_github = data.get("github")
+            if file_github and isinstance(file_github, dict):
+                fg = self._to_plain_dict(file_github)
+                agent = result.setdefault("agent", {})
+                if "github" not in agent:
+                    agent["github"] = dict(fg)
+                else:
+                    for key, value in fg.items():
+                        if key not in agent["github"]:
+                            agent["github"][key] = value
 
         return result
 
@@ -707,6 +720,76 @@ class OrchestrationYamlWriter:
 
             logger.info(
                 "Updated file-level trigger in %s",
+                file_path,
+            )
+            return True
+
+    def read_file_github(self, file_path: Path) -> dict[str, Any] | None:
+        """Read file-level GitHub context from a YAML file.
+
+        Returns the file-level github data as a plain dict, or None if
+        the file doesn't have a file-level github block.
+
+        Mirrors ``read_file_trigger()`` for file-level GitHub context
+        (DS-1076).
+
+        Args:
+            file_path: Path to the orchestration YAML file.
+
+        Returns:
+            A plain dict of the file-level github context, or None if not found.
+
+        Raises:
+            OrchestrationYamlWriterError: If there's an error reading or parsing
+                the file.
+        """
+        data = self._load_yaml(file_path)
+        github = data.get("github")
+        if github and isinstance(github, dict):
+            result: dict[str, Any] = self._to_plain_dict(github)
+            return result
+        return None
+
+    def update_file_github(self, file_path: Path, updates: dict[str, Any]) -> bool:
+        """Update file-level GitHub context block with locking.
+
+        Deep-merges the provided updates into the existing file-level github.
+        Creates the github block if it doesn't exist.
+
+        Mirrors ``update_file_trigger()`` for file-level GitHub context
+        (DS-1076).
+
+        Args:
+            file_path: Path to the orchestration YAML file.
+            updates: Dictionary of updates to merge into the file-level github.
+
+        Returns:
+            True if the update was successful.
+
+        Raises:
+            OrchestrationYamlWriterError: If there's an error reading, parsing,
+                or writing the file.
+            FileLockTimeoutError: If the file lock cannot be acquired within
+                the configured timeout.
+        """
+        if not updates:
+            return True
+
+        with _file_lock(
+            file_path,
+            max_wait_seconds=self._lock_timeout_seconds,
+            cleanup_lock_file=self._cleanup_lock_files,
+            retry_interval_seconds=self._retry_interval_seconds,
+        ):
+            data = self._load_yaml(file_path)
+            if "github" not in data:
+                data["github"] = CommentedMap()
+
+            self._deep_update_commented_map(data["github"], updates)
+            self._save_yaml(file_path, data)
+
+            logger.info(
+                "Updated file-level github in %s",
                 file_path,
             )
             return True
@@ -887,6 +970,7 @@ class OrchestrationYamlWriter:
         orchestration_data: dict[str, Any],
         orchestrations_dir: Path,
         file_trigger: dict[str, Any] | None = None,
+        file_github: dict[str, Any] | None = None,
     ) -> bool:
         """Add a new orchestration to a YAML file.
 
@@ -896,8 +980,9 @@ class OrchestrationYamlWriter:
         directory to prevent path traversal attacks.
 
         When creating a new file:
-        - If file_trigger is provided, writes it at top level and uses 'steps' key
-        - If no file_trigger, uses 'orchestrations' key (legacy format)
+        - If file_trigger or file_github is provided, writes them at top level
+          and uses 'steps' key
+        - If neither is provided, uses 'orchestrations' key (legacy format)
 
         When appending to an existing file:
         - Uses whichever key already exists in the file
@@ -907,6 +992,7 @@ class OrchestrationYamlWriter:
             orchestration_data: Dictionary containing the orchestration configuration.
             orchestrations_dir: Base directory for orchestration files (for validation).
             file_trigger: Optional file-level trigger dict (DS-896).
+            file_github: Optional file-level GitHub context dict (DS-1076).
 
         Returns:
             True if the orchestration was successfully added.
@@ -926,6 +1012,8 @@ class OrchestrationYamlWriter:
                 f"'{orchestrations_dir}'"
             ) from e
 
+        has_file_level = bool(file_trigger or file_github)
+
         with _file_lock(
             file_path,
             max_wait_seconds=self._lock_timeout_seconds,
@@ -942,8 +1030,8 @@ class OrchestrationYamlWriter:
                 elif "orchestrations" in data:
                     list_key = "orchestrations"
                 else:
-                    # Neither key exists, use the appropriate one based on file_trigger
-                    list_key = "steps" if file_trigger else "orchestrations"
+                    # Neither key exists, use the appropriate one based on file-level blocks
+                    list_key = "steps" if has_file_level else "orchestrations"
                     data[list_key] = []
 
                 # Ensure the list is actually a list
@@ -957,9 +1045,12 @@ class OrchestrationYamlWriter:
                 # Create new file with proper structure
                 data = CommentedMap()
 
-                if file_trigger:
-                    # New format: file-level trigger + steps
-                    data["trigger"] = CommentedMap(file_trigger)
+                if has_file_level:
+                    # New format: file-level blocks + steps
+                    if file_trigger:
+                        data["trigger"] = CommentedMap(file_trigger)
+                    if file_github:
+                        data["github"] = CommentedMap(file_github)
                     data["steps"] = [orchestration_data]
                 else:
                     # Legacy format: orchestrations only

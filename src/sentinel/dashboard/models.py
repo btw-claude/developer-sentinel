@@ -6,7 +6,7 @@ module grew past ~1750 lines. Models are grouped by feature:
 - Toggle models: ToggleRequest, ToggleResponse, BulkToggleRequest, BulkToggleResponse
 - Edit models: TriggerEditRequest, GitHubContextEditRequest, AgentEditRequest,
   RetryEditRequest, OutcomeEditRequest, LifecycleEditRequest, OrchestrationEditRequest,
-  OrchestrationEditResponse
+  OrchestrationEditResponse, FileGitHubEditRequest, FileGitHubEditResponse (DS-1076)
 - Delete models: DeleteResponse
 - Create models: OrchestrationCreateRequest, OrchestrationCreateResponse
 - Detail models (DS-754): GitHubContextDetailResponse, TriggerDetailResponse,
@@ -31,6 +31,7 @@ __all__: list[str] = [
     "BulkToggleResponse",
     # Edit models
     "FileTriggerEditRequest",
+    "FileGitHubEditRequest",
     "TriggerEditRequest",
     "GitHubContextEditRequest",
     "AgentEditRequest",
@@ -40,6 +41,7 @@ __all__: list[str] = [
     "OrchestrationEditRequest",
     "OrchestrationEditResponse",
     "FileTriggerEditResponse",
+    "FileGitHubEditResponse",
     # Delete models
     "DeleteResponse",
     # Create models
@@ -98,6 +100,22 @@ class FileTriggerEditRequest(BaseModel):
     project_number: int | None = None
     project_scope: Literal["org", "user"] | None = None
     project_owner: str | None = None
+
+
+class FileGitHubEditRequest(BaseModel):
+    """Request model for editing file-level GitHub context configuration.
+
+    File-level GitHub context contains repository-scoping fields that apply
+    to all steps in the file as defaults (DS-1076).  Step-level
+    ``agent.github`` fields take precedence over file-level values.
+    """
+
+    host: str | None = None
+    org: str | None = None
+    repo: str | None = None
+    branch: str | None = None
+    create_branch: bool | None = None
+    base_branch: str | None = None
 
 
 class TriggerEditRequest(BaseModel):
@@ -195,6 +213,13 @@ class FileTriggerEditResponse(BaseModel):
     errors: list[str] = []
 
 
+class FileGitHubEditResponse(BaseModel):
+    """Response model for file-level GitHub context edit (DS-1076)."""
+
+    success: bool
+    errors: list[str] = []
+
+
 class DeleteResponse(BaseModel):
     """Response model for orchestration deletion."""
 
@@ -210,6 +235,7 @@ class OrchestrationCreateRequest(BaseModel):
     enabled: bool | None = None
     max_concurrent: int | None = None
     file_trigger: FileTriggerEditRequest | None = None  # DS-896
+    file_github: FileGitHubEditRequest | None = None  # DS-1076
     trigger: TriggerEditRequest | None = None
     agent: AgentEditRequest | None = None
     retry: RetryEditRequest | None = None

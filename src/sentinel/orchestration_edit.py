@@ -43,7 +43,11 @@ import os
 import re
 from typing import Any
 
-from sentinel.dashboard.models import FileTriggerEditRequest, OrchestrationEditRequest
+from sentinel.dashboard.models import (
+    FileGitHubEditRequest,
+    FileTriggerEditRequest,
+    OrchestrationEditRequest,
+)
 from sentinel.orchestration import (
     OrchestrationError,
     _collect_agent_errors,
@@ -287,6 +291,21 @@ def _build_file_trigger_updates(request: FileTriggerEditRequest) -> dict[str, An
 
     Returns:
         A dictionary with only non-None fields for file-level trigger update.
+    """
+    return request.model_dump(exclude_none=True)
+
+
+def _build_file_github_updates(request: FileGitHubEditRequest) -> dict[str, Any]:
+    """Convert a FileGitHubEditRequest to a YAML-compatible update dict.
+
+    Mirrors ``_build_file_trigger_updates()`` for file-level GitHub context
+    (DS-1076).
+
+    Args:
+        request: The file-level GitHub context edit request.
+
+    Returns:
+        A dictionary with only non-None fields for file-level GitHub update.
     """
     return request.model_dump(exclude_none=True)
 
