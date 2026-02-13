@@ -30,7 +30,7 @@
 #
 # Both default to true if not specified.
 #
-# Each orchestration defines:
+# Orchestration Structure:
 #   - name: Unique identifier for the orchestration
 #   - enabled: Whether this orchestration is active (optional, defaults to true)
 #   - trigger: What Jira issues to watch for
