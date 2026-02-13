@@ -437,3 +437,195 @@ function submitOrchestrationCreate(formElement) {
 
     doCreate(csrfToken ? csrfToken.value : '', false);
 }
+
+/**
+ * Submit the file-level GitHub context edit form via the PUT API endpoint.
+ *
+ * Collects form fields from the file-level GitHub edit form, builds a JSON
+ * payload matching FileGitHubEditRequest, and submits via fetch with a fresh
+ * CSRF token. Shows toast notification on result and reloads the edit form
+ * partial on success (DS-1082).
+ *
+ * @param {string} filePath - The relative file path for the orchestration file
+ * @param {HTMLFormElement} formElement - The form element to collect data from
+ */
+function submitFileGitHubEdit(filePath, formElement) {
+    if (!formElement) {
+        console.error(UI_MESSAGES.DEBUG.FILE_GITHUB_EDIT_FORM_NULL);
+        return;
+    }
+
+    // Build the request body from form fields
+    var body = {};
+    var host = formElement.querySelector('#file_github_host');
+    if (host && host.value.trim()) body.host = host.value.trim();
+    var org = formElement.querySelector('#file_github_org');
+    if (org && org.value.trim()) body.org = org.value.trim();
+    var repo = formElement.querySelector('#file_github_repo');
+    if (repo && repo.value.trim()) body.repo = repo.value.trim();
+    var branch = formElement.querySelector('#file_github_branch');
+    if (branch && branch.value.trim()) body.branch = branch.value.trim();
+    var createBranch = formElement.querySelector('#file_github_create_branch');
+    if (createBranch) body.create_branch = createBranch.checked;
+    var baseBranch = formElement.querySelector('#file_github_base_branch');
+    if (baseBranch && baseBranch.value.trim()) body.base_branch = baseBranch.value.trim();
+
+    // Fetch a fresh CSRF token and submit
+    refreshCsrfToken().then(function(token) {
+        if (!token) {
+            showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED);
+            return;
+        }
+        return fetch('/api/orchestrations/files/' + encodeURIComponent(filePath) + '/github', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': token
+            },
+            body: JSON.stringify(body)
+        });
+    }).then(function(response) {
+        if (!response) return;
+        return response.json().then(function(data) {
+            return { status: response.status, data: data };
+        });
+    }).then(function(result) {
+        if (!result) return;
+        if (result.status >= 200 && result.status < 300 && result.data.success) {
+            showToast('success', UI_MESSAGES.TOAST.FILE_GITHUB_EDIT_SUCCESS);
+            // Reload the edit form to show updated values
+            var detailContainer = formElement.closest('.orchestration-detail');
+            if (detailContainer) {
+                htmx.ajax('GET', '/partials/file_github_edit/' + encodeURIComponent(filePath), {
+                    target: detailContainer,
+                    swap: 'outerHTML'
+                });
+            }
+        } else if (result.status === 422) {
+            showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
+        } else if (result.status === 429) {
+            showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
+        } else {
+            showToast('error', result.data.detail || UI_MESSAGES.TOAST.FILE_GITHUB_EDIT_FAILED);
+        }
+    }).catch(function(error) {
+        console.error(UI_MESSAGES.DEBUG.FILE_GITHUB_EDIT_FETCH_ERROR, error);
+        showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR);
+    });
+}
+
+/**
+ * Cancel the file-level GitHub context edit form and reload the view.
+ *
+ * Reloads the file-level GitHub edit partial via HTMX to discard unsaved
+ * changes and restore the original values (DS-1082).
+ *
+ * @param {string} filePath - The relative file path for the orchestration file
+ */
+function cancelFileGitHubEdit(filePath) {
+    var form = document.getElementById('file-github-edit-form');
+    if (form) {
+        var detailContainer = form.closest('.orchestration-detail');
+        if (detailContainer) {
+            htmx.ajax('GET', '/partials/file_github_edit/' + encodeURIComponent(filePath), {
+                target: detailContainer,
+                swap: 'outerHTML'
+            });
+        }
+    }
+}
+
+/**
+ * Submit the file-level trigger edit form via the PUT API endpoint.
+ *
+ * Collects form fields from the file-level trigger edit form, builds a JSON
+ * payload matching FileTriggerEditRequest, and submits via fetch with a fresh
+ * CSRF token. Shows toast notification on result and reloads the edit form
+ * partial on success (DS-1082).
+ *
+ * @param {string} filePath - The relative file path for the orchestration file
+ * @param {HTMLFormElement} formElement - The form element to collect data from
+ */
+function submitFileTriggerEdit(filePath, formElement) {
+    if (!formElement) {
+        console.error(UI_MESSAGES.DEBUG.FILE_TRIGGER_EDIT_FORM_NULL);
+        return;
+    }
+
+    // Build the request body from form fields
+    var body = {};
+    var source = formElement.querySelector('input[name="file_trigger_source"]:checked');
+    if (source) body.source = source.value;
+    var project = formElement.querySelector('#file_trigger_project');
+    if (project && project.value.trim()) body.project = project.value.trim();
+    var projectNumber = formElement.querySelector('#file_trigger_project_number');
+    if (projectNumber && projectNumber.value) body.project_number = parseInt(projectNumber.value, 10);
+    var projectScope = formElement.querySelector('input[name="file_trigger_project_scope"]:checked');
+    if (projectScope) body.project_scope = projectScope.value;
+    var projectOwner = formElement.querySelector('#file_trigger_project_owner');
+    if (projectOwner && projectOwner.value.trim()) body.project_owner = projectOwner.value.trim();
+
+    // Fetch a fresh CSRF token and submit
+    refreshCsrfToken().then(function(token) {
+        if (!token) {
+            showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED);
+            return;
+        }
+        return fetch('/api/orchestrations/files/' + encodeURIComponent(filePath) + '/trigger', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': token
+            },
+            body: JSON.stringify(body)
+        });
+    }).then(function(response) {
+        if (!response) return;
+        return response.json().then(function(data) {
+            return { status: response.status, data: data };
+        });
+    }).then(function(result) {
+        if (!result) return;
+        if (result.status >= 200 && result.status < 300 && result.data.success) {
+            showToast('success', UI_MESSAGES.TOAST.FILE_TRIGGER_EDIT_SUCCESS);
+            // Reload the edit form to show updated values
+            var detailContainer = formElement.closest('.orchestration-detail');
+            if (detailContainer) {
+                htmx.ajax('GET', '/partials/file_trigger_edit/' + encodeURIComponent(filePath), {
+                    target: detailContainer,
+                    swap: 'outerHTML'
+                });
+            }
+        } else if (result.status === 422) {
+            showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
+        } else if (result.status === 429) {
+            showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
+        } else {
+            showToast('error', result.data.detail || UI_MESSAGES.TOAST.FILE_TRIGGER_EDIT_FAILED);
+        }
+    }).catch(function(error) {
+        console.error(UI_MESSAGES.DEBUG.FILE_TRIGGER_EDIT_FETCH_ERROR, error);
+        showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR);
+    });
+}
+
+/**
+ * Cancel the file-level trigger edit form and reload the view.
+ *
+ * Reloads the file-level trigger edit partial via HTMX to discard unsaved
+ * changes and restore the original values (DS-1082).
+ *
+ * @param {string} filePath - The relative file path for the orchestration file
+ */
+function cancelFileTriggerEdit(filePath) {
+    var form = document.getElementById('file-trigger-edit-form');
+    if (form) {
+        var detailContainer = form.closest('.orchestration-detail');
+        if (detailContainer) {
+            htmx.ajax('GET', '/partials/file_trigger_edit/' + encodeURIComponent(filePath), {
+                target: detailContainer,
+                swap: 'outerHTML'
+            });
+        }
+    }
+}

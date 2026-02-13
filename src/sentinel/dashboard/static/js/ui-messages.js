@@ -48,6 +48,14 @@ var UI_MESSAGES = Object.freeze({
         EDIT_FAILED: 'Failed to update step',
         EDIT_NETWORK_ERROR: 'Network error while updating step',
 
+        // File-level edit operations (orchestration-forms.js, DS-1082)
+        FILE_EDIT_CSRF_REFRESH_FAILED: 'CSRF token refresh failed. Please reload the page.',
+        FILE_EDIT_NETWORK_ERROR: 'Network error while updating file-level configuration',
+        FILE_GITHUB_EDIT_SUCCESS: 'File-level GitHub context updated successfully',
+        FILE_GITHUB_EDIT_FAILED: 'Failed to update file-level GitHub context',
+        FILE_TRIGGER_EDIT_SUCCESS: 'File-level trigger updated successfully',
+        FILE_TRIGGER_EDIT_FAILED: 'Failed to update file-level trigger',
+
         // Log viewer invalid URL parameters (log_viewer.html)
         LOG_FILE_NOT_FOUND: function(file) { return 'Log file \'' + file + '\' not found in selected step'; },
         STEP_NOT_FOUND: function(name) { return 'Step \'' + name + '\' not found'; }
@@ -103,6 +111,12 @@ var UI_MESSAGES = Object.freeze({
         EDIT_FETCH_ERROR: 'submitStepEdit: fetch error:',
         CREATE_FORM_NULL: 'submitStepCreate: formElement is null',
         CREATE_FETCH_ERROR: 'submitStepCreate: fetch error:',
+
+        // orchestration-forms.js - file-level edit forms (DS-1082)
+        FILE_GITHUB_EDIT_FORM_NULL: 'submitFileGitHubEdit: formElement is null',
+        FILE_GITHUB_EDIT_FETCH_ERROR: 'submitFileGitHubEdit: fetch error:',
+        FILE_TRIGGER_EDIT_FORM_NULL: 'submitFileTriggerEdit: formElement is null',
+        FILE_TRIGGER_EDIT_FETCH_ERROR: 'submitFileTriggerEdit: fetch error:',
 
         // log_viewer.html - URL parameter validation
         INVALID_FILE_PARAM: function(file, step) { return 'Invalid URL parameter: file \'' + file + '\' not found in step \'' + step + '\''; },

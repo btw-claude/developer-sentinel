@@ -816,13 +816,25 @@ def create_routes(
         yaml_files.sort()
         return yaml_files
 
-    @dashboard_router.get("/api/orchestrations/files/{file_path:path}/trigger")
-    async def api_file_trigger(file_path: str) -> dict[str, Any]:
-        """Return the file-level trigger for an orchestration file."""
-        orchestrations_dir = effective_config.execution.orchestrations_dir
+    def _validate_file_path(orchestrations_dir: Path, file_path: str) -> Path:
+        """Validate and resolve a file path within the orchestrations directory.
+
+        Checks that the resolved path stays within ``orchestrations_dir`` (path
+        traversal guard) and that the file exists on disk.
+
+        Args:
+            orchestrations_dir: The base orchestrations directory.
+            file_path: The relative file path to validate.
+
+        Returns:
+            The validated full ``Path`` object.
+
+        Raises:
+            HTTPException: 422 if the path escapes the orchestrations directory,
+                404 if the file does not exist.
+        """
         full_path = orchestrations_dir / file_path
 
-        # Validate path is within orchestrations_dir
         try:
             full_path.resolve().relative_to(orchestrations_dir.resolve())
         except ValueError:
@@ -832,6 +844,14 @@ def create_routes(
 
         if not full_path.exists():
             raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+        return full_path
+
+    @dashboard_router.get("/api/orchestrations/files/{file_path:path}/trigger")
+    async def api_file_trigger(file_path: str) -> dict[str, Any]:
+        """Return the file-level trigger for an orchestration file."""
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+        full_path = _validate_file_path(orchestrations_dir, file_path)
 
         try:
             writer = OrchestrationYamlWriter()
@@ -851,17 +871,7 @@ def create_routes(
     ) -> FileTriggerEditResponse:
         """Update the file-level trigger for an orchestration file."""
         orchestrations_dir = effective_config.execution.orchestrations_dir
-        full_path = orchestrations_dir / file_path
-
-        try:
-            full_path.resolve().relative_to(orchestrations_dir.resolve())
-        except ValueError:
-            raise HTTPException(
-                status_code=422, detail="Invalid file path"
-            ) from None
-
-        if not full_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        full_path = _validate_file_path(orchestrations_dir, file_path)
 
         from sentinel.orchestration_edit import _build_file_trigger_updates
 
@@ -1023,17 +1033,7 @@ def create_routes(
     async def partial_file_trigger_edit(request: Request, file_path: str) -> HTMLResponse:
         """Render the file-level trigger edit form."""
         orchestrations_dir = effective_config.execution.orchestrations_dir
-        full_path = orchestrations_dir / file_path
-
-        try:
-            full_path.resolve().relative_to(orchestrations_dir.resolve())
-        except ValueError:
-            raise HTTPException(
-                status_code=422, detail="Invalid file path"
-            ) from None
-
-        if not full_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        full_path = _validate_file_path(orchestrations_dir, file_path)
 
         try:
             writer = OrchestrationYamlWriter()
@@ -1055,18 +1055,7 @@ def create_routes(
     async def api_file_github(file_path: str) -> dict[str, Any]:
         """Return the file-level GitHub context for an orchestration file."""
         orchestrations_dir = effective_config.execution.orchestrations_dir
-        full_path = orchestrations_dir / file_path
-
-        # Validate path is within orchestrations_dir
-        try:
-            full_path.resolve().relative_to(orchestrations_dir.resolve())
-        except ValueError:
-            raise HTTPException(
-                status_code=422, detail="Invalid file path"
-            ) from None
-
-        if not full_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        full_path = _validate_file_path(orchestrations_dir, file_path)
 
         try:
             writer = OrchestrationYamlWriter()
@@ -1086,17 +1075,7 @@ def create_routes(
     ) -> FileGitHubEditResponse:
         """Update the file-level GitHub context for an orchestration file."""
         orchestrations_dir = effective_config.execution.orchestrations_dir
-        full_path = orchestrations_dir / file_path
-
-        try:
-            full_path.resolve().relative_to(orchestrations_dir.resolve())
-        except ValueError:
-            raise HTTPException(
-                status_code=422, detail="Invalid file path"
-            ) from None
-
-        if not full_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        full_path = _validate_file_path(orchestrations_dir, file_path)
 
         from sentinel.orchestration_edit import _build_file_github_updates
 
@@ -1135,17 +1114,7 @@ def create_routes(
     async def partial_file_github_edit(request: Request, file_path: str) -> HTMLResponse:
         """Render the file-level GitHub context edit form."""
         orchestrations_dir = effective_config.execution.orchestrations_dir
-        full_path = orchestrations_dir / file_path
-
-        try:
-            full_path.resolve().relative_to(orchestrations_dir.resolve())
-        except ValueError:
-            raise HTTPException(
-                status_code=422, detail="Invalid file path"
-            ) from None
-
-        if not full_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        full_path = _validate_file_path(orchestrations_dir, file_path)
 
         try:
             writer = OrchestrationYamlWriter()
