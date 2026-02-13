@@ -981,6 +981,75 @@ def _merge_file_trigger_into_step(
             step_trigger[key] = value
 
 
+def _merge_file_github_into_step(
+    file_github: dict[str, Any],
+    step_data: dict[str, Any],
+) -> None:
+    """Merge file-level github fields into a step's agent.github dict in place.
+
+    File-level GitHub context fields (host, org, repo, branch, create_branch,
+    base_branch) are copied into the step's ``agent.github`` dict if not
+    already present there.  Step-level ``agent.github`` fields take precedence.
+
+    If the step has no ``agent`` key, one is created with the file-level github
+    fields.  If the step has an ``agent`` key but no ``github`` sub-key, the
+    file-level github dict is used in full.
+
+    Mirrors ``_merge_file_trigger_into_step()`` (DS-896).
+
+    Args:
+        file_github: Validated file-level github fields (raw dict, not yet
+            parsed into :class:`GitHubContext`).
+        step_data: The step dict (modified in place).
+    """
+    if "agent" not in step_data:
+        step_data["agent"] = {"github": dict(file_github)}
+        return
+
+    step_agent = step_data["agent"]
+    if not isinstance(step_agent, dict):
+        step_agent = {}
+        step_data["agent"] = step_agent
+
+    if "github" not in step_agent:
+        step_agent["github"] = dict(file_github)
+        return
+
+    step_github = step_agent["github"]
+    if not isinstance(step_github, dict):
+        step_github = {}
+        step_agent["github"] = step_github
+
+    # Merge file-level fields into step github (file-level provides defaults)
+    for key, value in file_github.items():
+        if key not in step_github:
+            step_github[key] = value
+
+
+def _collect_file_github_errors(data: dict[str, Any]) -> list[str]:
+    """Collect all validation errors from file-level github configuration.
+
+    Error-collecting variant of ``_parse_github_context`` for API validation
+    that reports all errors at once instead of failing on the first.
+
+    Mirrors ``_collect_file_trigger_errors()`` (DS-896).
+
+    Args:
+        data: The file-level github dict.
+
+    Returns:
+        A list of error messages.  Empty means valid.
+    """
+    errors: list[str] = []
+
+    try:
+        _parse_github_context(data)
+    except OrchestrationError as e:
+        errors.append(f"File-level github: {e}")
+
+    return errors
+
+
 def _collect_trigger_errors(data: dict[str, Any]) -> list[str]:
     """Collect all validation errors from trigger configuration (DS-734).
 
@@ -1510,6 +1579,14 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
     if file_trigger_data and isinstance(file_trigger_data, dict):
         file_trigger = _parse_file_trigger(file_trigger_data)
 
+    # Read file-level github context (DS-1073)
+    file_github_data = data.get("github")
+    file_github: dict[str, Any] | None = None
+    if file_github_data and isinstance(file_github_data, dict):
+        # Validate by parsing; raises OrchestrationError on invalid values
+        _parse_github_context(file_github_data)
+        file_github = file_github_data
+
     # Support both "steps" (new) and "orchestrations" (legacy) keys (DS-896).
     # Delegates to the shared resolve_steps_key() utility (DS-900) which uses
     # an explicit key membership check to handle empty lists correctly (DS-899).
@@ -1536,6 +1613,12 @@ def _load_orchestration_file_with_counts(file_path: Path) -> tuple[list[Orchestr
         for step in orchestrations_data:
             if isinstance(step, dict):
                 _merge_file_trigger_into_step(file_trigger, step)
+
+    # Merge file-level github into each step before parsing (DS-1073)
+    if file_github:
+        for step in orchestrations_data:
+            if isinstance(step, dict):
+                _merge_file_github_into_step(file_github, step)
 
     # Parse all orchestrations and filter out disabled ones
     orchestrations = [_parse_orchestration(orch) for orch in orchestrations_data]
