@@ -26,6 +26,8 @@ frozenset is documented with rationale and maintenance guidelines.
 
 Functions:
     _build_yaml_updates: Convert OrchestrationEditRequest to YAML-compatible dict
+    _build_file_level_updates: Convert file-level Pydantic edit request to
+        YAML-compatible update dict
     _validate_orchestration_updates: Validate merged orchestration data
     _deep_merge_dicts: Deep merge two dictionaries
     _is_semantically_duplicate: Check if an error is semantically equivalent to
@@ -42,6 +44,8 @@ import logging
 import os
 import re
 from typing import Any
+
+from pydantic import BaseModel
 
 from sentinel.dashboard.models import (
     FileGitHubEditRequest,
@@ -283,8 +287,32 @@ def _build_yaml_updates(request: OrchestrationEditRequest) -> dict[str, Any]:
     return updates
 
 
+def _build_file_level_updates(request: BaseModel) -> dict[str, Any]:
+    """Convert a file-level Pydantic edit request to a YAML-compatible update dict.
+
+    Generic helper for file-level block types (trigger, github, and future
+    file-level blocks). Each block type uses a Pydantic model with optional
+    fields; this function serialises only the non-None fields for YAML update.
+
+    Replaces the per-type ``_build_file_trigger_updates()`` and
+    ``_build_file_github_updates()`` helpers that were identical in
+    implementation (DS-1081).
+
+    Args:
+        request: A Pydantic BaseModel instance (e.g. FileTriggerEditRequest,
+            FileGitHubEditRequest) representing the file-level edit request.
+
+    Returns:
+        A dictionary with only non-None fields for the file-level update.
+    """
+    return request.model_dump(exclude_none=True)
+
+
 def _build_file_trigger_updates(request: FileTriggerEditRequest) -> dict[str, Any]:
     """Convert a FileTriggerEditRequest to a YAML-compatible update dict.
+
+    Thin wrapper around ``_build_file_level_updates()`` for backwards
+    compatibility (DS-1081).
 
     Args:
         request: The file-level trigger edit request.
@@ -292,14 +320,14 @@ def _build_file_trigger_updates(request: FileTriggerEditRequest) -> dict[str, An
     Returns:
         A dictionary with only non-None fields for file-level trigger update.
     """
-    return request.model_dump(exclude_none=True)
+    return _build_file_level_updates(request)
 
 
 def _build_file_github_updates(request: FileGitHubEditRequest) -> dict[str, Any]:
     """Convert a FileGitHubEditRequest to a YAML-compatible update dict.
 
-    Mirrors ``_build_file_trigger_updates()`` for file-level GitHub context
-    (DS-1076).
+    Thin wrapper around ``_build_file_level_updates()`` for backwards
+    compatibility (DS-1081).
 
     Args:
         request: The file-level GitHub context edit request.
@@ -307,7 +335,7 @@ def _build_file_github_updates(request: FileGitHubEditRequest) -> dict[str, Any]
     Returns:
         A dictionary with only non-None fields for file-level GitHub update.
     """
-    return request.model_dump(exclude_none=True)
+    return _build_file_level_updates(request)
 
 
 def _validate_orchestration_updates(

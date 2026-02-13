@@ -1895,6 +1895,350 @@ orchestrations:
         assert not isinstance(data["agent"]["github"], CommentedMap)
 
 
+class TestReadFileGitHub:
+    """Tests for read_file_github method (DS-1081)."""
+
+    def test_read_file_github_success(self, tmp_path: Path) -> None:
+        """Should return file-level GitHub context as plain dict."""
+        yaml_content = """
+github:
+  host: github.com
+  org: my-org
+  repo: my-repo
+  branch: main
+steps:
+  - name: "test-orch"
+    enabled: true
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_file_github(file_path)
+
+        assert data is not None
+        assert data["host"] == "github.com"
+        assert data["org"] == "my-org"
+        assert data["repo"] == "my-repo"
+        assert data["branch"] == "main"
+
+    def test_read_file_github_not_found(self, tmp_path: Path) -> None:
+        """Should return None when no file-level GitHub context exists."""
+        yaml_content = """
+steps:
+  - name: "test-orch"
+    enabled: true
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_file_github(file_path)
+
+        assert data is None
+
+    def test_read_file_github_returns_plain_dict(self, tmp_path: Path) -> None:
+        """Should return plain dict, not CommentedMap."""
+        yaml_content = """
+github:
+  host: github.com
+  org: my-org
+steps:
+  - name: "test-orch"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_file_github(file_path)
+
+        assert data is not None
+        from ruamel.yaml.comments import CommentedMap
+        assert not isinstance(data, CommentedMap)
+
+    def test_read_file_github_empty_file(self, tmp_path: Path) -> None:
+        """Should return None for empty YAML file."""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text("")
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_file_github(file_path)
+
+        assert data is None
+
+
+class TestUpdateFileGitHub:
+    """Tests for update_file_github method (DS-1081)."""
+
+    def test_update_file_github_existing_block(self, tmp_path: Path) -> None:
+        """Should deep-merge updates into existing file-level GitHub block."""
+        yaml_content = """
+github:
+  host: github.com
+  org: my-org
+  repo: my-repo
+steps:
+  - name: "test-orch"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_file_github(file_path, {"branch": "main"})
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "branch: main" in updated_content
+        assert "host: github.com" in updated_content  # preserved
+
+    def test_update_file_github_creates_block(self, tmp_path: Path) -> None:
+        """Should create GitHub block if it doesn't exist."""
+        yaml_content = """
+steps:
+  - name: "test-orch"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_file_github(file_path, {"host": "github.com", "org": "new-org"})
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "github:" in updated_content or "host: github.com" in updated_content
+        assert "new-org" in updated_content
+
+    def test_update_file_github_empty_updates(self, tmp_path: Path) -> None:
+        """Should return True without modifying file for empty updates."""
+        yaml_content = """
+github:
+  host: github.com
+steps:
+  - name: "test-orch"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+        original_content = file_path.read_text()
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_file_github(file_path, {})
+
+        assert result is True
+        assert file_path.read_text() == original_content
+
+    def test_update_file_github_overwrite_field(self, tmp_path: Path) -> None:
+        """Should overwrite existing fields in GitHub block."""
+        yaml_content = """
+github:
+  host: github.com
+  org: old-org
+  repo: old-repo
+steps:
+  - name: "test-orch"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        result = writer.update_file_github(file_path, {"org": "new-org"})
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "new-org" in updated_content
+        assert "old-org" not in updated_content
+
+
+class TestBuildFileGitHubUpdates:
+    """Tests for _build_file_github_updates helper (DS-1081)."""
+
+    def test_build_file_github_updates_all_fields(self, tmp_path: Path) -> None:
+        """Should build update dict with all non-None fields."""
+        from sentinel.dashboard.models import FileGitHubEditRequest
+        from sentinel.orchestration_edit import _build_file_github_updates
+
+        request = FileGitHubEditRequest(
+            host="github.com",
+            org="my-org",
+            repo="my-repo",
+            branch="main",
+            create_branch=True,
+            base_branch="develop",
+        )
+        result = _build_file_github_updates(request)
+        assert result == {
+            "host": "github.com",
+            "org": "my-org",
+            "repo": "my-repo",
+            "branch": "main",
+            "create_branch": True,
+            "base_branch": "develop",
+        }
+
+    def test_build_file_github_updates_partial(self, tmp_path: Path) -> None:
+        """Should only include non-None fields."""
+        from sentinel.dashboard.models import FileGitHubEditRequest
+        from sentinel.orchestration_edit import _build_file_github_updates
+
+        request = FileGitHubEditRequest(org="my-org")
+        result = _build_file_github_updates(request)
+        assert result == {"org": "my-org"}
+
+    def test_build_file_github_updates_empty(self, tmp_path: Path) -> None:
+        """Should return empty dict for empty request."""
+        from sentinel.dashboard.models import FileGitHubEditRequest
+        from sentinel.orchestration_edit import _build_file_github_updates
+
+        request = FileGitHubEditRequest()
+        result = _build_file_github_updates(request)
+        assert result == {}
+
+
+class TestReadOrchestrationFileLevelGitHub:
+    """Tests for read_orchestration with file-level GitHub merge (DS-1081)."""
+
+    def test_read_orchestration_merges_file_github(self, tmp_path: Path) -> None:
+        """Should merge file-level GitHub into step's agent.github."""
+        yaml_content = """
+github:
+  host: github.com
+  org: file-org
+  repo: file-repo
+steps:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_orchestration(file_path, "test-orch")
+
+        assert data is not None
+        assert "agent" in data
+        assert "github" in data["agent"]
+        assert data["agent"]["github"]["host"] == "github.com"
+        assert data["agent"]["github"]["org"] == "file-org"
+        assert data["agent"]["github"]["repo"] == "file-repo"
+
+    def test_read_orchestration_step_github_takes_precedence(self, tmp_path: Path) -> None:
+        """Step-level GitHub should take precedence over file-level."""
+        yaml_content = """
+github:
+  host: github.com
+  org: file-org
+  repo: file-repo
+  branch: file-branch
+steps:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test"
+      github:
+        org: step-org
+        repo: step-repo
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_orchestration(file_path, "test-orch")
+
+        assert data is not None
+        github = data["agent"]["github"]
+        # Step-level values take precedence
+        assert github["org"] == "step-org"
+        assert github["repo"] == "step-repo"
+        # File-level values fill in missing fields
+        assert github["host"] == "github.com"
+        assert github["branch"] == "file-branch"
+
+    def test_read_orchestration_no_file_github(self, tmp_path: Path) -> None:
+        """Should work normally when no file-level GitHub exists."""
+        yaml_content = """
+steps:
+  - name: "test-orch"
+    enabled: true
+    trigger:
+      source: jira
+      project: "TEST"
+    agent:
+      prompt: "Test"
+"""
+        file_path = tmp_path / "test.yaml"
+        file_path.write_text(yaml_content)
+
+        writer = OrchestrationYamlWriter()
+        data = writer.read_orchestration(file_path, "test-orch")
+
+        assert data is not None
+        assert "github" not in data.get("agent", {})
+
+
+class TestAddOrchestrationFileGitHub:
+    """Tests for add_orchestration with file_github parameter (DS-1081)."""
+
+    def test_add_orchestration_with_file_github_creates_new_file(self, tmp_path: Path) -> None:
+        """Should create new file with file-level GitHub block and steps key."""
+        file_path = tmp_path / "new-file.yaml"
+
+        writer = OrchestrationYamlWriter()
+        result = writer.add_orchestration(
+            file_path,
+            {"name": "new-orch", "agent": {"prompt": "Test"}},
+            tmp_path,
+            file_github={"host": "github.com", "org": "my-org", "repo": "my-repo"},
+        )
+
+        assert result is True
+        assert file_path.exists()
+        updated_content = file_path.read_text()
+        assert "github:" in updated_content or "host:" in updated_content
+        assert "steps:" in updated_content  # should use 'steps' key, not 'orchestrations'
+        assert "new-orch" in updated_content
+
+    def test_add_orchestration_with_both_file_trigger_and_github(self, tmp_path: Path) -> None:
+        """Should create new file with both file-level trigger and GitHub."""
+        file_path = tmp_path / "new-file.yaml"
+
+        writer = OrchestrationYamlWriter()
+        result = writer.add_orchestration(
+            file_path,
+            {"name": "new-orch", "agent": {"prompt": "Test"}},
+            tmp_path,
+            file_trigger={"source": "jira", "project": "TEST"},
+            file_github={"host": "github.com", "org": "my-org"},
+        )
+
+        assert result is True
+        updated_content = file_path.read_text()
+        assert "trigger:" in updated_content
+        assert "github:" in updated_content or "host:" in updated_content
+        assert "steps:" in updated_content
+        assert "new-orch" in updated_content
+
+
 class TestGetStepsListEdgeCases:
     """Tests for _get_steps_list empty list edge case (DS-899)."""
 
