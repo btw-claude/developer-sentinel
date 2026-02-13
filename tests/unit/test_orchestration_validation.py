@@ -5,6 +5,8 @@ This module contains tests for:
 - max_concurrent field validation
 - timeout_seconds field validation (int, float, NaN, inf, bool edge cases)
 - File-level github error collection (DS-1074, DS-1078)
+- DRY shared helpers _validate_github_branch_field and
+  _validate_github_string_field (DS-1083)
 """
 
 import math
@@ -19,10 +21,12 @@ from sentinel.orchestration import (
     _collect_file_github_errors,
     _validate_github_base_branch,
     _validate_github_branch,
+    _validate_github_branch_field,
     _validate_github_create_branch,
     _validate_github_host,
     _validate_github_org,
     _validate_github_repo,
+    _validate_github_string_field,
     _validate_timeout_seconds,
     get_effective_timeout,
     load_orchestration_file,
@@ -1135,3 +1139,147 @@ class TestCollectFileGithubErrors:
         }
         errors = _collect_file_github_errors(data)
         assert errors == []
+
+
+class TestValidateGithubBranchField:
+    """Tests for _validate_github_branch_field() shared helper (DS-1083).
+
+    Verifies that the consolidated branch validation helper correctly
+    validates branch-type fields using a parameterised field_name, and
+    that the thin wrappers (_validate_github_branch and
+    _validate_github_base_branch) produce identical results.
+    """
+
+    # --- Direct shared helper tests ---
+
+    def test_valid_branch_pattern(self) -> None:
+        """Valid branch pattern should return None."""
+        assert _validate_github_branch_field("feature/{jira_issue_key}", "branch pattern") is None
+
+    def test_valid_base_branch(self) -> None:
+        """Valid base branch should return None."""
+        assert _validate_github_branch_field("main", "base_branch") is None
+
+    def test_empty_string_is_valid(self) -> None:
+        """Empty string should return None (not configured)."""
+        assert _validate_github_branch_field("", "branch pattern") is None
+
+    def test_whitespace_only_is_valid(self) -> None:
+        """Whitespace-only string should return None (treated as empty)."""
+        assert _validate_github_branch_field("   ", "base_branch") is None
+
+    def test_invalid_returns_error_with_field_name(self) -> None:
+        """Invalid value should return error containing the field_name."""
+        result = _validate_github_branch_field("invalid branch!@#", "branch pattern")
+        assert result is not None
+        assert "Invalid branch pattern" in result
+
+    def test_invalid_base_branch_field_name_in_error(self) -> None:
+        """Error message should use the provided field_name."""
+        result = _validate_github_branch_field("bad base!@#", "base_branch")
+        assert result is not None
+        assert "Invalid base_branch" in result
+
+    def test_custom_field_name_in_error(self) -> None:
+        """A custom field_name should appear in the error message."""
+        result = _validate_github_branch_field("bad~branch", "my_custom_field")
+        assert result is not None
+        assert "Invalid my_custom_field" in result
+
+    # --- Wrapper equivalence tests ---
+
+    def test_wrapper_branch_matches_shared_helper(self) -> None:
+        """_validate_github_branch should produce same result as shared helper."""
+        for value in ["feature/test", "", "   ", "invalid branch!@#"]:
+            wrapper_result = _validate_github_branch(value)
+            direct_result = _validate_github_branch_field(value, "branch pattern")
+            assert wrapper_result == direct_result, f"Mismatch for value={value!r}"
+
+    def test_wrapper_base_branch_matches_shared_helper(self) -> None:
+        """_validate_github_base_branch should produce same result as shared helper."""
+        for value in ["main", "develop", "", "invalid branch!@#"]:
+            wrapper_result = _validate_github_base_branch(value)
+            direct_result = _validate_github_branch_field(value, "base_branch")
+            assert wrapper_result == direct_result, f"Mismatch for value={value!r}"
+
+
+class TestValidateGithubStringField:
+    """Tests for _validate_github_string_field() shared helper (DS-1083).
+
+    Verifies that the consolidated string-field validation helper correctly
+    wraps _validate_string_field() and converts OrchestrationError to a
+    plain error string, and that the thin wrappers (_validate_github_host,
+    _validate_github_org, _validate_github_repo) produce identical results.
+    """
+
+    # --- Direct shared helper tests ---
+
+    def test_valid_string(self) -> None:
+        """Valid string value should return None."""
+        assert _validate_github_string_field("github.com", "github.host") is None
+
+    def test_none_is_valid(self) -> None:
+        """None should return None (falls back to default)."""
+        assert _validate_github_string_field(None, "github.host") is None
+
+    def test_non_string_returns_error(self) -> None:
+        """Non-string value should return an error message."""
+        result = _validate_github_string_field(123, "github.host")
+        assert result is not None
+        assert "github.host" in result
+
+    def test_whitespace_only_returns_error(self) -> None:
+        """Whitespace-only string should return an error message."""
+        result = _validate_github_string_field("   ", "github.host")
+        assert result is not None
+        assert "github.host" in result
+
+    def test_empty_string_rejected_by_default(self) -> None:
+        """Empty string should be rejected when reject_empty is True (default)."""
+        result = _validate_github_string_field("", "github.host")
+        assert result is not None
+        assert "github.host" in result
+
+    def test_empty_string_accepted_with_reject_empty_false(self) -> None:
+        """Empty string should be accepted when reject_empty=False."""
+        assert _validate_github_string_field("", "github.org", reject_empty=False) is None
+
+    def test_custom_field_name_in_error(self) -> None:
+        """A custom field_name should appear in the error message."""
+        result = _validate_github_string_field(42, "github.custom")
+        assert result is not None
+        assert "github.custom" in result
+
+    def test_kwargs_forwarded_to_validate_string_field(self) -> None:
+        """reject_empty kwarg should be forwarded correctly."""
+        # With reject_empty=True (default), empty string is rejected
+        assert _validate_github_string_field("", "test.field") is not None
+        # With reject_empty=False, empty string is accepted
+        assert _validate_github_string_field("", "test.field", reject_empty=False) is None
+
+    # --- Wrapper equivalence tests ---
+
+    def test_wrapper_host_matches_shared_helper(self) -> None:
+        """_validate_github_host should produce same result as shared helper."""
+        for value in ["github.com", None, 123, "", "   "]:
+            wrapper_result = _validate_github_host(value)
+            direct_result = _validate_github_string_field(value, "github.host")
+            assert wrapper_result == direct_result, f"Mismatch for value={value!r}"
+
+    def test_wrapper_org_matches_shared_helper(self) -> None:
+        """_validate_github_org should produce same result as shared helper."""
+        for value in ["my-org", None, 123, "", "   "]:
+            wrapper_result = _validate_github_org(value)
+            direct_result = _validate_github_string_field(
+                value, "github.org", reject_empty=False
+            )
+            assert wrapper_result == direct_result, f"Mismatch for value={value!r}"
+
+    def test_wrapper_repo_matches_shared_helper(self) -> None:
+        """_validate_github_repo should produce same result as shared helper."""
+        for value in ["my-repo", None, 123, "", "   "]:
+            wrapper_result = _validate_github_repo(value)
+            direct_result = _validate_github_string_field(
+                value, "github.repo", reject_empty=False
+            )
+            assert wrapper_result == direct_result, f"Mismatch for value={value!r}"
