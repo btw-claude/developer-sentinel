@@ -40,6 +40,8 @@ from sentinel.dashboard.models import (
     BulkToggleRequest,
     BulkToggleResponse,
     DeleteResponse,
+    FileGitHubEditRequest,
+    FileGitHubEditResponse,
     FileTriggerEditRequest,
     FileTriggerEditResponse,
     OrchestrationCreateRequest,
@@ -1049,6 +1051,118 @@ def create_routes(
             ),
         )
 
+    @dashboard_router.get("/api/orchestrations/files/{file_path:path}/github")
+    async def api_file_github(file_path: str) -> dict[str, Any]:
+        """Return the file-level GitHub context for an orchestration file."""
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+        full_path = orchestrations_dir / file_path
+
+        # Validate path is within orchestrations_dir
+        try:
+            full_path.resolve().relative_to(orchestrations_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid file path"
+            ) from None
+
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+        try:
+            writer = OrchestrationYamlWriter()
+            github = writer.read_file_github(full_path)
+            return {"github": github}
+        except OrchestrationYamlWriterError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @dashboard_router.put(
+        "/api/orchestrations/files/{file_path:path}/github",
+        response_model=FileGitHubEditResponse,
+    )
+    async def update_file_github(
+        file_path: str,
+        request_body: FileGitHubEditRequest,
+        _csrf: None = Depends(_require_csrf_token),
+    ) -> FileGitHubEditResponse:
+        """Update the file-level GitHub context for an orchestration file."""
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+        full_path = orchestrations_dir / file_path
+
+        try:
+            full_path.resolve().relative_to(orchestrations_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid file path"
+            ) from None
+
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+        from sentinel.orchestration_edit import _build_file_github_updates
+
+        updates = _build_file_github_updates(request_body)
+
+        if not updates:
+            return FileGitHubEditResponse(success=True)
+
+        # Validate
+        from sentinel.orchestration import _collect_file_github_errors
+
+        try:
+            writer = OrchestrationYamlWriter()
+            current = writer.read_file_github(full_path) or {}
+        except OrchestrationYamlWriterError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+        merged = {**current, **updates}
+        errors = _collect_file_github_errors(merged)
+        if errors:
+            raise HTTPException(status_code=422, detail=errors)
+
+        # Check rate limit
+        rate_limiter.check_rate_limit(str(full_path))
+
+        try:
+            writer.update_file_github(full_path, updates)
+            rate_limiter.record_write(str(full_path))
+            return FileGitHubEditResponse(success=True)
+        except OrchestrationYamlWriterError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @dashboard_router.get(
+        "/partials/file_github_edit/{file_path:path}", response_class=HTMLResponse
+    )
+    async def partial_file_github_edit(request: Request, file_path: str) -> HTMLResponse:
+        """Render the file-level GitHub context edit form."""
+        orchestrations_dir = effective_config.execution.orchestrations_dir
+        full_path = orchestrations_dir / file_path
+
+        try:
+            full_path.resolve().relative_to(orchestrations_dir.resolve())
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid file path"
+            ) from None
+
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+        try:
+            writer = OrchestrationYamlWriter()
+            github = writer.read_file_github(full_path)
+        except OrchestrationYamlWriterError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+        templates = request.app.state.templates
+        return cast(
+            HTMLResponse,
+            await templates.TemplateResponse(
+                request=request,
+                name="partials/file_github_edit_form.html",
+                context={"file_path": file_path, "github": github},
+            ),
+        )
+
     @dashboard_router.post(
         "/api/orchestrations/{name}/toggle",
         response_model=ToggleResponse,
@@ -1546,6 +1660,18 @@ def create_routes(
                 if key not in orch_data.get("trigger", {}):
                     orch_data.setdefault("trigger", {})[key] = value
 
+        # Extract file_github for new file creation (DS-1077)
+        file_github_dict = None
+        if request_body.file_github:
+            file_github_dict = request_body.file_github.model_dump(exclude_none=True)
+            # Merge file github into orch_data for validation
+            agent = orch_data.setdefault("agent", {})
+            if "github" not in agent:
+                agent["github"] = {}
+            for key, value in file_github_dict.items():
+                if key not in agent["github"]:
+                    agent["github"][key] = value
+
         # Validate via _parse_orchestration
         try:
             _parse_orchestration(orch_data)
@@ -1558,7 +1684,11 @@ def create_routes(
         try:
             writer = OrchestrationYamlWriter()
             writer.add_orchestration(
-                target_file_path, orch_data, orchestrations_dir, file_trigger=file_trigger_dict
+                target_file_path,
+                orch_data,
+                orchestrations_dir,
+                file_trigger=file_trigger_dict,
+                file_github=file_github_dict,
             )
 
             # Record successful write for rate limiting

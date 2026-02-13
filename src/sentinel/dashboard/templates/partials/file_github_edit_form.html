@@ -1,0 +1,62 @@
+{# File-level GitHub context edit form - displayed when editing file-level github block #}
+<div class="orchestration-detail">
+    <form id="file-github-edit-form">
+        <div class="detail-section">
+            <h4>File-Level GitHub Context</h4>
+            <div class="config-grid">
+                <div class="detail-row">
+                    <label class="detail-label" for="file_github_host">Host</label>
+                    <input type="text" id="file_github_host" name="file_github_host"
+                           value="{{ github.host if github and github.host else '' }}"
+                           placeholder="e.g., github.com"
+                           class="form-input">
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="file_github_org">Organization</label>
+                    <input type="text" id="file_github_org" name="file_github_org"
+                           value="{{ github.org if github and github.org else '' }}"
+                           placeholder="e.g., my-org"
+                           class="form-input">
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="file_github_repo">Repository</label>
+                    <input type="text" id="file_github_repo" name="file_github_repo"
+                           value="{{ github.repo if github and github.repo else '' }}"
+                           placeholder="e.g., my-repo"
+                           class="form-input">
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="file_github_branch">Branch</label>
+                    <input type="text" id="file_github_branch" name="file_github_branch"
+                           value="{{ github.branch if github and github.branch else '' }}"
+                           placeholder="e.g., main"
+                           class="form-input">
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="file_github_create_branch">Create Branch</label>
+                    <label>
+                        <input type="checkbox" id="file_github_create_branch"
+                               name="file_github_create_branch"
+                               {{ 'checked' if github and github.create_branch else '' }}>
+                        Yes
+                    </label>
+                </div>
+                <div class="detail-row">
+                    <label class="detail-label" for="file_github_base_branch">Base Branch</label>
+                    <input type="text" id="file_github_base_branch" name="file_github_base_branch"
+                           value="{{ github.base_branch if github and github.base_branch else '' }}"
+                           placeholder="e.g., main"
+                           class="form-input">
+                </div>
+            </div>
+        </div>
+
+        {# Action Buttons #}
+        <div class="d-flex gap-2 justify-end mt-3 pt-2-5">
+            <button type="button" class="btn-sm btn-accent"
+                    onclick="submitFileGitHubEdit('{{ file_path }}', this.closest('form'))">Save</button>
+            <button type="button" class="btn-sm btn-sm--secondary"
+                    onclick="cancelFileGitHubEdit('{{ file_path }}')">Cancel</button>
+        </div>
+    </form>
+</div>
