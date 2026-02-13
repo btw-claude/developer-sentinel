@@ -852,6 +852,140 @@ def _validate_strict_template_variables(strict_template_variables: Any) -> str |
     return None
 
 
+# ---------------------------------------------------------------------------
+# GitHub context validation helpers (DS-1078)
+#
+# Each helper validates a single GitHub context field and returns an error
+# message string when validation fails, or ``None`` when the value is valid.
+# These follow the same ``str | None`` convention as the shared validation
+# helpers above (DS-763) so that ``_collect_file_github_errors`` can call
+# each one independently and collect all errors at once.
+#
+# ``_parse_github_context`` also delegates to these helpers so that the
+# validation logic is defined in exactly one place.
+# ---------------------------------------------------------------------------
+
+
+def _validate_github_branch(branch: str) -> str | None:
+    """Validate a GitHub branch pattern.
+
+    Args:
+        branch: The branch pattern string to validate.
+
+    Returns:
+        An error message if *branch* is non-empty and fails git branch name
+        validation, or ``None`` if valid (including empty/whitespace-only).
+    """
+    if not branch.strip():
+        return None
+    result = _validate_branch_name(branch)
+    if not result.is_valid:
+        return f"Invalid branch pattern '{branch}': {result.error_message}"
+    return None
+
+
+def _validate_github_base_branch(base_branch: str) -> str | None:
+    """Validate a GitHub base branch name.
+
+    Args:
+        base_branch: The base branch string to validate.
+
+    Returns:
+        An error message if *base_branch* is non-empty and fails git branch
+        name validation, or ``None`` if valid (including empty/whitespace-only).
+    """
+    if not base_branch.strip():
+        return None
+    result = _validate_branch_name(base_branch)
+    if not result.is_valid:
+        return f"Invalid base_branch '{base_branch}': {result.error_message}"
+    return None
+
+
+def _validate_github_create_branch(create_branch: bool, branch: str) -> str | None:
+    """Validate the create_branch / branch cross-field invariant.
+
+    ``create_branch=True`` requires a non-empty branch pattern.
+
+    Args:
+        create_branch: Whether branch auto-creation is enabled.
+        branch: The branch pattern string.
+
+    Returns:
+        An error message if *create_branch* is ``True`` but *branch* is
+        empty/whitespace-only, or ``None`` if valid.
+    """
+    if create_branch and not branch.strip():
+        return (
+            "create_branch is True but no branch pattern is specified. "
+            "Please provide a branch pattern (e.g., 'feature/{jira_issue_key}') "
+            "when create_branch is enabled."
+        )
+    return None
+
+
+def _validate_github_host(host: Any) -> str | None:
+    """Validate the github host field.
+
+    ``None`` is always accepted (callers fall back to ``"github.com"``).
+    Non-string values and empty/whitespace-only strings are rejected.
+
+    Args:
+        host: The raw host value.
+
+    Returns:
+        An error message if *host* is not ``None`` and fails validation,
+        or ``None`` if valid.
+    """
+    try:
+        _validate_string_field(host, "github.host")
+    except OrchestrationError as e:
+        return str(e)
+    return None
+
+
+def _validate_github_org(org: Any) -> str | None:
+    """Validate the github org field.
+
+    ``None`` is always accepted (callers fall back to ``""``).
+    Non-string values and whitespace-only strings are rejected; the empty
+    string is allowed.
+
+    Args:
+        org: The raw org value.
+
+    Returns:
+        An error message if *org* is not ``None`` and fails validation,
+        or ``None`` if valid.
+    """
+    try:
+        _validate_string_field(org, "github.org", reject_empty=False)
+    except OrchestrationError as e:
+        return str(e)
+    return None
+
+
+def _validate_github_repo(repo: Any) -> str | None:
+    """Validate the github repo field.
+
+    ``None`` is always accepted (callers fall back to ``""``).
+    Non-string values and whitespace-only strings are rejected; the empty
+    string is allowed.
+
+    Args:
+        repo: The raw repo value.
+
+    Returns:
+        An error message if *repo* is not ``None`` and fails validation,
+        or ``None`` if valid.
+    """
+    try:
+        _validate_string_field(repo, "github.repo", reject_empty=False)
+    except OrchestrationError as e:
+        return str(e)
+    return None
+
+
 # File-level trigger fields that get merged into each step (DS-896)
 _FILE_TRIGGER_FIELDS = frozenset({
     "source", "project", "project_number", "project_scope", "project_owner",
@@ -1032,6 +1166,10 @@ def _collect_file_github_errors(data: dict[str, Any]) -> list[str]:
     Error-collecting variant of ``_parse_github_context`` for API validation
     that reports all errors at once instead of failing on the first.
 
+    Individually validates each field using the shared ``_validate_github_*``
+    helpers (DS-1078) and collects all errors into the list so the API can
+    report every issue in a single response.
+
     Mirrors ``_collect_file_trigger_errors()`` (DS-896).
 
     Args:
@@ -1042,10 +1180,41 @@ def _collect_file_github_errors(data: dict[str, Any]) -> list[str]:
     """
     errors: list[str] = []
 
-    try:
-        _parse_github_context(data)
-    except OrchestrationError as e:
-        errors.append(f"File-level github: {e}")
+    # Validate branch pattern
+    branch = data.get("branch") or ""
+    error = _validate_github_branch(branch)
+    if error:
+        errors.append(f"File-level github: {error}")
+
+    # Validate base_branch
+    base_branch = data.get("base_branch") or "main"
+    error = _validate_github_base_branch(base_branch)
+    if error:
+        errors.append(f"File-level github: {error}")
+
+    # Validate create_branch + branch cross-field invariant
+    create_branch = data.get("create_branch", False)
+    error = _validate_github_create_branch(create_branch, branch)
+    if error:
+        errors.append(f"File-level github: {error}")
+
+    # Validate host
+    host = data.get("host")
+    error = _validate_github_host(host)
+    if error:
+        errors.append(f"File-level github: {error}")
+
+    # Validate org
+    org = data.get("org")
+    error = _validate_github_org(org)
+    if error:
+        errors.append(f"File-level github: {error}")
+
+    # Validate repo
+    repo = data.get("repo")
+    error = _validate_github_repo(repo)
+    if error:
+        errors.append(f"File-level github: {error}")
 
     return errors
 
@@ -1166,34 +1335,33 @@ def _parse_trigger(data: dict[str, Any]) -> TriggerConfig:
 def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
     """Parse GitHub context from dict.
 
+    Delegates to the shared ``_validate_github_*`` helpers (DS-1078) so that
+    the validation logic is defined in exactly one place, shared with
+    ``_collect_file_github_errors()``.
+
     Raises:
-        OrchestrationError: If branch or base_branch names are invalid.
+        OrchestrationError: If any field fails validation.
     """
     if not data:
         return None
 
     # Validate branch pattern if provided
     branch = data.get("branch") or ""
-    if branch.strip():
-        result = _validate_branch_name(branch)
-        if not result.is_valid:
-            raise OrchestrationError(f"Invalid branch pattern '{branch}': {result.error_message}")
+    error = _validate_github_branch(branch)
+    if error:
+        raise OrchestrationError(error)
 
     # Validate base_branch if provided
     base_branch = data.get("base_branch") or "main"
-    if base_branch.strip():
-        result = _validate_branch_name(base_branch)
-        if not result.is_valid:
-            raise OrchestrationError(f"Invalid base_branch '{base_branch}': {result.error_message}")
+    error = _validate_github_base_branch(base_branch)
+    if error:
+        raise OrchestrationError(error)
 
     # Validate that create_branch=True requires a non-empty branch pattern
     create_branch = data.get("create_branch", False)
-    if create_branch and not branch.strip():
-        raise OrchestrationError(
-            "create_branch is True but no branch pattern is specified. "
-            "Please provide a branch pattern (e.g., 'feature/{jira_issue_key}') "
-            "when create_branch is enabled."
-        )
+    error = _validate_github_create_branch(create_branch, branch)
+    if error:
+        raise OrchestrationError(error)
 
     # Use explicit None checks instead of or-coalescing so that empty string
     # is preserved as a distinct value from None (future-proofing).
@@ -1201,13 +1369,19 @@ def _parse_github_context(data: dict[str, Any] | None) -> GitHubContext | None:
     org = data.get("org")
     repo = data.get("repo")
 
-    # Validate host, org, and repo using the shared helper (DS-634).
+    # Validate host, org, and repo using the shared helpers (DS-634, DS-1078).
     # None is always acceptable (falls back to a field-specific default).
     # Host rejects both empty and whitespace-only strings (DS-631, DS-632).
     # Org and repo allow empty strings but reject whitespace-only (DS-633).
-    _validate_string_field(host, "github.host")
-    _validate_string_field(org, "github.org", reject_empty=False)
-    _validate_string_field(repo, "github.repo", reject_empty=False)
+    error = _validate_github_host(host)
+    if error:
+        raise OrchestrationError(error)
+    error = _validate_github_org(org)
+    if error:
+        raise OrchestrationError(error)
+    error = _validate_github_repo(repo)
+    if error:
+        raise OrchestrationError(error)
     resolved_host = host if host is not None else "github.com"
 
     return GitHubContext(
