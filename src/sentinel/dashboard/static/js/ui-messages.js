@@ -50,6 +50,7 @@ var UI_MESSAGES = Object.freeze({
 
         // File-level edit operations (orchestration-forms.js, DS-1082)
         FILE_EDIT_CSRF_REFRESH_FAILED: 'CSRF token refresh failed. Please reload the page.',
+        FILE_EDIT_CSRF_VALIDATION_FAILED: 'CSRF token validation failed. Please reload the page.',
         FILE_EDIT_NETWORK_ERROR: 'Network error while updating file-level configuration',
         FILE_GITHUB_EDIT_SUCCESS: 'File-level GitHub context updated successfully',
         FILE_GITHUB_EDIT_FAILED: 'Failed to update file-level GitHub context',

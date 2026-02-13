@@ -54,9 +54,9 @@
         {# Action Buttons #}
         <div class="d-flex gap-2 justify-end mt-3 pt-2-5">
             <button type="button" class="btn-sm btn-accent"
-                    onclick="submitFileGitHubEdit('{{ file_path }}', this.closest('form'))">Save</button>
+                    onclick="submitFileGitHubEdit({{ file_path|tojson }}, this.closest('form'))">Save</button>
             <button type="button" class="btn-sm btn-sm--secondary"
-                    onclick="cancelFileGitHubEdit('{{ file_path }}')">Cancel</button>
+                    onclick="cancelFileGitHubEdit({{ file_path|tojson }})">Cancel</button>
         </div>
     </form>
 </div>

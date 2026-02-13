@@ -48,6 +48,21 @@ function refreshCsrfToken() {
 }
 
 /**
+ * Encode a file path by encoding each segment individually.
+ *
+ * Unlike encodeURIComponent(filePath), which encodes slashes to %2F
+ * (potentially causing routing issues behind reverse proxies), this
+ * function splits on "/" and encodes each segment separately, then
+ * re-joins with literal slashes (DS-1088).
+ *
+ * @param {string} filePath - The relative file path to encode
+ * @returns {string} The path with each segment URI-encoded
+ */
+function encodeFilePath(filePath) {
+    return filePath.split('/').map(encodeURIComponent).join('/');
+}
+
+/**
  * Split a comma-separated or newline-separated string into an array.
  *
  * Helper function to parse form inputs that accept multiple values.
@@ -470,47 +485,68 @@ function submitFileGitHubEdit(filePath, formElement) {
     var baseBranch = formElement.querySelector('#file_github_base_branch');
     if (baseBranch && baseBranch.value.trim()) body.base_branch = baseBranch.value.trim();
 
-    // Fetch a fresh CSRF token and submit
-    refreshCsrfToken().then(function(token) {
-        if (!token) {
-            showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED);
-            return;
-        }
-        return fetch('/api/orchestrations/files/' + encodeURIComponent(filePath) + '/github', {
+    // Read CSRF token from hidden input
+    var csrfToken = document.getElementById('csrf_token');
+
+    /**
+     * Internal helper to perform the GitHub edit PUT request.
+     *
+     * Includes 403 CSRF retry logic for robustness parity with
+     * submitOrchestrationCreate (DS-1088).
+     *
+     * @param {string} token - CSRF token to include in the request header
+     * @param {boolean} isRetry - Whether this is a retry after token refresh
+     */
+    function doGitHubEdit(token, isRetry) {
+        fetch('/api/orchestrations/files/' + encodeFilePath(filePath) + '/github', {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-Token': token
             },
             body: JSON.stringify(body)
-        });
-    }).then(function(response) {
-        if (!response) return;
-        return response.json().then(function(data) {
-            return { status: response.status, data: data };
-        });
-    }).then(function(result) {
-        if (!result) return;
-        if (result.status >= 200 && result.status < 300 && result.data.success) {
-            showToast('success', UI_MESSAGES.TOAST.FILE_GITHUB_EDIT_SUCCESS);
-            // Reload the edit form to show updated values
-            var detailContainer = formElement.closest('.orchestration-detail');
-            if (detailContainer) {
-                htmx.ajax('GET', '/partials/file_github_edit/' + encodeURIComponent(filePath), {
-                    target: detailContainer,
-                    swap: 'outerHTML'
+        }).then(function(response) {
+            return response.json().then(function(data) {
+                return { status: response.status, data: data };
+            });
+        }).then(function(result) {
+            if (result.status >= 200 && result.status < 300 && result.data.success) {
+                showToast('success', UI_MESSAGES.TOAST.FILE_GITHUB_EDIT_SUCCESS);
+                // Reload the edit form to show updated values
+                var detailContainer = formElement.closest('.orchestration-detail');
+                if (detailContainer) {
+                    htmx.ajax('GET', '/partials/file_github_edit/' + encodeFilePath(filePath), {
+                        target: detailContainer,
+                        swap: 'outerHTML'
+                    });
+                }
+            } else if (result.status === 403 && !isRetry) {
+                // CSRF token invalid - auto-refresh and retry (DS-1088)
+                return refreshCsrfToken().then(function(newToken) {
+                    if (newToken) {
+                        doGitHubEdit(newToken, true);
+                    } else {
+                        showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED);
+                    }
                 });
+            } else if (result.status === 403) {
+                showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_VALIDATION_FAILED);
+            } else if (result.status === 422) {
+                showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
+            } else if (result.status === 429) {
+                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
+            } else {
+                showToast('error', result.data.detail || UI_MESSAGES.TOAST.FILE_GITHUB_EDIT_FAILED);
             }
-        } else if (result.status === 422) {
-            showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
-        } else if (result.status === 429) {
-            showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
-        } else {
-            showToast('error', result.data.detail || UI_MESSAGES.TOAST.FILE_GITHUB_EDIT_FAILED);
-        }
-    }).catch(function(error) {
-        console.error(UI_MESSAGES.DEBUG.FILE_GITHUB_EDIT_FETCH_ERROR, error);
-        showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR);
+        }).catch(function(error) {
+            console.error(UI_MESSAGES.DEBUG.FILE_GITHUB_EDIT_FETCH_ERROR, error);
+            showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR);
+        });
+    }
+
+    // Fetch a fresh CSRF token first, then submit
+    refreshCsrfToken().then(function(freshToken) {
+        doGitHubEdit(freshToken || (csrfToken ? csrfToken.value : ''), false);
     });
 }
 
@@ -527,7 +563,7 @@ function cancelFileGitHubEdit(filePath) {
     if (form) {
         var detailContainer = form.closest('.orchestration-detail');
         if (detailContainer) {
-            htmx.ajax('GET', '/partials/file_github_edit/' + encodeURIComponent(filePath), {
+            htmx.ajax('GET', '/partials/file_github_edit/' + encodeFilePath(filePath), {
                 target: detailContainer,
                 swap: 'outerHTML'
             });
@@ -565,47 +601,68 @@ function submitFileTriggerEdit(filePath, formElement) {
     var projectOwner = formElement.querySelector('#file_trigger_project_owner');
     if (projectOwner && projectOwner.value.trim()) body.project_owner = projectOwner.value.trim();
 
-    // Fetch a fresh CSRF token and submit
-    refreshCsrfToken().then(function(token) {
-        if (!token) {
-            showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED);
-            return;
-        }
-        return fetch('/api/orchestrations/files/' + encodeURIComponent(filePath) + '/trigger', {
+    // Read CSRF token from hidden input
+    var csrfToken = document.getElementById('csrf_token');
+
+    /**
+     * Internal helper to perform the trigger edit PUT request.
+     *
+     * Includes 403 CSRF retry logic for robustness parity with
+     * submitOrchestrationCreate (DS-1088).
+     *
+     * @param {string} token - CSRF token to include in the request header
+     * @param {boolean} isRetry - Whether this is a retry after token refresh
+     */
+    function doTriggerEdit(token, isRetry) {
+        fetch('/api/orchestrations/files/' + encodeFilePath(filePath) + '/trigger', {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-Token': token
             },
             body: JSON.stringify(body)
-        });
-    }).then(function(response) {
-        if (!response) return;
-        return response.json().then(function(data) {
-            return { status: response.status, data: data };
-        });
-    }).then(function(result) {
-        if (!result) return;
-        if (result.status >= 200 && result.status < 300 && result.data.success) {
-            showToast('success', UI_MESSAGES.TOAST.FILE_TRIGGER_EDIT_SUCCESS);
-            // Reload the edit form to show updated values
-            var detailContainer = formElement.closest('.orchestration-detail');
-            if (detailContainer) {
-                htmx.ajax('GET', '/partials/file_trigger_edit/' + encodeURIComponent(filePath), {
-                    target: detailContainer,
-                    swap: 'outerHTML'
+        }).then(function(response) {
+            return response.json().then(function(data) {
+                return { status: response.status, data: data };
+            });
+        }).then(function(result) {
+            if (result.status >= 200 && result.status < 300 && result.data.success) {
+                showToast('success', UI_MESSAGES.TOAST.FILE_TRIGGER_EDIT_SUCCESS);
+                // Reload the edit form to show updated values
+                var detailContainer = formElement.closest('.orchestration-detail');
+                if (detailContainer) {
+                    htmx.ajax('GET', '/partials/file_trigger_edit/' + encodeFilePath(filePath), {
+                        target: detailContainer,
+                        swap: 'outerHTML'
+                    });
+                }
+            } else if (result.status === 403 && !isRetry) {
+                // CSRF token invalid - auto-refresh and retry (DS-1088)
+                return refreshCsrfToken().then(function(newToken) {
+                    if (newToken) {
+                        doTriggerEdit(newToken, true);
+                    } else {
+                        showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_REFRESH_FAILED);
+                    }
                 });
+            } else if (result.status === 403) {
+                showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_CSRF_VALIDATION_FAILED);
+            } else if (result.status === 422) {
+                showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
+            } else if (result.status === 429) {
+                showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
+            } else {
+                showToast('error', result.data.detail || UI_MESSAGES.TOAST.FILE_TRIGGER_EDIT_FAILED);
             }
-        } else if (result.status === 422) {
-            showToast('error', result.data.detail || UI_MESSAGES.TOAST.VALIDATION_ERROR);
-        } else if (result.status === 429) {
-            showToast('warning', UI_MESSAGES.TOAST.RATE_LIMIT_EXCEEDED);
-        } else {
-            showToast('error', result.data.detail || UI_MESSAGES.TOAST.FILE_TRIGGER_EDIT_FAILED);
-        }
-    }).catch(function(error) {
-        console.error(UI_MESSAGES.DEBUG.FILE_TRIGGER_EDIT_FETCH_ERROR, error);
-        showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR);
+        }).catch(function(error) {
+            console.error(UI_MESSAGES.DEBUG.FILE_TRIGGER_EDIT_FETCH_ERROR, error);
+            showToast('error', UI_MESSAGES.TOAST.FILE_EDIT_NETWORK_ERROR);
+        });
+    }
+
+    // Fetch a fresh CSRF token first, then submit
+    refreshCsrfToken().then(function(freshToken) {
+        doTriggerEdit(freshToken || (csrfToken ? csrfToken.value : ''), false);
     });
 }
 
@@ -622,7 +679,7 @@ function cancelFileTriggerEdit(filePath) {
     if (form) {
         var detailContainer = form.closest('.orchestration-detail');
         if (detailContainer) {
-            htmx.ajax('GET', '/partials/file_trigger_edit/' + encodeURIComponent(filePath), {
+            htmx.ajax('GET', '/partials/file_trigger_edit/' + encodeFilePath(filePath), {
                 target: detailContainer,
                 swap: 'outerHTML'
             });
